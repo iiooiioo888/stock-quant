@@ -497,7 +497,12 @@ const Api = {
 
   // 任務管理增強
   async deleteTask(taskId) { return this.delete(`/api/tasks/${taskId}`); },
-  async getTaskFull(taskId) { return this.get(`/api/tasks/${taskId}/full`); },
+  async getTaskParams(taskId) {
+    return this.get(`/api/tasks/${encodeURIComponent(taskId)}/params`, { silent: true });
+  },
+  async getTaskFull(taskId) {
+    return this.get(`/api/tasks/${encodeURIComponent(taskId)}/full`, { silent: true });
+  },
 };
 
 window.Api = Api;

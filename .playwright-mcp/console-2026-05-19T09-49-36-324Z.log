@@ -35,3 +35,25 @@
 [   43040ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
 [   47860ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
 [   48036ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   53059ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   58560ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   63305ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   68053ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   73019ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   78033ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   79891ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[   83080ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   88048ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   93023ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   98032ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  103054ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  108045ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  111918ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[  113041ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  118034ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  123030ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  128043ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  133040ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  138046ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  143055ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[  143940ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443

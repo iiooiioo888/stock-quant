@@ -13,11 +13,80 @@ from src.utils.logger import logger
 
 # 請求間隔（秒），防止被封
 _RATE_LIMIT = 0.5
+# 板塊列表內存緩存（秒），避免儀表盤輪詢反覆打東財
+_SECTOR_LIST_CACHE_TTL = 300
+_sector_list_cache: dict[str, tuple[float, list[dict]]] = {}
+# 連線失敗日誌節流（秒）
+_SECTOR_FAIL_LOG_INTERVAL = 120
+_last_sector_fail_log: dict[str, float] = {}
 
 
 def _rate_sleep():
     """限速等待"""
     time.sleep(_RATE_LIMIT)
+
+
+def _is_connection_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    needles = (
+        "connection aborted",
+        "remotedisconnected",
+        "remote end closed",
+        "connection reset",
+        "timed out",
+        "timeout",
+        "connection refused",
+    )
+    return any(n in msg for n in needles)
+
+
+def _log_sector_fail(sector_type: str, message: str, level: str = "warning") -> None:
+    """同一類型板塊在短時間內只打一次 WARN，避免日誌刷屏"""
+    now = time.time()
+    last = _last_sector_fail_log.get(sector_type, 0)
+    if level == "warning" and now - last < _SECTOR_FAIL_LOG_INTERVAL:
+        logger.debug(message)
+        return
+    if level == "warning":
+        _last_sector_fail_log[sector_type] = now
+    getattr(logger, level)(message)
+
+
+def _cache_get_sector_list(sector_type: str) -> list[dict] | None:
+    hit = _sector_list_cache.get(sector_type)
+    if not hit:
+        return None
+    ts, data = hit
+    if time.time() - ts > _SECTOR_LIST_CACHE_TTL:
+        _sector_list_cache.pop(sector_type, None)
+        return None
+    return data
+
+
+def _cache_set_sector_list(sector_type: str, sectors: list[dict]) -> None:
+    if sectors:
+        _sector_list_cache[sector_type] = (time.time(), sectors)
+
+
+def _requests_session():
+    """帶重試的 HTTP Session（東財直連用）"""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    session = requests.Session()
+    retry = Retry(
+        total=2,
+        connect=2,
+        read=2,
+        backoff_factor=0.8,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=4)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 # ============================================================
@@ -125,7 +194,7 @@ _EM_HOSTS = (
 def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
     """東財 push2 直連（AKShare 斷線時的備選，多節點重試）"""
     try:
-        import requests
+        session = _requests_session()
     except ImportError:
         return []
 
@@ -151,7 +220,7 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
     for host in _EM_HOSTS:
         url = f"https://{host}/api/qt/clist/get"
         try:
-            resp = requests.get(url, params=params, headers=headers, timeout=20)
+            resp = session.get(url, params=params, headers=headers, timeout=(8, 25))
             resp.raise_for_status()
             payload = resp.json()
             diff = (payload.get("data") or {}).get("diff") or []
@@ -190,7 +259,7 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
             logger.debug(f"東財 {host} 獲取{sector_type}板塊失敗: {e}")
 
     if last_err:
-        logger.warning(f"東財 HTTP 獲取{sector_type}板塊失敗: {last_err}")
+        _log_sector_fail(sector_type, f"東財 HTTP 獲取{sector_type}板塊失敗: {last_err}")
     return []
 
 
@@ -253,7 +322,7 @@ def _load_sectors_from_local_kline(sector_type: str = "industry") -> list[dict]:
     return result
 
 
-def _fetch_sector_list_live(sector_type: str, retries: int = 3) -> list[dict]:
+def _fetch_sector_list_live(sector_type: str, retries: int = 2) -> list[dict]:
     last_err = None
     for attempt in range(retries):
         try:
@@ -287,11 +356,13 @@ def _fetch_sector_list_live(sector_type: str, retries: int = 3) -> list[dict]:
             return result
         except Exception as e:
             last_err = e
-            logger.warning(f"獲取{sector_type}板塊列表失敗 ({attempt + 1}/{retries}): {e}")
-            time.sleep(1.0 + attempt)
+            logger.debug(f"AKShare 獲取{sector_type}板塊失敗 ({attempt + 1}/{retries}): {e}")
+            if _is_connection_error(e):
+                break
+            time.sleep(0.8 + attempt * 0.5)
 
     if last_err:
-        logger.error(f"獲取{sector_type}板塊列表失敗: {last_err}")
+        _log_sector_fail(sector_type, f"AKShare 獲取{sector_type}板塊列表失敗: {last_err}")
     return []
 
 
@@ -305,12 +376,16 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
     Returns:
         [{"name": "銀行", "code": "BK0475", ...}, ...]
     """
-    sectors = _fetch_sector_list_live(sector_type)
-    if sectors:
-        return sectors
+    cached = _cache_get_sector_list(sector_type)
+    if cached is not None:
+        return cached
 
+    # 東財直連通常比 AKShare 包裝層更穩；連線錯誤時優先 HTTP
     sectors = _fetch_sector_list_em_http(sector_type)
+    if not sectors:
+        sectors = _fetch_sector_list_live(sector_type)
     if sectors:
+        _cache_set_sector_list(sector_type, sectors)
         return sectors
 
     cached = _load_sectors_from_snapshot(sector_type)
@@ -319,9 +394,17 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
             f"使用板塊快照緩存: {sector_type}, {len(cached)} 條, "
             f"日期={cached[0].get('snapshot_date')}"
         )
+        _cache_set_sector_list(sector_type, cached)
         return cached
 
     local = _load_sectors_from_local_kline(sector_type)
+    if local:
+        _cache_set_sector_list(sector_type, local)
+    else:
+        _log_sector_fail(
+            sector_type,
+            f"{sector_type}板塊實時與快照均不可用，請檢查網絡或稍後重試",
+        )
     return local
 
 

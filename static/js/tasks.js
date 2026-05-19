@@ -14,6 +14,7 @@ const Tasks = {
   _sortCol: 'created_at',
   _sortAsc: false,
   _expandedRows: new Set(),
+  _paramsCache: new Map(),
 
   /**
    * 初始化：綁定事件
@@ -99,6 +100,9 @@ const Tasks = {
     this._renderRunningTasks(d.tasks);
     this._renderTaskTable(d.tasks);
     this._updateNavBadge(d.stats);
+    for (const id of this._expandedRows) {
+      this._loadParams(id);
+    }
   },
 
   _renderQueue(snapshot) {
@@ -338,12 +342,19 @@ const Tasks = {
     const container = document.getElementById(`params-${taskId}`);
     if (!container) return;
 
-    const d = await Api.getTaskFull(taskId);
-    if (!d || !d.task) {
-      container.innerHTML = '<span style="color:var(--text-dim)">無法載入</span>';
+    if (this._paramsCache.has(taskId)) {
+      container.innerHTML = this._paramsCache.get(taskId);
       return;
     }
-    container.innerHTML = TaskCommon.renderParams(d.task.params);
+
+    const d = await Api.getTaskParams(taskId);
+    if (!d || !d.task) {
+      container.innerHTML = '<span style="color:var(--text-dim)">無法載入（任務可能已過期，請刷新列表）</span>';
+      return;
+    }
+    const html = TaskCommon.renderParams(d.task.params, d.task.task_type);
+    this._paramsCache.set(taskId, html);
+    container.innerHTML = html;
   },
 
   // ── 操作 ──────────────────────────────────────────────────
@@ -366,6 +377,7 @@ const Tasks = {
     const d = await Api.deleteTask(taskId);
     if (d?.success) {
       this._expandedRows.delete(taskId);
+      this._paramsCache.delete(taskId);
       Utils.toast('已刪除', 2000, 'success');
       this.refresh();
     } else {

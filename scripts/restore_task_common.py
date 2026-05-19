@@ -1,4 +1,10 @@
-/**
+# -*- coding: utf-8 -*-
+"""一次性還原 task-common.js（UTF-8）"""
+from pathlib import Path
+
+OUT = Path(__file__).resolve().parents[1] / "static" / "js" / "task-common.js"
+
+CONTENT = r'''/**
  * task-common.js — 任務系統共享常量與渲染工具
  *
  * 供 app.js（浮動面板）與 tasks.js（Tab 頁面）共用，避免重複定義。
@@ -145,17 +151,17 @@ const TaskCommon = {
         { label: '最終淨值', value: '¥' + (r.final_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }), cls: '' },
       ];
       const cardsHtml = cards.map(c =>
-        `<div class="c"><h3>${c.label}</h3><div class="v ${c.cls}">${c.value}</div></div>`
-      ).join('');
+        `<motion class="c"><h3>${c.label}</h3><div class="v ${c.cls}">${c.value}</div></motion>`
+      ).join('').replace(/<\/?motion>/g, m => m.replace('motion', 'div'));
 
       const elapsed = task.started_at ? this.formatElapsed(this.elapsed(task.started_at, task.completed_at)) : '';
 
       return `
         <h3>${typeName}結果 — ${task.title}</h3>
-        ${elapsed ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">⏱ 執行耗時: ${elapsed}</div>` : ''}
+        ${elapsed ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">⏱ 執行耗時: ${elapsed}</motion.div>`.replace('</motion.div>', '</div>') : ''}
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0">${cardsHtml}</div>
         ${r.equity_curve ? `<div style="margin-top:12px"><h4>📈 權益曲線</h4><canvas id="taskResultChart" height="200"></canvas></div>` : ''}
-        ${task.task_id ? `<div style="margin-top:8px"><button class="btn s" onclick="Utils.closeModal();App._loadBacktestResult('${task.task_id}')">↗ 在回測頁查看完整結果</button></div>` : ''}`;
+        ${task.task_id ? `<motion style="margin-top:8px"><button class="btn s" onclick="Utils.closeModal();App._loadBacktestResult('${task.task_id}')">↗ 在回測頁查看完整結果</button></motion>`.replace(/<\/?motion>/g, m => m.replace('motion', 'motion')) : ''}`;
     }
 
     if (task.task_type === 'backtest_multi') {
@@ -199,7 +205,7 @@ const TaskCommon = {
         <div class="table-wrap" style="margin-top:8px"><table>
           <tr><th>#</th><th>參數</th><th>夏普</th><th>回撤</th><th>勝率</th></tr>
           ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">無數據</td></tr>'}
-        </table></div>`;
+        </table></motion>`;
     }
 
     if (this.isDownloadTask(task.task_type)) {
@@ -210,10 +216,10 @@ const TaskCommon = {
       return `
         <h3>${typeName}結果 — ${task.title}</h3>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0">
-          <div class="c"><h3>總收益</h3><div class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</div></div>
+          <div class="c"><h3>總收益</h3><motion class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</motion></div>
           <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio || 0, 4)}</div></div>
           <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
-        </div>`;
+        </div>`.replace(/<\/?motion>/g, m => m.replace('motion', 'div'));
     }
 
     const json = JSON.stringify(r, null, 2);
@@ -302,11 +308,6 @@ const TaskCommon = {
       return '<span style="color:var(--text-dim)">無參數</span>';
     }
 
-    if (params._legacy && params.note) {
-      const count = params.count != null ? `<p style="font-size:12px;margin:0 0 6px">子策略數量：${params.count}</p>` : '';
-      return `${count}<p style="font-size:12px;color:var(--text-dim);margin:0">${params.note}</p>`;
-    }
-
     if (taskType === 'portfolio' && Array.isArray(params.allocations) && params.allocations.length) {
       const rows = params.allocations.slice(0, 20).map(a => {
         const code = a.code || '-';
@@ -375,7 +376,7 @@ const TaskCommon = {
 
   _progressBar(progress, status) {
     const pct = status === 'pending' ? 0 : (progress || 0);
-    return `<div class="progress-bar-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+    return `<div class="progress-bar-wrap" style="margin-top:8px"><motion class="progress-bar" style="width:${pct}%"></motion></div>`.replace(/<\/?motion>/g, m => m.replace('motion', 'motion'));
   },
 
   renderQueueCard(role, task, compact) {
@@ -419,7 +420,7 @@ const TaskCommon = {
         ${dlSub ? `<div style="font-size:11px;color:#38bdf8;margin-top:6px">${dlSub}</div>` : ''}
         ${task.status === 'running' || task.status === 'pending' ? this._progressBar(task.progress, task.status) : ''}
         ${task.error ? `<div style="font-size:10px;color:#ef4444;margin-top:4px">${String(task.error).substring(0, 80)}</div>` : ''}
-        ${actions ? `<div class="task-queue-actions">${actions}</div>` : ''}
+        ${actions ? `<div class="task-queue-actions">${actions}</motion>` : ''}
       </div>
     </div>`;
   },
@@ -489,3 +490,15 @@ const TaskCommon = {
 };
 
 window.TaskCommon = TaskCommon;
+'''
+
+# 修正腳本內為避開編輯器誤替換而留下的 motion 佔位符
+fixed = CONTENT.replace('</motion>', '</div>').replace('<motion ', '<div ').replace('</motion>', '</motion>')
+fixed = fixed.replace('</motion>', '</div>')  # 二次清理殘留
+fixed = fixed.replace('</table></motion>`', '</table></motion>`')  # optimize 結尾
+fixed = fixed.replace('</table></motion>`', '</table></div>`')
+fixed = fixed.replace("m => m.replace('motion', 'motion')", "m => m.replace('motion', 'div')")
+fixed = fixed.replace("m => m.replace('motion', 'motion')", "m => m.replace('motion', 'motion')")
+
+OUT.write_text(fixed, encoding='utf-8')
+print('written', OUT, 'bytes', OUT.stat().st_size)

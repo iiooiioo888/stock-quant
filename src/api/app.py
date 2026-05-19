@@ -1482,7 +1482,15 @@ async def run_portfolio_api(
         raise HTTPException(400, "請提供組合配置")
 
     codes = [a.get("code", "") for a in allocations]
-    task_params = {"codes": codes, "weights": weights, "rebalance": rebalance}
+    task_params = {
+        "allocations": allocations,
+        "codes": codes,
+        "weights": weights,
+        "rebalance": rebalance,
+        "rebalance_freq_days": rebalance_freq_days,
+        "cash": cash,
+        "count": len(allocations),
+    }
     task = create_task("portfolio", task_params, title=f"組合回測 ({len(allocations)}隻)")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
@@ -1768,15 +1776,26 @@ async def delete_task_api(task_id: str):
     return {"success": True}
 
 
+@app.get("/api/tasks/{task_id}/params")
+async def get_task_params_api(task_id: str):
+    """獲取任務參數（輕量，不含大型 result）"""
+    from src.core.task_manager import get_task_params
+    task = get_task_params(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任務不存在")
+    return {"task": task}
+
+
 @app.get("/api/tasks/{task_id}/full")
 async def get_task_full_api(task_id: str):
     """獲取任務完整信息（含 params 和 result）"""
     from src.core.task_manager import get_task_full
-    task = get_task_full(task_id)
+    task = get_task_full(task_id, include_result=True)
     if not task:
         raise HTTPException(status_code=404, detail="任務不存在")
-    # 移除內部字段
-    task.pop("last_accessed", None)
+    if isinstance(task, dict):
+        task.pop("last_accessed", None)
+        task.pop("_worker_fn", None)
     return {"task": task}
 
 

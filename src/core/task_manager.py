@@ -9,6 +9,7 @@
 """
 import hashlib
 import json
+import math
 import os
 import time
 import threading
@@ -70,14 +71,29 @@ def _to_json_safe(obj):
             if isinstance(o, (np.integer,)):
                 return int(o)
             if isinstance(o, (np.floating,)):
-                return float(o)
+                v = float(o)
+                if math.isnan(v) or math.isinf(v):
+                    return None
+                return v
             if isinstance(o, np.ndarray):
                 return o.tolist()
             if isinstance(o, (datetime,)):
                 return o.strftime("%Y-%m-%d %H:%M:%S")
             return str(o)
 
-        return json.loads(json.dumps(obj, default=_default, ensure_ascii=False))
+        def _sanitize_floats(x):
+            if isinstance(x, float):
+                if math.isnan(x) or math.isinf(x):
+                    return None
+                return x
+            if isinstance(x, dict):
+                return {k: _sanitize_floats(v) for k, v in x.items()}
+            if isinstance(x, (list, tuple)):
+                return [_sanitize_floats(v) for v in x]
+            return x
+
+        raw = json.loads(json.dumps(obj, default=_default, ensure_ascii=False))
+        return _sanitize_floats(raw)
     except Exception:
         return obj
 
@@ -397,8 +413,8 @@ def get_task(task_id: str) -> Optional[dict]:
             task["last_accessed"] = time.time()
             out = dict(task)
             out.pop("_worker_fn", None)
-            return out
-        return None
+            return _to_json_safe(out)
+        return _load_task_from_db(task_id, include_result=True)
 
 
 def get_tasks(task_type: str = None, status: str = None, limit: int = 50) -> list[dict]:
@@ -512,15 +528,43 @@ def delete_task(task_id: str) -> bool:
         return True
 
 
-def get_task_full(task_id: str) -> Optional[dict]:
+def get_task_full(task_id: str, *, include_result: bool = True) -> Optional[dict]:
     with _lock:
         task = _tasks.get(task_id)
         if task:
             task["last_accessed"] = time.time()
             out = dict(task)
             out.pop("_worker_fn", None)
-            return out
+            if not include_result:
+                out.pop("result", None)
+            return _to_json_safe(out)
+        return _load_task_from_db(task_id, include_result=include_result)
+
+
+def get_task_params(task_id: str) -> Optional[dict]:
+    """僅返回任務參數（輕量，供任務面板展開）"""
+    full = get_task_full(task_id, include_result=False)
+    if not full:
         return None
+    params = dict(full.get("params") or {})
+    if not params and full.get("from_db"):
+        import re
+        title = full.get("title") or ""
+        if full.get("task_type") == "portfolio":
+            m = re.search(r"\((\d+)\s*隻\)", title)
+            if m:
+                params = {
+                    "_legacy": True,
+                    "count": int(m.group(1)),
+                    "note": "此任務完成於參數持久化功能上線前，僅保留標題摘要。請重新執行組合回測以查看完整配置。",
+                }
+    return {
+        "task_id": full.get("task_id"),
+        "task_type": full.get("task_type"),
+        "title": full.get("title"),
+        "params": params,
+        "meta": full.get("meta") or {},
+    }
 
 
 def cleanup_stale_tasks(timeout_sec: int = 3600) -> int:
@@ -613,6 +657,44 @@ def _task_summary(task: dict) -> dict:
     return summary
 
 
+def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optional[dict]:
+    """內存淘汰後從 task_log 恢復任務元數據（不含 result）"""
+    try:
+        from src.core.db import get_conn
+        with get_conn() as conn:
+            row = conn.execute(
+                """SELECT task_id, task_type, params_hash, title, status, progress, error,
+                          created_at, completed_at, params_json
+                   FROM task_log WHERE task_id = ?""",
+                (task_id,),
+            ).fetchone()
+        if not row:
+            return None
+        params = {}
+        if row[9]:
+            try:
+                params = json.loads(row[9])
+            except Exception:
+                params = {}
+        return _to_json_safe({
+            "task_id": row[0],
+            "task_type": row[1],
+            "params_hash": row[2],
+            "title": row[3] or "",
+            "status": row[4],
+            "progress": row[5] or 0,
+            "error": row[6],
+            "created_at": row[7] or "",
+            "completed_at": row[8],
+            "params": params,
+            "result": None if not include_result else None,
+            "from_db": True,
+        })
+    except Exception as e:
+        logger.debug(f"從 DB 載入任務失敗 {task_id}: {e}")
+        return None
+
+
 def _save_task_to_db(task: dict, force: bool = False):
     if not force and task.get("status") == STATUS_RUNNING:
         prog = task.get("progress", 0)
@@ -631,17 +713,25 @@ def _save_task_to_db(task: dict, force: bool = False):
                     progress    INTEGER DEFAULT 0,
                     error       TEXT,
                     created_at  TEXT,
-                    completed_at TEXT
+                    completed_at TEXT,
+                    params_json TEXT
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE task_log ADD COLUMN params_json TEXT")
+            except Exception:
+                pass
+            params_json = json.dumps(task.get("params") or {}, ensure_ascii=False, default=str)
             conn.execute("""
                 INSERT OR REPLACE INTO task_log
-                (task_id, task_type, params_hash, title, status, progress, error, created_at, completed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (task_id, task_type, params_hash, title, status, progress, error,
+                 created_at, completed_at, params_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task["task_id"], task["task_type"], task["params_hash"],
                 task.get("title", ""), task["status"], task.get("progress", 0),
                 task.get("error"), task.get("created_at"), task.get("completed_at"),
+                params_json,
             ))
     except Exception as e:
         logger.debug(f"任務持久化跳過: {e}")
@@ -675,9 +765,14 @@ def _init():
                     progress    INTEGER DEFAULT 0,
                     error       TEXT,
                     created_at  TEXT,
-                    completed_at TEXT
+                    completed_at TEXT,
+                    params_json TEXT
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE task_log ADD COLUMN params_json TEXT")
+            except Exception:
+                pass
             conn.execute("""
                 UPDATE task_log SET status = 'failed', error = '服務重啟',
                 completed_at = ? WHERE status IN ('pending', 'running')
