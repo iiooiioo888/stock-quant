@@ -84,7 +84,8 @@
         <button data-tab="analysis"><span class="nav-icon">🔬</span><span class="nav-label">深度分析</span></button>
 
         <div class="nav-section">系統</div>
-        <button data-tab="reports"><span class="nav-icon">📋</span><span class="nav-label">策略報告</span></button>
+        <button data-tab="tasks"><span class="nav-icon">📋</span><span class="nav-label">任務面板</span><span class="nav-badge" id="navBadgeTasks"></span></button>
+        <button data-tab="reports"><span class="nav-icon">📄</span><span class="nav-label">策略報告</span></button>
         <button data-tab="alerts"><span class="nav-icon">🔔</span><span class="nav-label">預警通知</span><span class="nav-dot" id="navDotAlerts"></span></button>
         <button data-tab="markets"><span class="nav-icon">🌐</span><span class="nav-label">多市場</span></button>
     </div>
@@ -727,6 +728,72 @@
     </div>
 </div>
 
+<!-- ====== 任務面板 ====== -->
+<div id="tab-tasks" class="h">
+    <!-- 統計卡片 -->
+    <div class="g" id="taskStatsGrid"></div>
+
+    <!-- 篩選工具欄 -->
+    <div class="sec">
+        <div class="fr" style="align-items:center;flex-wrap:wrap;gap:8px">
+            <div class="fg" style="flex:1;min-width:200px">
+                <input type="text" id="taskSearch" placeholder="🔍 搜索任務名稱或類型..." style="width:100%">
+            </div>
+            <div class="fg">
+                <select id="taskTypeFilter">
+                    <option value="">全部類型</option>
+                    <option value="backtest">📊 回測</option>
+                    <option value="backtest_advanced">📊 進階回測</option>
+                    <option value="backtest_multi">📊 多策略對比</option>
+                    <option value="optimize">⚡ 參數優化</option>
+                    <option value="portfolio">📈 組合回測</option>
+                    <option value="walkforward">🔄 Walk-Forward</option>
+                    <option value="auto_optimize">🤖 自動優化</option>
+                    <option value="heatmap">🌡️ 熱力圖</option>
+                </select>
+            </div>
+            <div class="fg">
+                <select id="taskStatusFilter">
+                    <option value="">全部狀態</option>
+                    <option value="running">⏳ 運行中</option>
+                    <option value="completed">✅ 已完成</option>
+                    <option value="failed">❌ 失敗</option>
+                    <option value="cancelled">🚫 已取消</option>
+                </select>
+            </div>
+            <button class="btn s" onclick="Tasks.refresh()">🔄 刷新</button>
+            <button class="btn s" onclick="Tasks.cleanup()">🧹 清理超時</button>
+        </div>
+    </div>
+
+    <!-- 運行中任務 -->
+    <div class="sec" id="taskRunningSection" style="display:none">
+        <h2>⏳ 運行中任務 <span class="ct" id="taskRunningCount"></span></h2>
+        <div id="taskRunningList"></div>
+    </div>
+
+    <!-- 任務列表 -->
+    <div class="sec">
+        <h2>📋 任務列表 <span class="ct" id="taskListCount"></span></h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>狀態</th>
+                        <th>類型</th>
+                        <th>任務名稱</th>
+                        <th>進度</th>
+                        <th>創建時間</th>
+                        <th>完成時間</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="taskTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 </div><!-- /.main -->
 </div><!-- /.app -->
 
@@ -749,6 +816,7 @@
 <script src="/static/js/heatmap.js"></script>
 <script src="/static/js/data.js"></script>
 <script src="/static/js/analysis.js"></script>
+<script src="/static/js/tasks.js"></script>
 <script src="/static/js/app.js"></script>
 
 </body>

@@ -209,6 +209,7 @@ const App = {
       { icon: '📋', code: '', name: '策略報告', type: '功能', action: () => this.loadTab('reports') },
       { icon: '🔔', code: '', name: '預警通知', type: '功能', action: () => this.loadTab('alerts') },
       { icon: '🌐', code: '', name: '多市場', type: '功能', action: () => this.loadTab('markets') },
+      { icon: '📋', code: '', name: '任務面板', type: '功能', action: () => this.loadTab('tasks') },
       { icon: '📥', code: '', name: '下載全市場數據', type: '操作', action: () => this.downloadAllFromDashboard() },
     ];
 
@@ -354,6 +355,9 @@ const App = {
     if (tab !== 'dashboard' && typeof Dashboard !== 'undefined') {
       Dashboard.stopPolling();
     }
+    if (tab !== 'tasks' && typeof Tasks !== 'undefined') {
+      Tasks.unload();
+    }
 
     // Tab 切換時載入數據
     switch (tab) {
@@ -378,6 +382,9 @@ const App = {
         break;
       case 'analysis':
         // Analysis tab loads on demand via buttons
+        break;
+      case 'tasks':
+        if (typeof Tasks !== 'undefined') Tasks.load();
         break;
     }
   },
