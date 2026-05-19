@@ -143,7 +143,7 @@ def update_task(task_id: str, status: str = None, progress: int = None,
 
         # 自動清理：完成/失敗/取消後，若超過上限則淘汰最舊的已完成任務
         if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
-            _evict_old_tasks()
+            _evict_old_tasks_inner()
 
         return task
 
@@ -318,24 +318,25 @@ def _save_task_to_db(task: dict):
         logger.debug(f"任務持久化跳過: {e}")
 
 
+def _evict_old_tasks_inner():
+    """淘汰最舊的已完成任務（內部調用，不加鎖，調用方需已持有 _lock）"""
+    if len(_tasks) <= _MAX_TASKS:
+        return
+    done_tasks = [
+        (tid, t) for tid, t in _tasks.items()
+        if t["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED)
+    ]
+    done_tasks.sort(key=lambda x: x[1].get("completed_at", ""), reverse=False)
+    to_remove = len(_tasks) - _MAX_TASKS
+    for tid, _ in done_tasks[:to_remove]:
+        del _tasks[tid]
+        logger.debug(f"任務淘汰: {tid}")
+
+
 def _evict_old_tasks():
     """淘汰最舊的已完成任務，保持內存任務數不超過 _MAX_TASKS"""
     with _lock:
-        if len(_tasks) <= _MAX_TASKS:
-            return
-
-        # 按完成時間排序，優先淘汰最舊的已完成任務
-        done_tasks = [
-            (tid, t) for tid, t in _tasks.items()
-            if t["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED)
-        ]
-        done_tasks.sort(key=lambda x: x[1].get("completed_at", ""), reverse=False)
-
-        # 淘汰到上限以下
-        to_remove = len(_tasks) - _MAX_TASKS
-        for tid, _ in done_tasks[:to_remove]:
-            del _tasks[tid]
-            logger.debug(f"任務淘汰: {tid}")
+        _evict_old_tasks_inner()
 
 
 # 啟動時清理舊任務

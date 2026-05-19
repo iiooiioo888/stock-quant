@@ -1332,7 +1332,8 @@ class BreakoutStrategy(bt.Strategy):
 
         if not self.position:
             # 買入：價格突破 N 日最高價
-            if price > self.highest[-1]:
+            highest_prev = self.highest[-1]
+            if highest_prev is not None and price > highest_prev:
                 cash = self.broker.getcash()
                 shares = int(cash * 0.95 / price / 100) * 100
                 if shares >= 100:
@@ -1342,11 +1343,11 @@ class BreakoutStrategy(bt.Strategy):
         else:
             # 更新移動止損（只會上移，不會下移）
             new_stop = price - atr_val * self.p.atr_multiplier
-            if new_stop > self.trailing_stop:
+            if self.trailing_stop is not None and new_stop > self.trailing_stop:
                 self.trailing_stop = new_stop
 
             # 賣出：價格跌破移動止損
-            if price < self.trailing_stop:
+            if self.trailing_stop is not None and price < self.trailing_stop:
                 self.order = self.sell()
                 self.entry_price = None
                 self.trailing_stop = None
@@ -1773,15 +1774,28 @@ class ParabolicSARStrategy(bt.Strategy):
             self.order = None
 
 
+class _OBV(bt.Indicator):
+    """自定義 OBV（On-Balance Volume）指標"""
+    lines = ('obv',)
+    params = ()
+
+    def __init__(self):
+        vol = self.data.volume
+        close = self.data.close
+        prev_close = close(-1)
+        direction = bt.If(close > prev_close, vol, bt.If(close < prev_close, -vol, 0))
+        self.lines.obv = bt.indicators.SumN(direction, period=len(self.data))
+
+
 class OBVStrategy(bt.Strategy):
-    """OBV 能量潮策略 — OBV 趋势与价格趋势背离时交易"""
+    """OBV 能量潮策略 — OBV 趨勢與價格趨勢背離時交易"""
     params = (
-        ("obv_ma_period", 20),   # OBV 均线周期
-        ("price_ma_period", 20), # 价格均线周期
+        ("obv_ma_period", 20),   # OBV 均線週期
+        ("price_ma_period", 20), # 價格均線週期
     )
 
     def __init__(self):
-        self.obv = bt.indicators.OnBalanceVolume(self.data)
+        self.obv = _OBV(self.data)
         self.obv_sma = bt.indicators.SMA(self.obv, period=self.p.obv_ma_period)
         self.price_sma = bt.indicators.SMA(self.data.close, period=self.p.price_ma_period)
         self.order = None
