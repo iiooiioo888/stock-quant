@@ -7,6 +7,15 @@ const API_BASE = '';
 const Api = {
   _token: null,
   _loggingIn: false,
+  _getCache: new Map(),
+  _inflight: new Map(),
+  /** GET 緩存 TTL（毫秒） */
+  _cacheTtl: {
+    '/api/health': 3000,
+    '/api/strategies/list': 120000,
+    '/api/config': 120000,
+    '/api/stocks': 30000,
+  },
 
   /**
    * 初始化：從 localStorage 載入 token
@@ -117,6 +126,7 @@ const Api = {
       // 重新連接 WebSocket（攜帶新 token）
       if (typeof App !== 'undefined') {
         if (App._ws) { App._ws.close(); }
+        App._wsRetry = 0;
         App._connectWS();
         App._initQuickStats();
       }
@@ -146,41 +156,79 @@ const Api = {
    * 通用 GET/POST 請求
    */
   async request(path, options = null) {
+    const silent = !!(options && options.silent);
+    const opts = options ? { ...options } : {};
+    delete opts.silent;
     try {
-      // 自動附加 Authorization header
       const headers = {};
       if (this._token) {
         headers['Authorization'] = 'Bearer ' + this._token;
       }
-      if (options?.headers) {
-        Object.assign(headers, options.headers);
+      if (opts.headers) {
+        Object.assign(headers, opts.headers);
       }
 
-      const resp = await fetch(API_BASE + path, { ...options, headers });
+      const resp = await fetch(API_BASE + path, { ...opts, headers });
 
-      // 401 → 自動彈出登錄
       if (resp.status === 401) {
         this.setToken(null);
-        this.showLoginModal();
+        if (!silent) this.showLoginModal();
         return null;
       }
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(err.detail || `HTTP ${resp.status}`);
+        const msg = err.detail || `HTTP ${resp.status}`;
+        if (!silent) {
+          Utils.toast('請求失敗: ' + msg, 3000, 'error');
+        }
+        return null;
       }
       return await resp.json();
     } catch (e) {
-      Utils.toast('請求失敗: ' + e.message, 3000, 'error');
+      if (!silent) {
+        Utils.toast('請求失敗: ' + e.message, 3000, 'error');
+      }
       return null;
     }
   },
 
   /**
-   * GET 請求
+   * GET 請求（內存緩存 + 飛行中請求合併）
    */
-  async get(path) {
-    return this.request(path);
+  async get(path, opts = {}) {
+    const basePath = path.split('?')[0];
+    const ttl = opts.noCache ? 0 : (this._cacheTtl[basePath] || 0);
+    const reqOpts = opts.silent ? { silent: true } : null;
+    if (ttl > 0) {
+      const hit = this._getCache.get(path);
+      if (hit && Date.now() - hit.ts < ttl) {
+        return hit.data;
+      }
+      if (this._inflight.has(path)) {
+        return this._inflight.get(path);
+      }
+    }
+    const p = this.request(path, reqOpts);
+    if (ttl > 0) {
+      this._inflight.set(path, p);
+      p.then(data => {
+        if (data != null) {
+          this._getCache.set(path, { ts: Date.now(), data });
+        }
+      }).finally(() => this._inflight.delete(path));
+    }
+    return p;
+  },
+
+  clearGetCache(prefix = '') {
+    if (!prefix) {
+      this._getCache.clear();
+      return;
+    }
+    for (const key of this._getCache.keys()) {
+      if (key.startsWith(prefix)) this._getCache.delete(key);
+    }
   },
 
   /**
@@ -227,6 +275,20 @@ const Api = {
 
   async compareStocks(codes, days = 250) {
     return this.post('/api/stocks/compare', { codes, days });
+  },
+
+  async runTradeAnalysis({ code, strategy, params }) {
+    return this.post('/api/backtest/trade-analysis', { code, strategy, params });
+  },
+
+  async runMonteCarlo({ code, strategy, params, n_simulations = 1000, days = 252 }) {
+    return this.post('/api/backtest/monte-carlo', {
+      code, strategy, params, n_simulations, days,
+    });
+  },
+
+  async runRollingMetrics({ code, strategy, params, window = 60 }) {
+    return this.post('/api/backtest/rolling-metrics', { code, strategy, params, window });
   },
 
   async runBacktest(params) {
@@ -284,7 +346,14 @@ const Api = {
   },
 
   async runHeatmap(params) {
-    let url = `/api/heatmap?code=${params.code}&strategy=${params.strategy}&param_x=${params.paramX}&param_y=${params.paramY}&grid_size=${params.grid}`;
+    const px = (params.paramX || '').trim();
+    const py = (params.paramY || '').trim();
+    if (!px || !py) {
+      if (typeof Utils !== 'undefined') Utils.toast('請選擇參數 X 和 Y', 3000, 'warning');
+      return null;
+    }
+    const url = `/api/heatmap?code=${encodeURIComponent(params.code)}&strategy=${encodeURIComponent(params.strategy)}`
+      + `&param_x=${encodeURIComponent(px)}&param_y=${encodeURIComponent(py)}&grid_size=${params.grid || 8}`;
     return this.request(url, { method: 'POST' });
   },
 
@@ -303,7 +372,59 @@ const Api = {
     if (status) url += '&status=' + status;
     return this.get(url);
   },
+  async getTaskQueue() { return this.get('/api/tasks/queue'); },
+
+  async pollTask(taskId, options = {}) {
+    const interval = options.interval || 1500;
+    const timeout = options.timeout || 600000;
+    const onProgress = options.onProgress;
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const d = await this.getTask(taskId);
+      const task = d?.task;
+      if (!task) return null;
+      if (onProgress) onProgress(task);
+      if (task.status === 'completed') return task;
+      if (task.status === 'failed' || task.status === 'cancelled') {
+        throw new Error(task.error || ('任務' + task.status));
+      }
+      await new Promise(r => setTimeout(r, interval));
+    }
+    throw new Error('任務等待超時');
+  },
+
+  /** 從 resolveTaskResponse 的返回值取出 result（兼容 list / dict） */
+  extractResult(resolved) {
+    if (!resolved) return null;
+    const r = resolved.result ?? resolved.results ?? resolved.task?.result;
+    return r ?? null;
+  },
+
+  /** 若為 async 響應則輪詢至完成，返回含 result 的 task 或原響應 */
+  async resolveTaskResponse(d, options = {}) {
+    if (!d?.success) return d;
+    if (d.from_cache && (d.result || d.results)) {
+      if (typeof Utils !== 'undefined') {
+        Utils.toast('⚡ 使用緩存結果', 2000, 'info');
+      }
+      return d;
+    }
+    const taskId = d.task_id;
+    if (!taskId) return d;
+    const needsPoll = d.async || d.is_duplicate || (!d.result && !d.results && taskId);
+    if (!needsPoll) return d;
+    const task = await this.pollTask(taskId, options);
+    const result = task?.result;
+    return { ...d, task, result, results: result };
+  },
+
   async getTask(taskId) { return this.get('/api/tasks/' + taskId); },
+  async getCacheStats() { return this.get('/api/cache/stats'); },
+  async clearCache(code) {
+    let url = '/api/cache/clear';
+    if (code) url += '?code=' + encodeURIComponent(code);
+    return this.post(url);
+  },
   async cancelTask(taskId) { return this.post('/api/tasks/' + taskId + '/cancel'); },
   async cleanupTasks() { return this.post('/api/tasks/cleanup'); },
   async enableScheduler() { return this.post('/api/scheduler/enable'); },

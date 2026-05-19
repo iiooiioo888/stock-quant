@@ -1486,6 +1486,30 @@ pre.rpt {
   color: var(--text-dim);
 }
 
+/* Chart placeholder (no data / load failed) */
+.chart-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.cw .chart-placeholder,
+.cw-tall .chart-placeholder {
+  position: absolute;
+  inset: 8px 0;
+  margin: 0;
+}
+
 /* ============================================================
    Onboarding Tip
    ============================================================ */
@@ -1524,16 +1548,10 @@ pre.rpt {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
-/* ============================================================
-   Tab Transition Animation
-   ============================================================ */
-[id^="tab-"] {
-  animation: tabFadeIn 0.25s ease;
-}
-
-@keyframes tabFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 可見 Tab 必須完全不透明（勿用全量 tab 淡入動畫，隱藏 Tab 會卡在 opacity:0） */
+.main > [id^="tab-"]:not(.h) {
+  opacity: 1;
+  transform: none;
 }
 
 /* ============================================================
@@ -2013,6 +2031,48 @@ tbody tr:hover {
 /* ============================================================
    Print styles
    ============================================================ */
+/* ============================================================
+   Task queue
+   ============================================================ */
+.task-queue-section h2 { margin-bottom: 12px; }
+.task-queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.task-queue-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 100px;
+}
+.task-queue-card.task-queue-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
+}
+.task-queue-card.task-queue-recent {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+.task-queue-card.task-queue-empty {
+  opacity: 0.85;
+}
+.task-queue-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+.task-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 @media print {
   .sidebar, .hdr, .tip-card, .quick-actions, #toast, .modal { display: none !important; }
   .main { padding: 0; overflow: visible; }

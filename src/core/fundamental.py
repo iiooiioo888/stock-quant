@@ -45,10 +45,22 @@ CREATE TABLE IF NOT EXISTS fundamentals (
 """
 
 
+_EXTRA_FUND_COLS = [
+    ("ps_ttm", "REAL"),
+    ("revenue_yoy", "REAL"),
+    ("profit_yoy", "REAL"),
+]
+
+
 def init_fundamentals_table():
     """初始化基本面數據表"""
     with get_conn() as conn:
         conn.execute(DDL_FUNDAMENTALS)
+        for col, typ in _EXTRA_FUND_COLS:
+            try:
+                conn.execute(f"ALTER TABLE fundamentals ADD COLUMN {col} {typ}")
+            except sqlite3.OperationalError:
+                pass
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fund_code ON fundamentals(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fund_date ON fundamentals(update_date)")
         conn.commit()
@@ -181,7 +193,19 @@ def _screen_from_db(filters: dict) -> list[dict]:
     if "dividend_min" in filters:
         conditions.append("dividend_yield IS NOT NULL AND dividend_yield >= ?")
         params.append(filters["dividend_min"])
-    
+    if "eps_min" in filters:
+        conditions.append("eps IS NOT NULL AND eps >= ?")
+        params.append(filters["eps_min"])
+    if "gross_margin_min" in filters:
+        conditions.append("gross_margin IS NOT NULL AND gross_margin >= ?")
+        params.append(filters["gross_margin_min"])
+    if "net_margin_min" in filters:
+        conditions.append("net_margin IS NOT NULL AND net_margin >= ?")
+        params.append(filters["net_margin_min"])
+    if "pe_min" in filters:
+        conditions.append("pe_ttm IS NOT NULL AND pe_ttm >= ?")
+        params.append(filters["pe_min"])
+
     if not conditions:
         return []
     

@@ -154,7 +154,7 @@ def _download_global(code: str, start_date: str = None) -> int:
 
 
 def _download_a_share(code: str, start_date: str = None) -> int:
-    """下載 A 股歷史數據（多備選源，增強重試）"""
+    """下載 A 股歷史數據（Yahoo 主源 + AKShare/HTTP 備選）"""
     if start_date is None:
         start_date = settings.history_start_date
 
@@ -163,7 +163,27 @@ def _download_a_share(code: str, start_date: str = None) -> int:
     else:
         symbol = f"sz{code}"
 
-    # 主接口：東方財富 (ak.stock_zh_a_hist)
+    # 主接口：Yahoo Finance
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            from src.core.yahoo_finance import download_a_share_daily
+            df = download_a_share_daily(code, start_date=start_date)
+            if not df.empty:
+                count = save_daily_kline(df, code)
+                logger.info(f"{code}: {count} 條記錄 (Yahoo)")
+                return count
+            logger.warning(f"{code}: Yahoo 無數據")
+            break
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                delay = RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(0.5, 2.0)
+                logger.warning(f"{code}: Yahoo 失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})")
+                time.sleep(delay)
+            else:
+                logger.warning(f"{code}: Yahoo 全部失敗，嘗試 AKShare 備選... ({e})")
+                time.sleep(random.uniform(1.0, 2.0))
+
+    # 備選：東方財富 (ak.stock_zh_a_hist)
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             # 每次重試前重新 patch session
@@ -183,18 +203,17 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             }
             df = df.rename(columns=col_map)
             count = save_daily_kline(df, code)
-            logger.info(f"{code}: {count} 條記錄")
+            logger.info(f"{code}: {count} 條記錄 (東財 AKShare)")
             return count
 
         except Exception as e:
             if attempt < MAX_RETRIES:
-                # 指數退避 + 隨機抖動
                 delay = RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(0.5, 2.0)
-                logger.warning(f"{code}: 主接口失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})")
+                logger.warning(f"{code}: 東財失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})")
                 time.sleep(delay)
             else:
-                logger.warning(f"{code}: 主接口全部失敗({MAX_RETRIES}次)，等待冷卻後嘗試備選接口...")
-                time.sleep(random.uniform(3.0, 6.0))  # 冷卻期，避免連續請求觸發限流
+                logger.warning(f"{code}: 東財全部失敗，嘗試其他備選...")
+                time.sleep(random.uniform(3.0, 6.0))
 
     # 備選接口 1：新浪 (ak.stock_zh_a_daily)
     try:

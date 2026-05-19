@@ -1,29 +1,28 @@
 """
-任務管理器 — 防止重複執行同一任務
+任務管理器 — 防止重複執行 + 線程池並行調度
 
 每個任務根據 (task_type, params_hash) 去重：
-- 如果相同任務正在執行中，返回已有任務（不重複創建）
-- 如果相同任務已完成，允許重新執行
-- 支持任務超時自動清理
+- 如果相同任務正在 pending/running，返回已有任務
+- 支持 ThreadPool 並行執行與 pending 佇列
+- 支持協作式取消
+- 全局槽位控制，避免線程池無限排隊
 """
 import hashlib
 import json
+import os
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 from src.utils.logger import logger
 
-# ============================================================
-# 任務狀態常量
-# ============================================================
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 
-# 任務類型中文名稱
 TASK_TYPE_NAMES = {
     "backtest": "回測",
     "backtest_advanced": "進階回測",
@@ -33,18 +32,95 @@ TASK_TYPE_NAMES = {
     "walkforward": "Walk-Forward",
     "auto_optimize": "自動優化",
     "heatmap": "熱力圖分析",
+    "data_download": "市場數據下載",
+    "data_download_all": "全市場下載",
+    "data_incremental": "增量更新",
 }
 
-# ============================================================
-# 內存任務存儲 + 數據庫持久化
-# ============================================================
-_tasks: dict[str, dict] = {}  # {task_id: task_dict}
+_tasks: dict[str, dict] = {}
 _lock = threading.Lock()
-_MAX_TASKS = 200  # 內存中最多保留 200 個任務
+_MAX_TASKS = 200
+_cancel_flags: dict[str, bool] = {}
+_dispatched: set[str] = set()  # 已提交線程池、尚未結束
+_executor: Optional[ThreadPoolExecutor] = None
+_executor_lock = threading.Lock()
+_progress_throttle: dict[str, tuple] = {}  # task_id -> (last_ts, last_saved_progress)
+
+
+def _resolve_max_workers() -> int:
+    try:
+        from src.config import settings
+        configured = getattr(settings, "task_max_workers", 0)
+    except Exception:
+        configured = 0
+    if configured and configured > 0:
+        return configured
+    cpu = os.cpu_count() or 4
+    return max(1, min(4, max(1, cpu - 1)))
+
+
+def _to_json_safe(obj):
+    """將 numpy 等類型轉為 JSON 可序列化結構，避免 API 返回失敗"""
+    if obj is None:
+        return None
+    try:
+        import numpy as np
+
+        def _default(o):
+            if isinstance(o, (np.integer,)):
+                return int(o)
+            if isinstance(o, (np.floating,)):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            if isinstance(o, (datetime,)):
+                return o.strftime("%Y-%m-%d %H:%M:%S")
+            return str(o)
+
+        return json.loads(json.dumps(obj, default=_default, ensure_ascii=False))
+    except Exception:
+        return obj
+
+
+def _resolve_progress_interval() -> float:
+    try:
+        from src.config import settings
+        return float(getattr(settings, "task_progress_save_interval_sec", 2.0))
+    except Exception:
+        return 2.0
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    with _executor_lock:
+        if _executor is None:
+            workers = _resolve_max_workers()
+            _executor = ThreadPoolExecutor(
+                max_workers=workers,
+                thread_name_prefix="task-worker",
+            )
+            logger.info(f"任務執行器已啟動: max_workers={workers}")
+        return _executor
+
+
+def is_task_cancelled(task_id: str) -> bool:
+    return _cancel_flags.get(task_id, False)
+
+
+def _count_active() -> int:
+    return sum(1 for t in _tasks.values() if t["status"] == STATUS_RUNNING)
+
+
+def _count_in_flight() -> int:
+    """運行中 + 已派發未結束"""
+    with _lock:
+        return sum(
+            1 for tid, t in _tasks.items()
+            if t["status"] == STATUS_RUNNING or tid in _dispatched
+        )
 
 
 def _make_task_id(task_type: str, params: dict) -> str:
-    """生成任務 ID（基於類型 + 參數哈希）"""
     params_str = json.dumps(params, sort_keys=True, ensure_ascii=False)
     params_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
     ts = int(time.time() * 1000) % 100000
@@ -52,30 +128,19 @@ def _make_task_id(task_type: str, params: dict) -> str:
 
 
 def _make_params_hash(params: dict) -> str:
-    """生成參數哈希（用於去重判斷）"""
     params_str = json.dumps(params, sort_keys=True, ensure_ascii=False)
     return hashlib.md5(params_str.encode()).hexdigest()[:12]
 
 
 def create_task(task_type: str, params: dict, title: str = "") -> dict:
-    """
-    創建任務（自動去重）。
-
-    如果相同 (task_type, params_hash) 的任務正在執行中，返回已有任務。
-    否則創建新任務。
-
-    Returns:
-        {"task_id": "...", "status": "running", "is_duplicate": True/False, ...}
-    """
     params_hash = _make_params_hash(params)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     with _lock:
-        # 檢查是否有相同任務正在執行中
         for tid, t in _tasks.items():
             if t["task_type"] == task_type and t["params_hash"] == params_hash:
-                if t["status"] in (STATUS_PENDING, STATUS_RUNNING):
-                    logger.info(f"任務去重: {task_type} 已在執行中 (task_id={tid})")
+                if t["status"] in (STATUS_PENDING, STATUS_RUNNING) or tid in _dispatched:
+                    logger.info(f"任務去重: {task_type} 已在佇列中 (task_id={tid})")
                     t["last_accessed"] = time.time()
                     return {
                         "task_id": tid,
@@ -85,8 +150,58 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
                         "created_at": t.get("created_at", ""),
                         "progress": t.get("progress", 0),
                     }
+                if t["status"] == STATUS_COMPLETED and t.get("result") is not None:
+                    logger.info(f"任務內存命中: {task_type} (task_id={tid})")
+                    t["last_accessed"] = time.time()
+                    return {
+                        "task_id": tid,
+                        "status": STATUS_COMPLETED,
+                        "is_duplicate": False,
+                        "from_cache": t.get("from_cache", False),
+                        "title": t.get("title", ""),
+                        "created_at": t.get("created_at", ""),
+                        "progress": 100,
+                        "result": t.get("result"),
+                    }
 
-        # 創建新任務
+        # 全局結果緩存命中 → 直接建立已完成任務
+        try:
+            from src.core.result_cache import get_cached_compute, _code_from_params
+            cached = get_cached_compute(task_type, params, code=_code_from_params(params))
+            if cached is not None:
+                task_id = _make_task_id(task_type, params)
+                task = {
+                    "task_id": task_id,
+                    "task_type": task_type,
+                    "params_hash": params_hash,
+                    "params": params,
+                    "title": title or f"{task_type}",
+                    "status": STATUS_COMPLETED,
+                    "progress": 100,
+                    "result": _to_json_safe(cached),
+                    "error": None,
+                    "created_at": now,
+                    "started_at": now,
+                    "completed_at": now,
+                    "last_accessed": time.time(),
+                    "from_cache": True,
+                }
+                _tasks[task_id] = task
+                _save_task_to_db(task, force=True)
+                logger.info(f"緩存命中任務: {task_type} (task_id={task_id})")
+                return {
+                    "task_id": task_id,
+                    "status": STATUS_COMPLETED,
+                    "is_duplicate": False,
+                    "from_cache": True,
+                    "title": task["title"],
+                    "created_at": now,
+                    "progress": 100,
+                    "result": task["result"],
+                }
+        except Exception as e:
+            logger.debug(f"緩存查詢跳過: {e}")
+
         task_id = _make_task_id(task_type, params)
         task = {
             "task_id": task_id,
@@ -94,24 +209,24 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
             "params_hash": params_hash,
             "params": params,
             "title": title or f"{task_type}",
-            "status": STATUS_RUNNING,
+            "status": STATUS_PENDING,
             "progress": 0,
             "result": None,
             "error": None,
             "created_at": now,
-            "started_at": now,
+            "started_at": None,
             "completed_at": None,
             "last_accessed": time.time(),
         }
         _tasks[task_id] = task
-
-        # 持久化到數據庫
+        _cancel_flags.pop(task_id, None)
+        _progress_throttle.pop(task_id, None)
         _save_task_to_db(task)
 
-        logger.info(f"任務創建: {task_type} (task_id={task_id})")
+        logger.info(f"任務創建: {task_type} (task_id={task_id}, pending)")
         return {
             "task_id": task_id,
-            "status": STATUS_RUNNING,
+            "status": STATUS_PENDING,
             "is_duplicate": False,
             "title": task["title"],
             "created_at": now,
@@ -119,9 +234,137 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
         }
 
 
+def _mark_running(task_id: str) -> bool:
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return False
+        if _cancel_flags.get(task_id) or task["status"] == STATUS_CANCELLED:
+            return False
+        if task["status"] != STATUS_PENDING:
+            return task["status"] == STATUS_RUNNING
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        task["status"] = STATUS_RUNNING
+        task["started_at"] = now
+        task["progress"] = max(task.get("progress", 0), 1)
+        task["last_accessed"] = time.time()
+        _save_task_to_db(task, force=True)
+        return True
+
+
+def _on_task_finished(task_id: str):
+    with _lock:
+        _dispatched.discard(task_id)
+        _progress_throttle.pop(task_id, None)
+    _drain_queue()
+
+
+def _drain_queue():
+    max_workers = _resolve_max_workers()
+    to_start: list[tuple[str, Callable]] = []
+
+    with _lock:
+        pending = [
+            t for t in _tasks.values()
+            if t["status"] == STATUS_PENDING
+            and t["task_id"] not in _dispatched
+            and not _cancel_flags.get(t["task_id"])
+        ]
+        pending.sort(key=lambda t: t.get("created_at", ""))
+        in_flight = len(_dispatched) + _count_active()
+
+        for t in pending:
+            if in_flight >= max_workers:
+                break
+            fn = t.get("_worker_fn")
+            if fn is None:
+                continue
+            tid = t["task_id"]
+            _dispatched.add(tid)
+            to_start.append((tid, fn))
+            in_flight += 1
+
+    for task_id, fn in to_start:
+        _start_worker(task_id, fn)
+
+
+def _start_worker(task_id: str, work_fn: Callable):
+    def _run():
+        try:
+            if not _mark_running(task_id):
+                if is_task_cancelled(task_id):
+                    update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+                return
+            if is_task_cancelled(task_id):
+                update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+                return
+            result = work_fn()
+            if is_task_cancelled(task_id):
+                update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+            else:
+                update_task(task_id, status=STATUS_COMPLETED, progress=100, result=result)
+        except Exception as e:
+            if is_task_cancelled(task_id):
+                update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+            else:
+                logger.error(f"任務失敗 {task_id}: {e}")
+                update_task(task_id, status=STATUS_FAILED, error=str(e))
+        finally:
+            with _lock:
+                t = _tasks.get(task_id)
+                if t:
+                    t.pop("_worker_fn", None)
+            _cancel_flags.pop(task_id, None)
+            _on_task_finished(task_id)
+
+    _get_executor().submit(_run)
+
+
+def submit_task(task_id: str, work_fn: Callable) -> None:
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            raise ValueError(f"任務不存在: {task_id}")
+        task["_worker_fn"] = work_fn
+        task["last_accessed"] = time.time()
+    _drain_queue()
+
+
+def update_task_meta(task_id: str, message: str = None, download: dict = None, **extra) -> None:
+    """更新任務運行中的展示信息（下載進度等）"""
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return
+        meta = task.setdefault("meta", {})
+        if message is not None:
+            meta["message"] = message
+        if download is not None:
+            meta["download"] = {**meta.get("download", {}), **download}
+        meta.update(extra)
+
+
 def update_task(task_id: str, status: str = None, progress: int = None,
                 result: any = None, error: str = None) -> Optional[dict]:
-    """更新任務狀態"""
+    force_db = status is not None or result is not None or error is not None
+    if progress is not None and not force_db:
+        now = time.time()
+        interval = _resolve_progress_interval()
+        with _lock:
+            task = _tasks.get(task_id)
+            if not task:
+                return None
+            last_ts, last_prog = _progress_throttle.get(task_id, (0, -1))
+            if progress < 100 and (now - last_ts) < interval and abs(progress - last_prog) < 5:
+                task["progress"] = progress
+                task["last_accessed"] = now
+                return task
+            _progress_throttle[task_id] = (now, progress)
+            task["progress"] = progress
+            task["last_accessed"] = now
+        if not force_db and progress < 100:
+            return _tasks.get(task_id)
+
     with _lock:
         task = _tasks.get(task_id)
         if not task:
@@ -132,16 +375,15 @@ def update_task(task_id: str, status: str = None, progress: int = None,
         if progress is not None:
             task["progress"] = progress
         if result is not None:
-            task["result"] = result
+            task["result"] = _to_json_safe(result)
         if error is not None:
             task["error"] = error
         if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
             task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         task["last_accessed"] = time.time()
-        _save_task_to_db(task)
+        _save_task_to_db(task, force=force_db)
 
-        # 自動清理：完成/失敗/取消後，若超過上限則淘汰最舊的已完成任務
         if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
             _evict_old_tasks_inner()
 
@@ -149,61 +391,117 @@ def update_task(task_id: str, status: str = None, progress: int = None,
 
 
 def get_task(task_id: str) -> Optional[dict]:
-    """獲取單個任務"""
     with _lock:
         task = _tasks.get(task_id)
         if task:
             task["last_accessed"] = time.time()
-        return task
+            out = dict(task)
+            out.pop("_worker_fn", None)
+            return out
+        return None
 
 
 def get_tasks(task_type: str = None, status: str = None, limit: int = 50) -> list[dict]:
-    """獲取任務列表"""
     with _lock:
         tasks = list(_tasks.values())
-
     if task_type:
         tasks = [t for t in tasks if t["task_type"] == task_type]
     if status:
         tasks = [t for t in tasks if t["status"] == status]
-
-    # 按創建時間倒序
     tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
-
-    # 返回簡化信息（不含完整 params 和 result）
     return [_task_summary(t) for t in tasks[:limit]]
 
 
 def get_running_tasks() -> list[dict]:
-    """獲取所有正在執行的任務"""
     return get_tasks(status=STATUS_RUNNING)
 
 
+def get_task_stats() -> dict:
+    with _lock:
+        tasks = list(_tasks.values())
+    in_flight = len(_dispatched) + sum(
+        1 for t in tasks
+        if t["status"] == STATUS_RUNNING and t["task_id"] not in _dispatched
+    )
+    return {
+        "total": len(tasks),
+        "pending": sum(1 for t in tasks if t["status"] == STATUS_PENDING),
+        "running": sum(1 for t in tasks if t["status"] == STATUS_RUNNING),
+        "dispatched": len(_dispatched),
+        "in_flight": in_flight,
+        "max_workers": _resolve_max_workers(),
+        "completed": sum(1 for t in tasks if t["status"] == STATUS_COMPLETED),
+        "failed": sum(1 for t in tasks if t["status"] == STATUS_FAILED),
+        "cancelled": sum(1 for t in tasks if t["status"] == STATUS_CANCELLED),
+    }
+
+
+def get_queue_snapshot() -> dict:
+    with _lock:
+        tasks = list(_tasks.values())
+
+    running = sorted(
+        [t for t in tasks if t["status"] == STATUS_RUNNING],
+        key=lambda t: t.get("started_at") or t.get("created_at", ""),
+    )
+    pending = sorted(
+        [t for t in tasks if t["status"] == STATUS_PENDING and t["task_id"] not in _dispatched],
+        key=lambda t: t.get("created_at", ""),
+    )
+    completed = sorted(
+        [t for t in tasks if t["status"] == STATUS_COMPLETED and t.get("result") is not None],
+        key=lambda t: t.get("completed_at", ""),
+        reverse=True,
+    )
+
+    current = _task_summary(running[0]) if running else None
+    next_task = None
+    if len(running) > 1:
+        next_task = _task_summary(running[1])
+    elif pending:
+        next_task = _task_summary(pending[0])
+
+    stats = get_task_stats()
+    return {
+        "current": current,
+        "next": next_task,
+        "running": [_task_summary(t) for t in running],
+        "pending": [_task_summary(t) for t in pending],
+        "recent_completed": _task_summary(completed[0]) if completed else None,
+        "stats": stats,
+    }
+
+
 def cancel_task(task_id: str) -> bool:
-    """取消任務"""
     with _lock:
         task = _tasks.get(task_id)
         if not task:
             return False
-        if task["status"] in (STATUS_PENDING, STATUS_RUNNING):
+        if task["status"] not in (STATUS_PENDING, STATUS_RUNNING) and task_id not in _dispatched:
+            return False
+        _cancel_flags[task_id] = True
+        if task["status"] == STATUS_PENDING:
             task["status"] = STATUS_CANCELLED
             task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            _save_task_to_db(task)
-            logger.info(f"任務取消: {task_id}")
+            task.pop("_worker_fn", None)
+            _dispatched.discard(task_id)
+            _save_task_to_db(task, force=True)
+            logger.info(f"任務取消(pending): {task_id}")
             return True
-        return False
+        logger.info(f"任務取消請求(running): {task_id}")
+        return True
 
 
 def delete_task(task_id: str) -> bool:
-    """刪除任務（僅已完成/失敗/取消的任務可刪除）"""
     with _lock:
         task = _tasks.get(task_id)
         if not task:
             return False
-        if task["status"] in (STATUS_PENDING, STATUS_RUNNING):
-            return False  # 運行中的任務不能刪除，需先取消
+        if task["status"] in (STATUS_PENDING, STATUS_RUNNING) or task_id in _dispatched:
+            return False
         del _tasks[task_id]
-        # 同步刪除數據庫記錄
+        _cancel_flags.pop(task_id, None)
+        _progress_throttle.pop(task_id, None)
         try:
             from src.core.db import get_conn
             with get_conn() as conn:
@@ -215,65 +513,80 @@ def delete_task(task_id: str) -> bool:
 
 
 def get_task_full(task_id: str) -> Optional[dict]:
-    """獲取任務完整信息（含 params 和 result），用於重試和詳情查看"""
     with _lock:
         task = _tasks.get(task_id)
         if task:
             task["last_accessed"] = time.time()
-            return dict(task)  # 返回完整副本
+            out = dict(task)
+            out.pop("_worker_fn", None)
+            return out
         return None
 
 
 def cleanup_stale_tasks(timeout_sec: int = 3600) -> int:
-    """清理超時任務（默認 1 小時）"""
     now = time.time()
     cleaned = 0
     with _lock:
         for tid, t in list(_tasks.items()):
-            if t["status"] in (STATUS_PENDING, STATUS_RUNNING):
-                elapsed = now - t.get("last_accessed", t.get("started_at", now))
+            if t["status"] in (STATUS_PENDING, STATUS_RUNNING) or tid in _dispatched:
+                last = t.get("last_accessed", time.time())
+                if isinstance(last, str):
+                    try:
+                        last = datetime.strptime(last, "%Y-%m-%d %H:%M:%S").timestamp()
+                    except Exception:
+                        last = now
+                elapsed = now - float(last)
                 if elapsed > timeout_sec:
                     t["status"] = STATUS_FAILED
                     t["error"] = f"任務超時（{timeout_sec}秒）"
                     t["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    _save_task_to_db(t)
+                    t.pop("_worker_fn", None)
+                    _cancel_flags.pop(tid, None)
+                    _dispatched.discard(tid)
+                    _save_task_to_db(t, force=True)
                     cleaned += 1
                     logger.warning(f"任務超時清理: {tid}")
+    if cleaned:
+        _drain_queue()
     return cleaned
 
 
+def count_in_flight_tasks(exclude_task_id: str = None) -> int:
+    """已派發或運行中的任務數（不含僅 pending）"""
+    with _lock:
+        return sum(
+            1 for tid, t in _tasks.items()
+            if tid != exclude_task_id
+            and (t["status"] == STATUS_RUNNING or tid in _dispatched)
+        )
+
+
+def count_in_flight_heavy(exclude_task_id: str = None) -> int:
+    from src.core.compute_budget import HEAVY_TASK_TYPES
+    with _lock:
+        return sum(
+            1 for tid, t in _tasks.items()
+            if tid != exclude_task_id
+            and t["task_type"] in HEAVY_TASK_TYPES
+            and (t["status"] == STATUS_RUNNING or tid in _dispatched)
+        )
+
+
 def is_task_running(task_type: str, params: dict) -> bool:
-    """檢查是否有相同任務正在執行"""
     params_hash = _make_params_hash(params)
     with _lock:
         for t in _tasks.values():
             if (t["task_type"] == task_type and
                 t["params_hash"] == params_hash and
-                t["status"] in (STATUS_PENDING, STATUS_RUNNING)):
+                (t["status"] in (STATUS_PENDING, STATUS_RUNNING) or t["task_id"] in _dispatched)):
                 return True
     return False
 
 
-def get_task_stats() -> dict:
-    """獲取任務統計"""
-    with _lock:
-        tasks = list(_tasks.values())
-    return {
-        "total": len(tasks),
-        "running": sum(1 for t in tasks if t["status"] == STATUS_RUNNING),
-        "completed": sum(1 for t in tasks if t["status"] == STATUS_COMPLETED),
-        "failed": sum(1 for t in tasks if t["status"] == STATUS_FAILED),
-        "cancelled": sum(1 for t in tasks if t["status"] == STATUS_CANCELLED),
-    }
-
-
-# ============================================================
-# 輔助函數
-# ============================================================
-
 def _task_summary(task: dict) -> dict:
-    """返回任務摘要（不含完整 params/result）"""
-    return {
+    meta = task.get("meta") or {}
+    dl = meta.get("download") or {}
+    summary = {
         "task_id": task["task_id"],
         "task_type": task["task_type"],
         "task_type_name": TASK_TYPE_NAMES.get(task["task_type"], task["task_type"]),
@@ -282,13 +595,29 @@ def _task_summary(task: dict) -> dict:
         "progress": task.get("progress", 0),
         "error": task.get("error"),
         "created_at": task.get("created_at", ""),
+        "started_at": task.get("started_at"),
         "completed_at": task.get("completed_at"),
         "has_result": task.get("result") is not None,
+        "status_message": meta.get("message", ""),
+        "download": dl if dl else None,
     }
+    if task.get("result") and isinstance(task["result"], dict):
+        r = task["result"]
+        if "total_records" in r:
+            summary["download_summary"] = {
+                "total_records": r.get("total_records"),
+                "success_symbols": r.get("success_symbols"),
+                "total_symbols": r.get("total_symbols"),
+                "market_name": r.get("market_name") or dl.get("market_name"),
+            }
+    return summary
 
 
-def _save_task_to_db(task: dict):
-    """持久化任務到數據庫（可選，失敗不影響內存任務）"""
+def _save_task_to_db(task: dict, force: bool = False):
+    if not force and task.get("status") == STATUS_RUNNING:
+        prog = task.get("progress", 0)
+        if 0 < prog < 100:
+            return
     try:
         from src.core.db import get_conn
         with get_conn() as conn:
@@ -319,7 +648,6 @@ def _save_task_to_db(task: dict):
 
 
 def _evict_old_tasks_inner():
-    """淘汰最舊的已完成任務（內部調用，不加鎖，調用方需已持有 _lock）"""
     if len(_tasks) <= _MAX_TASKS:
         return
     done_tasks = [
@@ -333,15 +661,7 @@ def _evict_old_tasks_inner():
         logger.debug(f"任務淘汰: {tid}")
 
 
-def _evict_old_tasks():
-    """淘汰最舊的已完成任務，保持內存任務數不超過 _MAX_TASKS"""
-    with _lock:
-        _evict_old_tasks_inner()
-
-
-# 啟動時清理舊任務
 def _init():
-    """初始化：從數據庫恢復未完成任務，清理過期任務"""
     try:
         from src.core.db import get_conn
         with get_conn() as conn:
@@ -358,7 +678,6 @@ def _init():
                     completed_at TEXT
                 )
             """)
-            # 將上次未完成的任務標記為失敗
             conn.execute("""
                 UPDATE task_log SET status = 'failed', error = '服務重啟',
                 completed_at = ? WHERE status IN ('pending', 'running')
@@ -368,4 +687,4 @@ def _init():
 
 
 _init()
-logger.info("📋 任務管理器已初始化")
+logger.info("任務管理器已初始化")

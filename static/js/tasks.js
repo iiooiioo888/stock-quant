@@ -93,10 +93,26 @@ const Tasks = {
     if (!silent) this._setLoading(false);
     if (!d) return;
 
+    const queue = d.queue || await Api.getTaskQueue();
     this._renderStats(d.stats);
+    this._renderQueue(queue);
     this._renderRunningTasks(d.tasks);
     this._renderTaskTable(d.tasks);
     this._updateNavBadge(d.stats);
+  },
+
+  _renderQueue(snapshot) {
+    const grid = document.getElementById('taskQueueGrid');
+    if (!grid || typeof TaskCommon === 'undefined') return;
+    grid.innerHTML = TaskCommon.renderQueueSection(snapshot || {}, false);
+    const recent = TaskCommon.splitQueue(snapshot || {}).recent;
+    if (recent?.task_id) {
+      const prev = sessionStorage.getItem('lastSeenCompletedId');
+      if (prev && prev !== recent.task_id && typeof Utils !== 'undefined') {
+        Utils.toast('✅ 任務完成: ' + (recent.title || ''), 3000, 'success');
+      }
+      sessionStorage.setItem('lastSeenCompletedId', recent.task_id);
+    }
   },
 
   _setLoading(loading) {
@@ -111,8 +127,12 @@ const Tasks = {
     const grid = document.getElementById('taskStatsGrid');
     if (!grid) return;
 
+    const maxW = stats.max_workers || '-';
+    const inFlight = stats.in_flight ?? stats.running ?? 0;
     const items = [
       { icon: '📋', label: '總任務數', value: stats.total || 0, color: '' },
+      { icon: '⚙️', label: '並行槽', value: `${inFlight}/${maxW}`, color: '#38bdf8' },
+      { icon: '⏸️', label: '等待中', value: stats.pending || 0, color: '#f59e0b' },
       { icon: '⏳', label: '運行中', value: stats.running || 0, color: '#38bdf8' },
       { icon: '✅', label: '已完成', value: stats.completed || 0, color: '#22c55e' },
       { icon: '❌', label: '失敗', value: stats.failed || 0, color: '#ef4444' },
@@ -132,23 +152,27 @@ const Tasks = {
     const countEl = document.getElementById('taskRunningCount');
     if (!section || !list) return;
 
-    const running = tasks.filter(t => t.status === 'running');
+    const running = tasks.filter(t => t.status === 'running' || t.status === 'pending');
     section.style.display = running.length ? 'block' : 'none';
     if (countEl) countEl.textContent = running.length ? `${running.length} 個` : '';
 
     list.innerHTML = running.map(t => {
       const typeName = TaskCommon.typeName(t.task_type);
       const progress = t.progress || 0;
+      const icon = t.status === 'pending' ? '⏸️' : '⏳';
+      const pulse = t.status === 'running' ? 'animation:pulse 1.5s infinite;' : '';
+      const sub = TaskCommon.formatTaskSubtitle(t);
       return `
         <div class="sec" style="padding:12px;margin-bottom:8px;animation:tabFadeIn .3s ease">
           <div class="status-row">
-            <span style="animation:pulse 1.5s infinite;font-size:16px">⏳</span>
+            <span style="${pulse}font-size:16px">${icon}</span>
             <span style="font-weight:600">${t.title || typeName}</span>
             <span class="chip cfg">${typeName}</span>
             <span class="flex-spacer"></span>
             <span style="font-size:15px;font-weight:700;color:#38bdf8">${progress}%</span>
             <button class="btn danger" style="padding:3px 10px;font-size:11px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button>
           </div>
+          ${sub ? `<div style="font-size:12px;color:#38bdf8;margin:6px 0 4px">${sub}</div>` : ''}
           <div class="progress-bar-wrap">
             <div class="progress-bar" style="width:${progress}%">
               <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);animation:shimmer 1.5s infinite"></div>
@@ -218,6 +242,7 @@ const Tasks = {
     const icon = TC.STATUS_ICONS[t.status] || '❓';
     const color = TC.STATUS_COLORS[t.status] || '#94a3b8';
     const isExpanded = this._expandedRows.has(t.task_id);
+    const sub = TC.formatTaskSubtitle(t);
     const canView = t.status === 'completed' && t.has_result;
     const canCancel = t.status === 'running' || t.status === 'pending';
     const canDelete = ['completed', 'failed', 'cancelled'].includes(t.status);
@@ -240,7 +265,10 @@ const Tasks = {
 
     // 操作按鈕
     let actions = '';
-    if (canView) actions += `<button class="btn s" style="padding:2px 8px;font-size:10px" onclick="Tasks.viewResult('${t.task_id}')">📊 結果</button> `;
+    if (canView) {
+      actions += TaskCommon.renderNavigateButton(t.task_id, '前往') + ' ';
+      actions += `<button class="btn s" style="padding:2px 8px;font-size:10px" onclick="Tasks.viewResult('${t.task_id}')">📊 結果</button> `;
+    }
     if (canCancel) actions += `<button class="btn danger" style="padding:2px 8px;font-size:10px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button> `;
     if (canDelete) actions += `<button class="btn s" style="padding:2px 8px;font-size:10px;color:var(--text-dim)" onclick="Tasks.deleteTask('${t.task_id}')">🗑️</button> `;
     actions += `<button class="btn s" style="padding:2px 8px;font-size:10px" onclick="Tasks.toggleExpand('${t.task_id}')">${isExpanded ? '收起' : '詳情'}</button>`;
@@ -283,7 +311,7 @@ const Tasks = {
       <tr style="cursor:pointer" onclick="Tasks.toggleExpand('${t.task_id}')">
         <td>${statusHtml}</td>
         <td><span style="font-size:12px">${typeName}</span></td>
-        <td style="font-weight:500">${t.title || '-'}</td>
+        <td style="font-weight:500">${t.title || '-'}${sub ? `<div style="font-size:11px;color:#38bdf8;font-weight:400;margin-top:2px">${sub}</div>` : ''}</td>
         <td>${progressHtml}</td>
         <td style="font-size:11px;color:var(--text-dim)" title="${t.created_at || ''}">${Utils.timeAgo(t.created_at)}</td>
         <td style="font-size:11px;color:var(--text-dim)" title="${t.completed_at || ''}">${t.completed_at ? Utils.timeAgo(t.completed_at) : '-'}</td>
@@ -323,9 +351,9 @@ const Tasks = {
   _updateNavBadge(stats) {
     const badge = document.getElementById('navBadgeTasks');
     if (!badge) return;
-    const running = stats?.running || 0;
-    badge.textContent = running;
-    badge.style.display = running > 0 ? 'inline-block' : 'none';
+    const active = (stats?.running || 0) + (stats?.pending || 0);
+    badge.textContent = active;
+    badge.style.display = active > 0 ? 'inline-block' : 'none';
   },
 
   async cancelTask(taskId) {

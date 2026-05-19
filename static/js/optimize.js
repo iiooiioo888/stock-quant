@@ -32,19 +32,28 @@ const Optimize = {
 
     if (!d || !d.success) return;
 
-    // 任務去重提示
-    if (d.is_duplicate) {
-      Utils.toast('⏳ ' + (d.message || '相同優化正在執行中'), 3000, 'warning');
-      return;
+    try {
+      if (d.is_duplicate) {
+        Utils.toast('⏳ ' + (d.message || '相同優化執行中，等待完成...'), 3000, 'warning');
+      } else if (d.async && d.task_id) {
+        Utils.toast('📋 優化任務已提交', 2000, 'info');
+      }
+      const resolved = await Api.resolveTaskResponse(d);
+      const results = resolved?.results || resolved?.result || resolved?.task?.result;
+      if (!results) {
+        Utils.toast('未取得優化結果', 3000, 'error');
+        return;
+      }
+      this.renderResults(results, strategy);
+    } catch (e) {
+      Utils.toast('優化失敗: ' + (e.message || e), 3000, 'error');
     }
+  },
 
-    if (d.task_id) {
-      Utils.toast('📋 任務已建立: ' + d.task_id, 2000, 'info');
-    }
-
+  renderResults(results, strategy) {
     const el = document.getElementById('optOutput');
+    if (!el) return;
     let h = '';
-    const results = d.results;
 
     if (strategy === 'all') {
       for (const [n, rl] of Object.entries(results)) {
@@ -83,8 +92,6 @@ const Optimize = {
     el.innerHTML = h;
     document.getElementById('optResult').classList.remove('h');
     document.getElementById('optResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // 繪製優化結果圖表
     this._drawOptimizeCharts(results, strategy);
   },
 
@@ -254,19 +261,25 @@ const Optimize = {
 
     if (!d || !d.success) return Utils.toast('失敗', 3000, 'error');
 
-    // 任務去重提示
-    if (d.is_duplicate) {
-      Utils.toast('⏳ ' + (d.message || '全自動優化正在執行中'), 3000, 'warning');
-      return;
+    try {
+      if (d.is_duplicate) {
+        Utils.toast('⏳ ' + (d.message || '全自動優化正在執行中，等待完成...'), 3000, 'warning');
+      } else if (d.task_id) {
+        Utils.toast('📋 任務已建立，執行中...', 2000, 'info');
+      }
+      const resolved = await Api.resolveTaskResponse(d, { timeout: 1800000 });
+      const r = Api.extractResult(resolved);
+      if (!r) {
+        Utils.toast('未取得自動優化結果', 3000, 'error');
+        return;
+      }
+      document.getElementById('autoOptOutput').textContent =
+        r.summary || JSON.stringify(r, null, 2);
+      document.getElementById('autoOptResult').classList.remove('h');
+      Utils.toast('全自動優化完成', 3000, 'success');
+    } catch (e) {
+      Utils.toast('自動優化失敗: ' + (e.message || e), 3000, 'error');
     }
-
-    if (d.task_id) {
-      Utils.toast('📋 任務已建立: ' + d.task_id, 2000, 'info');
-    }
-
-    document.getElementById('autoOptOutput').textContent = d.result.summary || JSON.stringify(d.result, null, 2);
-    document.getElementById('autoOptResult').classList.remove('h');
-    Utils.toast('全自動優化完成', 3000, 'success');
   },
 };
 

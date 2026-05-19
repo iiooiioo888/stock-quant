@@ -1995,18 +1995,39 @@ STRATEGIES = {
 # 回測執行
 # ============================================================
 
-def prepare_data(code: str) -> bt.feeds.PandasData:
-    """從數據庫讀取數據並轉為 Backtrader 格式"""
+_prepared_df_cache: dict[str, pd.DataFrame] = {}
+_PREPARED_CACHE_MAX = 64
+
+
+def clear_prepare_cache():
+    """清除回測數據預處理緩存（數據更新後調用）"""
+    _prepared_df_cache.clear()
+
+
+def _get_prepared_df(code: str) -> pd.DataFrame:
+    """Backtrader 用 OHLCV DataFrame（按 code 進程內緩存）"""
+    if code in _prepared_df_cache:
+        return _prepared_df_cache[code]
+
     df = load_daily_kline(code)
     if df.empty:
         raise ValueError(f"股票 {code} 無歷史數據，請先下載")
 
+    df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date")
     df = df[["open", "high", "low", "close", "volume"]]
     df.columns = ["Open", "High", "Low", "Close", "Volume"]
 
-    return bt.feeds.PandasData(dataname=df)
+    if len(_prepared_df_cache) >= _PREPARED_CACHE_MAX:
+        _prepared_df_cache.pop(next(iter(_prepared_df_cache)))
+    _prepared_df_cache[code] = df
+    return df
+
+
+def prepare_data(code: str) -> bt.feeds.PandasData:
+    """從數據庫讀取數據並轉為 Backtrader 格式"""
+    return bt.feeds.PandasData(dataname=_get_prepared_df(code))
 
 
 def run_backtest(
@@ -2023,6 +2044,7 @@ def run_backtest(
     slippage_pct: float = 0.0,
     enable_t1: bool = True,
     enable_limit: bool = True,
+    task_id: str = None,
 ) -> dict:
     """
     執行回測並返回結果。
@@ -2050,6 +2072,12 @@ def run_backtest(
     strategy_cls = STRATEGIES.get(strategy_name)
     if not strategy_cls:
         raise ValueError(f"未知策略: {strategy_name}，可選: {list(STRATEGIES.keys())}")
+
+    if task_id:
+        from src.core.task_manager import is_task_cancelled, update_task
+        if is_task_cancelled(task_id):
+            raise RuntimeError("任務已取消")
+        update_task(task_id, progress=10)
 
     cerebro = bt.Cerebro()
 
@@ -2305,15 +2333,46 @@ def run_backtest(
     return result
 
 
-def run_multi_strategy(code: str, plot: bool = False) -> list[dict]:
-    """對同一隻股票跑所有策略並對比"""
+def run_multi_strategy(code: str, plot: bool = False, task_id: str = None) -> list[dict]:
+    """對同一隻股票跑所有策略並對比（並行執行）"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from src.core.compute_budget import get_thread_workers
+    from src.config import settings
+    max_workers = get_thread_workers(
+        getattr(settings, "multi_strategy_workers", 4),
+        task_id=task_id,
+        min_workers=1,
+    )
+
+    names = list(STRATEGIES.keys())
+    total = len(names)
     results = []
-    for name in STRATEGIES:
-        try:
-            r = run_backtest(code, strategy_name=name, plot=False)
-            results.append(r)
-        except Exception as e:
-            logger.error(f"策略 {name} 失敗: {e}")
+    done = 0
+
+    def _run_one(name: str):
+        if task_id:
+            from src.core.task_manager import is_task_cancelled
+            if is_task_cancelled(task_id):
+                raise RuntimeError("任務已取消")
+        return run_backtest(code, strategy_name=name, plot=False, task_id=task_id)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_run_one, name): name for name in names}
+        for future in as_completed(futures):
+            name = futures[future]
+            done += 1
+            if task_id:
+                from src.core.task_manager import is_task_cancelled, update_task
+                if is_task_cancelled(task_id):
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise RuntimeError("任務已取消")
+                update_task(task_id, progress=min(95, int(done / total * 100)))
+            try:
+                r = future.result()
+                results.append(r)
+            except Exception as e:
+                logger.error(f"策略 {name} 失敗: {e}")
 
     if results:
         logger.info(f"策略對比完成: {code}, {len(results)} 個策略")

@@ -1,0 +1,37 @@
+[    1078ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/strategies/list:0
+[    1078ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/health:0
+[    1163ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/alerts/rules:0
+[    1176ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/health:0
+[    1193ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/sparkline?codes=000001,600519,000858&days=60:0
+[    1605ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/backtest/history?limit=5:0
+[    1654ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/strategies/leaderboard?sort_by=sharpe&limit=10:0
+[    1779ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/signals/current:0
+[    1878ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/data/sectors?sector_type=industry&top_n=10:0
+[    2195ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/health:0
+[    4461ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/tasks?limit=200:0
+[    6160ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/tasks/queue:0
+[    8693ms] [ERROR] Failed to load resource: the server responded with a status of 429 (Too Many Requests) @ http://127.0.0.1:8000/api/tasks?limit=200:0
+[   13031ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   13310ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks?limit=200:0
+[   13623ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[   18040ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   18292ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks?limit=200:0
+[   19652ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[   22517ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks?limit=200:0
+[   22746ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   25803ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/health:0
+[   26055ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/health:0
+[   27840ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/alerts/rules:0
+[   27841ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/sparkline?codes=000001,600519,000858&days=60:0
+[   27856ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/backtest/history?limit=5:0
+[   27856ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/signals/current:0
+[   27856ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/data/sectors?sector_type=industry&top_n=10:0
+[   28074ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/strategies/leaderboard?sort_by=sharpe&limit=10:0
+[   29831ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[   29940ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   30221ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/health:0
+[   33355ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   38023ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   43040ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0
+[   47860ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/static/js/app.js:443
+[   48036ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8000/api/tasks/queue:0

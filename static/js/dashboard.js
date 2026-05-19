@@ -9,8 +9,27 @@ const Dashboard = {
   _maxPolls: 30,
 
   async load() {
-    await Promise.all([this.loadStats(), this.loadRules(), this.loadDashboardCharts()]);
-    this._checkDataReady();
+    const health = await Api.getHealth();
+    await Promise.allSettled([
+      this.loadStats(health),
+      this.loadRules(),
+      this.loadDashboardCharts(),
+    ]);
+    this._checkDataReady(health);
+  },
+
+  /** Tab 顯示時補繪/重算圖表尺寸 */
+  ensureCharts() {
+    const ids = ['dashSparklineChart', 'dashBacktestChart', 'dashSignalRadar', 'dashSectorChart', 'dashLeaderboardChart'];
+    const missing = ids.some(id => {
+      const el = document.getElementById(id);
+      return el && !Chart.getChart(el);
+    });
+    if (missing) {
+      this.loadDashboardCharts();
+    } else if (typeof Charts !== 'undefined') {
+      Charts.resizeTab('tab-dashboard');
+    }
   },
 
   stopPolling() {
@@ -20,7 +39,7 @@ const Dashboard = {
     }
   },
 
-  async _checkDataReady() {
+  async _checkDataReady(cachedHealth) {
     if (this._dataReady) return;
     this._pollCount++;
     if (this._pollCount > this._maxPolls) {
@@ -28,7 +47,7 @@ const Dashboard = {
       this._showDataLoading('數據下載較慢，請手動刷新頁面查看');
       return;
     }
-    const d = await Api.getHealth();
+    const d = cachedHealth || await Api.getHealth();
     if (!d) return;
     if (d.data_ready) {
       this._dataReady = true;
@@ -64,8 +83,8 @@ const Dashboard = {
     this.loadDashboardCharts();
   },
 
-  async loadStats() {
-    const d = await Api.getHealth();
+  async loadStats(cachedHealth) {
+    const d = cachedHealth || await Api.getHealth();
     if (!d) return;
 
     document.getElementById('statsGrid').innerHTML = `
@@ -77,73 +96,107 @@ const Dashboard = {
     document.getElementById('sysStatus').textContent = '運行 ' + (d.uptime || '');
   },
 
+  async _waitChartLibs(maxMs = 8000) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      if (typeof Chart !== 'undefined') return true;
+      await new Promise(r => setTimeout(r, 80));
+    }
+    return false;
+  },
+
   /**
    * 載入儀表盤所有新增圖表
    */
   async loadDashboardCharts() {
-    await Promise.all([
+    const ready = await this._waitChartLibs();
+    if (!ready) {
+      setTimeout(() => this.loadDashboardCharts(), 400);
+      return;
+    }
+    await Promise.allSettled([
       this._loadSparklineChart(),
       this._loadBacktestHistory(),
       this._loadSignalRadar(),
       this._loadSectorBars(),
       this._loadStrategyLeaderboard(),
     ]);
+    if (typeof Charts !== 'undefined') {
+      Charts.resizeTab('tab-dashboard');
+    }
   },
 
   /**
    * 市場總覽迷你圖 — 組合淨值走勢
    */
   async _loadSparklineChart() {
+    const canvasId = 'dashSparklineChart';
     try {
       const d = await Api.get('/api/sparkline?codes=000001,600519,000858&days=60');
-      if (!d || !d.sparklines) return;
+      if (!d || !d.sparklines) {
+        Charts.setPlaceholder(canvasId, '暫無行情數據');
+        return;
+      }
 
       const series = [];
       for (const [code, sp] of Object.entries(d.sparklines)) {
         if (sp.prices && sp.prices.length > 2) {
-          // 正規化為收益率
           const base = sp.prices[0];
           const normalized = sp.prices.map(p => ((p / base) - 1) * 100);
           series.push({ label: code, data: normalized, dates: sp.dates || normalized.map((_, i) => String(i)) });
         }
       }
       if (series.length) {
-        Charts.drawLineChart('dashSparklineChart', series);
+        Charts.clearPlaceholder(canvasId);
+        Charts.drawLineChart(canvasId, series);
+      } else {
+        Charts.setPlaceholder(canvasId, '暫無行情數據');
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      Charts.setPlaceholder(canvasId, '載入失敗，請稍後重試');
+    }
   },
 
   /**
    * 最近回測表現 — 最近 5 次回測的收益率柱狀圖
    */
   async _loadBacktestHistory() {
+    const canvasId = 'dashBacktestChart';
     try {
       const d = await Api.getBacktestHistory('', '', 5);
-      if (!d || !d.results || !d.results.length) return;
+      if (!d || !d.results || !d.results.length) {
+        Charts.setPlaceholder(canvasId, '尚無回測記錄，請先運行策略回測');
+        return;
+      }
 
       const results = d.results.reverse();
       const labels = results.map(r => (r.code || '').substring(0, 6) + '\n' + (r.strategy || ''));
       const data = results.map(r => r.total_return_pct || 0);
 
-      Charts.drawBarChart('dashBacktestChart', data, labels, '收益率 (%)');
-    } catch (e) { /* ignore */ }
+      Charts.clearPlaceholder(canvasId);
+      Charts.drawBarChart(canvasId, data, labels, '收益率 (%)');
+    } catch (e) {
+      Charts.setPlaceholder(canvasId, '載入失敗，請稍後重試');
+    }
   },
 
   /**
    * 信號強度分佈 — 雷達圖顯示 top 5 股票的多維信號強度
    */
   async _loadSignalRadar() {
+    const canvasId = 'dashSignalRadar';
     try {
-      // 先嘗試調用 /api/signals/trading (task 中寫的路由)
-      let d = await Api.get('/api/signals/trading');
-      if (!d || !d.success) {
-        // 備用：用 /api/signals/current
-        d = await Api.getCurrentSignals();
+      const d = await Api.getCurrentSignals();
+      if (!d) {
+        Charts.setPlaceholder(canvasId, '信號數據載入失敗');
+        return;
       }
-      if (!d) return;
 
       const signals = d.signals || d.data || [];
-      if (!signals.length) return;
+      if (!signals.length) {
+        Charts.setPlaceholder(canvasId, '暫無實時信號');
+        return;
+      }
 
       // 取 top 5 股票
       const top5 = signals.slice(0, 5);
@@ -169,17 +222,24 @@ const Dashboard = {
         };
       });
 
-      Charts.drawRadarChart('dashSignalRadar', labels, datasets);
-    } catch (e) { /* ignore */ }
+      Charts.clearPlaceholder(canvasId);
+      Charts.drawRadarChart(canvasId, labels, datasets);
+    } catch (e) {
+      Charts.setPlaceholder(canvasId, '信號數據載入失敗');
+    }
   },
 
   /**
    * 板塊漲跌 Top 5 — 水平條形圖
    */
   async _loadSectorBars() {
+    const canvasId = 'dashSectorChart';
     try {
       const d = await Api.getSectors('industry', 10);
-      if (!d || !d.sectors || !d.sectors.length) return;
+      if (!d || !d.sectors || !d.sectors.length) {
+        Charts.setPlaceholder(canvasId, '板塊數據暫不可用（外部數據源連線失敗）');
+        return;
+      }
 
       // 分開漲幅前5和跌幅前5，按漲跌幅排序
       const sorted = [...d.sectors].sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
@@ -199,26 +259,33 @@ const Dashboard = {
       const labels = unique.map(s => s.name || '-');
       const data = unique.map(s => s.change_pct || 0);
 
-      Charts.drawHorizontalBarChart('dashSectorChart', labels, data, '漲跌幅 (%)');
-    } catch (e) { /* ignore */ }
+      Charts.clearPlaceholder(canvasId);
+      Charts.drawHorizontalBarChart(canvasId, labels, data, '漲跌幅 (%)');
+    } catch (e) {
+      Charts.setPlaceholder(canvasId, '板塊數據載入失敗');
+    }
   },
 
   /**
    * 策略勝率排行 — top 10 策略的勝率和夏普
    */
   async _loadStrategyLeaderboard() {
+    const canvasId = 'dashLeaderboardChart';
     try {
       const d = await Api.getLeaderboard('sharpe', 10);
-      if (!d || !d.strategies || !d.strategies.length) return;
-
-      const strategies = d.strategies.slice(0, 10);
+      const strategies = (d?.results || d?.strategies || []).slice(0, 10);
+      if (!strategies.length) {
+        Charts.setPlaceholder(canvasId, d?.hint || '排行榜暫無數據，請先運行回測或更新排行榜');
+        return;
+      }
       const labels = strategies.map(s => s.strategy || s.name || '-');
       const winRates = strategies.map(s => s.win_rate_pct || 0);
       const sharpes = strategies.map(s => s.sharpe_ratio || 0);
 
       // 用雙軸柱狀圖：勝率 + 夏普
-      const canvas = document.getElementById('dashLeaderboardChart');
+      const canvas = document.getElementById(canvasId);
       if (!canvas) return;
+      Charts.clearPlaceholder(canvasId);
       const old = Chart.getChart(canvas);
       if (old) old.destroy();
 
@@ -278,7 +345,10 @@ const Dashboard = {
           },
         },
       });
-    } catch (e) { /* ignore */ }
+      Charts._scheduleResize(canvas);
+    } catch (e) {
+      Charts.setPlaceholder(canvasId, '排行榜載入失敗');
+    }
   },
 
   // ============================================================

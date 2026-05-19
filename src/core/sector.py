@@ -51,8 +51,12 @@ CREATE TABLE IF NOT EXISTS sector_snapshot (
 """
 
 
+_sector_tables_ready = False
+
+
 def init_sector_table():
     """初始化板塊數據表 + 快照表"""
+    global _sector_tables_ready
     with get_conn() as conn:
         conn.execute(DDL_SECTOR)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)")
@@ -61,12 +65,235 @@ def init_sector_table():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_date ON sector_snapshot(snapshot_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_type ON sector_snapshot(sector_type)")
         conn.commit()
-    logger.info("板塊數據表 + 快照表就緒")
+    if not _sector_tables_ready:
+        logger.debug("板塊數據表 + 快照表就緒")
+        _sector_tables_ready = True
 
 
 # ============================================================
 # 行業板塊（原有）
 # ============================================================
+
+def _load_sectors_from_snapshot(sector_type: str = "industry") -> list[dict]:
+    """AKShare 不可用時，從本地快照讀取最近一次板塊數據"""
+    init_sector_table()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT snapshot_date FROM sector_snapshot WHERE sector_type = ? "
+            "ORDER BY snapshot_date DESC LIMIT 1",
+            (sector_type,),
+        ).fetchone()
+        if not row:
+            return []
+        snap_date = row[0]
+        rows = conn.execute(
+            """SELECT sector_name, change_pct, amount, rise_count, fall_count,
+                      leader, leader_change_pct
+               FROM sector_snapshot
+               WHERE sector_type = ? AND snapshot_date = ?""",
+            (sector_type, snap_date),
+        ).fetchall()
+
+    result = []
+    for r in rows:
+        result.append({
+            "name": r[0],
+            "code": "",
+            "change_pct": float(r[1] or 0),
+            "turnover": 0,
+            "amount": float(r[2] or 0),
+            "stock_count": int((r[3] or 0) + (r[4] or 0)),
+            "rise_count": int(r[3] or 0),
+            "fall_count": int(r[4] or 0),
+            "leader": str(r[5] or ""),
+            "leader_change_pct": float(r[6] or 0),
+            "type": sector_type,
+            "from_snapshot": True,
+            "snapshot_date": snap_date,
+        })
+    return result
+
+
+_EM_HOSTS = (
+    "17.push2.eastmoney.com",
+    "63.push2.eastmoney.com",
+    "82.push2.eastmoney.com",
+    "push2.eastmoney.com",
+)
+
+
+def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
+    """東財 push2 直連（AKShare 斷線時的備選，多節點重試）"""
+    try:
+        import requests
+    except ImportError:
+        return []
+
+    fs = "m:90+t:3" if sector_type == "concept" else "m:90+t:2"
+    params = {
+        "pn": "1",
+        "pz": "500",
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6c7b1b98",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f3",
+        "fs": fs,
+        "fields": "f12,f14,f3,f8,f20,f104,f105,f128,f136,f140",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+
+    last_err = None
+    for host in _EM_HOSTS:
+        url = f"https://{host}/api/qt/clist/get"
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=20)
+            resp.raise_for_status()
+            payload = resp.json()
+            diff = (payload.get("data") or {}).get("diff") or []
+            if not diff:
+                continue
+
+            result = []
+            for item in diff:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("f14") or "").strip()
+                if not name:
+                    continue
+                change_raw = item.get("f3")
+                change_pct = float(change_raw) / 100.0 if change_raw is not None else 0.0
+                result.append({
+                    "name": name,
+                    "code": str(item.get("f12") or ""),
+                    "change_pct": change_pct,
+                    "turnover": float(item.get("f8") or 0),
+                    "amount": float(item.get("f20") or 0),
+                    "stock_count": int((item.get("f104") or 0) + (item.get("f105") or 0)),
+                    "rise_count": int(item.get("f104") or 0),
+                    "fall_count": int(item.get("f105") or 0),
+                    "leader": str(item.get("f128") or item.get("f140") or ""),
+                    "leader_change_pct": float(item.get("f136") or 0) / 100.0,
+                    "type": sector_type,
+                    "source": "eastmoney_http",
+                })
+
+            _rate_sleep()
+            logger.info(f"東財 HTTP({host}) 獲取{sector_type}板塊: {len(result)} 條")
+            return result
+        except Exception as e:
+            last_err = e
+            logger.debug(f"東財 {host} 獲取{sector_type}板塊失敗: {e}")
+
+    if last_err:
+        logger.warning(f"東財 HTTP 獲取{sector_type}板塊失敗: {last_err}")
+    return []
+
+
+def _load_sectors_from_local_kline(sector_type: str = "industry") -> list[dict]:
+    """用 sector_data 成分股 + 本地最近兩日 K 線估算板塊漲跌（完全離線兜底）"""
+    from src.core.db import load_daily_kline
+
+    init_sector_table()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT sector_name FROM sector_data WHERE sector_type = ?",
+            (sector_type,),
+        ).fetchall()
+    if not rows:
+        return []
+
+    result = []
+    for (sector_name,) in rows:
+        codes = get_cached_sector_stocks(sector_name)
+        if not codes:
+            continue
+        changes = []
+        leader_code, leader_chg = "", 0.0
+        for code in codes[:80]:
+            df = load_daily_kline(code)
+            if df is None or len(df) < 2:
+                continue
+            c0, c1 = float(df.iloc[-2]["close"]), float(df.iloc[-1]["close"])
+            if c0 <= 0:
+                continue
+            chg = (c1 / c0 - 1) * 100
+            changes.append(chg)
+            if chg > leader_chg:
+                leader_chg = chg
+                leader_code = code
+        if not changes:
+            continue
+        avg = sum(changes) / len(changes)
+        rise = sum(1 for c in changes if c > 0)
+        fall = sum(1 for c in changes if c <= 0)
+        result.append({
+            "name": sector_name,
+            "code": "",
+            "change_pct": round(avg, 2),
+            "turnover": 0,
+            "amount": 0,
+            "stock_count": len(changes),
+            "rise_count": rise,
+            "fall_count": fall,
+            "leader": leader_code,
+            "leader_change_pct": round(leader_chg, 2),
+            "type": sector_type,
+            "from_local_kline": True,
+            "source": "local_kline",
+        })
+
+    result.sort(key=lambda x: x.get("change_pct", 0), reverse=True)
+    if result:
+        logger.info(f"本地 K 線估算{sector_type}板塊: {len(result)} 條")
+    return result
+
+
+def _fetch_sector_list_live(sector_type: str, retries: int = 3) -> list[dict]:
+    last_err = None
+    for attempt in range(retries):
+        try:
+            if sector_type == "concept":
+                df = ak.stock_board_concept_name_em()
+            else:
+                df = ak.stock_board_industry_name_em()
+
+            if df.empty:
+                logger.warning(f"獲取{sector_type}板塊列表為空")
+                return []
+
+            result = []
+            for _, row in df.iterrows():
+                result.append({
+                    "name": str(row.get("板块名称", row.get("板块名称", ""))),
+                    "code": str(row.get("板块代码", row.get("板块代码", ""))),
+                    "change_pct": float(row.get("涨跌幅", 0) or 0),
+                    "turnover": float(row.get("换手率", 0) or 0),
+                    "amount": float(row.get("总成交额", 0) or 0),
+                    "stock_count": int(row.get("上涨家数", 0) or 0),
+                    "rise_count": int(row.get("上涨家数", 0) or 0),
+                    "fall_count": int(row.get("下跌家数", 0) or 0),
+                    "leader": str(row.get("领涨股票", "")),
+                    "leader_change_pct": float(row.get("领涨股票-涨跌幅", 0) or 0),
+                    "type": sector_type,
+                    "source": "akshare",
+                })
+
+            _rate_sleep()
+            return result
+        except Exception as e:
+            last_err = e
+            logger.warning(f"獲取{sector_type}板塊列表失敗 ({attempt + 1}/{retries}): {e}")
+            time.sleep(1.0 + attempt)
+
+    if last_err:
+        logger.error(f"獲取{sector_type}板塊列表失敗: {last_err}")
+    return []
+
 
 def get_sector_list(sector_type: str = "industry") -> list[dict]:
     """
@@ -78,39 +305,24 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
     Returns:
         [{"name": "銀行", "code": "BK0475", ...}, ...]
     """
-    try:
-        if sector_type == "concept":
-            df = ak.stock_board_concept_name_em()
-        else:
-            df = ak.stock_board_industry_name_em()
-        
-        if df.empty:
-            logger.warning(f"獲取{sector_type}板塊列表為空")
-            return []
-        
-        # 統一列名
-        result = []
-        for _, row in df.iterrows():
-            result.append({
-                "name": str(row.get("板块名称", row.get("板块名称", ""))),
-                "code": str(row.get("板块代码", row.get("板块代码", ""))),
-                "change_pct": float(row.get("涨跌幅", 0) or 0),
-                "turnover": float(row.get("换手率", 0) or 0),
-                "amount": float(row.get("总成交额", 0) or 0),
-                "stock_count": int(row.get("上涨家数", 0) or 0),
-                "rise_count": int(row.get("上涨家数", 0) or 0),
-                "fall_count": int(row.get("下跌家数", 0) or 0),
-                "leader": str(row.get("领涨股票", "")),
-                "leader_change_pct": float(row.get("领涨股票-涨跌幅", 0) or 0),
-                "type": sector_type,
-            })
-        
-        _rate_sleep()
-        return result
-        
-    except Exception as e:
-        logger.error(f"獲取{sector_type}板塊列表失敗: {e}")
-        return []
+    sectors = _fetch_sector_list_live(sector_type)
+    if sectors:
+        return sectors
+
+    sectors = _fetch_sector_list_em_http(sector_type)
+    if sectors:
+        return sectors
+
+    cached = _load_sectors_from_snapshot(sector_type)
+    if cached:
+        logger.info(
+            f"使用板塊快照緩存: {sector_type}, {len(cached)} 條, "
+            f"日期={cached[0].get('snapshot_date')}"
+        )
+        return cached
+
+    local = _load_sectors_from_local_kline(sector_type)
+    return local
 
 
 def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[dict]:

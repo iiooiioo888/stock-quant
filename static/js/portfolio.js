@@ -153,8 +153,15 @@ const Portfolio = {
     if (btn) btn.style.opacity = '1';
 
     if (!d || !d.success) return Utils.toast('失敗', 3000, 'error');
-    this._showResult(d.result);
-    Utils.toast(d.preset + ' 回測完成');
+    try {
+      const resolved = await Api.resolveTaskResponse(d);
+      const r = Api.extractResult(resolved);
+      if (!r) return Utils.toast('未取得組合回測結果', 3000, 'error');
+      this._showResult(r);
+      Utils.toast(d.preset + ' 回測完成');
+    } catch (e) {
+      Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
+    }
   },
 
   /**
@@ -326,7 +333,17 @@ const Portfolio = {
 
     Utils.btnLoading(btn, false, '🚀 開始回測');
     if (!d || !d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
-    this._showResult(d.result);
+    try {
+      if (d.async && d.task_id) {
+        Utils.toast('📋 組合回測已提交', 2000, 'info');
+      }
+      const resolved = await Api.resolveTaskResponse(d);
+      const r = Api.extractResult(resolved);
+      if (!r) return Utils.toast('未取得組合回測結果', 3000, 'error');
+      this._showResult(r);
+    } catch (e) {
+      Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
+    }
   },
 
   _showResult(r) {
@@ -364,6 +381,9 @@ const Portfolio = {
     document.getElementById('pfResult').classList.remove('h');
     // 滾動到結果
     document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+  showResult(r) {
+    this._showResult(r);
   },
 };
 

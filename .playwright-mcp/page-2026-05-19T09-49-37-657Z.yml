@@ -1,0 +1,137 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - button "☰" [ref=e4] [cursor=pointer]
+      - heading "📈 stock-quant" [level=1] [ref=e5]
+    - generic [ref=e7]:
+      - generic [ref=e8]: 🔍
+      - textbox "搜索股票代碼 / 策略名稱..." [ref=e9]
+      - generic [ref=e10]: /
+    - generic [ref=e11]:
+      - generic "點擊登錄" [ref=e12] [cursor=pointer]: ● 未登錄
+      - generic [ref=e13]:
+        - generic "監控股票數" [ref=e14]:
+          - generic [ref=e15]: 📊
+          - generic [ref=e16]: "-"
+        - generic "今日預警" [ref=e18]:
+          - generic [ref=e19]: 🔔
+          - generic [ref=e20]: "-"
+      - generic [ref=e23]: 載入中...
+      - button "☀️" [ref=e24] [cursor=pointer]
+  - generic [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]: 概覽
+        - button "📊 儀表盤" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 📊
+          - generic [ref=e31]: 儀表盤
+        - generic [ref=e32]: 回測
+        - button "🧪 策略回測" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: 🧪
+          - generic [ref=e35]: 策略回測
+        - button "⚡ 參數優化" [ref=e36] [cursor=pointer]:
+          - generic [ref=e37]: ⚡
+          - generic [ref=e38]: 參數優化
+        - button "🔄 Walk-Forward" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]: 🔄
+          - generic [ref=e41]: Walk-Forward
+        - button "🌡️ 熱力圖" [ref=e42] [cursor=pointer]:
+          - generic [ref=e43]: 🌡️
+          - generic [ref=e44]: 熱力圖
+        - button "📜 回測歷史" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: 📜
+          - generic [ref=e47]: 回測歷史
+        - generic [ref=e48]: 組合
+        - button "💼 組合回測" [ref=e49] [cursor=pointer]:
+          - generic [ref=e50]: 💼
+          - generic [ref=e51]: 組合回測
+        - button "⚖️ 多股對比" [ref=e52] [cursor=pointer]:
+          - generic [ref=e53]: ⚖️
+          - generic [ref=e54]: 多股對比
+        - generic [ref=e55]: 分析
+        - button "🔍 股票篩選" [ref=e56] [cursor=pointer]:
+          - generic [ref=e57]: 🔍
+          - generic [ref=e58]: 股票篩選
+        - button "📡 實時信號" [ref=e59] [cursor=pointer]:
+          - generic [ref=e60]: 📡
+          - generic [ref=e61]: 實時信號
+        - button "🗄️ 數據中心" [ref=e62] [cursor=pointer]:
+          - generic [ref=e63]: 🗄️
+          - generic [ref=e64]: 數據中心
+        - button "🔬 深度分析" [ref=e65] [cursor=pointer]:
+          - generic [ref=e66]: 🔬
+          - generic [ref=e67]: 深度分析
+        - generic [ref=e68]: 系統
+        - button "📋 任務面板" [ref=e69] [cursor=pointer]:
+          - generic [ref=e70]: 📋
+          - generic [ref=e71]: 任務面板
+        - button "📄 策略報告" [ref=e72] [cursor=pointer]:
+          - generic [ref=e73]: 📄
+          - generic [ref=e74]: 策略報告
+        - button "🔔 預警通知" [ref=e75] [cursor=pointer]:
+          - generic [ref=e76]: 🔔
+          - generic [ref=e77]: 預警通知
+        - button "🌐 多市場" [ref=e78] [cursor=pointer]:
+          - generic [ref=e79]: 🌐
+          - generic [ref=e80]: 多市場
+      - generic [ref=e81]:
+        - generic [ref=e82]: v1.1.0
+        - generic [ref=e85]: 連接中
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - heading "晚上好 🌙" [level=2] [ref=e90]
+          - paragraph [ref=e91]: 晚上適合覆盤和優化策略。
+        - generic [ref=e95]: 已休市
+      - generic [ref=e96]:
+        - button "🧪 策略回測 測試你的交易策略" [ref=e97] [cursor=pointer]:
+          - generic [ref=e98]: 🧪
+          - generic [ref=e99]: 策略回測
+          - generic [ref=e100]: 測試你的交易策略
+        - button "📡 今日信號 查看最新買賣信號" [ref=e101] [cursor=pointer]:
+          - generic [ref=e102]: 📡
+          - generic [ref=e103]: 今日信號
+          - generic [ref=e104]: 查看最新買賣信號
+        - button "🔍 選股篩選 找到符合條件的股票" [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]: 🔍
+          - generic [ref=e107]: 選股篩選
+          - generic [ref=e108]: 找到符合條件的股票
+        - button "💼 組合分析 多策略組合回測" [ref=e109] [cursor=pointer]:
+          - generic [ref=e110]: 💼
+          - generic [ref=e111]: 組合分析
+          - generic [ref=e112]: 多策略組合回測
+        - button "📥 下載數據 一鍵下載全市場股票數據" [ref=e113] [cursor=pointer]:
+          - generic [ref=e114]: 📥
+          - generic [ref=e115]: 下載數據
+          - generic [ref=e116]: 一鍵下載全市場股票數據
+        - button "🌐 多市場 美股、港股、加密貨幣" [ref=e117] [cursor=pointer]:
+          - generic [ref=e118]: 🌐
+          - generic [ref=e119]: 多市場
+          - generic [ref=e120]: 美股、港股、加密貨幣
+      - generic [ref=e121]:
+        - heading "📈 市場總覽" [level=2] [ref=e123]
+        - heading "🧪 最近回測表現" [level=2] [ref=e127]
+        - heading "📡 信號強度分佈" [level=2] [ref=e131]
+        - heading "🏭 板塊漲跌 Top 5" [level=2] [ref=e135]
+      - heading "🏆 策略勝率排行" [level=2] [ref=e139]
+      - generic [ref=e142]:
+        - heading "📋 監控列表" [level=2] [ref=e143]: 📋 監控列表
+        - table [ref=e146]:
+          - rowgroup [ref=e147]:
+            - row "代碼 名稱 突破價 跌破價 漲跌幅 走勢 操作" [ref=e148]:
+              - columnheader "代碼" [ref=e149]
+              - columnheader "名稱" [ref=e150]
+              - columnheader "突破價" [ref=e151]
+              - columnheader "跌破價" [ref=e152]
+              - columnheader "漲跌幅" [ref=e153]
+              - columnheader "走勢" [ref=e154]
+              - columnheader "操作" [ref=e155]
+          - rowgroup
+        - button "+ 添加監控規則" [ref=e157] [cursor=pointer]
+      - generic [ref=e158]:
+        - generic [ref=e159]: 💡
+        - generic [ref=e160]:
+          - strong [ref=e161]: 新手提示
+          - paragraph [ref=e162]: 夏普比率 (Sharpe Ratio) 表示每承受一單位風險能獲得多少超額收益，大於 1 算不錯，大於 2 算優秀。
+        - button "✕" [ref=e163] [cursor=pointer]
+  - generic [ref=e164]: "請求失敗: 請求過於頻繁，請稍後再試"

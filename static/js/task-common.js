@@ -17,6 +17,9 @@ const TaskCommon = {
     walkforward: '🔄 Walk-Forward',
     auto_optimize: '🤖 自動優化',
     heatmap: '🌡️ 熱力圖',
+    data_download: '📥 市場數據下載',
+    data_download_all: '📥 全市場下載',
+    data_incremental: '🔄 增量更新',
   },
 
   STATUS_ICONS: {
@@ -33,6 +36,80 @@ const TaskCommon = {
   STATUS_CHIP: {
     running: 'chip cfg', completed: 'chip on', failed: 'chip off',
     cancelled: 'chip', pending: 'chip',
+  },
+
+  TAB_MAP: {
+    backtest: 'backtest',
+    backtest_advanced: 'backtest',
+    backtest_multi: 'backtest',
+    optimize: 'optimize',
+    portfolio: 'portfolio',
+    walkforward: 'walkforward',
+    auto_optimize: 'optimize',
+    heatmap: 'heatmap',
+    data_download: 'data',
+    data_download_all: 'data',
+    data_incremental: 'data',
+  },
+
+  /** 下載任務副標題 */
+  downloadSubtitle(task) {
+    if (!task) return '';
+    if (task.status_message) return task.status_message;
+    const meta = task.meta || {};
+    if (meta.message) return meta.message;
+    const dl = task.download || meta.download;
+    if (!dl) return '';
+    if (dl.current_code && dl.total) {
+      return `${dl.market_name || dl.market || ''} ${dl.current_code} (${dl.index || 0}/${dl.total})`;
+    }
+    if (dl.records_total != null) return `已寫入 ${dl.records_total} 條`;
+    return '';
+  },
+
+  isDownloadTask(taskType) {
+    return taskType === 'data_download' || taskType === 'data_download_all' || taskType === 'data_incremental';
+  },
+
+  /** 任務列表副標題（運行中進度 / 完成摘要） */
+  formatTaskSubtitle(task) {
+    if (!task) return '';
+    if (task.status === 'running' || task.status === 'pending') {
+      const sub = this.downloadSubtitle(task);
+      if (sub) return sub;
+    }
+    if (task.download_summary) {
+      const s = task.download_summary;
+      const parts = [];
+      if (s.market_name) parts.push(s.market_name);
+      if (s.total_records != null) parts.push(`${Number(s.total_records).toLocaleString()} 條`);
+      if (s.success_symbols != null && s.total_symbols != null) {
+        parts.push(`${s.success_symbols}/${s.total_symbols} 成功`);
+      }
+      return parts.join(' · ');
+    }
+    if (task.status === 'completed' && task.result && this.isDownloadTask(task.task_type)) {
+      return this.downloadResultLine(task.result);
+    }
+    return '';
+  },
+
+  /** 下載任務完成摘要 */
+  downloadResultLine(result) {
+    if (!result) return '';
+    const parts = [];
+    if (result.market_name || result.market) parts.push(result.market_name || result.market);
+    if (result.total_records != null) parts.push(`${result.total_records} 條`);
+    if (result.success_symbols != null && result.total_symbols != null) {
+      parts.push(`${result.success_symbols}/${result.total_symbols} 成功`);
+    }
+    return parts.join(' · ');
+  },
+
+  QUEUE_LABELS: {
+    current: { icon: '▶', title: '目前執行' },
+    next: { icon: '⏭', title: '下一個' },
+    recent: { icon: '✅', title: '剛完成' },
   },
 
   /**
@@ -147,6 +224,11 @@ const TaskCommon = {
         </table></div>`;
     }
 
+    // 數據下載
+    if (this.isDownloadTask(task.task_type)) {
+      return this._renderDownloadResultModal(task, r);
+    }
+
     // 組合回測
     if (task.task_type === 'portfolio') {
       return `
@@ -202,6 +284,47 @@ const TaskCommon = {
     });
   },
 
+  _renderDownloadResultModal(task, r) {
+    const typeName = this.typeName(task.task_type);
+    const line = this.downloadResultLine(r);
+    let html = `<h3>${typeName} — ${task.title}</h3>`;
+    if (line) {
+      html += `<div style="margin:8px 0"><span class="chip on">${line}</span></div>`;
+    }
+
+    if (r.market_summary && r.market_summary.length) {
+      html += `<div class="table-wrap" style="margin-top:12px"><table>
+        <tr><th>市場</th><th>記錄數</th><th>成功/總數</th></tr>
+        ${r.market_summary.map(m => `<tr>
+          <td>${m.market_name || m.market}</td>
+          <td class="r">${(m.records || 0).toLocaleString()}</td>
+          <td class="r">${m.success || 0}/${m.symbols || 0}</td>
+        </tr>`).join('')}
+      </table></div>`;
+    }
+
+    const details = r.details || [];
+    if (details.length) {
+      const show = details.slice(0, 50);
+      html += `<div class="table-wrap" style="margin-top:12px;max-height:280px;overflow:auto"><table>
+        <tr><th>代碼</th><th>市場</th><th>記錄</th></tr>
+        ${show.map(d => `<tr>
+          <td>${d.code}</td>
+          <td>${d.market || '-'}</td>
+          <td class="r">${d.records > 0 ? d.records : '<span style="color:var(--red)">0</span>'}</td>
+        </tr>`).join('')}
+      </table></div>`;
+      if (details.length > 50) {
+        html += `<p style="font-size:11px;color:var(--text-dim)">… 另有 ${details.length - 50} 個標的</p>`;
+      }
+    }
+
+    if (r.updated != null) {
+      html += `<div style="margin-top:8px;font-size:12px">更新 ${r.updated} 只，跳過 ${r.skipped || 0} 只，新增 ${(r.total_records || 0).toLocaleString()} 條</div>`;
+    }
+    return html;
+  },
+
   /**
    * 渲染任務參數詳情 HTML
    */
@@ -227,6 +350,143 @@ const TaskCommon = {
         <div style="font-weight:600;color:var(--red);margin-bottom:4px">❌ 錯誤信息</div>
         <pre style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all;margin:0">${error}</pre>
       </div>`;
+  },
+
+  splitQueue(snapshot) {
+    if (snapshot && snapshot.current !== undefined) {
+      return {
+        current: snapshot.current,
+        next: snapshot.next,
+        recent: snapshot.recent_completed,
+      };
+    }
+    const tasks = Array.isArray(snapshot) ? snapshot : [];
+    const running = tasks.filter(t => t.status === 'running')
+      .sort((a, b) => (a.started_at || a.created_at || '').localeCompare(b.started_at || b.created_at || ''));
+    const pending = tasks.filter(t => t.status === 'pending')
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    let next = running.length > 1 ? running[1] : (pending[0] || null);
+    const completed = tasks.filter(t => t.status === 'completed' && t.has_result)
+      .sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+    return {
+      current: running[0] || pending[0] || null,
+      next: running.length > 1 ? running[1] : (pending[0] && running[0] ? pending[0] : next),
+      recent: completed[0] || null,
+    };
+  },
+
+  _progressBar(progress, status) {
+    const pct = status === 'pending' ? 0 : (progress || 0);
+    return `<div class="progress-bar-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+  },
+
+  renderQueueCard(role, task, compact) {
+    const meta = this.QUEUE_LABELS[role] || { icon: '📋', title: '任務' };
+    const emptyText = role === 'next' ? '暫無等待中的任務' : (role === 'current' ? '目前沒有執行中的任務' : '暫無最近完成的任務');
+    const highlight = role === 'current' ? ' task-queue-current' : (role === 'recent' ? ' task-queue-recent' : '');
+
+    if (!task) {
+      return `<div class="task-queue-card task-queue-empty${highlight}" data-role="${role}">
+        <div class="task-queue-head"><span>${meta.icon} ${meta.title}</span></div>
+        <div class="task-queue-body" style="color:var(--text-dim);font-size:12px">${emptyText}</div>
+      </div>`;
+    }
+
+    const typeName = this.typeName(task.task_type);
+    const statusIcon = this.STATUS_ICONS[task.status] || '❓';
+    const canNav = task.status === 'completed' && task.has_result;
+    const canCancel = task.status === 'running' || task.status === 'pending';
+    const progressLabel = task.status === 'running' ? `${task.progress || 0}%` : (task.status === 'pending' ? '等待中' : '');
+    const dlSub = this.formatTaskSubtitle(task);
+
+    let actions = '';
+    if (canNav) {
+      actions += `<button class="btn primary" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();TaskCommon.navigateToResult('${task.task_id}')">前往查看</button> `;
+      if (!compact && typeof Tasks !== 'undefined') {
+        actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.viewResult('${task.task_id}')">查看摘要</button>`;
+      }
+    }
+    if (canCancel && typeof Tasks !== 'undefined') {
+      actions += `<button class="btn danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.cancelTask('${task.task_id}')">取消</button>`;
+    }
+
+    return `<div class="task-queue-card${highlight}" data-role="${role}">
+      <div class="task-queue-head">
+        <span>${meta.icon} ${meta.title}</span>
+        <span style="font-size:11px;color:var(--text-dim)">${statusIcon} ${progressLabel}</span>
+      </div>
+      <div class="task-queue-body">
+        <div style="font-weight:600;font-size:13px">${task.title || typeName}</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">${typeName}</div>
+        ${dlSub ? `<div style="font-size:11px;color:#38bdf8;margin-top:6px">${dlSub}</div>` : ''}
+        ${task.status === 'running' || task.status === 'pending' ? this._progressBar(task.progress, task.status) : ''}
+        ${task.error ? `<div style="font-size:10px;color:#ef4444;margin-top:4px">${String(task.error).substring(0, 80)}</div>` : ''}
+        ${actions ? `<div class="task-queue-actions">${actions}</div>` : ''}
+      </div>
+    </div>`;
+  },
+
+  renderQueueSection(snapshot, compact) {
+    const q = this.splitQueue(snapshot);
+    return `${this.renderQueueCard('current', q.current, compact)}
+      ${this.renderQueueCard('next', q.next, compact)}
+      ${this.renderQueueCard('recent', q.recent, compact)}`;
+  },
+
+  renderNavigateButton(taskId, label) {
+    return `<button class="btn primary" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();TaskCommon.navigateToResult('${taskId}')">${label || '前往查看'}</button>`;
+  },
+
+  tabForTaskType(taskType) {
+    return this.TAB_MAP[taskType] || 'tasks';
+  },
+
+  async navigateToResult(taskId) {
+    const d = await Api.getTask(taskId);
+    const task = d?.task;
+    if (!task?.result) {
+      Utils.toast('此任務暫無結果', 2000, 'warning');
+      return;
+    }
+
+    const tab = this.tabForTaskType(task.task_type);
+    const p = task.params || {};
+    const r = task.result;
+
+    if (typeof App !== 'undefined' && App.loadTab) App.loadTab(tab);
+
+    if (tab === 'backtest' && typeof Backtest !== 'undefined') {
+      const codeEl = document.getElementById('btCode');
+      const stratEl = document.getElementById('btStrategy');
+      if (codeEl) codeEl.value = p.code || r.code || '';
+      if (stratEl && p.strategy) stratEl.value = p.strategy;
+      if (task.task_type === 'backtest_multi' && Backtest.displayMultiResults) {
+        Backtest.displayMultiResults(Array.isArray(r) ? r : (r.results || []));
+      } else if (Backtest._displayResult) {
+        Backtest._lastResult = r;
+        Backtest._displayResult(r);
+      }
+    } else if (tab === 'optimize' && typeof Optimize !== 'undefined') {
+      const codeEl = document.getElementById('optCode');
+      const stratEl = document.getElementById('optStrategy');
+      if (codeEl) codeEl.value = p.code || '';
+      if (stratEl && p.strategy) stratEl.value = p.strategy;
+      if (Optimize.renderResults) Optimize.renderResults(r, p.strategy || 'all');
+    } else if (tab === 'portfolio' && typeof Portfolio !== 'undefined') {
+      if (Portfolio.showResult) Portfolio.showResult(r);
+      else if (Portfolio._showResult) Portfolio._showResult(r);
+    } else if (tab === 'walkforward' && typeof App !== 'undefined' && App.renderWalkForwardResult) {
+      const codeEl = document.getElementById('wfCode');
+      const stratEl = document.getElementById('wfStrategy');
+      if (codeEl) codeEl.value = p.code || '';
+      if (stratEl && p.strategy) stratEl.value = p.strategy;
+      App.renderWalkForwardResult(r);
+    } else if (tab === 'data' && typeof App !== 'undefined') {
+      if (App.loadMarkets) App.loadMarkets();
+      if (typeof Tasks !== 'undefined' && Tasks.viewResult) Tasks.viewResult(taskId);
+    } else if (typeof Tasks !== 'undefined' && Tasks.viewResult) {
+      Tasks.viewResult(taskId);
+    }
   },
 };
 

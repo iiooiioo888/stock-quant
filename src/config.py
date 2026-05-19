@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     backtest_commission: float = Field(default=0.001, ge=0, le=0.1)
     backtest_stamp_tax: float = Field(default=0.001, ge=0, le=0.1)
 
+    # ====== 任務並行 ======
+    task_max_workers: int = Field(default=0, ge=0, le=32)  # 0 = 自動 min(4, CPU-1)
+    task_parallel_grid: bool = True
+    task_grid_workers: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
+    optuna_n_jobs: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
+    multi_strategy_workers: int = Field(default=4, ge=1, le=16)
+    optimize_all_workers: int = Field(default=2, ge=1, le=8)  # 僅 optimize_all_parallel=true 時生效
+    optimize_all_parallel: bool = False  # 默認策略串行+進程池，避免嵌套爆炸
+    task_progress_save_interval_sec: float = Field(default=2.0, ge=0.5, le=30.0)
+
     # ====== 通知 ======
     notify_console: bool = True
     notify_webhook: bool = False
@@ -74,13 +84,22 @@ class Settings(BaseSettings):
     # ====== 演示模式 ======
     demo_mode: bool = False
 
+    # ====== 緩存 ======
+    cache_enabled: bool = True
+    cache_backtest_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+    cache_optimize_ttl: int = Field(default=7200, ge=60, le=86400 * 7)
+    cache_portfolio_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+    cache_walkforward_ttl: int = Field(default=7200, ge=60, le=86400 * 7)
+    cache_heatmap_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+    cache_multi_strategy_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+
     # ====== Redis 緩存 ======
     redis_url: str = "redis://localhost:6379/0"
     redis_enabled: bool = False
     redis_password: str = ""
 
     # ====== WebSocket 安全 ======
-    ws_auth_required: bool = True  # 生產環境強制 WebSocket 認證，開發環境可設為 false
+    ws_auth_required: bool = False  # 本地默認免登錄 WS；生產請設 SQ_WS_AUTH_REQUIRED=true
 
     # ====== 安全 ======
     jwt_secret: str = ""  # 留空時由 auth.py 自動生成隨機密鑰並持久化到 data/.jwt_secret
@@ -233,7 +252,7 @@ class Settings(BaseSettings):
             f"   盯盤: {len(self.watchlist)} 只 A股 + {len(self.crypto_watchlist)} 加密 + {len(self.forex_watchlist)} 外匯",
             f"   輪詢: {self.poll_interval_sec}s | 預警冷卻: {self.alert_cooldown_sec}s",
             f"   回測資金: ¥{self.backtest_cash:,.0f} | 佣金: {self.backtest_commission:.1%} | 印花稅: {self.backtest_stamp_tax:.1%}",
-            f"   Redis: {'啟用' if self.redis_enabled else '禁用'}",
+            f"   緩存: {'啟用' if self.cache_enabled else '禁用'} | Redis: {'啟用' if self.redis_enabled else '禁用'}",
             f"   CORS: {self.cors_origins}",
             f"   策略: {len(self.strategy_params)} 個已配置",
             f"   預設組合: {', '.join(self.portfolio_presets.keys())}",

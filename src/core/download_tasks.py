@@ -1,0 +1,236 @@
+"""
+市場數據下載任務 — 支持進度回報與任務列表展示
+"""
+import time
+from typing import Optional
+
+from src.config import settings
+from src.utils.logger import logger
+
+MARKET_NAMES = {
+    "a_share": "A股",
+    "crypto": "加密貨幣",
+    "forex": "外匯",
+    "us_stock": "美股",
+    "hk_stock": "港股",
+    "index": "全球指數",
+    "etf": "ETF",
+    "commodity": "商品期貨",
+    "global": "全球",
+}
+
+
+def _update_download_meta(
+    task_id: str,
+    *,
+    message: str = None,
+    market: str = None,
+    current_code: str = None,
+    index: int = None,
+    total: int = None,
+    records_total: int = None,
+    progress: int = None,
+):
+    from src.core.task_manager import update_task_meta, update_task, is_task_cancelled
+
+    meta = {}
+    if message is not None:
+        meta["message"] = message
+    dl = {}
+    if market is not None:
+        dl["market"] = market
+        dl["market_name"] = MARKET_NAMES.get(market, market)
+    if current_code is not None:
+        dl["current_code"] = current_code
+    if index is not None:
+        dl["index"] = index
+    if total is not None:
+        dl["total"] = total
+    if records_total is not None:
+        dl["records_total"] = records_total
+    update_task_meta(
+        task_id,
+        message=message,
+        download=dl if dl else None,
+    )
+    if progress is not None and not is_task_cancelled(task_id):
+        update_task(task_id, progress=progress)
+
+
+def _check_cancelled(task_id: str):
+    from src.core.task_manager import is_task_cancelled
+    if task_id and is_task_cancelled(task_id):
+        raise RuntimeError("任務已取消")
+
+
+def run_market_download(
+    market: str,
+    codes: list[str],
+    task_id: str = None,
+) -> dict:
+    """下載單一市場歷史數據"""
+    from src.core.history import download_one
+
+    codes = codes or []
+    total = len(codes)
+    results = []
+    grand_total = 0
+    market_name = MARKET_NAMES.get(market, market)
+
+    _update_download_meta(
+        task_id,
+        message=f"準備下載 {market_name}（{total} 個標的）",
+        market=market,
+        index=0,
+        total=total,
+        records_total=0,
+        progress=1,
+    )
+
+    for i, code in enumerate(codes, 1):
+        _check_cancelled(task_id)
+        _update_download_meta(
+            task_id,
+            message=f"{market_name}: {code} ({i}/{total})",
+            current_code=code,
+            index=i,
+            total=total,
+            records_total=grand_total,
+            progress=min(95, int((i - 1) / max(total, 1) * 100)),
+        )
+        if market == "a_share":
+            mkt = "a_share"
+        elif market in ("crypto", "forex"):
+            mkt = market
+        else:
+            mkt = "global"
+        count = download_one(code, market=mkt)
+        grand_total += count
+        results.append({"code": code, "records": count, "market": market})
+        time.sleep(0.3 if market == "crypto" else 0.5)
+
+    success = sum(1 for r in results if r["records"] > 0)
+    return {
+        "market": market,
+        "market_name": market_name,
+        "total_records": grand_total,
+        "total_symbols": total,
+        "success_symbols": success,
+        "failed_symbols": total - success,
+        "details": results,
+    }
+
+
+def run_stocks_download(codes: list[str], task_id: str = None) -> dict:
+    """下載指定 A 股列表"""
+    codes = codes or settings.watchlist
+    return run_market_download("a_share", codes, task_id=task_id)
+
+
+def run_download_all(task_id: str = None) -> dict:
+    """下載所有市場數據"""
+    from src.core.history import download_one
+    from src.core.global_market import MARKET_CATALOG
+
+    plan: list[tuple[str, str, list[str]]] = []
+    plan.append(("a_share", MARKET_NAMES["a_share"], list(settings.watchlist)))
+
+    for market_key in ["us_stock", "hk_stock", "index", "etf", "commodity"]:
+        cat = MARKET_CATALOG.get(market_key, {})
+        symbols = list(cat.get("symbols", {}).keys())
+        if symbols:
+            plan.append((market_key, cat.get("name", market_key), symbols))
+
+    plan.append(("crypto", MARKET_NAMES["crypto"], list(settings.crypto_watchlist)))
+    plan.append(("forex", MARKET_NAMES["forex"], list(settings.forex_watchlist)))
+
+    all_codes = []
+    for _, _, codes in plan:
+        all_codes.extend(codes)
+    total_symbols = len(all_codes)
+
+    all_results = []
+    grand_total = 0
+    done = 0
+
+    _update_download_meta(
+        task_id,
+        message=f"準備下載全市場（共 {total_symbols} 個標的）",
+        index=0,
+        total=total_symbols,
+        records_total=0,
+        progress=1,
+    )
+
+    for market_key, market_label, codes in plan:
+        _check_cancelled(task_id)
+        logger.info(f"===== 任務下載 {market_label} ({len(codes)} 個) =====")
+        for code in codes:
+            _check_cancelled(task_id)
+            done += 1
+            _update_download_meta(
+                task_id,
+                message=f"{market_label}: {code} ({done}/{total_symbols})",
+                market=market_key,
+                current_code=code,
+                index=done,
+                total=total_symbols,
+                records_total=grand_total,
+                progress=min(95, int((done - 1) / max(total_symbols, 1) * 100)),
+            )
+            mkt = "a_share" if market_key == "a_share" else (
+                "crypto" if market_key == "crypto" else (
+                    "forex" if market_key == "forex" else "global"
+                )
+            )
+            count = download_one(code, market=mkt)
+            grand_total += count
+            all_results.append({"market": market_key, "code": code, "records": count})
+            time.sleep(0.5 if market_key == "a_share" else 0.3)
+
+    success_count = sum(1 for r in all_results if r["records"] > 0)
+    by_market = {}
+    for r in all_results:
+        mk = r["market"]
+        if mk not in by_market:
+            by_market[mk] = {"market": mk, "market_name": MARKET_NAMES.get(mk, mk), "records": 0, "symbols": 0, "success": 0}
+        by_market[mk]["records"] += r["records"]
+        by_market[mk]["symbols"] += 1
+        if r["records"] > 0:
+            by_market[mk]["success"] += 1
+
+    return {
+        "total_records": grand_total,
+        "total_symbols": len(all_results),
+        "success_symbols": success_count,
+        "failed_symbols": len(all_results) - success_count,
+        "market_summary": list(by_market.values()),
+        "details": all_results,
+    }
+
+
+def run_incremental(codes: list[str] = None, force: bool = False, task_id: str = None) -> dict:
+    """增量更新（包裝 history.download_incremental，帶進度）"""
+    from src.core.history import download_incremental
+
+    if codes is None:
+        codes = settings.watchlist
+    total = len(codes)
+
+    _update_download_meta(
+        task_id,
+        message=f"增量更新 A 股（{total} 只）" + (" [強制]" if force else ""),
+        market="a_share",
+        total=total,
+        progress=5,
+    )
+
+    result = download_incremental(codes=codes, force=force)
+
+    _update_download_meta(
+        task_id,
+        message="增量更新完成",
+        records_total=result.get("total_records", 0),
+        progress=100,
+    )
+    return result

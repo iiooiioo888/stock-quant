@@ -2,9 +2,11 @@
 參數優化模塊 — 網格搜索 + Optuna 貝葉斯優化（支持並行）
 """
 import itertools
+import os
 import backtrader as bt
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import sys
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from src.core.db import load_daily_kline
 from src.config import settings
 from src.core.backtest import STRATEGIES, prepare_data
@@ -194,6 +196,19 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
     return results
 
 
+def _resolve_grid_workers(task_id: str = None) -> int:
+    from src.core.compute_budget import get_process_workers
+    return get_process_workers(per_job_cap=8, task_id=task_id, min_workers=1)
+
+
+def _resolve_optuna_jobs(task_id: str = None) -> int:
+    j = getattr(settings, "optuna_n_jobs", 0)
+    if j and j > 0:
+        return j
+    from src.core.compute_budget import get_process_workers
+    return get_process_workers(per_job_cap=4, task_id=task_id, min_workers=1)
+
+
 def grid_search(
     code: str,
     strategy_name: str,
@@ -201,10 +216,19 @@ def grid_search(
     param_grid: dict = None,
     top_n: int = 10,
     verbose: bool = True,
+    task_id: str = None,
 ) -> list[dict]:
-    """網格搜索"""
+    """網格搜索（可選並行）"""
     if strategy_name not in STRATEGIES:
         raise ValueError(f"未知策略: {strategy_name}")
+
+    if getattr(settings, "task_parallel_grid", True):
+        return grid_search_parallel(
+            code, strategy_name, objective=objective,
+            param_grid=param_grid, top_n=top_n,
+            max_workers=_resolve_grid_workers(task_id), verbose=verbose,
+            task_id=task_id,
+        )
 
     if param_grid is None:
         param_grid = PARAM_GRIDS.get(strategy_name)
@@ -236,6 +260,11 @@ def grid_search(
 
     results = []
     for i, params in enumerate(valid_combos, 1):
+        if task_id:
+            from src.core.task_manager import is_task_cancelled, update_task
+            if is_task_cancelled(task_id):
+                raise RuntimeError("任務已取消")
+            update_task(task_id, progress=min(95, int(i / total * 100)))
         try:
             r = _run_single(code, strategy_name, params)
             r["score"] = _score(r, objective)
@@ -264,6 +293,7 @@ def optuna_search(
     n_trials: int = 100,
     param_ranges: dict = None,
     verbose: bool = True,
+    task_id: str = None,
 ) -> list[dict]:
     """Optuna 貝葉斯優化"""
     import optuna
@@ -316,8 +346,12 @@ def optuna_search(
         except Exception:
             return float("-inf")
 
+    n_jobs = _resolve_optuna_jobs(task_id)
     study = optuna.create_study(direction="maximize")
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=verbose, n_jobs=2)
+    study.optimize(_objective, n_trials=n_trials, show_progress_bar=verbose, n_jobs=n_jobs)
+    if task_id:
+        from src.core.task_manager import update_task
+        update_task(task_id, progress=90)
 
     seen = set()
     unique_results = []
@@ -346,21 +380,74 @@ def optimize_all(
     n_trials: int = 80,
     top_n: int = 5,
     verbose: bool = True,
+    task_id: str = None,
 ) -> dict:
-    """對所有策略做參數優化"""
-    all_results = {}
+    """對所有策略做參數優化（默認串行策略 + 每策略進程池，可選策略級並行）"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.core.compute_budget import should_parallelize_optimize_all, get_thread_workers
 
-    for name in STRATEGIES:
-        logger.info(f"優化策略: {name}")
-        try:
-            if method == "optuna":
-                results = optuna_search(code, name, objective=objective, n_trials=n_trials, verbose=verbose)
-            else:
-                results = grid_search(code, name, objective=objective, top_n=top_n, verbose=verbose)
-            all_results[name] = results
-        except Exception as e:
-            logger.error(f"{name} 優化失敗: {e}")
-            all_results[name] = []
+    names = list(STRATEGIES.keys())
+    total = len(names)
+    all_results = {}
+    done = 0
+    parallel_strategies = should_parallelize_optimize_all(task_id)
+    workers = 1
+    if parallel_strategies:
+        workers = get_thread_workers(
+            getattr(settings, "optimize_all_workers", 2),
+            task_id=task_id,
+            min_workers=1,
+        )
+    logger.info(
+        f"全策略優化 {code}: {'並行' if parallel_strategies else '串行'}策略 workers={workers}"
+    )
+
+    def _opt_one(name: str):
+        if task_id:
+            from src.core.task_manager import is_task_cancelled
+            if is_task_cancelled(task_id):
+                raise RuntimeError("任務已取消")
+        if method == "optuna":
+            return name, optuna_search(
+                code, name, objective=objective, n_trials=n_trials,
+                verbose=verbose, task_id=task_id,
+            )
+        return name, grid_search(
+            code, name, objective=objective, top_n=top_n,
+            verbose=verbose, task_id=task_id,
+        )
+
+    if workers <= 1:
+        for i, name in enumerate(names, 1):
+            if task_id:
+                from src.core.task_manager import is_task_cancelled, update_task
+                if is_task_cancelled(task_id):
+                    raise RuntimeError("任務已取消")
+                update_task(task_id, progress=min(95, int(i / total * 100)))
+            try:
+                strat_name, results = _opt_one(name)
+                all_results[strat_name] = results
+            except Exception as e:
+                logger.error(f"{name} 優化失敗: {e}")
+                all_results[name] = []
+        return all_results
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_opt_one, name): name for name in names}
+        for future in as_completed(futures):
+            name = futures[future]
+            done += 1
+            if task_id:
+                from src.core.task_manager import is_task_cancelled, update_task
+                if is_task_cancelled(task_id):
+                    raise RuntimeError("任務已取消")
+                update_task(task_id, progress=min(95, int(done / total * 100)))
+            try:
+                strat_name, results = future.result()
+                all_results[strat_name] = results
+            except Exception as e:
+                logger.error(f"{name} 優化失敗: {e}")
+                all_results[name] = []
 
     return all_results
 
@@ -370,13 +457,20 @@ def optimize_all(
 # ============================================================
 
 def _run_single_worker(args):
-    """Worker 函數，用於 ProcessPoolExecutor"""
+    """Worker 函數，用於並行網格搜索"""
     code, strategy_name, params = args
     try:
-        r = _run_single(code, strategy_name, params)
-        return r
-    except Exception:
+        return _run_single(code, strategy_name, params)
+    except Exception as e:
+        logger.warning(f"網格 worker 失敗 {code}/{strategy_name}: {e}")
         return None
+
+
+def _grid_executor_class():
+    """Windows 子進程無法穩定打開 SQLite，改用線程池"""
+    if sys.platform == "win32":
+        return ThreadPoolExecutor
+    return ProcessPoolExecutor
 
 
 def grid_search_parallel(
@@ -387,6 +481,7 @@ def grid_search_parallel(
     top_n: int = 10,
     max_workers: int = 4,
     verbose: bool = True,
+    task_id: str = None,
 ) -> list[dict]:
     """並行網格搜索 — 使用 ProcessPoolExecutor"""
     if strategy_name not in STRATEGIES:
@@ -418,16 +513,35 @@ def grid_search_parallel(
         valid_combos.append(p)
 
     total = len(valid_combos)
-    logger.info(f"並行網格搜索 {code}/{strategy_name}: {total} 種組合, workers={max_workers}")
+    if max_workers > total:
+        max_workers = max(1, total)
+    logger.info(
+        f"並行網格搜索 {code}/{strategy_name}: {total} 種組合, workers={max_workers}"
+    )
 
     tasks = [(code, strategy_name, p) for p in valid_combos]
     results = []
     done = 0
+    last_logged_pct = -1
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_run_single_worker, t): t for t in tasks}
+    executor_cls = _grid_executor_class()
+    pool_kind = "thread" if executor_cls is ThreadPoolExecutor else "process"
+    logger.debug(f"網格池類型: {pool_kind}, workers={max_workers}")
+
+    with executor_cls(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_run_single_worker, t): t
+            for t in tasks
+        }
         for future in as_completed(futures):
             done += 1
+            if task_id:
+                from src.core.task_manager import is_task_cancelled, update_task
+                if is_task_cancelled(task_id):
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise RuntimeError("任務已取消")
+                pct = min(95, int(done / total * 100))
+                update_task(task_id, progress=pct)
             try:
                 r = future.result()
                 if r is not None:
@@ -436,8 +550,11 @@ def grid_search_parallel(
             except Exception as e:
                 logger.debug(f"  Worker 失敗: {e}")
 
-            if verbose and done % 50 == 0:
-                logger.info(f"  並行網格進度: {done}/{total}")
+            if verbose and total > 0:
+                pct = int(done / total * 100)
+                if pct >= last_logged_pct + 10 or done == total:
+                    last_logged_pct = pct
+                    logger.info(f"  並行網格進度: {done}/{total} ({pct}%)")
 
     results.sort(key=lambda x: x["score"], reverse=True)
     top_results = results[:top_n]

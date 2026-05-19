@@ -8,21 +8,18 @@ import time
 from datetime import datetime, timedelta
 from src.utils.logger import logger
 
-YAHOO_BASE = "https://query1.finance.yahoo.com"
+from src.core.yahoo_finance import (
+    YAHOO_BASE,
+    yahoo_chart as _yahoo_chart,
+    yahoo_quote as _yahoo_quote,
+)
+
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 # 失敗符號緩存：避免重複嘗試已知失敗的符號
 _failed_symbols: dict[str, float] = {}  # {symbol: fail_timestamp}
 _FAILED_COOLDOWN = 3600  # 失敗後冷卻 1 小時再重試
-
-# 共享 Session，複用連接
-_yahoo_session = requests.Session()
-_yahoo_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
-})
 
 # 通用 Session（用於非 Yahoo 數據源）
 _http_session = requests.Session()
@@ -552,129 +549,6 @@ MARKET_CATALOG = {
 def get_market_catalog() -> dict:
     """返回完整市場目錄"""
     return MARKET_CATALOG.copy()
-
-
-def _yahoo_quote(symbol: str) -> dict:
-    """從 Yahoo 獲取單個標的報價（帶重試，404 不重試）"""
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            url = f"{YAHOO_BASE}/v8/finance/chart/{symbol}"
-            params = {"range": "5d", "interval": "1d"}
-            resp = _yahoo_session.get(url, params=params, timeout=15)
-            if resp.status_code == 404:
-                logger.debug(f"Yahoo quote {symbol}: 404 符號不存在")
-                return {}
-            if resp.status_code == 429:
-                time.sleep(RETRY_DELAY * attempt)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-
-            result = data.get("chart", {}).get("result", [])
-            if not result:
-                return {}
-
-            meta = result[0].get("meta", {})
-            indicators = result[0].get("indicators", {})
-            quote_list = indicators.get("quote", [{}])
-            quote = quote_list[0] if quote_list else {}
-
-            closes = quote.get("close", [])
-            closes = [c for c in closes if c is not None]
-
-            if not closes:
-                return {}
-
-            price = closes[-1]
-            prev = closes[-2] if len(closes) >= 2 else price
-            change_pct = ((price - prev) / prev * 100) if prev > 0 else 0
-
-            highs = [h for h in quote.get("high", []) if h is not None]
-            lows = [l for l in quote.get("low", []) if l is not None]
-            volumes = [v for v in quote.get("volume", []) if v is not None]
-
-            return {
-                "symbol": symbol,
-                "price": round(price, 4),
-                "change_pct": round(change_pct, 2),
-                "high": round(max(highs), 4) if highs else 0,
-                "low": round(min(lows), 4) if lows else 0,
-                "volume": int(volumes[-1]) if volumes else 0,
-                "prev_close": round(meta.get("chartPreviousClose", prev), 4),
-                "currency": meta.get("currency", "USD"),
-            }
-        except Exception as e:
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY * attempt)
-            else:
-                logger.debug(f"Yahoo quote {symbol} 失敗: {e}")
-    return {}
-
-
-def _yahoo_chart(symbol: str, range_str: str = "1y", interval: str = "1d") -> pd.DataFrame:
-    """從 Yahoo 獲取歷史 K 線（帶重試，404 不重試）"""
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            url = f"{YAHOO_BASE}/v8/finance/chart/{symbol}"
-            params = {"range": range_str, "interval": interval}
-            resp = _yahoo_session.get(url, params=params, timeout=30)
-            if resp.status_code == 404:
-                logger.debug(f"Yahoo chart {symbol}: 404 符號不存在，跳過")
-                return pd.DataFrame()
-            if resp.status_code == 429:
-                time.sleep(RETRY_DELAY * attempt)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-
-            result = data.get("chart", {}).get("result", [])
-            if not result:
-                return pd.DataFrame()
-
-            ts = result[0].get("timestamp", [])
-            indicators = result[0].get("indicators", {})
-            quote = indicators.get("quote", [{}])[0]
-
-            if not ts:
-                return pd.DataFrame()
-
-            records = []
-            for i, t in enumerate(ts):
-                o = quote.get("open", [])[i] if i < len(quote.get("open", [])) else None
-                h = quote.get("high", [])[i] if i < len(quote.get("high", [])) else None
-                l = quote.get("low", [])[i] if i < len(quote.get("low", [])) else None
-                c = quote.get("close", [])[i] if i < len(quote.get("close", [])) else None
-                v = quote.get("volume", [])[i] if i < len(quote.get("volume", [])) else 0
-
-                if c is None:
-                    continue
-
-                records.append({
-                    "date": datetime.fromtimestamp(t).strftime("%Y-%m-%d"),
-                    "open": round(float(o or c), 4),
-                    "high": round(float(h or c), 4),
-                    "low": round(float(l or c), 4),
-                    "close": round(float(c), 4),
-                    "volume": int(v or 0),
-                    "amount": 0,
-                })
-
-            if not records:
-                return pd.DataFrame()
-
-            df = pd.DataFrame(records)
-            df = df.drop_duplicates(subset=["date"], keep="last")
-            df = df.sort_values("date").reset_index(drop=True)
-            return df
-
-        except Exception as e:
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY * attempt)
-            else:
-                logger.error(f"Yahoo chart {symbol} 失敗: {e}")
-                return pd.DataFrame()
-
-    return pd.DataFrame()
 
 
 def _twelve_time_series(symbol: str, start_date: str = None) -> pd.DataFrame:

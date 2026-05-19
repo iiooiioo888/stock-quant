@@ -293,11 +293,20 @@ def fetch_one_realtime(code: str) -> dict | None:
     獲取單只股票實時行情（多源自動降級）。
 
     優先級：
-    1. 東財五檔盤口（最詳細）
-    2. 新浪 HTTP（快速、穩定）
-    3. 騰訊 HTTP（備選）
+    1. Yahoo Finance（主源，穩定免費）
+    2. 東財五檔盤口（最詳細）
+    3. 新浪 / 騰訊 / 東財 push2（備選）
     """
-    # 源 1：東財盤口
+    # 源 1：Yahoo Finance
+    try:
+        from src.core.yahoo_finance import fetch_a_share_realtime
+        result = fetch_a_share_realtime(code)
+        if result and result.get("price", 0) > 0:
+            return result
+    except Exception as e:
+        logger.debug(f"{code}: Yahoo 實時失敗: {e}")
+
+    # 源 2：東財盤口
     result = _fetch_em_bid_ask(code)
     if result and result.get("price", 0) > 0:
         return result

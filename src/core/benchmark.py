@@ -26,27 +26,44 @@ def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
     df = load_daily_kline(BENCHMARK_CODE, start_date=start_date, end_date=end_date)
 
     if df.empty:
-        # 從 AKShare 下載
+        # 主源：Yahoo Finance（000300.SS）
         try:
+            from src.core.yahoo_finance import yahoo_chart, a_share_to_yahoo
             sd = start_date.replace("-", "") if start_date else "20200101"
-            ed = end_date.replace("-", "") if end_date else datetime.now().strftime("%Y%m%d")
-            raw = ak.stock_zh_index_daily(symbol="sh000300")
+            symbol = a_share_to_yahoo(BENCHMARK_CODE)
+            range_str = "max"
+            raw = yahoo_chart(symbol, range_str=range_str, interval="1d")
             if raw.empty:
-                return {"dates": [], "prices": [], "returns": [], "nav": []}
-            raw = raw.rename(columns={"date": "date", "open": "open", "high": "high",
-                                       "low": "low", "close": "close", "volume": "volume"})
-            raw["date"] = pd.to_datetime(raw["date"]).dt.strftime("%Y-%m-%d")
+                raise ValueError("Yahoo 滬深300 無數據")
             if start_date:
                 sd_fmt = f"{sd[:4]}-{sd[4:6]}-{sd[6:]}" if len(sd) == 8 else sd
                 raw = raw[raw["date"] >= sd_fmt]
             if end_date:
+                ed = end_date.replace("-", "")
                 ed_fmt = f"{ed[:4]}-{ed[4:6]}-{ed[6:]}" if len(ed) == 8 else ed
                 raw = raw[raw["date"] <= ed_fmt]
-            raw = raw.sort_values("date").reset_index(drop=True)
-            df = raw
+            df = raw.sort_values("date").reset_index(drop=True)
         except Exception as e:
-            logger.error(f"獲取滬深300 數據失敗: {e}")
-            return {"dates": [], "prices": [], "returns": [], "nav": []}
+            logger.warning(f"Yahoo 滬深300 失敗，嘗試 AKShare: {e}")
+            try:
+                sd = start_date.replace("-", "") if start_date else "20200101"
+                ed = end_date.replace("-", "") if end_date else datetime.now().strftime("%Y%m%d")
+                raw = ak.stock_zh_index_daily(symbol="sh000300")
+                if raw.empty:
+                    return {"dates": [], "prices": [], "returns": [], "nav": []}
+                raw = raw.rename(columns={"date": "date", "open": "open", "high": "high",
+                                           "low": "low", "close": "close", "volume": "volume"})
+                raw["date"] = pd.to_datetime(raw["date"]).dt.strftime("%Y-%m-%d")
+                if start_date:
+                    sd_fmt = f"{sd[:4]}-{sd[4:6]}-{sd[6:]}" if len(sd) == 8 else sd
+                    raw = raw[raw["date"] >= sd_fmt]
+                if end_date:
+                    ed_fmt = f"{ed[:4]}-{ed[4:6]}-{ed[6:]}" if len(ed) == 8 else ed
+                    raw = raw[raw["date"] <= ed_fmt]
+                df = raw.sort_values("date").reset_index(drop=True)
+            except Exception as e2:
+                logger.error(f"獲取滬深300 數據失敗: {e2}")
+                return {"dates": [], "prices": [], "returns": [], "nav": []}
 
     if df.empty:
         return {"dates": [], "prices": [], "returns": [], "nav": []}

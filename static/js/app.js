@@ -6,6 +6,7 @@ const App = {
   _ws: null,
   _wsRetry: 0,
   _wsMaxRetry: 15,
+  _wsAuthRequired: false,
   _currentTab: 'dashboard',
 
   /**
@@ -18,15 +19,18 @@ const App = {
     this.initTheme();
     this.initTabs();
     this.initWebSocket();
-    this.initHeatmapStrategy();
     this._initGreeting();
     this._initMarketStatus();
     this._initTips();
-    this._initStrategies();
     this._initSidebarToggle();
     this._initGlobalSearch();
-    this._initQuickStats();
     this._initTaskPanel();
+
+    // 並行預載（不阻塞首屏 Tab）
+    Promise.all([
+      this._initStrategies(),
+      this._initQuickStats(),
+    ]).catch(() => {});
 
     // 載入默認 Tab
     this.loadTab('dashboard');
@@ -142,6 +146,9 @@ const App = {
         if (current && optEl.querySelector(`option[value="${current}"]`)) {
           optEl.value = current;
         }
+      }
+      if (typeof Heatmap !== 'undefined') {
+        Heatmap.bindStrategyChange();
       }
     } catch (e) {
       console.warn('載入策略列表失敗:', e);
@@ -342,7 +349,11 @@ const App = {
 
     // 顯示目標 tab
     const target = document.getElementById('tab-' + tab);
-    if (target) target.classList.remove('h');
+    if (target) {
+      target.classList.remove('h');
+      target.style.opacity = '';
+      target.style.transform = '';
+    }
 
     // 更新導航高亮
     document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('a'));
@@ -350,6 +361,16 @@ const App = {
     if (navBtn) navBtn.classList.add('a');
 
     this._currentTab = tab;
+
+    // Tab 顯示後重算圖表尺寸（避免在隱藏狀態下渲染為空白）
+    if (typeof Charts !== 'undefined') {
+      requestAnimationFrame(() => {
+        Charts.resizeTab('tab-' + tab);
+        if (tab === 'dashboard' && typeof Dashboard !== 'undefined') {
+          Dashboard.ensureCharts();
+        }
+      });
+    }
 
     // 切換 tab 時停止非活躍模塊的輪詢
     if (tab !== 'dashboard' && typeof Dashboard !== 'undefined') {
@@ -380,8 +401,12 @@ const App = {
       case 'data':
         if (typeof Data !== 'undefined') Data.load();
         break;
+      case 'heatmap':
+        if (typeof Heatmap !== 'undefined') Heatmap.initTab();
+        break;
+      case 'compare':
+        break;
       case 'analysis':
-        // Analysis tab loads on demand via buttons
         break;
       case 'tasks':
         if (typeof Tasks !== 'undefined') Tasks.load();
@@ -393,10 +418,15 @@ const App = {
   // WebSocket
   // ============================================================
 
-  initWebSocket() {
+  async initWebSocket() {
+    try {
+      const h = await Api.getHealth();
+      if (h && typeof h.ws_auth_required === 'boolean') {
+        this._wsAuthRequired = h.ws_auth_required;
+      }
+    } catch (e) { /* ignore */ }
     this._connectWS();
 
-    // 心跳
     setInterval(() => {
       if (this._ws && this._ws.readyState === 1) {
         this._ws.send('ping');
@@ -404,40 +434,51 @@ const App = {
     }, 25000);
   },
 
+  _setWsStatus(on, text) {
+    const dot = document.getElementById('wsDot');
+    if (dot) dot.className = 'ws-dot ' + (on ? 'on' : 'off');
+    const sidebarDot = document.getElementById('wsDotSidebar');
+    if (sidebarDot) sidebarDot.className = 'ws-dot ' + (on ? 'on' : 'off');
+    const sidebarText = document.getElementById('sidebarStatusText');
+    if (sidebarText && text) sidebarText.textContent = text;
+  },
+
   _connectWS() {
+    const token = localStorage.getItem('sq_token') || Api._token;
+    if (this._wsAuthRequired && !token) {
+      this._setWsStatus(false, '需登錄');
+      this._wsRetry = this._wsMaxRetry + 1;
+      return;
+    }
+
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // 攜帶 token 進行 WebSocket 認證
-    const token = localStorage.getItem('sq_token');
     const wsUrl = token
-      ? `${proto}//${location.host}/ws?token=${token}`
+      ? `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`
       : `${proto}//${location.host}/ws`;
     this._ws = new WebSocket(wsUrl);
 
     this._ws.onopen = () => {
-      document.getElementById('wsDot').className = 'ws-dot on';
-      const sidebarDot = document.getElementById('wsDotSidebar');
-      if (sidebarDot) sidebarDot.className = 'ws-dot on';
-      const sidebarText = document.getElementById('sidebarStatusText');
-      if (sidebarText) sidebarText.textContent = '已連接';
+      this._setWsStatus(true, '已連接');
       this._wsRetry = 0;
     };
 
     this._ws.onclose = () => {
-      document.getElementById('wsDot').className = 'ws-dot off';
-      const sidebarDot = document.getElementById('wsDotSidebar');
-      if (sidebarDot) sidebarDot.className = 'ws-dot off';
-      const sidebarText = document.getElementById('sidebarStatusText');
+      this._setWsStatus(false);
+
+      if (this._wsAuthRequired && !token) {
+        this._setWsStatus(false, '需登錄');
+        return;
+      }
 
       this._wsRetry++;
       if (this._wsRetry > this._wsMaxRetry) {
-        if (sidebarText) sidebarText.textContent = '連接失敗';
-        return; // 停止重連
+        this._setWsStatus(false, '連接失敗');
+        return;
       }
 
-      if (sidebarText) sidebarText.textContent = '重連中...';
+      this._setWsStatus(false, '重連中...');
       const delay = Math.min(1000 * Math.pow(2, this._wsRetry), 30000);
       setTimeout(() => this._connectWS(), delay);
-      this._wsRetry++;
     };
 
     this._ws.onmessage = e => {
@@ -555,20 +596,40 @@ const App = {
     } catch (e) { console.warn('載入市場失敗:', e); }
   },
 
+  _downloadPollOptions(onProgress) {
+    return { timeout: 7200000, interval: 2000, onProgress };
+  },
+
   async downloadMarket() {
     const market = document.getElementById('dlMarket')?.value;
     const symInput = document.getElementById('dlSymbols')?.value?.trim();
     const btn = document.getElementById('dlMarketBtn');
     const body = symInput ? symInput.split(',').map(s => s.trim()) : null;
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ld"></span> 下載中...'; }
-    const d = await Api.post(`/api/markets/${market}/download`, body);
-    if (btn) { btn.disabled = false; btn.textContent = '下載'; }
     const el = document.getElementById('dlMarketResult');
-    if (d && d.success && el) {
-      el.innerHTML = `<div class="chip on">✅ ${market} 下載完成: ${d.total_records} 條記錄</div>`;
-      this.loadMarkets();
-    } else if (el) {
-      el.innerHTML = `<div class="chip off">❌ 下載失敗</div>`;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ld"></span> 下載中...'; }
+    if (el) el.innerHTML = '<div class="chip cfg">⏳ 任務已提交，下載中…</div>';
+    try {
+      const d = await Api.post(`/api/markets/${market}/download`, body);
+      const resolved = await Api.resolveTaskResponse(d, App._downloadPollOptions((task) => {
+        if (!el || typeof TaskCommon === 'undefined') return;
+        const sub = TaskCommon.formatTaskSubtitle(task);
+        if (sub) el.innerHTML = `<div class="chip cfg">⏳ ${sub}</div>`;
+      }));
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result && el) {
+        const line = (typeof TaskCommon !== 'undefined' && TaskCommon.downloadResultLine(result))
+          || `${result.total_records || 0} 條記錄`;
+        el.innerHTML = `<div class="chip on">✅ ${market} 下載完成: ${line}</div>`;
+        this.loadMarkets();
+        if (typeof Utils !== 'undefined') Utils.toast('下載完成，可在任務面板查看詳情', 3000, 'success');
+      } else if (el) {
+        const err = resolved?.task?.error || '';
+        el.innerHTML = `<div class="chip off">❌ 下載失敗${err ? ': ' + err : ''}</div>`;
+      }
+    } catch (e) {
+      if (el) el.innerHTML = `<div class="chip off">❌ 下載出錯: ${e.message}</div>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '下載'; }
     }
   },
 
@@ -588,21 +649,28 @@ const App = {
 
     try {
       const d = await Api.post('/api/download-all');
+      const resolved = await Api.resolveTaskResponse(d, App._downloadPollOptions((task) => {
+        if (statusEl && typeof TaskCommon !== 'undefined') {
+          const sub = TaskCommon.formatTaskSubtitle(task);
+          if (sub) statusEl.textContent = sub;
+        }
+        if (bar && task?.progress) bar.style.width = Math.max(10, task.progress) + '%';
+      }));
       if (bar) bar.style.width = '100%';
-
-      if (d && d.success) {
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result) {
         if (statusEl) statusEl.textContent = '下載完成！';
         if (resultEl) {
-          const details = d.details || [];
-          const successList = details.filter(r => r.records > 0);
+          const details = result.details || [];
           const failList = details.filter(r => r.records === 0);
-          let html = `<div class="chip on">✅ 全部下載完成: ${d.total_records} 條記錄, ${d.success_symbols}/${d.total_symbols} 個標的成功</div>`;
+          let html = `<div class="chip on">✅ 全部下載完成: ${result.total_records} 條記錄, ${result.success_symbols}/${result.total_symbols} 個標的成功</div>`;
           if (failList.length > 0) {
             html += `<div style="margin-top:6px;font-size:11px;color:var(--text-dim)">失敗: ${failList.map(r => r.code).join(', ')}</div>`;
           }
           resultEl.innerHTML = html;
         }
         this.loadMarkets();
+        if (typeof Utils !== 'undefined') Utils.toast('全市場下載完成', 3000, 'success');
       } else {
         if (resultEl) resultEl.innerHTML = '<div class="chip off">❌ 下載失敗</div>';
       }
@@ -631,23 +699,30 @@ const App = {
 
     try {
       const d = await Api.post('/api/download-all');
+      const resolved = await Api.resolveTaskResponse(d, App._downloadPollOptions((task) => {
+        if (typeof TaskCommon !== 'undefined') {
+          const sub = TaskCommon.formatTaskSubtitle(task);
+          if (sub && statusEl) statusEl.textContent = sub;
+        }
+        if (bar && task?.progress) bar.style.width = Math.max(5, task.progress) + '%';
+        if (detail && typeof TaskCommon !== 'undefined') {
+          const sub = TaskCommon.formatTaskSubtitle(task);
+          if (sub) detail.textContent = sub;
+        }
+      }));
       if (bar) bar.style.width = '100%';
-
-      if (d && d.success) {
-        const details = d.details || [];
-        const successList = details.filter(r => r.records > 0);
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result) {
+        const details = result.details || [];
         const failList = details.filter(r => r.records === 0);
-
-        if (statusEl) statusEl.textContent = `✅ 下載完成！共 ${d.total_records.toLocaleString()} 條記錄`;
+        if (statusEl) statusEl.textContent = `✅ 下載完成！共 ${(result.total_records || 0).toLocaleString()} 條記錄`;
         if (detail) {
-          let txt = `${d.success_symbols}/${d.total_symbols} 個標的成功`;
+          let txt = `${result.success_symbols}/${result.total_symbols} 個標的成功`;
           if (failList.length > 0) txt += ` | 失敗: ${failList.map(r => r.code).join(', ')}`;
           detail.textContent = txt;
         }
-
-        // 刷新儀表盤數據
         if (typeof Dashboard !== 'undefined') Dashboard.load();
-        Utils.toast(`下載完成: ${d.total_records.toLocaleString()} 條記錄`);
+        Utils.toast(`下載完成: ${(result.total_records || 0).toLocaleString()} 條記錄`);
       } else {
         if (statusEl) statusEl.textContent = '❌ 下載失敗';
       }
@@ -694,13 +769,9 @@ const App = {
   // ============================================================
 
   initHeatmapStrategy() {
-    const sel = document.getElementById('hmStrategy');
-    if (sel) {
-      sel.addEventListener('change', () => {
-        if (typeof Heatmap !== 'undefined') Heatmap.updateParams();
-      });
-      // 初始化時也更新參數
-      if (typeof Heatmap !== 'undefined') Heatmap.updateParams();
+    if (typeof Heatmap !== 'undefined') {
+      Heatmap.bindStrategyChange();
+      Heatmap.updateParams();
     }
   },
 };
@@ -735,11 +806,15 @@ function loadMarketRealtime() { App.loadMarketRealtime(); }
 // ============================================================
 
 App._runCompare = async function() {
-  const codes = document.getElementById('cmpCodes').value.split(',').map(s => s.trim());
+  const codes = document.getElementById('cmpCodes').value.split(',').map(s => s.trim()).filter(Boolean);
   const days = parseInt(document.getElementById('cmpDays').value) || 250;
   const btn = document.getElementById('cmpBtn');
 
-  Utils.btnLoading(btn, true);
+  if (!codes.length) {
+    return Utils.toast('請輸入至少一個股票代碼', 3000, 'warning');
+  }
+
+  Utils.btnLoading(btn, true, '對比中...');
   const d = await Api.compareStocks(codes, days);
   Utils.btnLoading(btn, false, '對比');
 
@@ -748,12 +823,22 @@ App._runCompare = async function() {
   const comp = d.comparison || {};
   const series = [];
   for (const [code, v] of Object.entries(comp)) {
-    series.push({ label: code, data: v.relative_return, dates: v.dates });
+    if (v?.relative_return?.length) {
+      series.push({ label: code, data: v.relative_return, dates: v.dates });
+    }
   }
 
   if (series.length) {
     Charts.drawLineChart('cmpChart', series);
     document.getElementById('cmpResult').classList.remove('h');
+    if (d.missing?.length) {
+      Utils.toast(`已載入 ${series.length} 只；無本地數據: ${d.missing.join(', ')}`, 5000, 'warning');
+    }
+  } else {
+    const hint = d.missing?.length
+      ? `無本地 K 線: ${d.missing.join(', ')}。請先在「數據」頁下載對應股票。`
+      : '無可比對數據，請先在「數據」頁下載股票歷史數據。';
+    Utils.toast(hint, 6000, 'warning');
   }
 };
 
@@ -783,26 +868,8 @@ App._loadHistory = async function() {
   ).join('') || '<tr><td colspan="12" style="color:var(--text-muted);text-align:center">暫無回測歷史</td></tr>';
 };
 
-App._runWalkForward = async function() {
-  const code = document.getElementById('wfCode').value.trim();
-  if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
-
-  const params = {
-    code,
-    strategy: document.getElementById('wfStrategy').value,
-    train: parseInt(document.getElementById('wfTrain').value) || 750,
-    test: parseInt(document.getElementById('wfTest').value) || 250,
-    trials: parseInt(document.getElementById('wfTrials').value) || 30,
-  };
-  const btn = document.getElementById('wfBtn');
-
-  Utils.btnLoading(btn, true, '分析中...');
-  const d = await Api.runWalkForward(params);
-  Utils.btnLoading(btn, false, '開始分析');
-
-  if (!d || !d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
-
-  const r = d.result;
+App.renderWalkForwardResult = function(r) {
+  if (!r) return;
   document.getElementById('wfStats').innerHTML = `
     <div class="c"><h3>窗口數</h3><div class="v bl">${r.n_windows}</div></div>
     <div class="c"><h3>平均 OOS 收益</h3><div class="v ${Utils.badgeClass(r.avg_oos_return_pct)}">${Utils.formatPct(r.avg_oos_return_pct)}</div></div>
@@ -833,6 +900,43 @@ App._runWalkForward = async function() {
   Utils.toast('Walk-Forward 分析完成', 3000, 'success');
 };
 
+App._runWalkForward = async function() {
+  const code = document.getElementById('wfCode').value.trim();
+  if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
+
+  const params = {
+    code,
+    strategy: document.getElementById('wfStrategy').value,
+    train: parseInt(document.getElementById('wfTrain').value) || 750,
+    test: parseInt(document.getElementById('wfTest').value) || 250,
+    trials: parseInt(document.getElementById('wfTrials').value) || 30,
+  };
+  const btn = document.getElementById('wfBtn');
+
+  Utils.btnLoading(btn, true, '分析中...');
+  const d = await Api.runWalkForward(params);
+  Utils.btnLoading(btn, false, '開始分析');
+
+  if (!d || !d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
+
+  try {
+    if (d.is_duplicate) {
+      Utils.toast('⏳ ' + (d.message || '相同分析執行中，等待完成...'), 3000, 'warning');
+    } else if (d.async && d.task_id) {
+      Utils.toast('📋 Walk-Forward 已提交', 2000, 'info');
+    }
+    const resolved = await Api.resolveTaskResponse(d);
+    const r = resolved?.result || resolved?.task?.result;
+    if (!r) {
+      Utils.toast('未取得分析結果', 3000, 'error');
+      return;
+    }
+    App.renderWalkForwardResult(r);
+  } catch (e) {
+    Utils.toast('Walk-Forward 失敗: ' + (e.message || e), 3000, 'error');
+  }
+};
+
 App._generateReport = async function() {
   const btn = document.getElementById('rptBtn');
   Utils.btnLoading(btn, true, '生成中...');
@@ -845,7 +949,9 @@ App._generateReport = async function() {
       try {
         const d = await Api.runBacktest({ code, strategy: 'dual_ma' });
         if (d && d.success) {
-          const r = d.result;
+          const resolved = await Api.resolveTaskResponse(d);
+          const r = Api.extractResult(resolved);
+          if (!r) continue;
           report += `🏆 ${code}: dual_ma | 夏普 ${r.sharpe_ratio?.toFixed(2)} | 收益 ${r.total_return_pct?.toFixed(2)}% | 回撤 ${r.max_drawdown_pct?.toFixed(1)}%\n`;
         }
       } catch {}
@@ -913,8 +1019,10 @@ App._initTaskPanel = function() {
         <button onclick="App.toggleTaskPanel()" style="background:none;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:14px;padding:2px 6px">✕</button>
       </div>
     </div>
-    <div id="taskPanelList" style="max-height:300px;overflow-y:auto;padding:8px"></div>`;
+    <div id="taskPanelQueue" style="padding:8px;border-bottom:1px solid var(--border-color,#334155)"></div>
+    <div id="taskPanelList" style="max-height:220px;overflow-y:auto;padding:8px"></div>`;
   document.body.appendChild(panel);
+  App._lastPolledCompletedId = sessionStorage.getItem('lastSeenCompletedId') || '';
 
   // Header 任務指示器
   const indicator = document.createElement('div');
@@ -939,14 +1047,28 @@ App.toggleTaskPanel = function() {
 
 App._pollTasks = async function() {
   try {
-    const d = await Api.getTasks(null, 'running');
-    if (!d) return;
-    const running = d.stats?.running || 0;
+    const q = await Api.getTaskQueue();
+    if (!q) return;
+    const active = (q.stats?.running || 0) + (q.stats?.pending || 0);
     const indicator = document.getElementById('taskIndicator');
     const countEl = document.getElementById('taskIndicatorCount');
     if (indicator) {
-      indicator.style.display = running > 0 ? 'inline-block' : 'none';
-      if (countEl) countEl.textContent = running;
+      indicator.style.display = active > 0 ? 'inline-block' : 'none';
+      if (countEl) countEl.textContent = active;
+    }
+    const recent = q.recent_completed;
+    if (recent?.task_id && recent.task_id !== App._lastPolledCompletedId) {
+      App._lastPolledCompletedId = recent.task_id;
+      sessionStorage.setItem('lastSeenCompletedId', recent.task_id);
+      Utils.toast('✅ 任務完成: ' + (recent.title || ''), 3500, 'success');
+      const panel = document.getElementById('taskPanel');
+      if (panel && panel.style.display === 'none') {
+        panel.style.display = 'block';
+      }
+    }
+    const queueEl = document.getElementById('taskPanelQueue');
+    if (queueEl && typeof TaskCommon !== 'undefined') {
+      queueEl.innerHTML = TaskCommon.renderQueueSection(q, true);
     }
   } catch {}
 };
@@ -964,8 +1086,14 @@ App._TASK_TYPE_NAMES = {
 
 App._refreshTasks = async function() {
   const container = document.getElementById('taskPanelList');
+  const queueEl = document.getElementById('taskPanelQueue');
   if (!container) return;
   container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim)"><span class="ld"></span> 載入中...</div>';
+
+  const q = await Api.getTaskQueue();
+  if (queueEl && q && typeof TaskCommon !== 'undefined') {
+    queueEl.innerHTML = TaskCommon.renderQueueSection(q, true);
+  }
 
   const d = await Api.getTasks(null, null, 30);
   if (!d || !d.tasks || !d.tasks.length) {
@@ -985,7 +1113,8 @@ App._refreshTasks = async function() {
   const statsHtml = `
     <div style="display:flex;gap:12px;padding:8px 4px;margin-bottom:8px;border-bottom:1px solid var(--border-color,#334155);font-size:11px;color:var(--text-dim,#64748b)">
       <span>📋 總計 ${stats.total || 0}</span>
-      <span style="color:#38bdf8">⏳ 運行中 ${stats.running || 0}</span>
+      <span style="color:#f59e0b">⏸️ 等待 ${stats.pending || 0}</span>
+      <span style="color:#38bdf8">⏳ 運行 ${stats.running || 0}</span>
       <span style="color:#22c55e">✅ 完成 ${stats.completed || 0}</span>
       <span style="color:#ef4444">❌ 失敗 ${stats.failed || 0}</span>
     </div>`;
@@ -1011,7 +1140,8 @@ App._refreshTasks = async function() {
         <span style="color:${statusColors[t.status] || '#94a3b8'};font-size:11px;font-weight:600">${
           t.status === 'running' ? t.progress + '%' : (t.status === 'completed' && t.has_result ? '查看' : t.status)
         }</span>
-        ${t.status === 'running' ? `<button onclick="event.stopPropagation();App._cancelTask('${t.task_id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:2px 4px" title="取消">✕</button>` : ''}
+        ${(t.status === 'running' || t.status === 'pending') ? `<button onclick="event.stopPropagation();App._cancelTask('${t.task_id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:2px 4px" title="取消">✕</button>` : ''}
+        ${canViewResult ? `<button onclick="event.stopPropagation();TaskCommon.navigateToResult('${t.task_id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px">前往</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1167,4 +1297,13 @@ App.releaseTaskDedup = function(taskType, params) {
 
 document.addEventListener('DOMContentLoaded', () => {
   App.init();
+});
+
+window.addEventListener('load', () => {
+  if (typeof Charts === 'undefined') return;
+  const tab = App._currentTab || 'dashboard';
+  Charts.resizeTab('tab-' + tab);
+  if (tab === 'dashboard' && typeof Dashboard !== 'undefined') {
+    Dashboard.ensureCharts();
+  }
 });

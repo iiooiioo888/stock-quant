@@ -1,6 +1,13 @@
 # stock-quant — A股量化回測 + 實時盯盤預警
 
-生產級量化系統，基於 AKShare 數據源，SQLite 本地存儲，FastAPI Web 服務。
+生產級量化系統，**以 Yahoo Finance 為主數據源**（A 股 / 美股 / 指數等），AKShare 為備選；SQLite 本地存儲，FastAPI Web 服務。
+
+### 核心特性
+
+- **異步任務佇列**：回測、優化、組合、Walk-Forward 等提交後立即返回，Web 端輪詢並在「任務面板」查看進度
+- **並行加速**：可配置任務槽位、網格搜索進程/線程池；Windows 自動使用線程池避免 SQLite 多進程問題
+- **結果緩存**：相同參數 + 相同 K 線版本命中緩存，秒級返回；支持本地 LRU 或 Redis（Docker 默認帶 Redis）
+- **19 種內置策略** + 11 種組合方法 + Optuna 貝葉斯優化
 
 ## 🌐 在線演示
 
@@ -30,14 +37,39 @@ python main.py serve
 # 訪問 http://localhost:8000
 ```
 
-### 方式二：Docker
+### 方式二：Docker Compose（推薦）
 
 ```bash
 cp .env.example .env
-docker compose up -d
+# 可選：編輯 .env 設置 SQ_JWT_SECRET、SQ_REDIS_PASSWORD 等
 
-# 訪問 http://localhost:8000
+# 啟動應用 + Redis（緩存跨進程共享）
+docker compose up -d --build
+
+# 訪問 Web 儀表盤
+# http://localhost:8000
 ```
+
+**可選服務：**
+
+```bash
+# 加上 Nginx 反向代理（端口 80）
+docker compose --profile proxy up -d
+
+# 僅啟動應用、不用 Redis（僅容器內 LRU 緩存）
+SQ_REDIS_ENABLED=false docker compose up -d app
+```
+
+**常用命令：**
+
+```bash
+docker compose logs -f app      # 查看日誌
+docker compose ps             # 服務狀態
+docker compose down           # 停止並移除容器
+docker compose restart app    # 重啟應用
+```
+
+數據與日誌通過 volume 掛載到宿主機 `./data`、`./logs`，重建容器不丟數據。
 
 ## CLI 命令
 
@@ -81,6 +113,20 @@ python main.py leaderboard
 | `/api/health/detailed` | GET | 詳細健康狀態 |
 | `/api/status` | GET | 系統狀態 |
 | `/api/config` | GET | 當前配置 |
+
+### 任務與緩存端點
+
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/api/tasks` | GET | 任務列表 + 佇列快照 + 統計 |
+| `/api/tasks/queue` | GET | 執行佇列（當前/等待/最近完成） |
+| `/api/tasks/{task_id}` | GET | 單任務詳情（含 result） |
+| `/api/tasks/{task_id}/cancel` | POST | 取消任務 |
+| `/api/tasks/{task_id}` | DELETE | 刪除已完成任務 |
+| `/api/cache/stats` | GET | 緩存統計（LRU / Redis） |
+| `/api/cache/clear` | POST | 清除計算緩存（可選 `?code=`） |
+
+> 回測、優化、組合、Walk-Forward、自動優化等 POST 接口返回 `{ async: true, task_id }`，前端輪詢 `/api/tasks/{id}` 直至 `status=completed`。緩存命中時可能直接返回 `{ async: false, from_cache: true, result }`。
 
 ### 數據端點
 
@@ -219,11 +265,16 @@ stock-quant/
 │   ├── api/
 │   │   └── app.py          # FastAPI 應用 + 70+ 端點 + 內建儀表盤
 │   ├── core/
-│   │   ├── db.py           # 數據庫操作（SQLite + LRU 緩存）
+│   │   ├── db.py           # 數據庫操作（SQLite + 進程內 LRU）
+│   │   ├── yahoo_finance.py # Yahoo Finance（A股/全球 主源）
+│   │   ├── cache.py        # Redis / 本地 LRU 統一緩存
+│   │   ├── result_cache.py # 回測/優化等計算結果緩存
+│   │   ├── task_manager.py # 異步任務佇列 + 去重 + 並行槽位
+│   │   ├── compute_budget.py # 全局 CPU 預算分配
 │   │   ├── history.py      # 歷史數據下載 + 增量更新
 │   │   ├── realtime.py     # 實時行情
 │   │   ├── alerts.py       # 預警引擎 + 多渠道通知
-│   │   ├── backtest.py     # 回測引擎（8 種策略 + 滑點/T+1/漲跌停）
+│   │   ├── backtest.py     # 回測引擎（19 種策略 + 滑點/T+1/漲跌停）
 │   │   ├── optimize.py     # 參數優化（網格 + Optuna）
 │   │   ├── portfolio.py    # 11 種組合方法 + 相關性 + 有效前沿
 │   │   ├── walkforward.py  # Walk-Forward 分析
@@ -242,13 +293,13 @@ stock-quant/
 │   │   ├── capital_flow.py # 資金流向
 │   │   ├── dragon_tiger.py # 龍虎榜
 │   │   ├── fundamental.py  # 基本面數據
-│   │   └── cache.py        # 進階緩存
+│   │   └── ...
 │   ├── models/
 │   │   └── schemas.py      # Pydantic 數據模型
 │   └── utils/
 │       └── logger.py       # 日誌系統（輪轉 + 分級）
 ├── static/
-│   ├── index.html          # 內建儀表盤（13 Tab）
+│   ├── index.html          # 內建儀表盤（多 Tab + 任務面板）
 │   ├── css/style.css       # 暗色/亮色主題
 │   ├── js/
 │   │   ├── app.js          # 主應用 + Tab 路由
@@ -256,6 +307,8 @@ stock-quant/
 │   │   ├── charts.js       # 圖表封裝
 │   │   ├── dashboard.js    # 儀表盤
 │   │   ├── backtest.js     # 回測 Tab
+│   │   ├── tasks.js        # 任務面板 Tab
+│   │   ├── task-common.js  # 任務佇列 UI 組件
 │   │   ├── optimize.js     # 優化 Tab
 │   │   ├── portfolio.js    # 組合 Tab
 │   │   ├── signals.js      # 信號 Tab
@@ -348,32 +401,56 @@ stock-quant/
 
 ## 配置
 
-所有配置項支持環境變量覆蓋（`SQ_` 前綴）：
-
-```bash
-# 環境變量示例
-export SQ_WEB_PORT=8080
-export SQ_BACKTEST_CASH=200000
-export SQ_WATCHLIST='["000001","600519"]'
-```
-
-或使用 `.env` 文件：
+所有配置項支持環境變量覆蓋（`SQ_` 前綴）。複製模板後編輯：
 
 ```bash
 cp .env.example .env
-# 編輯 .env 文件
 ```
+
+### 常用環境變量
+
+| 變量 | 說明 | 默認 |
+|------|------|------|
+| `SQ_WEB_PORT` | Web 端口 | `8000` |
+| `SQ_BACKTEST_CASH` | 回測初始資金 | `100000` |
+| `SQ_CACHE_ENABLED` | 啟用計算結果緩存 | `true` |
+| `SQ_CACHE_BACKTEST_TTL` | 回測緩存秒數 | `3600` |
+| `SQ_CACHE_OPTIMIZE_TTL` | 優化緩存秒數 | `7200` |
+| `SQ_REDIS_ENABLED` | 使用 Redis（否則僅 LRU） | `false`（本地）/ `true`（Compose） |
+| `SQ_REDIS_URL` | Redis 連接串 | — |
+| `SQ_TASK_MAX_WORKERS` | 並行任務槽（`0`=自動） | `0` |
+| `SQ_OPTIMIZE_ALL_PARALLEL` | 全策略優化是否並行 | `false` |
+| `SQ_TASK_PARALLEL_GRID` | 網格搜索是否並行 | `true` |
+| `SQ_JWT_SECRET` | JWT 密鑰（生產必設） | 自動生成 |
+| `SQ_CORS_ORIGINS` | 允許的前端來源 | localhost |
+| `SQ_REDIS_PASSWORD` | Redis 密碼（Compose） | 見 `.env.example` |
+| `NGINX_HTTP_PORT` | Nginx 對外端口 | `80` |
+
+```bash
+# 環境變量示例（Linux / macOS）
+export SQ_WEB_PORT=8080
+export SQ_BACKTEST_CASH=200000
+export SQ_CACHE_ENABLED=true
+export SQ_TASK_MAX_WORKERS=2
+export SQ_OPTIMIZE_ALL_PARALLEL=false
+```
+
+下載或增量更新 K 線後，相關計算緩存會自動失效；也可手動 `POST /api/cache/clear`。
 
 ## 數據來源
 
-- 歷史日K: 東方財富（AKShare `stock_zh_a_hist`）+ 新浪備選
-- 實時行情: 東方財富（AKShare `stock_bid_ask_em`）
-- 板塊數據: 東方財富行業/概念板塊
-- 資金流向: 東方財富主力資金
-- 北向資金: 東方財富滬深港通
-- 龍虎榜: 東方財富龍虎榜
-- 基本面: 東方財富 PE/PB/ROE
-- 均為免費公開數據，高頻調用可能被限流
+| 類型 | 主源 | 備選 |
+|------|------|------|
+| A 股日 K | **Yahoo Finance**（`600519.SS` / `000001.SZ`） | 東財 AKShare、新浪、網易、騰訊、HTTP 直連 |
+| A 股實時 | **Yahoo Finance** | 東財盤口、新浪、騰訊 |
+| 滬深300 基準 | **Yahoo**（`000300.SS`） | AKShare 指數 |
+| 美股/港股/指數/ETF | **Yahoo Finance** | 新浪全球、Twelve Data |
+| 加密貨幣 | Binance | CoinGecko |
+| 外匯 | Frankfurter / Yahoo | 新浪 |
+
+- 板塊、資金流向、龍虎榜、基本面等仍使用 AKShare（東方財富）
+- Yahoo 免費無需 API Key；若遇 `429` 會自動重試並降級到 AKShare
+- 分鐘 K 線仍使用東財接口（Yahoo 日線為主）
 
 ## 擴展
 
@@ -385,21 +462,16 @@ cp .env.example .env
 
 ## 前端
 
-內建暗色/亮色主題儀表盤，包含 13 個 Tab：
+內建暗色/亮色主題儀表盤，主要 Tab 包括：
 
 1. **儀表盤** — 系統概覽 + 監控列表
-2. **回測** — 單策略/全策略對比 + K線 + 交易明細
+2. **回測** — 單策略/全策略對比 + K線 + 交易明細（異步任務 + 緩存）
 3. **優化** — 參數優化 + 全自動尋優
-4. **組合** — 11 種組合方法 + 預設組合 + 有效前沿
-5. **對比** — 多股收益率對比
-6. **歷史** — 回測歷史查詢
-7. **Walk-Forward** — 滾動窗口過擬合檢測
-8. **熱力圖** — 策略參數敏感性 Canvas 渲染
-9. **篩選器** — 多條件股票篩選
-10. **信號** — 實時/歷史/強度信號
-11. **數據** — 板塊/資金流向/龍虎榜/基本面
-12. **報告** — 每日策略報告 + 定時任務
-13. **預警** — 通知渠道 + 預警歷史
+4. **組合** — 多種組合方法 + 預設組合 + 有效前沿
+5. **任務面板** — 執行佇列、並行槽、等待/運行/完成任務、一鍵跳轉結果
+6. **對比 / 歷史 / Walk-Forward / 熱力圖 / 篩選器 / 信號 / 數據 / 報告 / 預警** 等
+
+右下角浮動任務面板可快速查看後台任務進度。
 
 ## 部署
 
@@ -413,18 +485,28 @@ cp .env.example .env
 
 > 需要自動部署：在 GitHub Repo → Settings → Secrets 添加 `RENDER_SERVICE_ID` 和 `RENDER_API_KEY`
 
-### Docker
+### Docker 單容器
 
 ```bash
 docker build -t stock-quant .
-docker run -p 8000:8000 -e SQ_DEMO_MODE=true stock-quant
+docker run -p 8000:8000 \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  -e SQ_DB_PATH=/app/data/stock.db \
+  -e SQ_CACHE_ENABLED=true \
+  -e SQ_REDIS_ENABLED=false \
+  stock-quant
 ```
 
-### docker-compose
+### Docker Compose 服務說明
 
-```bash
-docker-compose up -d
-```
+| 服務 | 說明 | 默認 |
+|------|------|------|
+| `app` | FastAPI + 內建前端 | 啟動，端口 `8000` |
+| `redis` | 計算緩存、可選行情緩存 | 啟動，僅容器網絡內訪問 |
+| `nginx` | 反向代理 | 需 `--profile proxy`，端口 `80` |
+
+Compose 會將 `SQ_REDIS_URL` 指向 `redis` 服務，並掛載 `./data`、`./logs`。
 
 ### 生產部署必改配置
 
@@ -436,6 +518,8 @@ docker-compose up -d
 | `SQ_JWT_SECRET` | JWT 簽名密鑰（至少 32 字符） | `openssl rand -hex 32` |
 | `SQ_WS_AUTH_REQUIRED` | WebSocket 強制認證（默認 true） | `true` |
 | `SQ_DEMO_ADMIN_PASSWORD` | 管理員密碼（不設則隨機生成） | 自定義強密碼 |
+| `SQ_REDIS_PASSWORD` | Docker Redis 密碼 | 與 `SQ_REDIS_URL` 一致 |
+| `SQ_CACHE_ENABLED` | 計算結果緩存 | `true` |
 
 ```bash
 # 示例：生產環境啟動

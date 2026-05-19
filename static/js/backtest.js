@@ -46,22 +46,25 @@ const Backtest = {
 
     if (!d || !d.success) { this._running = false; return; }
 
-    // 任務去重提示
-    if (d.is_duplicate) {
-      Utils.toast('⏳ ' + (d.message || '相同回測正在執行中'), 3000, 'warning');
+    try {
+      if (d.is_duplicate) {
+        Utils.toast('⏳ ' + (d.message || '相同回測正在執行中，等待完成...'), 3000, 'warning');
+      } else if (d.async && d.task_id) {
+        Utils.toast('📋 任務已提交，執行中...', 2000, 'info');
+      }
+      const resolved = await Api.resolveTaskResponse(d);
+      const r = resolved?.result || resolved?.task?.result;
+      if (!r) {
+        Utils.toast('未取得回測結果', 3000, 'error');
+        return;
+      }
+      this._lastResult = r;
+      this._displayResult(r);
+    } catch (e) {
+      Utils.toast('回測失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
       this._running = false;
-      return;
     }
-
-    // 顯示任務 ID
-    if (d.task_id) {
-      Utils.toast('📋 任務已建立: ' + d.task_id, 2000, 'info');
-    }
-
-    const r = d.result;
-    this._lastResult = r;
-    this._displayResult(r);
-    this._running = false;
   },
 
   /**
@@ -166,18 +169,29 @@ const Backtest = {
     const d = await Api.runMultiBacktest(code);
     if (!d || !d.success) { this._running = false; return; }
 
-    // 任務去重提示
-    if (d.is_duplicate) {
-      Utils.toast('⏳ ' + (d.message || '相同多策略對比正在執行中'), 3000, 'warning');
+    try {
+      if (d.is_duplicate) {
+        Utils.toast('⏳ ' + (d.message || '相同任務執行中，等待完成...'), 3000, 'warning');
+      } else if (d.async && d.task_id) {
+        Utils.toast('📋 多策略對比已提交', 2000, 'info');
+      }
+      const resolved = await Api.resolveTaskResponse(d);
+      const results = resolved?.results || resolved?.result || resolved?.task?.result;
+      if (!results) {
+        Utils.toast('未取得對比結果', 3000, 'error');
+        return;
+      }
+      this.displayMultiResults(Array.isArray(results) ? results : (results.results || []));
+    } catch (e) {
+      Utils.toast('多策略對比失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
       this._running = false;
-      return;
     }
+  },
 
-    if (d.task_id) {
-      Utils.toast('📋 任務已建立: ' + d.task_id, 2000, 'info');
-    }
-
-    const results = d.results;
+  displayMultiResults(results) {
+    if (!results || !results.length) return;
+    document.getElementById('btResult').classList.add('h');
     document.getElementById('btAllCount').textContent = results.length + ' 個策略';
     document.getElementById('btAllTable').innerHTML = results.map(r =>
       `<tr>
@@ -192,15 +206,13 @@ const Backtest = {
         <td class="r">${r.total_trades}</td>
       </tr>`
     ).join('');
-
     const series = results.filter(r => r.nav && r.nav.length > 1).map(r => ({
       label: r.strategy,
       data: r.nav,
       dates: r.dates,
     }));
-    Charts.drawLineChart('btAllChart', series);
+    if (typeof Charts !== 'undefined') Charts.drawLineChart('btAllChart', series);
     document.getElementById('btAllResult').classList.remove('h');
-    this._running = false;
   },
 
   // ============================================================

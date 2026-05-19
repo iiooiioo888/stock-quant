@@ -4,11 +4,18 @@
 import sqlite3
 import os
 import threading
+import time
 import pandas as pd
 from functools import lru_cache
 from contextlib import contextmanager
 from src.config import settings
 from src.utils.logger import logger
+
+_KLINE_COLS = "code, date, open, high, low, close, volume, amount, turnover, market"
+_codes_cache: dict = {"ts": 0.0, "data": []}
+_db_stats_cache: dict = {"ts": 0.0, "data": {}}
+_STATS_CACHE_TTL = 5.0
+_CODES_CACHE_TTL = 30.0
 
 
 # ============================================================
@@ -24,7 +31,9 @@ def _get_thread_conn() -> sqlite3.Connection:
         conn = sqlite3.connect(settings.db_path, check_same_thread=False, timeout=10.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-8000")  # 8MB 緩存
+        conn.execute("PRAGMA cache_size=-32000")  # 32MB 頁緩存
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap 讀取
         conn.execute("PRAGMA busy_timeout=5000")  # 5 秒等待鎖釋放
         _thread_local.conn = conn
     return conn
@@ -46,10 +55,10 @@ def get_conn():
 # LRU 緩存層
 # ============================================================
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=256)
 def _load_daily_kline_cached(code: str, start_date: str = None, end_date: str = None) -> tuple:
     """緩存版本 — 返回 tuple 以便 hashable"""
-    sql = "SELECT * FROM daily_kline WHERE code = ?"
+    sql = f"SELECT {_KLINE_COLS} FROM daily_kline WHERE code = ?"
     params = [code]
 
     if start_date:
@@ -70,10 +79,28 @@ def _load_daily_kline_cached(code: str, start_date: str = None, end_date: str = 
 
 
 def clear_data_cache():
-    """清除數據緩存"""
+    """清除數據緩存（進程內 LRU + 計算結果緩存）"""
+    global _codes_cache, _db_stats_cache
     _load_daily_kline_cached.cache_clear()
+    _codes_cache = {"ts": 0.0, "data": []}
+    _db_stats_cache = {"ts": 0.0, "data": {}}
+    try:
+        from src.core.backtest import clear_prepare_cache
+        clear_prepare_cache()
+    except Exception:
+        pass
+    try:
+        from src.core.api_cache import clear_all
+        clear_all()
+    except Exception:
+        pass
     try:
         _load_minute_kline_cached.cache_clear()
+    except Exception:
+        pass
+    try:
+        from src.core.result_cache import invalidate_compute
+        invalidate_compute()
     except Exception:
         pass
     logger.info("數據緩存已清除")
@@ -317,10 +344,16 @@ def load_daily_kline(code: str, start_date: str = None, end_date: str = None) ->
 
 
 def load_all_codes() -> list[str]:
-    """獲取數據庫中所有股票代碼"""
+    """獲取數據庫中所有股票代碼（短 TTL 進程緩存）"""
+    global _codes_cache
+    now = time.time()
+    if _codes_cache["data"] and now - _codes_cache["ts"] < _CODES_CACHE_TTL:
+        return list(_codes_cache["data"])
     with get_conn() as conn:
         rows = conn.execute("SELECT DISTINCT code FROM daily_kline ORDER BY code").fetchall()
-    return [r[0] for r in rows]
+    codes = [r[0] for r in rows]
+    _codes_cache = {"ts": now, "data": codes}
+    return codes
 
 
 def load_all_codes_by_market(market: str = "a_share") -> list[str]:
@@ -424,7 +457,12 @@ def get_alert_logs(limit: int = 100, code: str = None) -> list[dict]:
 
 
 def get_db_stats() -> dict:
-    """獲取數據庫統計"""
+    """獲取數據庫統計（短 TTL 緩存，避免頻繁全表 COUNT）"""
+    global _db_stats_cache
+    now = time.time()
+    if _db_stats_cache["data"] and now - _db_stats_cache["ts"] < _STATS_CACHE_TTL:
+        return dict(_db_stats_cache["data"])
+
     import os
     db_size = os.path.getsize(settings.db_path) if os.path.exists(settings.db_path) else 0
 
@@ -433,12 +471,14 @@ def get_db_stats() -> dict:
         kline_count = conn.execute("SELECT COUNT(*) FROM daily_kline").fetchone()[0]
         alert_count = conn.execute("SELECT COUNT(*) FROM alert_log").fetchone()[0]
 
-    return {
+    result = {
         "db_size_mb": round(db_size / 1024 / 1024, 2),
         "total_stocks": stock_count,
         "total_klines": kline_count,
         "total_alerts": alert_count,
     }
+    _db_stats_cache = {"ts": now, "data": result}
+    return result
 
 
 def save_backtest_result(result: dict):

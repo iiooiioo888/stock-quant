@@ -5,14 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>stock-quant</title>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-
-<!-- TradingView Lightweight Charts -->
-<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-
 <!-- Styles -->
 <link rel="stylesheet" href="/static/css/style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 </head>
 <body>
 
@@ -513,9 +508,9 @@
         <p class="sec-desc">可視化兩個參數的不同組合對策略表現的影響</p>
         <div class="fr">
             <div class="fg"><label>股票</label><input id="hmCode" value="600519"></div>
-            <div class="fg"><label>策略</label><select id="hmStrategy"></select></div>
-            <div class="fg"><label>參數 X</label><select id="hmParamX"></select></div>
-            <div class="fg"><label>參數 Y</label><select id="hmParamY"></select></div>
+            <div class="fg"><label>策略</label><select id="hmStrategy"><option value="dual_ma">雙均線</option></select></div>
+            <div class="fg"><label>參數 X</label><select id="hmParamX"><option value="fast">fast</option><option value="slow">slow</option></select></div>
+            <div class="fg"><label>參數 Y</label><select id="hmParamY"><option value="fast">fast</option><option value="slow" selected>slow</option></select></div>
             <div class="fg"><label>網格大小</label><input id="hmGrid" value="8" type="number" class="input-narrow"></div>
             <button class="btn" onclick="runHeatmap()" id="hmBtn">🌡️ 生成熱力圖</button>
         </div>
@@ -596,6 +591,7 @@
         <button data-dtab="north">🧭 北向資金</button>
         <button data-dtab="dragon">🐉 龍虎榜</button>
         <button data-dtab="fundamental">📊 基本面</button>
+        <button data-dtab="basics">📋 基本數據</button>
     </div>
     <div id="dtab-sectors" class="mt-md">
         <div class="sec"><h2>行業板塊行情</h2><button class="btn mb-md" onclick="Data.loadSectors()">🔄 載入</button><div id="sectorData"></div></div>
@@ -617,7 +613,31 @@
         <div class="sec"><h2>龍虎榜數據</h2><button class="btn mb-md" onclick="Data.loadDragonTiger()">🔄 載入</button><div id="dragonTigerData"></div></div>
     </div>
     <div id="dtab-fundamental" class="h mt-md">
-        <div class="sec"><h2>基本面篩選</h2><div class="fr"><div class="fg"><label>PE ≤</label><input id="fundPE" value="20" type="number" class="input-xs"></div><div class="fg"><label>PB ≤</label><input id="fundPB" value="3" type="number" class="input-xs"></div><div class="fg"><label>ROE ≥</label><input id="fundROE" value="15" type="number" class="input-xs"></div><button class="btn" onclick="Data.screenFundamentals()">🔍 篩選</button></div><div id="fundamentalData"></div></div>
+        <div class="sec"><h2>基本面篩選</h2>
+        <div class="fr flex-wrap">
+            <div class="fg"><label>PE ≤</label><input id="fundPE" value="20" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>PE ≥</label><input id="fundPEMin" placeholder="可選" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>PB ≤</label><input id="fundPB" value="3" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>ROE ≥%</label><input id="fundROE" value="15" type="number" class="input-xs"></div>
+            <div class="fg"><label>EPS ≥</label><input id="fundEPS" placeholder="可選" type="number" class="input-xs" step="0.01"></div>
+            <div class="fg"><label>毛利率 ≥%</label><input id="fundGross" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>淨利率 ≥%</label><input id="fundNet" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>負債率 ≤%</label><input id="fundDebt" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>市值 ≥億</label><input id="fundMV" placeholder="可選" type="number" class="input-xs"></div>
+            <button class="btn" onclick="Data.screenFundamentals()">🔍 篩選</button>
+        </div>
+        <div id="fundamentalData"></div></div>
+    </div>
+    <div id="dtab-basics" class="h mt-md">
+        <div class="sec"><h2>單股基本數據</h2>
+        <p class="sec-desc">彙總本地日 K 技術指標與基本面摘要（需先下載歷史數據）</p>
+        <div class="fr">
+            <div class="fg"><label>股票代碼</label><input id="basicsCode" value="000001" class="input-sm"></div>
+            <div class="fg"><label>回看天數</label><input id="basicsLookback" value="250" type="number" class="input-xs" min="20" max="500"></div>
+            <button class="btn" onclick="Data.loadStockBasics()">🔍 查詢</button>
+        </div>
+        <div id="basicsData" class="mt-md"></div>
+        </div>
     </div>
 </div>
 
@@ -733,6 +753,12 @@
     <!-- 統計卡片 -->
     <div class="g" id="taskStatsGrid"></div>
 
+    <!-- 執行佇列 -->
+    <div class="sec task-queue-section" id="taskQueueSection">
+        <h2>🎯 執行佇列</h2>
+        <div class="task-queue-grid" id="taskQueueGrid"></div>
+    </div>
+
     <!-- 篩選工具欄 -->
     <div class="sec">
         <div class="fr" style="align-items:center;flex-wrap:wrap;gap:8px">
@@ -750,6 +776,9 @@
                     <option value="walkforward">🔄 Walk-Forward</option>
                     <option value="auto_optimize">🤖 自動優化</option>
                     <option value="heatmap">🌡️ 熱力圖</option>
+                    <option value="data_download">📥 市場數據下載</option>
+                    <option value="data_download_all">📥 全市場下載</option>
+                    <option value="data_incremental">🔄 增量更新</option>
                 </select>
             </div>
             <div class="fg">
@@ -807,23 +836,25 @@
 <div id="modalRoot"></div>
 
 <!-- ============================================================
-     JavaScript Modules
+     JavaScript Modules（defer：不阻塞首屏渲染）
      ============================================================ -->
-<script src="/static/js/utils.js"></script>
-<script src="/static/js/api.js"></script>
-<script src="/static/js/charts.js"></script>
-<script src="/static/js/dashboard.js"></script>
-<script src="/static/js/backtest.js"></script>
-<script src="/static/js/optimize.js"></script>
-<script src="/static/js/portfolio.js"></script>
-<script src="/static/js/signals.js"></script>
-<script src="/static/js/screener.js"></script>
-<script src="/static/js/heatmap.js"></script>
-<script src="/static/js/data.js"></script>
-<script src="/static/js/analysis.js"></script>
-<script src="/static/js/task-common.js"></script>
-<script src="/static/js/tasks.js"></script>
-<script src="/static/js/app.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script defer src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<script defer src="/static/js/utils.js"></script>
+<script defer src="/static/js/api.js"></script>
+<script defer src="/static/js/charts.js"></script>
+<script defer src="/static/js/dashboard.js"></script>
+<script defer src="/static/js/backtest.js"></script>
+<script defer src="/static/js/optimize.js"></script>
+<script defer src="/static/js/portfolio.js"></script>
+<script defer src="/static/js/signals.js"></script>
+<script defer src="/static/js/screener.js"></script>
+<script defer src="/static/js/heatmap.js"></script>
+<script defer src="/static/js/data.js"></script>
+<script defer src="/static/js/analysis.js"></script>
+<script defer src="/static/js/task-common.js"></script>
+<script defer src="/static/js/tasks.js"></script>
+<script defer src="/static/js/app.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,185 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - button "☰" [active] [ref=e4] [cursor=pointer]
+      - heading "📈 stock-quant" [level=1] [ref=e5]
+    - generic [ref=e7]:
+      - generic [ref=e8]: 🔍
+      - textbox "搜索股票代碼 / 策略名稱..." [ref=e9]
+      - generic [ref=e10]: /
+    - generic [ref=e11]:
+      - generic "點擊登錄" [ref=e12] [cursor=pointer]: ● 未登錄
+      - generic [ref=e13]:
+        - generic "監控股票數" [ref=e14]:
+          - generic [ref=e15]: 📊
+          - generic [ref=e16]: "189"
+        - generic "今日預警" [ref=e18]:
+          - generic [ref=e19]: 🔔
+          - generic [ref=e20]: "0"
+      - generic [ref=e23]: 運行 0h 18m 48s
+      - button "☀️" [ref=e24] [cursor=pointer]
+  - generic [ref=e25]:
+    - generic [ref=e27]:
+      - button "📊" [ref=e259] [cursor=pointer]:
+        - generic [ref=e30]: 📊
+      - button "🧪" [ref=e260] [cursor=pointer]:
+        - generic [ref=e34]: 🧪
+      - button "⚡" [ref=e261] [cursor=pointer]:
+        - generic [ref=e37]: ⚡
+      - button "🔄" [ref=e262] [cursor=pointer]:
+        - generic [ref=e40]: 🔄
+      - button "🌡️" [ref=e263] [cursor=pointer]:
+        - generic [ref=e43]: 🌡️
+      - button "📜" [ref=e264] [cursor=pointer]:
+        - generic [ref=e46]: 📜
+      - button "💼" [ref=e265] [cursor=pointer]:
+        - generic [ref=e50]: 💼
+      - button "⚖️" [ref=e266] [cursor=pointer]:
+        - generic [ref=e53]: ⚖️
+      - button "🔍" [ref=e267] [cursor=pointer]:
+        - generic [ref=e57]: 🔍
+      - button "📡" [ref=e268] [cursor=pointer]:
+        - generic [ref=e60]: 📡
+      - button "🗄️" [ref=e269] [cursor=pointer]:
+        - generic [ref=e63]: 🗄️
+      - button "🔬" [ref=e270] [cursor=pointer]:
+        - generic [ref=e66]: 🔬
+      - button "📋" [ref=e271] [cursor=pointer]:
+        - generic [ref=e70]: 📋
+      - button "📄" [ref=e272] [cursor=pointer]:
+        - generic [ref=e73]: 📄
+      - button "🔔" [ref=e273] [cursor=pointer]:
+        - generic [ref=e76]: 🔔
+      - button "🌐" [ref=e274] [cursor=pointer]:
+        - generic [ref=e79]: 🌐
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - heading "晚上好 🌙" [level=2] [ref=e90]
+          - paragraph [ref=e91]: 晚上適合覆盤和優化策略。
+        - generic [ref=e95]: 已休市
+      - generic [ref=e96]:
+        - button "🧪 策略回測 測試你的交易策略" [ref=e97] [cursor=pointer]:
+          - generic [ref=e98]: 🧪
+          - generic [ref=e99]: 策略回測
+          - generic [ref=e100]: 測試你的交易策略
+        - button "📡 今日信號 查看最新買賣信號" [ref=e101] [cursor=pointer]:
+          - generic [ref=e102]: 📡
+          - generic [ref=e103]: 今日信號
+          - generic [ref=e104]: 查看最新買賣信號
+        - button "🔍 選股篩選 找到符合條件的股票" [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]: 🔍
+          - generic [ref=e107]: 選股篩選
+          - generic [ref=e108]: 找到符合條件的股票
+        - button "💼 組合分析 多策略組合回測" [ref=e109] [cursor=pointer]:
+          - generic [ref=e110]: 💼
+          - generic [ref=e111]: 組合分析
+          - generic [ref=e112]: 多策略組合回測
+        - button "📥 下載數據 一鍵下載全市場股票數據" [ref=e113] [cursor=pointer]:
+          - generic [ref=e114]: 📥
+          - generic [ref=e115]: 下載數據
+          - generic [ref=e116]: 一鍵下載全市場股票數據
+        - button "🌐 多市場 美股、港股、加密貨幣" [ref=e117] [cursor=pointer]:
+          - generic [ref=e118]: 🌐
+          - generic [ref=e119]: 多市場
+          - generic [ref=e120]: 美股、港股、加密貨幣
+      - generic [ref=e121]:
+        - generic [ref=e182]:
+          - heading "📊 監控股票" [level=3] [ref=e183]
+          - generic [ref=e184]: "189"
+          - generic [ref=e185]: 正在追蹤
+        - generic [ref=e186]:
+          - heading "📁 數據條數" [level=3] [ref=e187]
+          - generic [ref=e188]: 42,674
+          - generic [ref=e189]: 歷史記錄
+        - generic [ref=e190]:
+          - heading "🔔 累計預警" [level=3] [ref=e191]
+          - generic [ref=e192]: "0"
+          - generic [ref=e193]: 已觸發
+        - generic [ref=e194]:
+          - heading "💾 數據庫" [level=3] [ref=e195]
+          - generic [ref=e196]: 7.09 MB
+          - generic [ref=e197]: 存儲佔用
+      - generic [ref=e138]:
+        - heading "📈 市場總覽" [level=2] [ref=e140]
+        - heading "🧪 最近回測表現" [level=2] [ref=e144]
+        - heading "📡 信號強度分佈" [level=2] [ref=e148]
+        - heading "🏭 板塊漲跌 Top 5" [level=2] [ref=e152]
+      - heading "🏆 策略勝率排行" [level=2] [ref=e156]
+      - generic [ref=e159]:
+        - heading "📋 監控列表 5 只" [level=2] [ref=e181]:
+          - text: 📋 監控列表
+          - generic [ref=e161]: 5 只
+        - table [ref=e163]:
+          - rowgroup [ref=e164]:
+            - row "代碼 名稱 突破價 跌破價 漲跌幅 走勢 操作" [ref=e165]:
+              - columnheader "代碼" [ref=e166]
+              - columnheader "名稱" [ref=e167]
+              - columnheader "突破價" [ref=e168]
+              - columnheader "跌破價" [ref=e169]
+              - columnheader "漲跌幅" [ref=e170]
+              - columnheader "走勢" [ref=e171]
+              - columnheader "操作" [ref=e172]
+          - rowgroup [ref=e198]:
+            - row "600519 貴州茅台 1800 1500 -5.89% 編輯 刪除" [ref=e199]:
+              - cell "600519" [ref=e200]
+              - cell "貴州茅台" [ref=e201]
+              - cell "1800" [ref=e202]
+              - cell "1500" [ref=e203]
+              - cell "-5.89%" [ref=e204]:
+                - generic [ref=e205]: "-5.89%"
+              - cell [ref=e206]
+              - cell "編輯 刪除" [ref=e208]:
+                - button "編輯" [ref=e209] [cursor=pointer]
+                - button "刪除" [ref=e210] [cursor=pointer]
+            - row "601318 中國平安 60 45 -5.94% 編輯 刪除" [ref=e211]:
+              - cell "601318" [ref=e212]
+              - cell "中國平安" [ref=e213]
+              - cell "60" [ref=e214]
+              - cell "45" [ref=e215]
+              - cell "-5.94%" [ref=e216]:
+                - generic [ref=e217]: "-5.94%"
+              - cell [ref=e218]
+              - cell "編輯 刪除" [ref=e220]:
+                - button "編輯" [ref=e221] [cursor=pointer]
+                - button "刪除" [ref=e222] [cursor=pointer]
+            - row "000001 平安銀行 13 10 -1.36% 編輯 刪除" [ref=e223]:
+              - cell "000001" [ref=e224]
+              - cell "平安銀行" [ref=e225]
+              - cell "13" [ref=e226]
+              - cell "10" [ref=e227]
+              - cell "-1.36%" [ref=e228]:
+                - generic [ref=e229]: "-1.36%"
+              - cell [ref=e230]
+              - cell "編輯 刪除" [ref=e232]:
+                - button "編輯" [ref=e233] [cursor=pointer]
+                - button "刪除" [ref=e234] [cursor=pointer]
+            - row "000858 五糧液 180 120 -15.79% 編輯 刪除" [ref=e235]:
+              - cell "000858" [ref=e236]
+              - cell "五糧液" [ref=e237]
+              - cell "180" [ref=e238]
+              - cell "120" [ref=e239]
+              - cell "-15.79%" [ref=e240]:
+                - generic [ref=e241]: "-15.79%"
+              - cell [ref=e242]
+              - cell "編輯 刪除" [ref=e244]:
+                - button "編輯" [ref=e245] [cursor=pointer]
+                - button "刪除" [ref=e246] [cursor=pointer]
+            - row "000333 美的集團 80 55 +2.99% 編輯 刪除" [ref=e247]:
+              - cell "000333" [ref=e248]
+              - cell "美的集團" [ref=e249]
+              - cell "80" [ref=e250]
+              - cell "55" [ref=e251]
+              - cell "+2.99%" [ref=e252]:
+                - generic [ref=e253]: +2.99%
+              - cell [ref=e254]
+              - cell "編輯 刪除" [ref=e256]:
+                - button "編輯" [ref=e257] [cursor=pointer]
+                - button "刪除" [ref=e258] [cursor=pointer]
+        - button "+ 添加監控規則" [ref=e174] [cursor=pointer]
+      - generic [ref=e175]:
+        - generic [ref=e176]: 💡
+        - generic [ref=e177]:
+          - strong [ref=e178]: 新手提示
+          - paragraph [ref=e179]: Walk-Forward 分析能幫你檢測策略是否過擬合 — 如果樣本外表現遠差於樣本內，就要小心了。
+        - button "✕" [ref=e180] [cursor=pointer]

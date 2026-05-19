@@ -5,12 +5,62 @@
 const CHART_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#ef4444', '#a78bfa', '#ec4899', '#06b6d4', '#84cc16'];
 
 const Charts = {
-  // Lightweight Charts instance registry
   _lwCharts: {},
 
-  /**
-   * 獲取當前主題的圖表配色
-   */
+  _chartJsReady() {
+    return typeof Chart !== 'undefined';
+  },
+
+  _lwReady() {
+    return typeof LightweightCharts !== 'undefined';
+  },
+
+  _scheduleResize(canvas) {
+    if (!canvas) return;
+    const run = () => {
+      const chart = Chart.getChart(canvas);
+      if (chart) chart.resize();
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  },
+
+  /** Tab 切換後重算圖表尺寸（避免在 display:none 時渲染成 0 高度） */
+  resizeTab(tabOrId) {
+    if (!this._chartJsReady()) return;
+    const root = typeof tabOrId === 'string' ? document.getElementById(tabOrId) : tabOrId;
+    if (!root) return;
+    root.querySelectorAll('canvas').forEach(canvas => {
+      const chart = Chart.getChart(canvas);
+      if (chart) chart.resize();
+    });
+  },
+
+  setPlaceholder(canvasId, message) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const wrap = canvas.closest('.cw, .cw-tall');
+    if (!wrap) return;
+    let ph = wrap.querySelector('.chart-placeholder');
+    if (!ph) {
+      ph = document.createElement("d" + "iv");
+      ph.className = 'chart-placeholder';
+      wrap.appendChild(ph);
+    }
+    ph.textContent = message;
+    canvas.style.visibility = 'hidden';
+    canvas.style.position = 'absolute';
+    canvas.style.pointerEvents = 'none';
+  },
+
+  clearPlaceholder(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    canvas.style.visibility = '';
+    canvas.style.position = '';
+    canvas.style.pointerEvents = '';
+    canvas.closest('.cw, .cw-tall')?.querySelector('.chart-placeholder')?.remove();
+  },
+
   getThemeColors() {
     const isDark = !document.documentElement.hasAttribute('data-theme') ||
                    document.documentElement.getAttribute('data-theme') === 'dark';
@@ -36,6 +86,7 @@ const Charts = {
    * 通用 Chart.js 折線圖
    */
   drawLineChart(canvasId, series) {
+    if (!this._chartJsReady()) return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const old = Chart.getChart(canvas);
@@ -83,12 +134,14 @@ const Charts = {
         interaction: { mode: 'nearest', axis: 'x', intersect: false },
       },
     });
+    this._scheduleResize(canvas);
   },
 
   /**
    * 通用 Chart.js 柱狀圖
    */
   drawBarChart(canvasId, data, labels, label) {
+    if (!this._chartJsReady()) return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const old = Chart.getChart(canvas);
@@ -120,6 +173,7 @@ const Charts = {
         },
       },
     });
+    this._scheduleResize(canvas);
   },
 
   /**
@@ -398,6 +452,7 @@ const Charts = {
    * Chart.js 雷達圖
    */
   drawRadarChart(canvasId, labels, datasets) {
+    if (!this._chartJsReady()) return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const old = Chart.getChart(canvas);
@@ -440,6 +495,7 @@ const Charts = {
         },
       },
     });
+    this._scheduleResize(canvas);
   },
 
   /**
@@ -488,6 +544,7 @@ const Charts = {
    * Chart.js 水平條形圖
    */
   drawHorizontalBarChart(canvasId, labels, data, label) {
+    if (!this._chartJsReady()) return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const old = Chart.getChart(canvas);
@@ -520,6 +577,7 @@ const Charts = {
         },
       },
     });
+    this._scheduleResize(canvas);
   },
 
   /**

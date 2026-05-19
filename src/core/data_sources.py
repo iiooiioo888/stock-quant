@@ -193,17 +193,19 @@ def health_check() -> dict:
 # ============================================================
 
 # --- A 股歷史 ---
-register("a_share_history", DataSource("東方財富", priority=1, rate_limit=1.0))
-register("a_share_history", DataSource("新浪", priority=2, rate_limit=1.0))
-register("a_share_history", DataSource("網易", priority=3, rate_limit=1.0))
-register("a_share_history", DataSource("騰訊", priority=4, rate_limit=1.0))
-register("a_share_history", DataSource("HTTP直連", priority=5, rate_limit=0.5))
+register("a_share_history", DataSource("Yahoo Finance", priority=1, rate_limit=0.5))
+register("a_share_history", DataSource("東方財富", priority=2, rate_limit=1.0))
+register("a_share_history", DataSource("新浪", priority=3, rate_limit=1.0))
+register("a_share_history", DataSource("網易", priority=4, rate_limit=1.0))
+register("a_share_history", DataSource("騰訊", priority=5, rate_limit=1.0))
+register("a_share_history", DataSource("HTTP直連", priority=6, rate_limit=0.5))
 
 # --- A 股實時 ---
-register("a_share_realtime", DataSource("東財盤口", priority=1, rate_limit=0.3))
-register("a_share_realtime", DataSource("東財全量", priority=2, rate_limit=0.5, daily_limit=5000))
-register("a_share_realtime", DataSource("新浪", priority=3, rate_limit=0.2))
-register("a_share_realtime", DataSource("騰訊", priority=4, rate_limit=0.2))
+register("a_share_realtime", DataSource("Yahoo Finance", priority=1, rate_limit=0.3))
+register("a_share_realtime", DataSource("東財盤口", priority=2, rate_limit=0.3))
+register("a_share_realtime", DataSource("東財全量", priority=3, rate_limit=0.5, daily_limit=5000))
+register("a_share_realtime", DataSource("新浪", priority=4, rate_limit=0.2))
+register("a_share_realtime", DataSource("騰訊", priority=5, rate_limit=0.2))
 
 # --- 全球行情 ---
 register("global_realtime", DataSource("Yahoo Finance", priority=1, rate_limit=0.3))

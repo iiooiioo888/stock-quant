@@ -22,7 +22,7 @@ const Data = {
       btn.classList.add('a');
       this._currentTab = btn.dataset.dtab;
       // toggle sub-tab divs
-      ['sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental'].forEach(t => {
+      ['sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'].forEach(t => {
         const el = document.getElementById('dtab-' + t);
         if (el) el.classList.toggle('h', t !== this._currentTab);
       });
@@ -44,10 +44,21 @@ const Data = {
 
     const d = await Api.getSectors('industry', 30);
     if (!d || !d.sectors || !d.sectors.length) {
-      container.innerHTML = '<p style="color:var(--text-dim)">暫無板塊數據</p>';
+      container.innerHTML = `<p style="color:var(--text-dim)">暫無板塊數據。東財接口可能暫時不可用，請稍後重試；若已保存過快照，可先點「數據」頁其他功能或收盤後執行快照。</p>
+        <button class="btn s mt-sm" onclick="Data.loadSectors()">🔄 重試</button>`;
       return;
     }
-    container.innerHTML = `<div class="table-wrap"><table>
+    let cacheHint = '';
+    if (d.hint) {
+      cacheHint = `<p style="font-size:11px;color:#f59e0b;margin-bottom:8px">${d.hint}</p>`;
+    } else if (d.from_snapshot && d.snapshot_date) {
+      cacheHint = `<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">📦 使用本地快照（${d.snapshot_date}），實時行情暫不可用</p>`;
+    } else if (d.source === 'eastmoney_http') {
+      cacheHint = `<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">📡 數據來源：東財直連</p>`;
+    } else if (d.source === 'local_kline') {
+      cacheHint = `<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">📊 離線估算（成分股 + 本地日K），非實時行情</p>`;
+    }
+    container.innerHTML = `${cacheHint}<div class="table-wrap"><table>
       <thead><tr><th>板塊</th><th>漲跌幅</th><th>領漲股</th><th>成交額</th><th>漲/跌家數</th></tr></thead>
       <tbody>${d.sectors.map(s => `<tr>
         <td><strong><a href="javascript:void(0)" onclick="Data.showSectorDetail('${s.name}')" style="color:var(--accent);text-decoration:none">${s.name || '-'}</a></strong></td>
@@ -581,30 +592,105 @@ const Data = {
   screenFundamentals() {
     const container = document.getElementById('fundamentalData');
     if (!container) return;
-    const pe = parseFloat(document.getElementById('fundPE')?.value) || 20;
-    const pb = parseFloat(document.getElementById('fundPB')?.value) || 3;
-    const roe = parseFloat(document.getElementById('fundROE')?.value) || 15;
+    const filters = {};
+    const pe = parseFloat(document.getElementById('fundPE')?.value);
+    const peMin = parseFloat(document.getElementById('fundPEMin')?.value);
+    const pb = parseFloat(document.getElementById('fundPB')?.value);
+    const roe = parseFloat(document.getElementById('fundROE')?.value);
+    const eps = parseFloat(document.getElementById('fundEPS')?.value);
+    const gross = parseFloat(document.getElementById('fundGross')?.value);
+    const net = parseFloat(document.getElementById('fundNet')?.value);
+    const debt = parseFloat(document.getElementById('fundDebt')?.value);
+    const mv = parseFloat(document.getElementById('fundMV')?.value);
+    if (!isNaN(pe)) filters.pe_max = pe;
+    if (!isNaN(peMin)) filters.pe_min = peMin;
+    if (!isNaN(pb)) filters.pb_max = pb;
+    if (!isNaN(roe)) filters.roe_min = roe;
+    if (!isNaN(eps)) filters.eps_min = eps;
+    if (!isNaN(gross)) filters.gross_margin_min = gross;
+    if (!isNaN(net)) filters.net_margin_min = net;
+    if (!isNaN(debt)) filters.debt_max = debt;
+    if (!isNaN(mv)) filters.mv_min = mv;
+    if (!Object.keys(filters).length) {
+      filters.pe_max = 20;
+      filters.pb_max = 3;
+      filters.roe_min = 15;
+    }
 
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 篩選中...</p>';
 
-    Api.post('/api/data/fundamentals/screen', {
-      filters: { pe_max: pe, pb_max: pb, roe_min: roe }
-    }).then(d => {
+    Api.post('/api/data/fundamentals/screen', { filters }).then(d => {
       if (!d || !d.results || !d.results.length) {
         container.innerHTML = '<p style="color:var(--text-dim)">無符合條件的股票</p>';
         return;
       }
       container.innerHTML = `<div class="table-wrap"><table>
-        <thead><tr><th>代碼</th><th>名稱</th><th>PE</th><th>PB</th><th>ROE</th><th>市值</th></tr></thead>
+        <thead><tr><th>代碼</th><th>名稱</th><th>PE</th><th>PB</th><th>ROE</th><th>EPS</th><th>毛利率</th><th>淨利率</th><th>市值</th></tr></thead>
         <tbody>${d.results.map(r => `<tr>
           <td>${r.code || '-'}</td>
           <td>${r.name || '-'}</td>
-          <td class="r">${r.pe != null ? r.pe.toFixed(2) : '-'}</td>
-          <td class="r">${r.pb != null ? r.pb.toFixed(2) : '-'}</td>
-          <td class="r">${r.roe != null ? r.roe.toFixed(2) + '%' : '-'}</td>
-          <td class="r">${r.market_cap ? Utils.formatLargeNum(r.market_cap) : '-'}</td>
+          <td class="r">${r.pe_ttm != null ? Number(r.pe_ttm).toFixed(2) : (r.pe != null ? Number(r.pe).toFixed(2) : '-')}</td>
+          <td class="r">${r.pb != null ? Number(r.pb).toFixed(2) : '-'}</td>
+          <td class="r">${r.roe != null ? Number(r.roe).toFixed(2) + '%' : '-'}</td>
+          <td class="r">${r.eps != null ? Number(r.eps).toFixed(2) : '-'}</td>
+          <td class="r">${r.gross_margin != null ? Number(r.gross_margin).toFixed(1) + '%' : '-'}</td>
+          <td class="r">${r.net_margin != null ? Number(r.net_margin).toFixed(1) + '%' : '-'}</td>
+          <td class="r">${r.total_mv ? Utils.formatLargeNum(r.total_mv) + '億' : (r.market_cap ? Utils.formatLargeNum(r.market_cap) : '-')}</td>
         </tr>`).join('')}</tbody>
       </table></div>`;
+    });
+  },
+
+  loadStockBasics() {
+    const container = document.getElementById('basicsData');
+    if (!container) return;
+    const code = (document.getElementById('basicsCode')?.value || '').trim();
+    const lookback = parseInt(document.getElementById('basicsLookback')?.value, 10) || 250;
+    if (!code) {
+      container.innerHTML = '<p style="color:var(--warn)">請輸入股票代碼</p>';
+      return;
+    }
+    container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
+    Api.get(`/api/stocks/${encodeURIComponent(code)}/overview?lookback=${lookback}`).then(d => {
+      const o = d?.overview;
+      if (!o) {
+        container.innerHTML = '<p style="color:var(--warn)">無數據</p>';
+        return;
+      }
+      if (!o.has_kline) {
+        container.innerHTML = `<p style="color:var(--warn)">${o.message || '本地無日 K'}</p>`;
+        return;
+      }
+      const t = o.technical || {};
+      const f = o.fundamentals || {};
+      const fmt = (v, suf = '') => (v == null || v === '' ? '-' : v + suf);
+      const rows = [
+        ['代碼', o.code], ['名稱', o.name || '-'], ['數據區間', `${o.date_from} ~ ${o.date_to}`], ['K 線根數', o.bars],
+        ['收盤', fmt(t.close)], ['漲跌%', fmt(t.change_pct, '%')], ['振幅%', fmt(t.amplitude_pct, '%')],
+        ['MA5 / MA20 / MA60', `${fmt(t.ma5)} / ${fmt(t.ma20)} / ${fmt(t.ma60)}`],
+        ['偏離 MA5%', fmt(t.vs_ma5_pct, '%')], ['偏離 MA20%', fmt(t.vs_ma20_pct, '%')],
+        ['5日 / 20日 / 60日漲跌%', `${fmt(t.change_5d_pct, '%')} / ${fmt(t.change_20d_pct, '%')} / ${fmt(t.change_60d_pct, '%')}`],
+        ['量比(對20日均)', fmt(t.volume_ratio)], ['年化波動%', fmt(t.volatility_annual_pct, '%')],
+        ['區間高 / 低', `${fmt(t.high_lookback)} / ${fmt(t.low_lookback)}`],
+        ['距高點%', fmt(t.pct_from_high, '%')], ['距低點%', fmt(t.pct_from_low, '%')],
+      ];
+      let fundBlock = '';
+      if (f && Object.keys(f).length) {
+        const fundRows = [
+          ['PE(TTM)', fmt(f.pe_ttm)], ['PB', fmt(f.pb)], ['ROE%', fmt(f.roe, '%')],
+          ['EPS', fmt(f.eps)], ['每股淨資', fmt(f.bvps)],
+          ['總市值(億)', fmt(f.total_mv)], ['流通市值(億)', fmt(f.circulating_mv)],
+          ['毛利率%', fmt(f.gross_margin, '%')], ['淨利率%', fmt(f.net_margin, '%')], ['負債率%', fmt(f.debt_ratio, '%')],
+        ];
+        fundBlock = `<h3 class="mt-md">基本面</h3><div class="table-wrap"><table><tbody>${fundRows.map(([k, v]) =>
+          `<tr><td>${k}</td><td class="r">${v}</td></tr>`).join('')}</tbody></table></div>`;
+      }
+      container.innerHTML = `
+        <div class="table-wrap"><table><tbody>${rows.map(([k, v]) =>
+          `<tr><td>${k}</td><td class="r">${v}</td></tr>`).join('')}</tbody></table></div>
+        ${fundBlock}`;
+    }).catch(err => {
+      container.innerHTML = `<p style="color:var(--danger)">${err.message || '載入失敗'}</p>`;
     });
   },
 };

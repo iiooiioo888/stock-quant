@@ -151,6 +151,17 @@ def update_leaderboard(codes: list[str] = None) -> list[dict]:
     return results
 
 
+def _sql_scalar(conn, sql: str, params: tuple = ()) -> object | None:
+    """讀取單值；避免線程連接殘留 row_factory 導致 fetchone()[0] 變成 KeyError(0)"""
+    prev = conn.row_factory
+    conn.row_factory = None
+    try:
+        row = conn.execute(sql, params).fetchone()
+        return row[0] if row is not None else None
+    finally:
+        conn.row_factory = prev
+
+
 def get_leaderboard(sort_by: str = "sharpe", limit: int = 50, latest_only: bool = True) -> list[dict]:
     """
     獲取策略排行榜。
@@ -178,29 +189,29 @@ def get_leaderboard(sort_by: str = "sharpe", limit: int = 50, latest_only: bool 
     order_dir = "ASC" if sort_by == "drawdown" else "DESC"
 
     with get_conn() as conn:
+        prev_factory = conn.row_factory
         conn.row_factory = _dict_row_factory
-
-        if latest_only:
-            # 只取最新一次評估
-            latest = conn.execute(
-                "SELECT MAX(evaluated_at) as max_ts FROM strategy_leaderboard"
-            ).fetchone()
-            if not latest or not latest.get("max_ts"):
-                return []
-            rows = conn.execute(
-                f"""SELECT * FROM strategy_leaderboard
-                    WHERE evaluated_at = ?
-                    ORDER BY {order_col} {order_dir}
-                    LIMIT ?""",
-                (latest["max_ts"], limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                f"""SELECT * FROM strategy_leaderboard
-                    ORDER BY {order_col} {order_dir}, evaluated_at DESC
-                    LIMIT ?""",
-                (limit,),
-            ).fetchall()
+        try:
+            if latest_only:
+                max_ts = _sql_scalar(conn, "SELECT MAX(evaluated_at) FROM strategy_leaderboard")
+                if not max_ts:
+                    return []
+                rows = conn.execute(
+                    f"""SELECT * FROM strategy_leaderboard
+                        WHERE evaluated_at = ?
+                        ORDER BY {order_col} {order_dir}
+                        LIMIT ?""",
+                    (max_ts, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"""SELECT * FROM strategy_leaderboard
+                        ORDER BY {order_col} {order_dir}, evaluated_at DESC
+                        LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+        finally:
+            conn.row_factory = prev_factory
 
     return rows
 
@@ -215,22 +226,24 @@ def get_leaderboard_summary() -> dict:
     init_leaderboard_table()
 
     with get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM strategy_leaderboard").fetchone()[0]
-        latest = conn.execute(
-            "SELECT MAX(evaluated_at) FROM strategy_leaderboard"
-        ).fetchone()[0]
+        total = _sql_scalar(conn, "SELECT COUNT(*) FROM strategy_leaderboard") or 0
+        latest = _sql_scalar(conn, "SELECT MAX(evaluated_at) FROM strategy_leaderboard")
 
         top = None
         if latest:
+            prev_factory = conn.row_factory
             conn.row_factory = _dict_row_factory
-            row = conn.execute(
-                """SELECT * FROM strategy_leaderboard
-                   WHERE evaluated_at = ?
-                   ORDER BY sharpe_ratio DESC LIMIT 1""",
-                (latest,),
-            ).fetchone()
-            if row:
-                top = row
+            try:
+                row = conn.execute(
+                    """SELECT * FROM strategy_leaderboard
+                       WHERE evaluated_at = ?
+                       ORDER BY sharpe_ratio DESC LIMIT 1""",
+                    (latest,),
+                ).fetchone()
+                if row:
+                    top = row
+            finally:
+                conn.row_factory = prev_factory
 
     return {
         "total_evaluations": total,

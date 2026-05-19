@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 
@@ -256,6 +257,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API / 靜態資源 GZip（減少傳輸體積）
+app.add_middleware(GZipMiddleware, minimum_size=512)
+
+
+@app.middleware("http")
+async def static_cache_middleware(request: Request, call_next):
+    """靜態資源長期緩存，加速頁面二次載入"""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        if path.endswith((".js", ".css")):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif path.endswith((".png", ".jpg", ".ico", ".svg", ".woff2")):
+            response.headers["Cache-Control"] = "public, max-age=604800"
+    return response
 
 
 # ============================================================
@@ -708,28 +725,32 @@ async def admin_delete_user(target_user_id: int, user = Depends(require_admin)):
 @app.get("/api/health")
 async def health_check():
     """健康檢查"""
-    uptime_sec = int(time.time() - _start_time)
-    hours, remainder = divmod(uptime_sec, 3600)
-    minutes, seconds = divmod(remainder, 60)
+    from src.core.api_cache import cached_response
 
-    try:
-        stats = get_db_stats()
-        db_status = "ok"
-    except Exception:
-        stats = {"db_size_mb": 0, "total_stocks": 0, "total_alerts": 0}
-        db_status = "error"
+    def _build():
+        uptime_sec = int(time.time() - _start_time)
+        hours, remainder = divmod(uptime_sec, 3600)
+        minutes, seconds = divmod(remainder, 60)
 
-    # 檢查數據是否就緒
-    data_ready = stats.get("total_stocks", 0) > 0
+        try:
+            stats = get_db_stats()
+            db_status = "ok"
+        except Exception:
+            stats = {"db_size_mb": 0, "total_stocks": 0, "total_alerts": 0}
+            db_status = "error"
 
-    return {
-        "status": "ok",
-        "version": settings.app_version,
-        "database": db_status,
-        "data_ready": data_ready,
-        "uptime": f"{hours}h {minutes}m {seconds}s",
-        **stats,
-    }
+        data_ready = stats.get("total_stocks", 0) > 0
+        return {
+            "status": "ok",
+            "version": settings.app_version,
+            "database": db_status,
+            "data_ready": data_ready,
+            "ws_auth_required": settings.ws_auth_required,
+            "uptime": f"{hours}h {minutes}m {seconds}s",
+            **stats,
+        }
+
+    return cached_response("api:health", ttl=3, builder=_build)
 
 
 @app.get("/api/health/detailed")
@@ -839,25 +860,35 @@ async def system_status():
 @app.get("/api/stocks")
 async def list_stocks():
     """獲取股票列表"""
+    from src.core.api_cache import cached_response
     from src.core.db import load_all_codes
-    codes = load_all_codes()
 
-    stocks = []
-    for code in codes:
-        name = STOCK_NAMES.get(code, "")
-        # 嘗試從 alert_rules 獲取名稱
-        if not name:
-            rule = settings.alert_rules.get(code, {})
-            name = rule.get("name", code)
-        stocks.append({"code": code, "name": name, "data_points": 0})
+    def _build():
+        codes = load_all_codes()
+        stocks = []
+        for code in codes:
+            name = STOCK_NAMES.get(code, "")
+            if not name:
+                rule = settings.alert_rules.get(code, {})
+                name = rule.get("name", code)
+            stocks.append({"code": code, "name": name, "data_points": 0})
+        return {"stocks": stocks, "total": len(stocks)}
 
-    return {"stocks": stocks, "total": len(stocks)}
+    return cached_response("api:stocks:list", ttl=30, builder=_build)
 
 
 @app.get("/api/stocks/names")
 async def get_stock_names():
     """獲取股票代碼→中文名映射"""
     return {"names": STOCK_NAMES}
+
+
+def _normalize_compare_code(code: str) -> str:
+    """A 股代碼補零（000001）"""
+    code = str(code).strip()
+    if code.isdigit() and len(code) < 6:
+        return code.zfill(6)
+    return code
 
 
 @app.post("/api/stocks/compare")
@@ -873,9 +904,12 @@ async def compare_stocks(body: dict):
         raise HTTPException(400, "請提供股票代碼列表")
 
     result = {}
-    for code in codes:
+    missing = []
+    for raw in codes:
+        code = _normalize_compare_code(raw)
         df = load_daily_kline(code, start_date=start)
         if df.empty:
+            missing.append(raw)
             continue
         if len(df) > days:
             df = df.tail(days)
@@ -893,7 +927,48 @@ async def compare_stocks(body: dict):
             "close": [round(float(c), 2) for c in closes],
         }
 
-    return {"comparison": result}
+    return {
+        "success": True,
+        "comparison": result,
+        "missing": missing,
+        "loaded": len(result),
+        "total": len(codes),
+    }
+
+
+@app.get("/api/stocks/{code}/overview")
+async def get_stock_overview(code: str, lookback: int = 250):
+    """單股基本數據：技術指標、區間統計、基本面摘要"""
+    from src.core.api_cache import cached_response
+    from src.core.result_cache import get_data_version
+    from src.core.stock_basics import build_stock_overview
+
+    code = _normalize_compare_code(code)
+    lb = min(max(lookback, 20), 500)
+    cache_key = f"api:overview:{code}:{lb}:{get_data_version(code)}"
+
+    def _build():
+        return build_stock_overview(code, lookback=lb)
+
+    try:
+        overview = cached_response(cache_key, ttl=30, builder=_build)
+        return {"success": True, "overview": overview}
+    except Exception as e:
+        logger.error(f"股票概覽失敗 {code}: {e}")
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/strategies/params")
+async def get_all_strategy_params_api():
+    """全部策略默認參數與優化網格"""
+    from src.core.api_cache import cached_response
+    from src.core.strategy_params_meta import get_all_strategy_params
+
+    return cached_response(
+        "api:strategies:params",
+        ttl=120,
+        builder=lambda: {"strategies": get_all_strategy_params()},
+    )
 
 
 @app.get("/api/stocks/{code}/kline")
@@ -915,28 +990,56 @@ async def get_kline(code: str, start: str = None, end: str = None, limit: int = 
 
 @app.post("/api/stocks/download")
 async def download_stocks(codes: list[str] = None):
-    """下載歷史數據"""
-    from src.core.history import download_all
+    """下載歷史數據（異步任務）"""
+    from src.core.task_manager import create_task
+    from src.core.download_tasks import run_stocks_download, MARKET_NAMES
 
     if codes is None:
         codes = settings.watchlist
 
-    # 異步執行（實際生產中應放到後台任務）
-    count = download_all(codes)
-    return {"message": f"下載完成", "records": count, "codes": codes}
+    task_params = {"codes": codes, "market": "a_share"}
+    task = create_task(
+        "data_download",
+        task_params,
+        title=f"下載 {MARKET_NAMES['a_share']}（{len(codes)} 只）",
+    )
+    if task.get("is_duplicate"):
+        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
+                "message": "相同下載任務執行中", "async": True}
+
+    task_id = task["task_id"]
+    if task.get("status") == "completed" and task.get("result"):
+        return {"success": True, "task_id": task_id, "async": False,
+                "from_cache": task.get("from_cache"), "result": task.get("result")}
+
+    return _dispatch_async_task(
+        task_id,
+        lambda: run_stocks_download(codes, task_id=task_id),
+        cache_namespace=None,
+    )
 
 
 @app.post("/api/stocks/update")
 async def incremental_update(codes: list[str] = None, force: bool = False):
-    """增量更新歷史數據"""
-    from src.core.history import download_incremental
+    """增量更新歷史數據（異步任務）"""
+    from src.core.task_manager import create_task
+    from src.core.download_tasks import run_incremental
 
-    try:
-        result = download_incremental(codes=codes, force=force)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"增量更新失敗: {e}")
-        raise HTTPException(500, str(e))
+    task_params = {"codes": codes or settings.watchlist, "force": force}
+    task = create_task(
+        "data_incremental",
+        task_params,
+        title=f"增量更新 A 股（{len(task_params['codes'])} 只）",
+    )
+    if task.get("is_duplicate"):
+        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
+                "message": "相同增量任務執行中", "async": True}
+
+    task_id = task["task_id"]
+    return _dispatch_async_task(
+        task_id,
+        lambda: run_incremental(codes=codes, force=force, task_id=task_id),
+    )
 
 
 # ====== 多市場支持 ======
@@ -1011,90 +1114,67 @@ async def list_market_symbols(market: str):
         return {"market": market, "symbols": result, "total": len(result)}
 
 
-@app.post("/api/markets/{market}/download")
-async def download_market_data(market: str, codes: list[str] = None):
-    """下載指定市場的歷史數據"""
-    from src.core.history import download_one
+def _resolve_market_codes(market: str, codes: list[str] = None) -> list[str]:
     from src.core.global_market import MARKET_CATALOG
 
-    if codes is None:
-        if market == "crypto":
-            codes = settings.crypto_watchlist
-        elif market == "forex":
-            codes = settings.forex_watchlist
-        elif market in MARKET_CATALOG:
-            codes = list(MARKET_CATALOG[market]["symbols"].keys())
-        else:
-            codes = settings.watchlist
+    if codes:
+        return codes
+    if market == "crypto":
+        return list(settings.crypto_watchlist)
+    if market == "forex":
+        return list(settings.forex_watchlist)
+    if market in MARKET_CATALOG:
+        return list(MARKET_CATALOG[market]["symbols"].keys())
+    return list(settings.watchlist)
 
-    results = []
-    total = 0
-    for code in codes:
-        count = download_one(code)
-        total += count
-        results.append({"code": code, "records": count})
-        time.sleep(0.5)
 
-    return {
-        "success": True,
-        "market": market,
-        "total_records": total,
-        "details": results,
-    }
+@app.post("/api/markets/{market}/download")
+async def download_market_data(market: str, body: list | dict | None = None):
+    """下載指定市場的歷史數據（異步任務）"""
+    from src.core.task_manager import create_task
+    from src.core.download_tasks import run_market_download, MARKET_NAMES
+
+    codes = None
+    if isinstance(body, list):
+        codes = body
+    elif isinstance(body, dict):
+        codes = body.get("codes")
+    codes = _resolve_market_codes(market, codes)
+    market_name = MARKET_NAMES.get(market, market)
+    task_params = {"market": market, "codes": codes}
+    task = create_task(
+        "data_download",
+        task_params,
+        title=f"下載 {market_name}（{len(codes)} 個標的）",
+    )
+    if task.get("is_duplicate"):
+        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
+                "message": "相同下載任務執行中", "async": True}
+
+    task_id = task["task_id"]
+    return _dispatch_async_task(
+        task_id,
+        lambda: run_market_download(market, codes, task_id=task_id),
+    )
 
 
 @app.post("/api/download-all")
 async def download_all_markets():
-    """批量下載所有市場的股票數據（A股 + 美股 + 港股 + 指數 + ETF + 商品 + 加密 + 外匯）"""
-    from src.core.history import download_one
-    from src.core.global_market import MARKET_CATALOG
+    """批量下載所有市場數據（異步任務）"""
+    from src.core.task_manager import create_task
+    from src.core.download_tasks import run_download_all
 
-    all_results = []
-    grand_total = 0
+    task_params = {"scope": "all_markets"}
+    task = create_task("data_download_all", task_params, title="下載全市場數據")
+    if task.get("is_duplicate"):
+        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
+                "message": "全市場下載任務執行中", "async": True}
 
-    # A 股（watchlist）
-    logger.info("===== 開始下載 A 股 =====")
-    for code in settings.watchlist:
-        count = download_one(code, market="a_share")
-        grand_total += count
-        all_results.append({"market": "a_share", "code": code, "records": count})
-        time.sleep(1)
-
-    # 全球市場（美股、港股、指數、ETF、商品）
-    for market_key in ["us_stock", "hk_stock", "index", "etf", "commodity"]:
-        cat = MARKET_CATALOG.get(market_key, {})
-        symbols = list(cat.get("symbols", {}).keys())
-        logger.info(f"===== 開始下載 {cat.get('name', market_key)} ({len(symbols)} 個標的) =====")
-        for code in symbols:
-            count = download_one(code, market="global")
-            grand_total += count
-            all_results.append({"market": market_key, "code": code, "records": count})
-            time.sleep(0.8)
-
-    # 加密貨幣
-    logger.info(f"===== 開始下載加密貨幣 ({len(settings.crypto_watchlist)} 個標的) =====")
-    for code in settings.crypto_watchlist:
-        count = download_one(code, market="crypto")
-        grand_total += count
-        all_results.append({"market": "crypto", "code": code, "records": count})
-        time.sleep(0.5)
-
-    # 外匯
-    logger.info(f"===== 開始下載外匯 ({len(settings.forex_watchlist)} 個標的) =====")
-    for code in settings.forex_watchlist:
-        count = download_one(code, market="forex")
-        grand_total += count
-        all_results.append({"market": "forex", "code": code, "records": count})
-        time.sleep(0.5)
-
-    success_count = sum(1 for r in all_results if r["records"] > 0)
-    return {
-        "success": True,
-        "total_records": grand_total,
-        "total_symbols": len(all_results),
-        "success_symbols": success_count,
-        "details": all_results,
-    }
+    task_id = task["task_id"]
+    return _dispatch_async_task(
+        task_id,
+        lambda: run_download_all(task_id=task_id),
+    )
 
 
 @app.get("/api/markets/{market}/realtime")
@@ -1162,6 +1242,45 @@ async def get_sparkline(codes: str, days: int = 30):
     return {"sparklines": result}
 
 
+# ====== 任務調度輔助 ======
+
+def _dispatch_async_task(
+    task_id: str,
+    work_fn,
+    *,
+    cache_namespace: str = None,
+    cache_params: dict = None,
+    cache_code: str = None,
+) -> dict:
+    """將任務提交到線程池；支持結果緩存讀寫"""
+    from src.core.task_manager import get_task, submit_task, STATUS_COMPLETED
+
+    task = get_task(task_id)
+    if task and task.get("status") == STATUS_COMPLETED:
+        return {
+            "success": True,
+            "task_id": task_id,
+            "async": False,
+            "from_cache": bool(task.get("from_cache")),
+            "result": task.get("result"),
+        }
+
+    def _work():
+        result = work_fn()
+        if cache_namespace and cache_params is not None:
+            try:
+                from src.core.result_cache import set_cached_compute
+                set_cached_compute(
+                    cache_namespace, cache_params, result, code=cache_code,
+                )
+            except Exception as e:
+                logger.debug(f"緩存寫入跳過: {e}")
+        return result
+
+    submit_task(task_id, _work)
+    return {"success": True, "task_id": task_id, "async": True}
+
+
 # ====== 回測 ======
 
 @app.post("/api/backtest")
@@ -1177,30 +1296,31 @@ async def run_backtest_api(
 ):
     """執行回測（自動去重：相同參數的回測不會重複執行）"""
     from src.core.backtest import run_backtest, STRATEGIES
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if strategy not in STRATEGIES:
         raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
 
-    # 任務去重
     task_params = {"code": code, "strategy": strategy, "params": params, "cash": cash}
     task = create_task("backtest", task_params, title=f"回測 {code}/{strategy}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同回測正在執行中，請等待完成"}
+                "message": "相同回測正在執行中，請等待完成", "async": True}
 
-    try:
-        result = run_backtest(
+    task_id = task["task_id"]
+
+    def _work():
+        return run_backtest(
             code, strategy_name=strategy, params=params, cash=cash,
             stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
             trailing_stop_pct=trailing_stop_pct, benchmark=benchmark,
+            task_id=task_id,
         )
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=result)
-        return {"success": True, "task_id": task["task_id"], "result": result}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"回測失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="backtest", cache_params=task_params, cache_code=code,
+    )
 
 
 @app.post("/api/backtest/advanced")
@@ -1223,7 +1343,7 @@ async def run_advanced_backtest_api(body: dict):
         enable_limit: 是否啟用漲跌停限制（默認 True）
     """
     from src.core.backtest import run_backtest, STRATEGIES
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     code = body.get("code", "")
     strategy = body.get("strategy", "dual_ma")
@@ -1251,48 +1371,49 @@ async def run_advanced_backtest_api(body: dict):
     task = create_task("backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同進階回測正在執行中，請等待完成"}
+                "message": "相同進階回測正在執行中，請等待完成", "async": True}
 
-    try:
-        result = run_backtest(
+    task_id = task["task_id"]
+
+    def _work():
+        return run_backtest(
             code, strategy_name=strategy, params=params, cash=cash,
             commission=commission, stop_loss_pct=stop_loss_pct,
             take_profit_pct=take_profit_pct, trailing_stop_pct=trailing_stop_pct,
             benchmark=benchmark, slippage_pct=slippage_pct,
             enable_t1=enable_t1, enable_limit=enable_limit,
+            task_id=task_id,
         )
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=result)
-        return {"success": True, "task_id": task["task_id"], "result": result}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"進階回測失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="backtest_advanced", cache_params=task_params, cache_code=code,
+    )
 
 
 @app.post("/api/backtest/multi")
 async def run_multi_backtest_api(code: str):
     """所有策略對比（自動加入任務列表）"""
     from src.core.backtest import run_multi_strategy
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
 
-    # 任務去重
     task_params = {"code": code}
     task = create_task("backtest_multi", task_params, title=f"多策略對比 {code}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同多策略對比正在執行中，請等待完成"}
+                "message": "相同多策略對比正在執行中，請等待完成", "async": True}
 
-    try:
-        results = run_multi_strategy(code)
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=results)
-        return {"success": True, "task_id": task["task_id"], "results": results}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"多策略回測失敗: {e}")
-        raise HTTPException(500, str(e))
+    task_id = task["task_id"]
+    return _dispatch_async_task(
+        task_id,
+        lambda: run_multi_strategy(code, task_id=task_id),
+        cache_namespace="backtest_multi",
+        cache_params=task_params,
+        cache_code=code,
+    )
 
 
 # ====== 優化 ======
@@ -1308,39 +1429,39 @@ async def run_optimize_api(
 ):
     """參數優化（自動加入任務列表）"""
     from src.core.optimize import grid_search, optuna_search, optimize_all
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
 
-    # 任務去重
     task_params = {"code": code, "strategy": strategy, "method": method, "objective": objective, "n_trials": n_trials}
     display_strategy = strategy if strategy != "all" else "全部策略"
     task = create_task("optimize", task_params, title=f"參數優化 {code}/{display_strategy}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同優化正在執行中，請等待完成"}
+                "message": "相同優化正在執行中，請等待完成", "async": True}
 
-    try:
+    task_id = task["task_id"]
+
+    def _work():
         if strategy == "all":
-            results = optimize_all(code, objective=objective, method=method, n_trials=n_trials, top_n=top_n)
-            # 轉為可序列化格式
+            results = optimize_all(
+                code, objective=objective, method=method,
+                n_trials=n_trials, top_n=top_n, task_id=task_id,
+            )
             serialized = {}
             for name, res_list in results.items():
                 serialized[name] = [{k: v for k, v in r.items()} for r in res_list]
-            update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=serialized)
-            return {"success": True, "task_id": task["task_id"], "results": serialized}
-        else:
-            if method == "optuna":
-                results = optuna_search(code, strategy, objective=objective, n_trials=n_trials)
-            else:
-                results = grid_search(code, strategy, objective=objective, top_n=top_n)
-            update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=results)
-            return {"success": True, "task_id": task["task_id"], "results": results}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"優化失敗: {e}")
-        raise HTTPException(500, str(e))
+            return serialized
+        if method == "optuna":
+            return optuna_search(code, strategy, objective=objective, n_trials=n_trials, task_id=task_id)
+        return grid_search(code, strategy, objective=objective, top_n=top_n, task_id=task_id)
+
+    task_params["top_n"] = top_n
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="optimize", cache_params=task_params, cache_code=code,
+    )
 
 
 # ====== 組合 ======
@@ -1355,33 +1476,33 @@ async def run_portfolio_api(
 ):
     """組合回測（自動加入任務列表）"""
     from src.core.portfolio import run_portfolio
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if not allocations:
         raise HTTPException(400, "請提供組合配置")
 
-    # 任務去重
     codes = [a.get("code", "") for a in allocations]
     task_params = {"codes": codes, "weights": weights, "rebalance": rebalance}
     task = create_task("portfolio", task_params, title=f"組合回測 ({len(allocations)}隻)")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同組合回測正在執行中，請等待完成"}
+                "message": "相同組合回測正在執行中，請等待完成", "async": True}
 
-    try:
-        result = run_portfolio(
+    task_id = task["task_id"]
+
+    def _work():
+        return run_portfolio(
             allocations=allocations,
             weights=weights,
             rebalance=rebalance,
             rebalance_freq_days=rebalance_freq_days,
             cash=cash,
         )
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=result)
-        return {"success": True, "task_id": task["task_id"], "result": result}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"組合回測失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="portfolio", cache_params=task_params, cache_code=codes[0] if codes else None,
+    )
 
 
 # ====== 預警 ======
@@ -1466,30 +1587,30 @@ async def run_walkforward(
 ):
     """Walk-Forward 分析（自動加入任務列表）"""
     from src.core.walkforward import walk_forward
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
 
-    # 任務去重
     task_params = {"code": code, "strategy": strategy, "train_days": train_days, "test_days": test_days}
     task = create_task("walkforward", task_params, title=f"Walk-Forward {code}/{strategy}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同 Walk-Forward 正在執行中，請等待完成"}
+                "message": "相同 Walk-Forward 正在執行中，請等待完成", "async": True}
 
-    try:
-        result = walk_forward(
+    task_id = task["task_id"]
+
+    def _work():
+        return walk_forward(
             code=code, strategy_name=strategy,
             train_days=train_days, test_days=test_days, step_days=step_days,
             objective=objective, n_trials=n_trials,
         )
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=result)
-        return {"success": True, "task_id": task["task_id"], "result": result}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"Walk-Forward 失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="walkforward", cache_params=task_params, cache_code=code,
+    )
 
 
 # ====== 自動優化 ======
@@ -1498,32 +1619,54 @@ async def run_walkforward(
 async def run_auto_optimize(body: dict = None):
     """自動參數優化（自動加入任務列表）"""
     from src.core.auto_optimize import auto_optimize_watchlist
-    from src.core.task_manager import create_task, update_task, STATUS_COMPLETED, STATUS_FAILED
+    from src.core.task_manager import create_task
 
     if body is None:
         body = {}
 
-    # 任務去重
     task_params = {"codes": body.get("codes"), "strategies": body.get("strategies"), "method": body.get("method", "optuna")}
     task = create_task("auto_optimize", task_params, title="全自動參數優化")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "全自動優化正在執行中，請等待完成"}
+                "message": "全自動優化正在執行中，請等待完成", "async": True}
 
-    try:
-        result = auto_optimize_watchlist(
+    task_id = task["task_id"]
+
+    def _work():
+        return auto_optimize_watchlist(
             codes=body.get("codes"),
             strategies=body.get("strategies"),
             method=body.get("method", "optuna"),
             n_trials=body.get("n_trials", 50),
             objective=body.get("objective", "sharpe"),
         )
-        update_task(task["task_id"], status=STATUS_COMPLETED, progress=100, result=result)
-        return {"success": True, "task_id": task["task_id"], "result": result}
-    except Exception as e:
-        update_task(task["task_id"], status=STATUS_FAILED, error=str(e))
-        logger.error(f"自動優化失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return _dispatch_async_task(
+        task_id, _work,
+        cache_namespace="auto_optimize", cache_params=task_params,
+    )
+
+
+# ====== 緩存管理 ======
+
+@app.get("/api/cache/stats")
+async def cache_stats_api():
+    """緩存統計（LRU / Redis）"""
+    from src.core.result_cache import cache_stats
+    return {"success": True, **cache_stats()}
+
+
+@app.post("/api/cache/clear")
+async def cache_clear_api(code: str = None):
+    """清除計算結果緩存；可選按股票代碼"""
+    from src.core.result_cache import invalidate_compute
+    from src.core.db import clear_data_cache
+    if code:
+        removed = invalidate_compute(code=code)
+    else:
+        clear_data_cache()
+        removed = invalidate_compute()
+    return {"success": True, "removed": removed, "code": code}
 
 
 # ====== 調度器 ======
@@ -1574,10 +1717,17 @@ async def test_notify():
 @app.get("/api/tasks")
 async def list_tasks_api(task_type: str = None, status: str = None, limit: int = 50):
     """獲取任務列表"""
-    from src.core.task_manager import get_tasks, get_task_stats
+    from src.core.task_manager import get_tasks, get_task_stats, get_queue_snapshot
     tasks = get_tasks(task_type=task_type, status=status, limit=limit)
     stats = get_task_stats()
-    return {"tasks": tasks, "stats": stats}
+    return {"tasks": tasks, "stats": stats, "queue": get_queue_snapshot()}
+
+
+@app.get("/api/tasks/queue")
+async def get_task_queue_api():
+    """獲取執行佇列快照（目前 / 下一個 / 剛完成）"""
+    from src.core.task_manager import get_queue_snapshot
+    return get_queue_snapshot()
 
 
 @app.get("/api/tasks/{task_id}")
@@ -1635,16 +1785,30 @@ async def get_task_full_api(task_id: str):
 @app.get("/api/config")
 async def get_config():
     """獲取當前配置"""
-    return {
-        "watchlist": settings.watchlist,
-        "poll_interval": settings.poll_interval_sec,
-        "alert_cooldown": settings.alert_cooldown_sec,
-        "backtest_cash": settings.backtest_cash,
-        "backtest_commission": settings.backtest_commission,
-        "strategy_params": settings.strategy_params,
-        "alert_rules": settings.alert_rules,
-        "portfolio_presets": settings.portfolio_presets,
-    }
+    from src.core.api_cache import cached_response
+    from src.core.optimize import PARAM_GRIDS, PARAM_RANGES
+
+    def _build():
+        return {
+            "watchlist": settings.watchlist,
+            "crypto_watchlist": settings.crypto_watchlist,
+            "forex_watchlist": settings.forex_watchlist,
+            "poll_interval": settings.poll_interval_sec,
+            "alert_cooldown": settings.alert_cooldown_sec,
+            "history_start_date": settings.history_start_date,
+            "backtest_cash": settings.backtest_cash,
+            "backtest_commission": settings.backtest_commission,
+            "backtest_stamp_tax": settings.backtest_stamp_tax,
+            "task_max_workers": settings.task_max_workers,
+            "task_parallel_grid": settings.task_parallel_grid,
+            "strategy_params": settings.strategy_params,
+            "param_grids": PARAM_GRIDS,
+            "param_ranges": {k: {pk: list(pv) for pk, pv in v.items()} for k, v in PARAM_RANGES.items()},
+            "alert_rules": settings.alert_rules,
+            "portfolio_presets": settings.portfolio_presets,
+        }
+
+    return cached_response("api:config", ttl=60, builder=_build)
 
 
 @app.get("/api/portfolio/presets")
@@ -2130,6 +2294,21 @@ async def run_heatmap(
 ):
     """參數敏感度熱力圖"""
     from src.core.heatmap import param_heatmap
+    from src.core.result_cache import get_cached_compute, set_cached_compute
+
+    param_x = (param_x or "").strip()
+    param_y = (param_y or "").strip()
+    if not param_x or not param_y:
+        raise HTTPException(400, "請選擇參數 X 和參數 Y（不可為空）")
+
+    cache_params = {
+        "code": code, "strategy": strategy,
+        "param_x": param_x, "param_y": param_y,
+        "grid_size": grid_size, "objective": objective,
+    }
+    cached = get_cached_compute("heatmap", cache_params, code=code)
+    if cached is not None:
+        return {"success": True, "result": cached, "from_cache": True}
 
     try:
         result = param_heatmap(
@@ -2137,7 +2316,8 @@ async def run_heatmap(
             param_x=param_x, param_y=param_y,
             grid_size=grid_size, objective=objective,
         )
-        return {"success": True, "result": result}
+        set_cached_compute("heatmap", cache_params, result, code=code)
+        return {"success": True, "result": result, "from_cache": False}
     except Exception as e:
         logger.error(f"熱力圖失敗: {e}")
         raise HTTPException(500, str(e))
@@ -2153,6 +2333,8 @@ async def get_strategy_params(strategy: str):
         raise HTTPException(400, f"未知策略: {strategy}")
 
     from src.core.heatmap import _get_default_params
+    from src.core.strategy_params_meta import PARAM_LABELS
+
     defaults = _get_default_params(strategy)
     grid = PARAM_GRIDS.get(strategy, {})
 
@@ -2161,6 +2343,7 @@ async def get_strategy_params(strategy: str):
         "params": list(defaults.keys()),
         "defaults": defaults,
         "grid_values": grid,
+        "labels": {k: PARAM_LABELS.get(k, k) for k in defaults.keys()},
     }
 
 
@@ -2231,18 +2414,34 @@ async def compare_benchmark_api(body: dict):
 
 # ====== 實時信號 ======
 
+def _fetch_current_signals():
+    from src.core.signals import SignalEngine, compute_and_push_signals
+
+    engine = SignalEngine()
+    engine.update_weights_from_backtest()
+    signals_data = compute_and_push_signals(engine, settings.watchlist)
+    return signals_data
+
+
 @app.get("/api/signals/current")
 async def get_current_signals():
     """獲取所有監控股票的當前信號"""
-    from src.core.signals import SignalEngine, compute_and_push_signals
-
     try:
-        engine = SignalEngine()
-        engine.update_weights_from_backtest()
-        signals_data = compute_and_push_signals(engine, settings.watchlist)
+        signals_data = _fetch_current_signals()
         return {"success": True, "signals": signals_data, "total": len(signals_data)}
     except Exception as e:
         logger.error(f"獲取當前信號失敗: {e}")
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/signals/trading")
+async def get_trading_signals():
+    """儀表盤交易信號（與 current 同源，兼容舊前端路由）"""
+    try:
+        signals_data = _fetch_current_signals()
+        return {"success": True, "signals": signals_data, "data": signals_data, "total": len(signals_data)}
+    except Exception as e:
+        logger.error(f"獲取交易信號失敗: {e}")
         raise HTTPException(500, str(e))
 
 
@@ -2399,39 +2598,42 @@ async def create_strategy(body: dict):
 @app.get("/api/strategies/list")
 async def list_strategies_api():
     """列出所有策略（內置 + 用戶）"""
+    from src.core.api_cache import cached_response
     from src.core.backtest import STRATEGIES, STRATEGY_NAMES
     from src.core.strategy_base import list_user_strategies
 
-    # 內置策略
-    builtin = []
-    for name, cls in STRATEGIES.items():
-        display = STRATEGY_NAMES.get(name, name)
-        desc = (cls.__doc__ or "").strip().split("\n")[0]
-        builtin.append({
-            "name": name,
-            "display_name": display,
-            "source": "builtin",
-            "description": f"{display} — {desc}" if desc else display,
-            "params": {},
-        })
+    def _build():
+        # 內置策略
+        builtin = []
+        for name, cls in STRATEGIES.items():
+            display = STRATEGY_NAMES.get(name, name)
+            desc = (cls.__doc__ or "").strip().split("\n")[0]
+            builtin.append({
+                "name": name,
+                "display_name": display,
+                "source": "builtin",
+                "description": f"{display} — {desc}" if desc else display,
+                "params": {},
+            })
 
-    # 用戶策略
-    user_strategies = list_user_strategies()
-    user = []
-    for s in user_strategies:
-        user.append({
-            "name": s["name"],
-            "source": "user",
-            "description": s["description"],
-            "params": s["params"],
-            "filepath": s.get("filepath", ""),
-        })
+        user_strategies = list_user_strategies()
+        user = []
+        for s in user_strategies:
+            user.append({
+                "name": s["name"],
+                "source": "user",
+                "description": s["description"],
+                "params": s["params"],
+                "filepath": s.get("filepath", ""),
+            })
 
-    return {
-        "builtin": builtin,
-        "user": user,
-        "total": len(builtin) + len(user),
-    }
+        return {
+            "builtin": builtin,
+            "user": user,
+            "total": len(builtin) + len(user),
+        }
+
+    return cached_response("api:strategies:list", ttl=120, builder=_build)
 
 
 @app.post("/api/strategies/upload")
@@ -2485,9 +2687,14 @@ async def get_leaderboard_api(sort_by: str = "sharpe", limit: int = 50):
             "results": results,
             "summary": summary,
             "total": len(results),
+            "empty": len(results) == 0,
+            "hint": (
+                "排行榜暫無數據，請先 POST /api/strategies/leaderboard/update 生成排名"
+                if len(results) == 0 else None
+            ),
         }
     except Exception as e:
-        logger.error(f"獲取排行榜失敗: {e}")
+        logger.error(f"獲取排行榜失敗: {e}", exc_info=True)
         raise HTTPException(500, str(e))
 
 
@@ -2983,9 +3190,24 @@ async def get_sectors(sector_type: str = "industry", top_n: int = 30):
     
     try:
         sectors = get_sector_performance(sector_type=sector_type, top_n=top_n)
-        return {"sectors": sectors, "total": len(sectors), "type": sector_type}
+        from_snapshot = bool(sectors and sectors[0].get("from_snapshot"))
+        snapshot_date = sectors[0].get("snapshot_date") if from_snapshot else None
+        source = sectors[0].get("source") if sectors else None
+        return {
+            "success": True,
+            "sectors": sectors,
+            "total": len(sectors),
+            "type": sector_type,
+            "from_snapshot": from_snapshot,
+            "snapshot_date": snapshot_date,
+            "source": source,
+            "hint": (
+                "實時板塊接口暫不可用且無本地快照；請稍後重試，或收盤後調用 POST /api/data/sectors/snapshot 保存快照"
+                if not sectors else None
+            ),
+        }
     except Exception as e:
-        logger.error(f"獲取板塊列表失敗: {e}")
+        logger.error(f"獲取板塊列表失敗: {e}", exc_info=True)
         raise HTTPException(500, str(e))
 
 
