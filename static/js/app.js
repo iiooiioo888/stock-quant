@@ -908,6 +908,7 @@ App._initTaskPanel = function() {
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border-color,#334155);background:var(--bg-primary,#0f172a)">
       <span style="font-weight:600">📋 任務列表</span>
       <div>
+        <button onclick="App.loadTab('tasks')" style="background:none;border:1px solid var(--border-color);color:var(--accent,#38bdf8);cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px;margin-right:4px">查看全部</button>
         <button onclick="App._refreshTasks()" style="background:none;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:14px;padding:2px 6px" title="刷新">🔄</button>
         <button onclick="App.toggleTaskPanel()" style="background:none;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:14px;padding:2px 6px">✕</button>
       </div>
@@ -968,9 +969,16 @@ App._refreshTasks = async function() {
 
   const d = await Api.getTasks(null, null, 30);
   if (!d || !d.tasks || !d.tasks.length) {
-    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">暫無任務</div>';
+    container.innerHTML = `
+      <div style="padding:20px;text-align:center;color:var(--text-dim)">
+        <div style="font-size:24px;margin-bottom:8px">📋</div>
+        <div>暫無任務</div>
+        <button class="btn s" style="margin-top:8px;font-size:11px" onclick="App.loadTab('tasks');App.toggleTaskPanel()">前往任務面板</button>
+      </div>`;
     return;
   }
+
+  const TC = (typeof TaskCommon !== 'undefined') ? TaskCommon : null;
 
   // 統計摘要
   const stats = d.stats || {};
@@ -982,22 +990,21 @@ App._refreshTasks = async function() {
       <span style="color:#ef4444">❌ 失敗 ${stats.failed || 0}</span>
     </div>`;
 
-  const statusIcons = {
-    running: '⏳', completed: '✅', failed: '❌', cancelled: '🚫', pending: '⏸️',
-  };
-  const statusColors = {
-    running: '#38bdf8', completed: '#22c55e', failed: '#ef4444', cancelled: '#94a3b8', pending: '#f59e0b',
-  };
+  const statusIcons = TC ? TC.STATUS_ICONS : { running: '⏳', completed: '✅', failed: '❌', cancelled: '🚫', pending: '⏸️' };
+  const statusColors = TC ? TC.STATUS_COLORS : { running: '#38bdf8', completed: '#22c55e', failed: '#ef4444', cancelled: '#94a3b8', pending: '#f59e0b' };
+  const typeNameMap = TC ? TC.TYPE_NAMES : App._TASK_TYPE_NAMES;
 
   container.innerHTML = statsHtml + d.tasks.map(t => {
-    const typeName = App._TASK_TYPE_NAMES[t.task_type] || t.task_type;
+    const typeName = typeNameMap[t.task_type] || t.task_type;
     const canViewResult = t.status === 'completed' && t.has_result;
+    const elapsed = TC ? TC.elapsed(t.started_at || t.created_at, t.completed_at) : null;
+    const elapsedStr = TC ? TC.formatElapsed(elapsed) : '';
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px;margin-bottom:4px;background:var(--bg-primary,#0f172a);border-radius:8px;border:1px solid var(--border-color,#334155);${canViewResult ? 'cursor:pointer' : ''}" ${canViewResult ? `onclick="App._viewTaskResult('${t.task_id}')"` : ''}>
       <span style="font-size:16px">${statusIcons[t.status] || '❓'}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.title || t.task_type}</div>
-        <div style="font-size:10px;color:var(--text-dim,#64748b);margin-top:2px">${typeName} · ${t.created_at || ''}</div>
+        <div style="font-size:10px;color:var(--text-dim,#64748b);margin-top:2px">${typeName} · ${elapsedStr ? '⏱' + elapsedStr + ' · ' : ''}${Utils.timeAgo(t.created_at)}</div>
         ${t.error ? `<div style="font-size:10px;color:#ef4444;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">⚠ ${String(t.error).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">

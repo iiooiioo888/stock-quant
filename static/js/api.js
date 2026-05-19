@@ -373,6 +373,10 @@ const Api = {
   async runDegradation(body) { return this.post('/api/portfolio/degradation', body); },
   async runArbitrate(body) { return this.post('/api/portfolio/arbitrate', body); },
   async runFrontier(body) { return this.post('/api/portfolio/frontier', body); },
+
+  // 任務管理增強
+  async deleteTask(taskId) { return this.delete(`/api/tasks/${taskId}`); },
+  async getTaskFull(taskId) { return this.get(`/api/tasks/${taskId}/full`); },
 };
 
 window.Api = Api;

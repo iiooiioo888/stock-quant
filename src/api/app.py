@@ -1603,6 +1603,28 @@ async def cleanup_tasks_api(timeout_sec: int = 3600):
     return {"success": True, "cleaned": cleaned}
 
 
+@app.delete("/api/tasks/{task_id}")
+async def delete_task_api(task_id: str):
+    """刪除已完成/失敗/取消的任務"""
+    from src.core.task_manager import delete_task
+    ok = delete_task(task_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="任務不存在或仍在運行中，請先取消")
+    return {"success": True}
+
+
+@app.get("/api/tasks/{task_id}/full")
+async def get_task_full_api(task_id: str):
+    """獲取任務完整信息（含 params 和 result）"""
+    from src.core.task_manager import get_task_full
+    task = get_task_full(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任務不存在")
+    # 移除內部字段
+    task.pop("last_accessed", None)
+    return {"task": task}
+
+
 # ====== 配置 ======
 
 @app.get("/api/config")

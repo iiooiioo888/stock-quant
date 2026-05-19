@@ -1,34 +1,22 @@
 /**
- * tasks.js — 任務面板 Tab（完整任務管理界面）
+ * tasks.js — 任務面板 Tab（完整任務管理界面）v2
+ *
+ * 優化：使用 TaskCommon 共享模塊、CSS 類、timeAgo、載入狀態、
+ * 錯誤詳情、參數展開、執行耗時、列排序、刪除功能、空狀態引導。
  */
 
 const Tasks = {
   _pollTimer: null,
-  _pollInterval: 3000,
+  _pollInterval: 4000,
+  _maxPolls: 300,
+  _pollCount: 0,
   _searchDebounce: null,
-
-  // 任務類型名稱
-  TYPE_NAMES: {
-    backtest: '📊 回測',
-    backtest_advanced: '📊 進階回測',
-    backtest_multi: '📊 多策略對比',
-    optimize: '⚡ 參數優化',
-    portfolio: '📈 組合回測',
-    walkforward: '🔄 Walk-Forward',
-    auto_optimize: '🤖 自動優化',
-    heatmap: '🌡️ 熱力圖',
-  },
-
-  STATUS_ICONS: {
-    running: '⏳', completed: '✅', failed: '❌', cancelled: '🚫', pending: '⏸️',
-  },
-
-  STATUS_COLORS: {
-    running: '#38bdf8', completed: '#22c55e', failed: '#ef4444', cancelled: '#94a3b8', pending: '#f59e0b',
-  },
+  _sortCol: 'created_at',
+  _sortAsc: false,
+  _expandedRows: new Set(),
 
   /**
-   * 初始化：綁定事件、啟動輪詢
+   * 初始化：綁定事件
    */
   init() {
     const searchInput = document.getElementById('taskSearch');
@@ -38,58 +26,71 @@ const Tasks = {
         this._searchDebounce = setTimeout(() => this.refresh(), 300);
       });
     }
+    ['taskTypeFilter', 'taskStatusFilter'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', () => this.refresh());
+    });
 
-    const typeFilter = document.getElementById('taskTypeFilter');
-    if (typeFilter) typeFilter.addEventListener('change', () => this.refresh());
-
-    const statusFilter = document.getElementById('taskStatusFilter');
-    if (statusFilter) statusFilter.addEventListener('change', () => this.refresh());
+    // 表頭排序
+    document.querySelectorAll('#taskTableHead th[data-sort]').forEach(th => {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (this._sortCol === col) {
+          this._sortAsc = !this._sortAsc;
+        } else {
+          this._sortCol = col;
+          this._sortAsc = true;
+        }
+        this.refresh();
+      });
+    });
   },
 
-  /**
-   * Tab 載入時調用
-   */
   async load() {
     this.init();
+    this._pollCount = 0;
+    this._expandedRows.clear();
     await this.refresh();
     this._startPolling();
   },
 
-  /**
-   * Tab 離開時調用
-   */
   unload() {
     this._stopPolling();
   },
 
   _startPolling() {
     this._stopPolling();
-    this._pollTimer = setInterval(() => this.refresh(), this._pollInterval);
+    this._pollTimer = setInterval(() => {
+      if (++this._pollCount > this._maxPolls) {
+        this._stopPolling();
+        return;
+      }
+      this.refresh(true);
+    }, this._pollInterval);
   },
 
   _stopPolling() {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
   },
 
-  /**
-   * 獲取當前篩選參數
-   */
   _getFilters() {
-    const search = (document.getElementById('taskSearch')?.value || '').trim().toLowerCase();
-    const taskType = document.getElementById('taskTypeFilter')?.value || '';
-    const status = document.getElementById('taskStatusFilter')?.value || '';
-    return { search, taskType, status };
+    return {
+      search: (document.getElementById('taskSearch')?.value || '').trim().toLowerCase(),
+      taskType: document.getElementById('taskTypeFilter')?.value || '',
+      status: document.getElementById('taskStatusFilter')?.value || '',
+    };
   },
 
   /**
    * 刷新所有數據
    */
-  async refresh() {
+  async refresh(silent) {
     const { taskType, status } = this._getFilters();
-    const d = await Api.getTasks(taskType || null, status || null, 100);
+    if (!silent) this._setLoading(true);
+
+    const d = await Api.getTasks(taskType || null, status || null, 200);
+    if (!silent) this._setLoading(false);
     if (!d) return;
 
     this._renderStats(d.stats);
@@ -98,24 +99,33 @@ const Tasks = {
     this._updateNavBadge(d.stats);
   },
 
-  /**
-   * 渲染統計卡片
-   */
+  _setLoading(loading) {
+    const indicator = document.getElementById('taskLoadingIndicator');
+    if (indicator) indicator.style.display = loading ? 'flex' : 'none';
+  },
+
+  // ── 統計卡片 ──────────────────────────────────────────────
+
   _renderStats(stats) {
     if (!stats) return;
     const grid = document.getElementById('taskStatsGrid');
     if (!grid) return;
 
-    grid.innerHTML = `
-      <div class="c stat-card"><h3>📋 總任務數</h3><div class="v">${stats.total || 0}</div><div class="stat-hint">所有任務</div></div>
-      <div class="c stat-card"><h3>⏳ 運行中</h3><div class="v" style="color:#38bdf8">${stats.running || 0}</div><div class="stat-hint">正在執行</div></div>
-      <div class="c stat-card"><h3>✅ 已完成</h3><div class="v" style="color:#22c55e">${stats.completed || 0}</div><div class="stat-hint">成功完成</div></div>
-      <div class="c stat-card"><h3>❌ 失敗</h3><div class="v" style="color:#ef4444">${stats.failed || 0}</div><div class="stat-hint">執行失敗</div></div>`;
+    const items = [
+      { icon: '📋', label: '總任務數', value: stats.total || 0, color: '' },
+      { icon: '⏳', label: '運行中', value: stats.running || 0, color: '#38bdf8' },
+      { icon: '✅', label: '已完成', value: stats.completed || 0, color: '#22c55e' },
+      { icon: '❌', label: '失敗', value: stats.failed || 0, color: '#ef4444' },
+      { icon: '🚫', label: '已取消', value: stats.cancelled || 0, color: '#94a3b8' },
+    ];
+    grid.innerHTML = items.map(i =>
+      `<div class="c stat-card"><h3>${i.icon} ${i.label}</h3>` +
+      `<div class="v" ${i.color ? `style="color:${i.color}"` : ''}>${i.value}</div></div>`
+    ).join('');
   },
 
-  /**
-   * 渲染運行中任務（帶進度條）
-   */
+  // ── 運行中任務 ────────────────────────────────────────────
+
   _renderRunningTasks(tasks) {
     const section = document.getElementById('taskRunningSection');
     const list = document.getElementById('taskRunningList');
@@ -123,43 +133,34 @@ const Tasks = {
     if (!section || !list) return;
 
     const running = tasks.filter(t => t.status === 'running');
-    if (running.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-
-    section.style.display = 'block';
-    if (countEl) countEl.textContent = running.length + ' 個';
+    section.style.display = running.length ? 'block' : 'none';
+    if (countEl) countEl.textContent = running.length ? `${running.length} 個` : '';
 
     list.innerHTML = running.map(t => {
-      const typeName = this.TYPE_NAMES[t.task_type] || t.task_type;
+      const typeName = TaskCommon.typeName(t.task_type);
       const progress = t.progress || 0;
       return `
-        <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px;margin-bottom:10px;position:relative;overflow:hidden">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="animation:pulse 1.5s infinite;color:#38bdf8">⏳</span>
-              <span style="font-weight:600">${t.title || typeName}</span>
-              <span style="font-size:11px;color:var(--text-dim);background:var(--bg-secondary);padding:2px 8px;border-radius:4px">${typeName}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:14px;font-weight:700;color:#38bdf8">${progress}%</span>
-              <button class="btn danger" style="padding:3px 10px;font-size:11px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button>
-            </div>
+        <div class="sec" style="padding:12px;margin-bottom:8px;animation:tabFadeIn .3s ease">
+          <div class="status-row">
+            <span style="animation:pulse 1.5s infinite;font-size:16px">⏳</span>
+            <span style="font-weight:600">${t.title || typeName}</span>
+            <span class="chip cfg">${typeName}</span>
+            <span class="flex-spacer"></span>
+            <span style="font-size:15px;font-weight:700;color:#38bdf8">${progress}%</span>
+            <button class="btn danger" style="padding:3px 10px;font-size:11px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button>
           </div>
-          <div style="background:var(--bg-secondary);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;width:${progress}%;background:linear-gradient(90deg,#38bdf8,#6366f1);border-radius:6px;transition:width 0.5s ease;position:relative">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" style="width:${progress}%">
               <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);animation:shimmer 1.5s infinite"></div>
             </div>
           </div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:6px">創建於 ${t.created_at || '-'}</div>
+          <div style="font-size:11px;color:var(--text-dim)">創建於 ${Utils.timeAgo(t.created_at)}</div>
         </div>`;
     }).join('');
   },
 
-  /**
-   * 渲染任務表格
-   */
+  // ── 任務表格 ──────────────────────────────────────────────
+
   _renderTaskTable(tasks) {
     const tbody = document.getElementById('taskTableBody');
     const countEl = document.getElementById('taskListCount');
@@ -170,224 +171,207 @@ const Tasks = {
     let filtered = tasks;
     if (search) {
       filtered = tasks.filter(t => {
-        const title = (t.title || '').toLowerCase();
-        const type = (t.task_type || '').toLowerCase();
-        const typeName = (this.TYPE_NAMES[t.task_type] || '').toLowerCase();
-        return title.includes(search) || type.includes(search) || typeName.includes(search);
+        const haystack = [t.title, t.task_type, TaskCommon.typeName(t.task_type)].join(' ').toLowerCase();
+        return haystack.includes(search);
       });
     }
 
-    if (countEl) countEl.textContent = filtered.length + ' 個';
+    // 排序
+    filtered.sort((a, b) => {
+      let va = a[this._sortCol] ?? '';
+      let vb = b[this._sortCol] ?? '';
+      if (this._sortCol === 'progress') { va = Number(va); vb = Number(vb); }
+      else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+      if (va < vb) return this._sortAsc ? -1 : 1;
+      if (va > vb) return this._sortAsc ? 1 : -1;
+      return 0;
+    });
 
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7"><div class="state-empty"><span class="state-icon">📋</span><span class="state-text">暫無任務記錄</span></div></td></tr>';
+    if (countEl) countEl.textContent = `${filtered.length} 個`;
+
+    if (!filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="7">
+        <div class="empty-state">
+          <span class="empty-icon">📋</span>
+          <p><strong>暫無任務記錄</strong></p>
+          <p>前往回測或優化頁面提交任務後，將在此顯示</p>
+        </div>
+      </td></tr>`;
       return;
     }
 
-    tbody.innerHTML = filtered.map(t => {
-      const typeName = this.TYPE_NAMES[t.task_type] || t.task_type;
-      const icon = this.STATUS_ICONS[t.status] || '❓';
-      const color = this.STATUS_COLORS[t.status] || '#94a3b8';
-      const canView = t.status === 'completed' && t.has_result;
-      const canCancel = t.status === 'running' || t.status === 'pending';
-      const statusText = t.status === 'running' ? `${t.progress || 0}%` : t.status;
+    // 更新排序指示器
+    document.querySelectorAll('#taskTableHead th[data-sort]').forEach(th => {
+      const col = th.dataset.sort;
+      th.textContent = th.textContent.replace(/ [▲▼]$/, '');
+      if (col === this._sortCol) {
+        th.textContent += this._sortAsc ? ' ▲' : ' ▼';
+      }
+    });
 
-      return `<tr>
-        <td><span style="color:${color};font-weight:600">${icon} ${statusText}</span></td>
-        <td>${typeName}</td>
+    tbody.innerHTML = filtered.map(t => this._renderRow(t)).join('');
+  },
+
+  _renderRow(t) {
+    const TC = TaskCommon;
+    const typeName = TC.typeName(t.task_type);
+    const icon = TC.STATUS_ICONS[t.status] || '❓';
+    const color = TC.STATUS_COLORS[t.status] || '#94a3b8';
+    const isExpanded = this._expandedRows.has(t.task_id);
+    const canView = t.status === 'completed' && t.has_result;
+    const canCancel = t.status === 'running' || t.status === 'pending';
+    const canDelete = ['completed', 'failed', 'cancelled'].includes(t.status);
+
+    // 狀態顯示
+    let statusHtml;
+    if (t.status === 'running') {
+      statusHtml = `<span style="color:${color};font-weight:600">${icon} ${t.progress || 0}%</span>`;
+    } else {
+      statusHtml = `<span class="${TC.STATUS_CHIP[t.status] || 'chip'}">${icon} ${t.status}</span>`;
+    }
+
+    // 進度列
+    let progressHtml;
+    if (t.status === 'running') {
+      progressHtml = `<div class="progress-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle"><div class="progress-bar" style="width:${t.progress || 0}%"></div></div>`;
+    } else {
+      progressHtml = `<span style="color:var(--text-dim)">${t.progress || 0}%</span>`;
+    }
+
+    // 操作按鈕
+    let actions = '';
+    if (canView) actions += `<button class="btn s" style="padding:2px 8px;font-size:10px" onclick="Tasks.viewResult('${t.task_id}')">📊 結果</button> `;
+    if (canCancel) actions += `<button class="btn danger" style="padding:2px 8px;font-size:10px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button> `;
+    if (canDelete) actions += `<button class="btn s" style="padding:2px 8px;font-size:10px;color:var(--text-dim)" onclick="Tasks.deleteTask('${t.task_id}')">🗑️</button> `;
+    actions += `<button class="btn s" style="padding:2px 8px;font-size:10px" onclick="Tasks.toggleExpand('${t.task_id}')">${isExpanded ? '收起' : '詳情'}</button>`;
+
+    // 展開詳情行
+    let detailRow = '';
+    if (isExpanded) {
+      const elapsed = TC.elapsed(t.started_at || t.created_at, t.completed_at);
+      const elapsedStr = TC.formatElapsed(elapsed);
+      detailRow = `
+        <tr id="detail-${t.task_id}" class="task-detail-row">
+          <td colspan="7" style="padding:0">
+            <div style="background:var(--bg-primary);border-top:1px solid var(--border-color);padding:12px 16px;animation:tabFadeIn .2s ease">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">📋 任務參數</div>
+                  <div id="params-${t.task_id}" style="font-size:12px">載入中...</div>
+                </div>
+                <div>
+                  <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">ℹ️ 執行信息</div>
+                  <table style="font-size:12px;width:100%">
+                    <tr><td style="color:var(--text-dim)">任務ID</td><td style="word-break:break-all">${t.task_id}</td></tr>
+                    <tr><td style="color:var(--text-dim)">類型</td><td>${typeName}</td></tr>
+                    <tr><td style="color:var(--text-dim)">創建時間</td><td>${t.created_at || '-'}</td></tr>
+                    <tr><td style="color:var(--text-dim)">完成時間</td><td>${t.completed_at || '-'}</td></tr>
+                    <tr><td style="color:var(--text-dim)">執行耗時</td><td>${elapsedStr}</td></tr>
+                  </table>
+                </div>
+              </div>
+              ${t.error ? TC.renderError(t.error) : ''}
+            </div>
+          </td>
+        </tr>`;
+
+      // 異步載入參數
+      setTimeout(() => this._loadParams(t.task_id), 0);
+    }
+
+    return `
+      <tr style="cursor:pointer" onclick="Tasks.toggleExpand('${t.task_id}')">
+        <td>${statusHtml}</td>
+        <td><span style="font-size:12px">${typeName}</span></td>
         <td style="font-weight:500">${t.title || '-'}</td>
-        <td>${t.status === 'running' ? `<div style="background:var(--bg-secondary);border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle"><div style="height:100%;width:${t.progress || 0}%;background:#38bdf8;border-radius:4px"></div></div>` : (t.progress || 0) + '%'}</td>
-        <td style="font-size:11px;color:var(--text-dim)">${t.created_at || '-'}</td>
-        <td style="font-size:11px;color:var(--text-dim)">${t.completed_at || '-'}</td>
-        <td>
-          ${canView ? `<button class="btn s" style="padding:3px 8px;font-size:10px" onclick="Tasks.viewResult('${t.task_id}')">查看結果</button>` : ''}
-          ${canCancel ? `<button class="btn danger" style="padding:3px 8px;font-size:10px" onclick="Tasks.cancelTask('${t.task_id}')">取消</button>` : ''}
-          ${t.error ? `<span style="color:#ef4444;font-size:10px;cursor:pointer" title="${String(t.error).replace(/"/g, '&quot;')}">⚠ 錯誤</span>` : ''}
-        </td>
-      </tr>`;
-    }).join('');
+        <td>${progressHtml}</td>
+        <td style="font-size:11px;color:var(--text-dim)" title="${t.created_at || ''}">${Utils.timeAgo(t.created_at)}</td>
+        <td style="font-size:11px;color:var(--text-dim)" title="${t.completed_at || ''}">${t.completed_at ? Utils.timeAgo(t.completed_at) : '-'}</td>
+        <td onclick="event.stopPropagation()">${actions}</td>
+      </tr>${detailRow}`;
   },
 
   /**
-   * 更新側邊欄徽章
+   * 展開/收起詳情行
    */
+  async toggleExpand(taskId) {
+    if (this._expandedRows.has(taskId)) {
+      this._expandedRows.delete(taskId);
+    } else {
+      this._expandedRows.add(taskId);
+    }
+    await this.refresh(true);
+  },
+
+  /**
+   * 異步載入任務參數
+   */
+  async _loadParams(taskId) {
+    const container = document.getElementById(`params-${taskId}`);
+    if (!container) return;
+
+    const d = await Api.getTaskFull(taskId);
+    if (!d || !d.task) {
+      container.innerHTML = '<span style="color:var(--text-dim)">無法載入</span>';
+      return;
+    }
+    container.innerHTML = TaskCommon.renderParams(d.task.params);
+  },
+
+  // ── 操作 ──────────────────────────────────────────────────
+
   _updateNavBadge(stats) {
     const badge = document.getElementById('navBadgeTasks');
     if (!badge) return;
     const running = stats?.running || 0;
-    if (running > 0) {
-      badge.textContent = running;
-      badge.style.display = 'inline-block';
-    } else {
-      badge.style.display = 'none';
-    }
+    badge.textContent = running;
+    badge.style.display = running > 0 ? 'inline-block' : 'none';
   },
 
-  /**
-   * 取消任務
-   */
   async cancelTask(taskId) {
     const d = await Api.cancelTask(taskId);
-    if (d && d.success) {
-      Utils.toast('任務已取消', 2000, 'success');
+    if (d?.success) { Utils.toast('任務已取消', 2000, 'success'); this.refresh(); }
+    else Utils.toast('取消失敗', 2000, 'error');
+  },
+
+  async deleteTask(taskId) {
+    const d = await Api.deleteTask(taskId);
+    if (d?.success) {
+      this._expandedRows.delete(taskId);
+      Utils.toast('已刪除', 2000, 'success');
       this.refresh();
     } else {
-      Utils.toast('取消失敗', 2000, 'error');
+      Utils.toast(d?.detail || '刪除失敗（運行中的任務需先取消）', 3000, 'error');
     }
   },
 
-  /**
-   * 清理超時任務
-   */
   async cleanup() {
     const d = await Api.cleanupTasks();
-    if (d && d.success) {
+    if (d?.success) {
       Utils.toast(`已清理 ${d.cleaned || 0} 個超時任務`, 2000, 'success');
       this.refresh();
     }
   },
 
-  /**
-   * 查看任務結果（複用 App._viewTaskResult 的邏輯）
-   */
+  // ── 查看結果 ──────────────────────────────────────────────
+
   async viewResult(taskId) {
     const d = await Api.getTask(taskId);
-    if (!d || !d.task) return;
+    if (!d?.task) return;
 
     const task = d.task;
-    if (!task.result) {
-      Utils.toast('此任務暫無結果', 2000, 'warning');
-      return;
+    if (!task.result) { Utils.toast('此任務暫無結果', 2000, 'warning'); return; }
+
+    Utils.showModal(TaskCommon.renderResultModal(task));
+
+    // 繪製收益曲線
+    if (task.result?.equity_curve) {
+      setTimeout(() => TaskCommon.renderResultChart('taskResultChart', task.result.equity_curve), 100);
     }
-
-    const r = task.result;
-    const typeName = this.TYPE_NAMES[task.task_type] || task.task_type;
-    let content = '';
-
-    if (task.task_type === 'backtest' || task.task_type === 'backtest_advanced') {
-      content = `
-        <h3>${typeName}結果 — ${task.title}</h3>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0">
-          <div class="c"><h3>收益率</h3><div class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</div></div>
-          <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio || 0, 4)}</div></div>
-          <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
-          <div class="c"><h3>勝率</h3><div class="v">${Utils.formatNum(r.win_rate_pct || 0, 1)}%</div></div>
-          <div class="c"><h3>交易次數</h3><div class="v">${r.total_trades || 0}</div></div>
-          <div class="c"><h3>年化收益</h3><div class="v">${Utils.formatPct(r.annual_return_pct || 0)}</div></div>
-          <div class="c"><h3>Sortino</h3><div class="v">${Utils.formatNum(r.sortino_ratio || 0, 4)}</div></div>
-          <div class="c"><h3>最終市值</h3><div class="v">¥${(r.final_value || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</div></div>
-        </div>
-        ${r.equity_curve ? `<div style="margin-top:12px"><h4>收益曲線</h4><canvas id="taskResultChart" height="200"></canvas></div>` : ''}
-        <div style="margin-top:8px">
-          <button class="btn s" onclick="Utils.closeModal();App._loadBacktestResult('${taskId}')">📊 在回測頁查看完整結果</button>
-        </div>`;
-
-      Utils.showModal(content);
-
-      // 繪製收益曲線
-      if (r.equity_curve && r.equity_curve.length > 0) {
-        setTimeout(() => {
-          const canvas = document.getElementById('taskResultChart');
-          if (!canvas || typeof Chart === 'undefined') return;
-          const colors = typeof Charts !== 'undefined' && Charts.getThemeColors ? Charts.getThemeColors() : { text: '#94a3b8', grid: '#1e293b' };
-          new Chart(canvas.getContext('2d'), {
-            type: 'line',
-            data: {
-              labels: r.equity_curve.map((_, i) => i),
-              datasets: [{
-                data: r.equity_curve,
-                borderColor: '#38bdf8',
-                backgroundColor: 'rgba(56,189,248,0.1)',
-                fill: true,
-                pointRadius: 0,
-                borderWidth: 2,
-                tension: 0.3,
-              }],
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false } },
-              scales: {
-                x: { display: false },
-                y: { ticks: { color: colors.text }, grid: { color: colors.grid } },
-              },
-            },
-          });
-        }, 100);
-      }
-      return;
-    }
-
-    if (task.task_type === 'backtest_multi') {
-      const results = Array.isArray(r) ? r : (r.results || []);
-      const rows = results.slice(0, 10).map(item => `
-        <tr>
-          <td>${item.strategy}</td>
-          <td class="r"><span class="b ${(item.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(item.total_return_pct || 0)}</span></td>
-          <td class="r">${Utils.formatNum(item.sharpe_ratio || 0, 2)}</td>
-          <td class="r">${Utils.formatPct(-(item.max_drawdown_pct || 0))}</td>
-          <td class="r">${Utils.formatNum(item.win_rate_pct || 0, 1)}%</td>
-        </tr>
-      `).join('');
-      content = `
-        <h3>${typeName}結果 — ${task.title}</h3>
-        <div class="table-wrap" style="margin-top:8px"><table>
-          <tr><th>策略</th><th>收益率</th><th>夏普</th><th>回撤</th><th>勝率</th></tr>
-          ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">無數據</td></tr>'}
-        </table></div>`;
-      Utils.showModal(content);
-      return;
-    }
-
-    if (task.task_type === 'optimize') {
-      let rows = '';
-      if (typeof r === 'object' && !Array.isArray(r)) {
-        for (const [strat, results] of Object.entries(r)) {
-          const top3 = Array.isArray(results) ? results.slice(0, 3) : [];
-          rows += `<tr><td colspan="5" style="font-weight:600;padding-top:8px">${strat}</td></tr>`;
-          top3.forEach((item, i) => {
-            rows += `<tr>
-              <td>#${i + 1}</td>
-              <td style="font-size:11px">${JSON.stringify(item.params || {})}</td>
-              <td class="r">${Utils.formatNum(item.sharpe || item.value || 0, 4)}</td>
-              <td class="r">${Utils.formatPct(-(item.max_drawdown_pct || 0))}</td>
-              <td class="r">${Utils.formatNum(item.win_rate_pct || 0, 1)}%</td>
-            </tr>`;
-          });
-        }
-      }
-      content = `
-        <h3>${typeName}結果 — ${task.title}</h3>
-        <div class="table-wrap" style="margin-top:8px"><table>
-          <tr><th>#</th><th>參數</th><th>夏普</th><th>回撤</th><th>勝率</th></tr>
-          ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">無數據</td></tr>'}
-        </table></div>`;
-      Utils.showModal(content);
-      return;
-    }
-
-    if (task.task_type === 'portfolio') {
-      content = `
-        <h3>${typeName}結果 — ${task.title}</h3>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0">
-          <div class="c"><h3>收益率</h3><div class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</div></div>
-          <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio || 0, 4)}</div></div>
-          <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
-        </div>`;
-      Utils.showModal(content);
-      return;
-    }
-
-    // 通用結果
-    const json = JSON.stringify(r, null, 2);
-    content = `
-      <h3>${typeName}結果 — ${task.title}</h3>
-      <pre style="background:var(--bg-secondary);padding:12px;border-radius:8px;overflow:auto;max-height:400px;font-size:12px">${json.substring(0, 3000)}${json.length > 3000 ? '\n...(截斷)' : ''}</pre>`;
-    Utils.showModal(content);
   },
 };
 
-// 添加 shimmer 動畫（如果尚未存在）
+// shimmer 動畫
 if (!document.getElementById('taskShimmerStyle')) {
   const style = document.createElement('style');
   style.id = 'taskShimmerStyle';

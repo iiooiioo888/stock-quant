@@ -194,6 +194,36 @@ def cancel_task(task_id: str) -> bool:
         return False
 
 
+def delete_task(task_id: str) -> bool:
+    """刪除任務（僅已完成/失敗/取消的任務可刪除）"""
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return False
+        if task["status"] in (STATUS_PENDING, STATUS_RUNNING):
+            return False  # 運行中的任務不能刪除，需先取消
+        del _tasks[task_id]
+        # 同步刪除數據庫記錄
+        try:
+            from src.core.db import get_conn
+            with get_conn() as conn:
+                conn.execute("DELETE FROM task_log WHERE task_id = ?", (task_id,))
+        except Exception:
+            pass
+        logger.info(f"任務刪除: {task_id}")
+        return True
+
+
+def get_task_full(task_id: str) -> Optional[dict]:
+    """獲取任務完整信息（含 params 和 result），用於重試和詳情查看"""
+    with _lock:
+        task = _tasks.get(task_id)
+        if task:
+            task["last_accessed"] = time.time()
+            return dict(task)  # 返回完整副本
+        return None
+
+
 def cleanup_stale_tasks(timeout_sec: int = 3600) -> int:
     """清理超時任務（默認 1 小時）"""
     now = time.time()
