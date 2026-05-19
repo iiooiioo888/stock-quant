@@ -1,0 +1,12 @@
+data/
+*.db
+*.png
+__pycache__/
+*.pyc
+.env
+logs/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/

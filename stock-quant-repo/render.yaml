@@ -1,0 +1,37 @@
+# ============================================================
+# Render.com Blueprint — stock-quant 演示版
+# ============================================================
+# 部署方式：
+#   1. 在 Render Dashboard → New → Blueprint
+#   2. 連接 GitHub 倉庫 iiooiioo888/stock-quant
+#   3. Render 自動讀取此文件並創建服務
+# ============================================================
+
+services:
+  - type: web
+    name: stock-quant
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore  # 亞洲區域，離 A 股用戶最近
+    plan: free
+    envVars:
+      - key: SQ_REDIS_ENABLED
+        value: "false"
+      - key: SQ_DEBUG
+        value: "false"
+      - key: SQ_LOG_LEVEL
+        value: "INFO"
+      - key: SQ_WEB_HOST
+        value: "0.0.0.0"
+      - key: SQ_WEB_PORT
+        value: "8000"
+      - key: SQ_DEMO_MODE
+        value: "true"
+      - key: SQ_DB_PATH
+        value: /app/data/stock.db
+      - key: SQ_DEMO_ADMIN_PASSWORD
+        value: "stockquant2024"
+      - key: SQ_HISTORY_START_DATE
+        value: "20230101"
+    healthCheckPath: /api/health
+    autoDeploy: true

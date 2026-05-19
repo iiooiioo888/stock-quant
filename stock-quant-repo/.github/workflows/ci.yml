@@ -1,0 +1,64 @@
+# ============================================================
+# CI/CD Pipeline — stock-quant
+# 觸發：push / pull_request
+# 階段：test → docker build
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ====== 單元測試 ======
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 緩存 pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: 安裝依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: 運行測試
+        run: python -m pytest tests/ -v --tb=short
+        env:
+          SQ_DB_PATH: /tmp/test_stock.db
+          SQ_REDIS_ENABLED: "false"
+
+  # ====== Docker 構建 ======
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 構建 Docker 鏡像
+        run: docker build -t stock-quant:latest .
+
+      - name: 驗證鏡像
+        run: |
+          docker run --rm stock-quant:latest python -c "from src.config import settings; print(f'✅ {settings.app_name} v{settings.app_version}')"

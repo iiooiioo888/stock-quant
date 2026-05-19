@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>stock-quant</title>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<!-- TradingView Lightweight Charts -->
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+<!-- Styles -->
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     Header
+     ============================================================ -->
+<div class="hdr">
+    <div class="hdr-left">
+        <button class="sidebar-toggle" id="sidebarToggle" title="收合側邊欄">☰</button>
+        <h1>📈 stock-quant</h1>
+    </div>
+
+    <div class="hdr-center">
+        <div class="global-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="globalSearch" placeholder="搜索股票代碼 / 策略名稱..." autocomplete="off">
+            <kbd class="search-kbd">/</kbd>
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </div>
+
+    <div class="hdr-right">
+        <div id="authStatus" onclick="Api.isLoggedIn() ? Api.logout() : Api.showLoginModal()" style="font-size:11px;cursor:pointer;padding:4px 8px;border-radius:4px;background:var(--bg-primary);border:1px solid var(--border-color)"></div>
+        <div class="hdr-quick-stats" id="hdrQuickStats">
+            <span class="hq-item" title="監控股票數">
+                <span class="hq-icon">📊</span>
+                <span class="hq-val" id="hqStocks">-</span>
+            </span>
+            <span class="hq-divider"></span>
+            <span class="hq-item" title="今日預警">
+                <span class="hq-icon">🔔</span>
+                <span class="hq-val" id="hqAlerts">-</span>
+            </span>
+        </div>
+        <div class="st">
+            <span class="ws-dot off" id="wsDot"></span>
+            <span id="sysStatus">載入中...</span>
+        </div>
+        <button class="theme-toggle" id="themeToggle" title="切換主題">☀️</button>
+    </div>
+</div>
+
+<!-- ============================================================
+     App: Sidebar + Main
+     ============================================================ -->
+<div class="app">
+
+<!-- Sidebar Navigation -->
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-nav">
+        <div class="nav-section">概覽</div>
+        <button class="a" data-tab="dashboard"><span class="nav-icon">📊</span><span class="nav-label">儀表盤</span><span class="nav-badge" id="navBadgeDashboard"></span></button>
+
+        <div class="nav-section">回測</div>
+        <button data-tab="backtest"><span class="nav-icon">🧪</span><span class="nav-label">策略回測</span></button>
+        <button data-tab="optimize"><span class="nav-icon">⚡</span><span class="nav-label">參數優化</span></button>
+        <button data-tab="walkforward"><span class="nav-icon">🔄</span><span class="nav-label">Walk-Forward</span></button>
+        <button data-tab="heatmap"><span class="nav-icon">🌡️</span><span class="nav-label">熱力圖</span></button>
+        <button data-tab="history"><span class="nav-icon">📜</span><span class="nav-label">回測歷史</span></button>
+
+        <div class="nav-section">組合</div>
+        <button data-tab="portfolio"><span class="nav-icon">💼</span><span class="nav-label">組合回測</span></button>
+        <button data-tab="compare"><span class="nav-icon">⚖️</span><span class="nav-label">多股對比</span></button>
+
+        <div class="nav-section">分析</div>
+        <button data-tab="screener"><span class="nav-icon">🔍</span><span class="nav-label">股票篩選</span></button>
+        <button data-tab="signals"><span class="nav-icon">📡</span><span class="nav-label">實時信號</span><span class="nav-dot" id="navDotSignals"></span></button>
+        <button data-tab="data"><span class="nav-icon">🗄️</span><span class="nav-label">數據中心</span></button>
+        <button data-tab="analysis"><span class="nav-icon">🔬</span><span class="nav-label">深度分析</span></button>
+
+        <div class="nav-section">系統</div>
+        <button data-tab="reports"><span class="nav-icon">📋</span><span class="nav-label">策略報告</span></button>
+        <button data-tab="alerts"><span class="nav-icon">🔔</span><span class="nav-label">預警通知</span><span class="nav-dot" id="navDotAlerts"></span></button>
+        <button data-tab="markets"><span class="nav-icon">🌐</span><span class="nav-label">多市場</span></button>
+    </div>
+
+    <div class="sidebar-footer">
+        <div class="sidebar-version" id="sidebarVersion">v1.1.0</div>
+        <div class="sidebar-status">
+            <span class="ws-dot off" id="wsDotSidebar"></span>
+            <span class="sidebar-status-text" id="sidebarStatusText">連接中</span>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main" id="mainContent">
+
+<!-- ====== 儀表盤 ====== -->
+<div id="tab-dashboard">
+    <!-- Welcome / Greeting -->
+    <div class="welcome-section" id="welcomeSection">
+        <div class="welcome-left">
+            <h2 id="greetingText">歡迎回來 👋</h2>
+            <p id="greetingSubtext" class="welcome-sub">今天也要元氣滿滿地分析市場！</p>
+        </div>
+        <div class="welcome-right">
+            <div class="market-status" id="marketStatus">
+                <span class="market-dot" id="marketDot"></span>
+                <span id="marketStatusText">載入中...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions" id="quickActions">
+        <button class="qa-card" onclick="App.quickAction('backtest')">
+            <span class="qa-icon">🧪</span>
+            <span class="qa-label">策略回測</span>
+            <span class="qa-desc">測試你的交易策略</span>
+        </button>
+        <button class="qa-card" onclick="App.quickAction('signals')">
+            <span class="qa-icon">📡</span>
+            <span class="qa-label">今日信號</span>
+            <span class="qa-desc">查看最新買賣信號</span>
+        </button>
+        <button class="qa-card" onclick="App.quickAction('screener')">
+            <span class="qa-icon">🔍</span>
+            <span class="qa-label">選股篩選</span>
+            <span class="qa-desc">找到符合條件的股票</span>
+        </button>
+        <button class="qa-card" onclick="App.quickAction('portfolio')">
+            <span class="qa-icon">💼</span>
+            <span class="qa-label">組合分析</span>
+            <span class="qa-desc">多策略組合回測</span>
+        </button>
+        <button class="qa-card" onclick="App.downloadAllFromDashboard()" id="qaDownload">
+            <span class="qa-icon">📥</span>
+            <span class="qa-label">下載數據</span>
+            <span class="qa-desc">一鍵下載全市場股票數據</span>
+        </button>
+        <button class="qa-card" onclick="App.quickAction('markets')">
+            <span class="qa-icon">🌐</span>
+            <span class="qa-label">多市場</span>
+            <span class="qa-desc">美股、港股、加密貨幣</span>
+        </button>
+    </div>
+
+    <!-- Download Progress (hidden by default) -->
+    <div class="sec" id="downloadSection" style="display:none">
+        <h2>📥 數據下載</h2>
+        <div id="downloadContent">
+            <div class="status-row">
+                <span class="ld"></span>
+                <span id="dlStatus" style="font-size:13px;color:var(--text-secondary)">正在下載全市場數據，請稍候...</span>
+            </div>
+            <div class="progress-bar-wrap">
+                <div id="dlBar" class="progress-bar"></div>
+            </div>
+            <div id="dlDetail" style="font-size:11px;color:var(--text-dim)"></div>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="g" id="statsGrid"></div>
+
+    <!-- Dashboard Charts -->
+    <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+        <div class="sec"><h2>📈 市場總覽</h2><div class="cw"><canvas id="dashSparklineChart"></canvas></div></div>
+        <div class="sec"><h2>🧪 最近回測表現</h2><div class="cw"><canvas id="dashBacktestChart"></canvas></div></div>
+        <div class="sec"><h2>📡 信號強度分佈</h2><div class="cw"><canvas id="dashSignalRadar"></canvas></div></div>
+        <div class="sec"><h2>🏭 板塊漲跌 Top 5</h2><div class="cw"><canvas id="dashSectorChart"></canvas></div></div>
+    </div>
+    <div class="sec" style="margin-top:14px"><h2>🏆 策略勝率排行</h2><div class="cw"><canvas id="dashLeaderboardChart"></canvas></div></div>
+
+    <!-- Watchlist -->
+    <div class="sec">
+        <h2>📋 監控列表 <span class="ct" id="wlCount"></span></h2>
+        <div class="table-wrap">
+        <table><thead><tr><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
+        <tbody id="watchlistTable"></tbody></table>
+        </div>
+        <div class="mt-sm"><button class="btn" onclick="showAddRule()">+ 添加監控規則</button></div>
+    </div>
+
+    <!-- Tips for beginners -->
+    <div class="tip-card" id="tipCard">
+        <span class="tip-icon">💡</span>
+        <div class="tip-content">
+            <strong>新手提示</strong>
+            <p id="tipText">夏普比率 (Sharpe Ratio) 表示每承受一單位風險能獲得多少超額收益，大於 1 算不錯，大於 2 算優秀。</p>
+        </div>
+        <button class="tip-dismiss" onclick="App.dismissTip()">✕</button>
+    </div>
+</div>
+
+<!-- ====== 回測 ====== -->
+<div id="tab-backtest" class="h">
+    <div class="sec">
+        <h2>🧪 策略回測</h2>
+        <div class="fr">
+            <div class="fg"><label>股票代碼</label><input id="btCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="btStrategy"></select></div>
+            <div class="fg"><label>止損 %</label><input id="btSL" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+            <div class="fg"><label>止盈 %</label><input id="btTP" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+            <div class="fg"><label>滑點 %</label><input id="btSlippage" type="number" step="0.01" value="0" class="input-narrow"></div>
+            <div class="fg"><label>移動止損 %</label><input id="btTrailing" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+        </div>
+        <div class="fr" style="align-items:center;margin-top:4px">
+            <label class="scr-filter-item"><input type="checkbox" id="btT1" checked><span class="scr-filter-label">T+1 限制</span></label>
+            <label class="scr-filter-item"><input type="checkbox" id="btLimit" checked><span class="scr-filter-label">漲跌停限制</span></label>
+            <label class="scr-filter-item"><input type="checkbox" id="btBench"><span class="scr-filter-label">基準對比</span></label>
+            <span class="flex-spacer"></span>
+            <button class="btn" onclick="runBacktest()">🚀 回測</button>
+            <button class="btn s" onclick="runMultiBacktest()">全策略對比</button>
+        </div>
+    </div>
+    <div id="btResult" class="h">
+        <div class="g" id="btStats"></div>
+        <div class="sec"><h2>風險指標</h2><div class="g" id="btRiskStats"></div></div>
+        <div class="sec h"><h2>基準對比（滬深300）</h2><div class="g" id="btBenchStats"></div></div>
+        <div class="sec"><h2>K 線 + 買賣信號</h2><div id="btKlineContainer" class="cw-tall" style="display:none"></div><div class="cw-tall"><canvas id="btKlineChart"></canvas></div></div>
+        <div class="sec"><h2>淨值曲線</h2><div class="cw"><canvas id="btChart"></canvas></div></div>
+        <div class="sec"><h2>月度收益熱力圖</h2><div class="heatmap-container"><canvas id="btMonthlyHeatmap" width="680" height="200"></canvas></div></div>
+        <div class="sec"><h2>回撤水下圖</h2><div class="cw"><canvas id="btDrawdownChart"></canvas></div></div>
+        <div class="sec h" id="btTradeAnalysis"><h2>交易分析</h2><div class="g" id="btTAStats"></div><div class="sec h"><h2>收益分佈</h2><div class="cw"><canvas id="mcChart"></canvas></div></div></div>
+        <div class="sec h" id="btMonteCarlo"><h2>蒙特卡羅模擬</h2><div class="g" id="mcStats"></div><div class="cw"><canvas id="mcChart2"></canvas></div></div>
+        <div class="sec h" id="btRollingMetrics"><h2>滾動指標</h2><div class="cw"><canvas id="rollingChart"></canvas></div></div>
+        <div class="sec"><h2>交易明細 <span class="ct" id="btTradeCount"></span></h2>
+            <div class="table-wrap table-wrap-scroll"><table><thead><tr><th>買入日期</th><th>買價</th><th>賣出日期</th><th>賣價</th><th>數量</th><th>盈虧</th><th>收益率</th><th>持有天數</th></tr></thead><tbody id="btTrades"></tbody></table></div>
+        </div>
+    </div>
+    <div id="btAllResult" class="h">
+        <div class="sec"><h2>策略對比 <span class="ct" id="btAllCount"></span></h2>
+            <div class="table-wrap"><table><thead><tr><th>策略</th><th>收益率</th><th>夏普</th><th>Sortino</th><th>Calmar</th><th>回撤</th><th>VaR95</th><th>勝率</th><th>交易</th></tr></thead><tbody id="btAllTable"></tbody></table></div>
+        </div>
+        <div class="sec"><h2>淨值對比</h2><div class="cw"><canvas id="btAllChart"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 優化 ====== -->
+<div id="tab-optimize" class="h">
+    <div class="sec">
+        <h2>⚡ 參數優化</h2>
+        <p class="sec-desc">自動搜索策略最優參數組合</p>
+        <div class="pf-builder-row">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">1</span>
+                <div class="pf-step-content">
+                    <label>股票代碼</label>
+                    <input id="optCode" value="600519" placeholder="輸入股票代碼">
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">2</span>
+                <div class="pf-step-content">
+                    <label>策略</label>
+                    <select id="optStrategy"><option value="all">全部策略</option></select>
+                </div>
+            </div>
+        </div>
+        <div class="pf-builder-row mt-md">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">3</span>
+                <div class="pf-step-content">
+                    <label>優化方法</label>
+                    <div class="pf-method-grid pf-grid-2">
+                        <div class="pf-method-card active" data-opt-method="grid" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectMethod(this)">
+                            <span class="pf-method-icon">🔲</span>
+                            <span class="pf-method-name">網格搜索</span>
+                            <span class="pf-method-desc">遍歷所有參數組合，穩但慢</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-method="optuna" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectMethod(this)">
+                            <span class="pf-method-icon">🧪</span>
+                            <span class="pf-method-name">Optuna</span>
+                            <span class="pf-method-desc">貝葉斯優化，快且智能</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">4</span>
+                <div class="pf-step-content">
+                    <label>優化目標</label>
+                    <div class="pf-method-grid pf-grid-3">
+                        <div class="pf-method-card active" data-opt-obj="sharpe" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">📊</span>
+                            <span class="pf-method-name">夏普比率</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-obj="return" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">💰</span>
+                            <span class="pf-method-name">收益率</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-obj="calmar" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">🛡️</span>
+                            <span class="pf-method-name">Calmar</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="pf-action-row">
+            <div></div>
+            <div class="btn-group">
+                <button class="btn pf-run-btn" onclick="runOptimize()" id="optBtn">🔍 開始優化</button>
+                <button class="btn s" onclick="runAutoOptimize()" id="autoOptBtn">⚡ 全自動優化</button>
+            </div>
+        </div>
+    </div>
+    <div id="optResult" class="h"><div class="sec"><h2>優化結果</h2><div id="optOutput"></div></div></div>
+    <div id="autoOptResult" class="h"><div class="sec"><h2>全自動優化結果</h2><pre class="rpt" id="autoOptOutput"></pre></div></div>
+</div>
+
+<!-- ====== 組合 ====== -->
+<div id="tab-portfolio" class="h">
+    <!-- Step 1: 預設模板 -->
+    <div class="sec">
+        <h2>📋 預設組合模板</h2>
+        <p class="sec-desc">一鍵回測經過調優的組合策略</p>
+        <div class="pc" id="presetCards"></div>
+    </div>
+
+    <!-- Step 2: 自定義組合 -->
+    <div class="sec">
+        <h2>🔧 自定義組合</h2>
+
+        <!-- 標的選擇 -->
+        <div class="pf-builder-row">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">1</span>
+                <div class="pf-step-content">
+                    <label>選擇標的</label>
+                    <input id="pfCodes" value="000001,600519,000858" placeholder="輸入股票代碼，逗號分隔">
+                    <span class="pf-hint">例：000001,600519,000858</span>
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">2</span>
+                <div class="pf-step-content">
+                    <label>選擇策略</label>
+                    <input id="pfStrategies" value="dual_ma,macd,bollinger,momentum,adx_trend" placeholder="輸入策略名稱，逗號分隔">
+                    <span class="pf-hint">組合數 = 標的 × 策略（如 3×5=15 個子策略）</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 方法選擇（分類標籤） -->
+        <div class="pf-builder-step mt-lg">
+            <span class="pf-step-num">3</span>
+            <div class="pf-step-content">
+                <label>選擇配置方法</label>
+                <div class="pf-method-grid" id="pfMethodGrid">
+                    <div class="pf-method-card active" data-method="basic">
+                        <span class="pf-method-icon">⚖️</span>
+                        <span class="pf-method-name">基礎等權</span>
+                        <span class="pf-method-desc">所有子策略等權重分配</span>
+                    </div>
+                    <div class="pf-method-card" data-method="risk_parity">
+                        <span class="pf-method-icon">🎯</span>
+                        <span class="pf-method-name">風險平價</span>
+                        <span class="pf-method-desc">每個策略對總風險貢獻相等</span>
+                    </div>
+                    <div class="pf-method-card" data-method="mvo">
+                        <span class="pf-method-icon">📐</span>
+                        <span class="pf-method-name">均值方差</span>
+                        <span class="pf-method-desc">Markowitz 最優權重</span>
+                    </div>
+                    <div class="pf-method-card" data-method="vol_target">
+                        <span class="pf-method-icon">📊</span>
+                        <span class="pf-method-name">波動率目標</span>
+                        <span class="pf-method-desc">根據已實現波動率動態調整倉位</span>
+                    </div>
+                    <div class="pf-method-card" data-method="max_diversification">
+                        <span class="pf-method-icon">🌐</span>
+                        <span class="pf-method-name">最大分散</span>
+                        <span class="pf-method-desc">最大化分散化比率</span>
+                    </div>
+                    <div class="pf-method-card" data-method="anti_correlation">
+                        <span class="pf-method-icon">🔗</span>
+                        <span class="pf-method-name">低相關</span>
+                        <span class="pf-method-desc">最小化策略間總相關性</span>
+                    </div>
+                    <div class="pf-method-card" data-method="regime_switch">
+                        <span class="pf-method-icon">🔄</span>
+                        <span class="pf-method-name">狀態切換</span>
+                        <span class="pf-method-desc">根據市場狀態動態調整</span>
+                    </div>
+                    <div class="pf-method-card" data-method="dynamic">
+                        <span class="pf-method-icon">⚡</span>
+                        <span class="pf-method-name">動態組合</span>
+                        <span class="pf-method-desc">滾動夏普自動調整權重</span>
+                    </div>
+                    <div class="pf-method-card" data-method="kelly">
+                        <span class="pf-method-icon">🎰</span>
+                        <span class="pf-method-name">Kelly</span>
+                        <span class="pf-method-desc">Kelly 公式計算最優倉位</span>
+                    </div>
+                    <div class="pf-method-card" data-method="degradation">
+                        <span class="pf-method-icon">📉</span>
+                        <span class="pf-method-name">衰減分析</span>
+                        <span class="pf-method-desc">檢測策略是否連續跑輸</span>
+                    </div>
+                    <div class="pf-method-card" data-method="arbitrate">
+                        <span class="pf-method-icon">⚔️</span>
+                        <span class="pf-method-name">信號仲裁</span>
+                        <span class="pf-method-desc">多策略矛盾信號加權投票</span>
+                    </div>
+                    <div class="pf-method-card" data-method="frontier">
+                        <span class="pf-method-icon">📈</span>
+                        <span class="pf-method-name">有效前沿</span>
+                        <span class="pf-method-desc">風險-收益最優邊界</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 方法參數（動態顯示） -->
+        <div id="pfMethodParams" class="pf-params-panel" style="display:none">
+            <div class="pf-params-header">
+                <span class="pf-params-title" id="pfParamsTitle">參數設置</span>
+            </div>
+            <div id="pfParamFields" class="pf-params-fields"></div>
+        </div>
+
+        <!-- 再平衡 + 啟動按鈕 -->
+        <div class="pf-action-row">
+            <div class="pf-rebalance">
+                <label>再平衡</label>
+                <select id="pfRebalance">
+                    <option value="none">不調整</option>
+                    <option value="periodic">定期調整</option>
+                </select>
+            </div>
+            <button class="btn pf-run-btn" onclick="runPortfolio()" id="pfBtn">🚀 開始回測</button>
+        </div>
+    </div>
+
+    <!-- 結果 -->
+    <div id="pfResult" class="h">
+        <div class="g" id="pfStats"></div>
+        <div class="sec"><h2>子策略表現</h2><div class="table-wrap"><table><thead><tr><th>策略</th><th>股票</th><th>權重</th><th>收益率</th><th>夏普</th><th>回撤</th></tr></thead><tbody id="pfTable"></tbody></table></div></div>
+        <div class="sec"><h2>淨值曲線</h2><div class="cw"><canvas id="pfChart"></canvas></div></div>
+        <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+            <div class="sec"><h2>🍩 策略權重分配</h2><div class="cw"><canvas id="pfWeightPie"></canvas></div></div>
+            <div class="sec"><h2>📊 子策略對比</h2><div class="cw"><canvas id="pfSubBars"></canvas></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 對比 ====== -->
+<div id="tab-compare" class="h">
+    <div class="sec">
+        <h2>⚖️ 多股收益率對比</h2>
+        <p class="sec-desc">將多只股票的收益率走勢放在同一張圖上對比</p>
+        <div class="fr">
+            <div class="fg"><label>股票（逗號分隔）</label><input id="cmpCodes" value="000001,600519,000858,601318,000333" class="input-full"></div>
+            <div class="fg"><label>天數</label><input id="cmpDays" value="250" type="number" class="input-narrow"></div>
+            <button class="btn" onclick="runCompare()" id="cmpBtn">📊 對比</button>
+        </div>
+    </div>
+    <div id="cmpResult" class="h">
+        <div class="sec"><h2>收益率走勢</h2><div class="cw-tall"><canvas id="cmpChart"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 歷史 ====== -->
+<div id="tab-history" class="h">
+    <div class="sec">
+        <h2>📜 回測歷史</h2>
+        <p class="sec-desc">查看過去的回測記錄，支持按股票和策略過濾</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="histCode" placeholder="全部"></div>
+            <div class="fg"><label>策略</label><input id="histStrategy" placeholder="全部"></div>
+            <button class="btn" onclick="loadHistory()">🔍 查詢</button>
+        </div>
+    </div>
+    <div class="sec">
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>股票</th><th>策略</th><th>收益率</th><th>夏普</th><th>Sortino</th><th>Calmar</th><th>回撤</th><th>VaR95</th><th>勝率</th><th>交易</th><th>時間</th></tr></thead><tbody id="histTable"></tbody></table></div>
+    </div>
+</div>
+
+<!-- ====== Walk-Forward ====== -->
+<div id="tab-walkforward" class="h">
+    <div class="sec">
+        <h2>🔄 Walk-Forward 分析</h2>
+        <p class="sec-desc">滾動窗口訓練+測試，檢測策略是否過擬合</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="wfCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="wfStrategy"></select></div>
+            <div class="fg"><label>訓練天數</label><input id="wfTrain" value="750" type="number"></div>
+            <div class="fg"><label>測試天數</label><input id="wfTest" value="250" type="number"></div>
+            <div class="fg"><label>試驗次數</label><input id="wfTrials" value="30" type="number"></div>
+            <button class="btn" onclick="runWalkForward()" id="wfBtn">🔄 開始分析</button>
+        </div>
+    </div>
+    <div id="wfResult" class="h">
+        <div class="g" id="wfStats"></div>
+        <div class="sec"><h2>窗口結果</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>訓練期</th><th>測試期</th><th>測試收益</th><th>測試夏普</th><th>測試回撤</th><th>交易</th><th>參數</th></tr></thead><tbody id="wfTable"></tbody></table></div></div>
+        <div class="sec"><h2>樣本外收益走勢</h2><div class="cw"><canvas id="wfChart"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 熱力圖 ====== -->
+<div id="tab-heatmap" class="h">
+    <div class="sec">
+        <h2>🌡️ 策略參數敏感性分析</h2>
+        <p class="sec-desc">可視化兩個參數的不同組合對策略表現的影響</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="hmCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="hmStrategy"></select></div>
+            <div class="fg"><label>參數 X</label><select id="hmParamX"></select></div>
+            <div class="fg"><label>參數 Y</label><select id="hmParamY"></select></div>
+            <div class="fg"><label>網格大小</label><input id="hmGrid" value="8" type="number" class="input-narrow"></div>
+            <button class="btn" onclick="runHeatmap()" id="hmBtn">🌡️ 生成熱力圖</button>
+        </div>
+    </div>
+    <div id="hmResult" class="h">
+        <div class="g" id="hmStats"></div>
+        <div class="sec"><h2>熱力圖</h2><div class="heatmap-container"><canvas id="hmCanvas" width="600" height="500"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 篩選器 ====== -->
+<div id="tab-screener" class="h">
+    <div class="sec">
+        <h2>🔍 股票篩選器</h2>
+        <p class="sec-desc">設置條件篩選符合要求的股票</p>
+        <div class="scr-filters">
+            <label class="scr-filter-item">
+                <input type="checkbox" id="scrMA">
+                <span class="scr-filter-label">均線多頭排列</span>
+            </label>
+            <label class="scr-filter-item">
+                <input type="checkbox" id="scrVol">
+                <span class="scr-filter-label">成交量放大</span>
+                <input id="scrVolRatio" value="2.0" type="number" step="0.1" class="scr-filter-input" placeholder="倍數">
+            </label>
+            <label class="scr-filter-item">
+                <input type="checkbox" id="scrHigh">
+                <span class="scr-filter-label">近52周高點</span>
+                <input id="scrHighPct" value="5" type="number" class="scr-filter-input" placeholder="%">
+            </label>
+            <label class="scr-filter-item">
+                <input type="checkbox" id="scrChange">
+                <span class="scr-filter-label">N日漲幅</span>
+                <input id="scrChangeDays" value="5" type="number" class="scr-filter-input" placeholder="天">
+                <input id="scrChangePct" value="5" type="number" class="scr-filter-input" placeholder="%">
+            </label>
+            <label class="scr-filter-item">
+                <input type="checkbox" id="scrAboveMA">
+                <span class="scr-filter-label">站上均線</span>
+                <input id="scrMAPeriod" value="20" type="number" class="scr-filter-input" placeholder="MA">
+            </label>
+            <button class="btn" onclick="runScreener()" id="scrBtn">🔍 開始篩選</button>
+        </div>
+    </div>
+    <div id="scrResult" class="h">
+        <div class="sec"><h2>篩選結果 <span class="ct" id="scrCount"></span></h2>
+            <div class="table-wrap table-wrap-scroll"><table><thead><tr><th>代碼</th><th>名稱</th><th>匹配條件</th><th>操作</th></tr></thead><tbody id="scrTable"></tbody></table></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 信號 ====== -->
+<div id="tab-signals" class="h">
+    <div class="data-tabs" id="signalsTabs">
+        <button class="a" data-stab="current">📡 當前信號</button>
+        <button data-stab="history">📜 歷史信號</button>
+        <button data-stab="strength">💪 強度評分</button>
+    </div>
+    <div id="stab-current" class="mt-md">
+        <div class="sec"><h2>實時交易信號</h2><button class="btn mb-md" onclick="Signals.loadCurrent()">🔄 刷新</button><div id="currentSignals"><div class="state-empty"><span class="state-icon">📡</span><span class="state-text">點擊上方按鈕載入信號</span></div></div></div>
+    </div>
+    <div id="stab-history" class="h mt-md">
+        <div class="sec"><h2>歷史信號記錄</h2><button class="btn mb-md" onclick="Signals.loadHistory()">📜 載入</button><div id="historySignals"></div></div>
+        <div class="sec"><h2>📊 信號時間線</h2><div class="cw"><canvas id="signalsTimelineChart"></canvas></div></div>
+    </div>
+    <div id="stab-strength" class="h mt-md">
+        <div class="sec"><h2>信號強度評分</h2><div class="fr"><div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div><button class="btn" onclick="Signals.loadStrength()">💪 評分</button></div><div id="strengthSignals"></div></div>
+    </div>
+</div>
+
+<!-- ====== 數據 ====== -->
+<div id="tab-data" class="h">
+    <div class="data-tabs" id="dataTabs">
+        <button class="a" data-dtab="sectors">🏭 板塊行情</button>
+        <button data-dtab="rotation">🔄 板塊輪動</button>
+        <button data-dtab="heatmap">🗺️ 全景圖</button>
+        <button data-dtab="capital">💰 資金流向</button>
+        <button data-dtab="north">🧭 北向資金</button>
+        <button data-dtab="dragon">🐉 龍虎榜</button>
+        <button data-dtab="fundamental">📊 基本面</button>
+    </div>
+    <div id="dtab-sectors" class="mt-md">
+        <div class="sec"><h2>行業板塊行情</h2><button class="btn mb-md" onclick="Data.loadSectors()">🔄 載入</button><div id="sectorData"></div></div>
+        <div class="sec"><h2>📊 板塊漲跌排行</h2><div class="cw"><canvas id="dataSectorChart"></canvas></div></div>
+    </div>
+    <div id="dtab-rotation" class="h mt-md">
+        <div class="sec"><h2>板塊輪動分析</h2><div class="fr"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn" onclick="Data.loadSectorRotation()">🔄 分析</button></div><div id="rotationData"></div></div>
+    </div>
+    <div id="dtab-heatmap" class="h mt-md">
+        <div class="sec"><h2>板塊全景熱力圖</h2><button class="btn mb-md" onclick="Data.loadSectorHeatmap()">🔄 載入</button><div id="heatmapData"></div></div>
+    </div>
+    <div id="dtab-capital" class="h mt-md">
+        <div class="sec"><h2>個股資金流向</h2><div class="fr"><div class="fg"><label>股票</label><input id="cfCode" value="000001"></div><button class="btn" onclick="Data.loadCapitalFlow()">🔍 查詢</button></div><div id="capitalFlowData"></div></div>
+    </div>
+    <div id="dtab-north" class="h mt-md">
+        <div class="sec"><h2>北向資金流入</h2><button class="btn mb-md" onclick="Data.loadNorthFlow()">🔄 載入</button><div id="northFlowData"></div></div>
+    </div>
+    <div id="dtab-dragon" class="h mt-md">
+        <div class="sec"><h2>龍虎榜數據</h2><button class="btn mb-md" onclick="Data.loadDragonTiger()">🔄 載入</button><div id="dragonTigerData"></div></div>
+    </div>
+    <div id="dtab-fundamental" class="h mt-md">
+        <div class="sec"><h2>基本面篩選</h2><div class="fr"><div class="fg"><label>PE ≤</label><input id="fundPE" value="20" type="number" class="input-xs"></div><div class="fg"><label>PB ≤</label><input id="fundPB" value="3" type="number" class="input-xs"></div><div class="fg"><label>ROE ≥</label><input id="fundROE" value="15" type="number" class="input-xs"></div><button class="btn" onclick="Data.screenFundamentals()">🔍 篩選</button></div><div id="fundamentalData"></div></div>
+    </div>
+</div>
+
+<!-- ====== 深度分析 ====== -->
+<div id="tab-analysis" class="h">
+    <div class="sec">
+        <h2>🔬 深度分析工具</h2>
+        <p class="sec-desc">對回測結果進行多維度深度分析</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="anCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="anStrategy"></select></div>
+        </div>
+        <div class="btn-group mt-sm">
+            <button class="btn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
+            <button class="btn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
+            <button class="btn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
+        </div>
+    </div>
+    <div id="anResult" class="h">
+        <div class="g" id="anStats"></div>
+        <div class="sec h"><h2>收益分佈</h2><div class="cw"><canvas id="anDistChart"></canvas></div></div>
+        <div class="sec h"><h2>蒙特卡羅模擬</h2><div class="cw"><canvas id="anMcChart"></canvas></div></div>
+        <div class="sec h"><h2>滾動夏普</h2><div class="cw"><canvas id="anRollingChart"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 報告 ====== -->
+<div id="tab-reports" class="h">
+    <div class="sec">
+        <h2>📋 每日策略報告</h2>
+        <p class="sec-desc">生成策略表現報告，可設置每日自動執行</p>
+        <div class="btn-group">
+            <button class="btn" onclick="generateReport()" id="rptBtn">📊 生成報告</button>
+            <button class="btn s" onclick="enableScheduler()">⏰ 啟用每日自動 (15:30)</button>
+            <button class="btn s" onclick="disableScheduler()">禁用自動</button>
+            <button class="btn s" onclick="listSchedulerJobs()">📋 查看任務</button>
+        </div>
+    </div>
+    <div id="rptResult" class="h"><div class="sec"><h2>報告內容</h2><pre class="rpt" id="rptContent"></pre></div></div>
+    <div id="schedulerJobs" class="h"><div class="sec"><h2>調度任務</h2><div id="jobsList"></div></div></div>
+</div>
+
+<!-- ====== 預警 ====== -->
+<div id="tab-alerts" class="h">
+    <div class="sec">
+        <h2>通知渠道</h2>
+        <div id="notifyChannels"><div class="state-loading"><span class="ld"></span> 載入中...</div></div>
+        <div class="mt-sm"><button class="btn" onclick="testNotify()" id="testNotifyBtn">🔔 測試所有渠道</button></div>
+    </div>
+    <div class="sec"><h2>預警歷史</h2><div id="alertList"><div class="state-loading"><span class="ld"></span> 載入中...</div></div></div>
+</div>
+
+<!-- ====== 市場 ====== -->
+<div id="tab-markets" class="h">
+    <div class="sec">
+        <h2>🌐 多市場支持</h2>
+        <div id="marketCards" class="g" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+            <div class="state-loading"><span class="ld"></span> 載入中...</div>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>📥 下載數據</h2>
+        <p class="sec-desc">下載指定市場的歷史數據到本地數據庫</p>
+        <div class="fr">
+            <div class="fg"><label>市場</label>
+                <select id="dlMarket">
+                    <option value="us_stock">🇺🇸 美股</option>
+                    <option value="hk_stock">🇭🇰 港股</option>
+                    <option value="index">📈 全球指數</option>
+                    <option value="etf">📦 ETF</option>
+                    <option value="crypto">₿ 加密貨幣</option>
+                    <option value="forex">💱 外匯</option>
+                    <option value="commodity">🛢️ 商品期貨</option>
+                    <option value="a_share">🇨🇳 A股</option>
+                </select>
+            </div>
+            <div class="fg"><label>標的</label><input id="dlSymbols" placeholder="留空=使用默認列表" class="input-wide"></div>
+            <button class="btn" onclick="downloadMarket()" id="dlMarketBtn">📥 下載</button>
+            <button class="btn s" onclick="downloadAllMarkets()" id="dlAllBtn">🚀 一鍵下載全部</button>
+        </div>
+        <div id="dlMarketResult" class="mt-sm"></div>
+        <div id="dlAllProgress" class="mt-sm" style="display:none">
+            <div class="status-row">
+                <span class="ld"></span>
+                <span id="dlAllStatus" style="font-size:12px;color:var(--text-muted)">下載中...</span>
+            </div>
+            <div class="progress-bar-wrap">
+                <div id="dlAllBar" class="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>📊 實時行情</h2>
+        <div class="fr">
+            <div class="fg"><label>市場</label>
+                <select id="rtMarket" onchange="loadMarketRealtime()">
+                    <option value="us_stock">🇺🇸 美股</option>
+                    <option value="hk_stock">🇭🇰 港股</option>
+                    <option value="index">📈 全球指數</option>
+                    <option value="etf">📦 ETF</option>
+                    <option value="crypto">₿ 加密貨幣</option>
+                    <option value="forex">💱 外匯</option>
+                    <option value="commodity">🛢️ 商品期貨</option>
+                </select>
+            </div>
+        </div>
+        <div id="rtMarketData" class="mt-sm"><div class="state-empty"><span class="state-icon">📊</span><span class="state-text">選擇市場查看實時行情</span></div></div>
+    </div>
+</div>
+
+</div><!-- /.main -->
+</div><!-- /.app -->
+
+<!-- Toast & Modal -->
+<div id="toast"></div>
+<div id="modalRoot"></div>
+
+<!-- ============================================================
+     JavaScript Modules
+     ============================================================ -->
+<script src="/static/js/utils.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/backtest.js"></script>
+<script src="/static/js/optimize.js"></script>
+<script src="/static/js/portfolio.js"></script>
+<script src="/static/js/signals.js"></script>
+<script src="/static/js/screener.js"></script>
+<script src="/static/js/heatmap.js"></script>
+<script src="/static/js/data.js"></script>
+<script src="/static/js/analysis.js"></script>
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>

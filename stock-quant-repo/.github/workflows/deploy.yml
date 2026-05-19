@@ -1,0 +1,27 @@
+# ============================================================
+# Deploy — 自動部署到 Render.com
+# 觸發：push to main
+# 前提：在 GitHub Repo Settings → Secrets 中添加
+#   RENDER_SERVICE_ID: stock-quant-demo 的 service ID
+#   RENDER_API_KEY:    Render Dashboard → Account Settings → API Keys
+# ============================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 觸發 Render 部署
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys
+          method: POST
+          headers: |
+            Authorization: Bearer ${{ secrets.RENDER_API_KEY }}
+            Content-Type: application/json
+          data: '{}'
