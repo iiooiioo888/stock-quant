@@ -123,8 +123,28 @@ const Optimize = {
 
     chartSec.innerHTML = `
       <h2>📊 優化結果對比</h2>
+      <div id="optOverfitWarning"></div>
       <div class="cw"><canvas id="optCompareChart"></canvas></div>
       <div class="cw mt-md"><canvas id="optOOSChart"></canvas></div>`;
+
+    // 過擬合風險警告
+    const warnDiv = document.getElementById('optOverfitWarning');
+    if (warnDiv) {
+      const overfitItems = top.filter(r => {
+        const isR = r.total_return_pct || 0;
+        const oosR = r.oos_return_pct;
+        return oosR != null && isR > 5 && (isR - oosR) / Math.max(Math.abs(isR), 1) > 0.5;
+      });
+      if (overfitItems.length > 0) {
+        warnDiv.innerHTML = `<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">
+          ⚠️ <strong>過擬合風險</strong>：${overfitItems.length}/${top.length} 個參數組的樣本內收益遠超樣本外（差距 > 50%），建議增加樣本外驗證或降低參數自由度。
+        </div>`;
+      } else if (top.some(r => r.oos_return_pct != null)) {
+        warnDiv.innerHTML = `<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">
+          ✅ <strong>過擬合風險較低</strong>：樣本內/外表現差異在合理範圍內。
+        </div>`;
+      }
+    }
 
     // 收益率 + 夏普 雙軸圖
     const canvas = document.getElementById('optCompareChart');

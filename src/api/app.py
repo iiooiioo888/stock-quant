@@ -205,6 +205,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug(f"調度器啟動跳過: {e}")
 
+    # 安全摘要
+    _ws_auth = "✅ 已啟用" if settings.ws_auth_required else "⚠️ 已關閉（開發模式）"
+    _jwt_ok = "✅ 已配置" if settings.jwt_secret else "⚠️ 未配置（自動生成）"
+    logger.info(f"🔒 安全摘要: WS認證={_ws_auth} | JWT={_jwt_ok} | CORS={settings.cors_origins[:50]}")
+
     # 啟動 WebSocket 後台推送
     import asyncio
     _ws_task = asyncio.create_task(_ws_realtime_push())
@@ -2561,26 +2566,38 @@ async def get_realtime(codes: str = None):
 # ====== WebSocket 實時推送 ======
 
 class ConnectionManager:
+    MAX_CONNECTIONS = 50  # 最大 WebSocket 連接數
+
     def __init__(self):
         self.active: list[WebSocket] = []
 
     async def connect(self, ws: WebSocket):
+        if len(self.active) >= self.MAX_CONNECTIONS:
+            await ws.close(code=4003, reason="連接數已達上限")
+            logger.warning(f"WebSocket 連接拒絕：已達上限 {self.MAX_CONNECTIONS}")
+            return
         await ws.accept()
         self.active.append(ws)
         logger.info(f"WebSocket 連接: {len(self.active)} 個客戶端")
 
     def disconnect(self, ws: WebSocket):
-        self.active.remove(ws)
+        try:
+            self.active.remove(ws)
+        except ValueError:
+            pass
         logger.info(f"WebSocket 斷開: {len(self.active)} 個客戶端")
 
     async def broadcast(self, data: dict):
         import json
         text = json.dumps(data, ensure_ascii=False)
+        failed = []
         for ws in self.active[:]:
             try:
                 await ws.send_text(text)
             except Exception:
-                self.active.remove(ws)
+                failed.append(ws)
+        for ws in failed:
+            self.disconnect(ws)
 
 
 manager = ConnectionManager()
