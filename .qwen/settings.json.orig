@@ -1,0 +1,31 @@
+{
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "mimo-v2.5-pro",
+        "name": "mimo-v2.5-pro",
+        "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
+        "description": "Qwen3-Coder via Dashscope",
+        "envKey": "DASHSCOPE_API_KEY"
+      }
+    ]
+  },
+  "env": {
+    "DASHSCOPE_API_KEY": "tp-c5msxq9559sdpb0nkatpycbwbirxqgpo1degxyi8gp8wq2lg"
+  },
+  "security": {
+    "auth": {
+      "selectedType": "openai"
+    }
+  },
+  "model": {
+    "name": "mimo-v2.5-pro"
+  },
+  "$version": 4,
+  "permissions": {
+    "allow": [
+      "Bash(dir *)",
+      "Bash(git add *)"
+    ]
+  }
+}
