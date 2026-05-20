@@ -25,7 +25,7 @@ async def stock_universe_stats():
 async def stock_universe_list(
     market: str = Query("all", description="a_share / hk_stock / us_stock / all"),
     keyword: str = Query(None),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=20000),
     offset: int = Query(0, ge=0),
     order_by: str = Query("rank_mv"),
 ):
@@ -83,19 +83,19 @@ async def stock_universe_sync(
 # ====== 股票 ======
 
 @router.get("/api/stocks")
-async def list_stocks(limit: int = Query(500, ge=1, le=2000)):
-    """獲取股票列表（下拉選單等請用小 limit，避免一次拉全庫）"""
+async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
+    """獲取股票列表（默認從 stock_universe 按市值排名，limit 最大 20000）"""
     from src.core.api_cache import cached_response
     from src.core.db import load_all_codes
 
-    cap = min(limit, 2000)
+    cap = min(limit, 20000)
 
     def _build():
         from src.core.stock_universe import query_stock_universe, get_universe_stats
 
         stats = get_universe_stats()
         if stats.get("total", 0) > 0:
-            rows, total = query_stock_universe(market="a_share", limit=cap, offset=0)
+            rows, total = query_stock_universe(market=None, limit=cap, offset=0)
             stocks = [
                 {
                     "code": r["code"],

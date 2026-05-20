@@ -285,8 +285,27 @@ const Api = {
   },
   async getStatus() { return this.get('/api/status'); },
   async getStocks(limit = 300) {
-    const cap = Math.min(2000, Math.max(1, Number(limit) || 300));
+    const cap = Math.min(20000, Math.max(1, Number(limit) || 300));
     return this.get(`/api/stocks?limit=${cap}`);
+  },
+
+  /** 分頁拉取股票庫（市值 TOP，最多 maxCount 條） */
+  async fetchStockUniverseAll(maxCount = 20000, pageSize = 1000) {
+    const cap = Math.min(20000, Math.max(1, Number(maxCount) || 20000));
+    const step = Math.min(2000, Math.max(100, Number(pageSize) || 1000));
+    const all = [];
+    let total = 0;
+    let offset = 0;
+    while (offset < cap) {
+      const chunk = Math.min(step, cap - offset);
+      const d = await this.getStockUniverse('all', chunk, offset, '');
+      if (!d?.stocks?.length) break;
+      total = d.total ?? total;
+      all.push(...d.stocks);
+      offset += d.stocks.length;
+      if (d.stocks.length < chunk || (total > 0 && offset >= total)) break;
+    }
+    return { stocks: all, total: total || all.length };
   },
 
   async getKline(code, start, end, limit = 500) {

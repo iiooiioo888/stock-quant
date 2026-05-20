@@ -10,10 +10,15 @@ const Backtest = {
   _stockMap: new Map(),
   _searchQuery: '',
 
+  _UNIVERSE_MAX: 20000,
+  _UNIVERSE_ROW_H: 36,
+  _universeList: [],
+  _universeFiltered: null,
+
   _GROUP_LABELS: {
-    demo: '示範股票',
+    demo: '快捷示範',
     watchlist: '監控列表',
-    universe: '股票庫',
+    universe: '市值 TOP',
     db: '本地 K 線',
   },
 
@@ -29,6 +34,7 @@ const Backtest = {
   init() {
     this._bindCodeControls();
     this.populateStockSelectSync();
+    this.setCode(this.getCode() || '600519');
     this.loadStockOptions();
   },
 
@@ -36,7 +42,7 @@ const Backtest = {
   ensureStockOptions() {
     const grid = document.getElementById('btCodeGrid');
     if (!grid) return;
-    const hasStock = grid.querySelector('.stock-code-btn');
+    const hasStock = grid.querySelector('.stock-code-btn, .stock-universe-viewport');
     if (!hasStock || !this._codesLoaded) {
       this.populateStockSelectSync();
       this.loadStockOptions(true);
@@ -81,22 +87,37 @@ const Backtest = {
   },
 
   _updatePickHint(code) {
-    const hint = document.getElementById('btCodePickHint');
-    if (!hint) return;
-    if (!code) {
-      hint.textContent = '點擊圖標選股';
-      return;
+    const item = code ? this._stockMap.get(code) : null;
+    const name = item?.name || code || '請選擇股票';
+    const codeEl = document.getElementById('btSelectedCode');
+    const nameEl = document.getElementById('btSelectedName');
+    const letterEl = document.getElementById('btSelectedLetter');
+    const img = document.getElementById('btSelectedIcon');
+    const wrap = document.getElementById('btSelectedStock');
+
+    if (codeEl) codeEl.textContent = code || '—';
+    if (nameEl) nameEl.textContent = name;
+    if (letterEl) {
+      letterEl.textContent = (name.replace(/\s/g, '') || code || '?').charAt(0);
+      letterEl.style.display = '';
     }
-    const item = this._stockMap.get(code);
-    hint.textContent = item ? `${item.code} ${item.name}` : code;
+    if (wrap) wrap.classList.toggle('bt-selected-stock--empty', !code);
+
+    if (img && typeof Utils !== 'undefined' && Utils.bindStockIcon) {
+      img.style.display = '';
+      img.removeAttribute('data-fallback');
+      Utils.bindStockIcon(img, code, name);
+    }
   },
 
   _highlightStockButton(code) {
     const grid = document.getElementById('btCodeGrid');
     if (!grid) return;
-    grid.querySelectorAll('.stock-code-btn').forEach(btn => {
+    grid.querySelectorAll('.stock-code-btn, .stock-code-row').forEach(btn => {
       btn.classList.toggle('a', btn.dataset.code === code);
     });
+    const vp = grid.querySelector('.stock-universe-viewport');
+    if (vp) this._paintUniverseViewport(vp);
   },
 
   _bindCodeControls() {
@@ -107,7 +128,7 @@ const Backtest = {
     grid.dataset.bound = '1';
 
     grid.addEventListener('click', e => {
-      const btn = e.target.closest('.stock-code-btn');
+      const btn = e.target.closest('.stock-code-btn, .stock-code-row');
       if (!btn?.dataset.code) return;
       this.setCode(btn.dataset.code);
     });
@@ -138,6 +159,21 @@ const Backtest = {
     const q = this._searchQuery;
     const grid = document.getElementById('btCodeGrid');
     if (!grid) return;
+
+    if (this._universeList.length) {
+      if (!q) {
+        this._universeFiltered = null;
+      } else {
+        this._universeFiltered = this._universeList.filter(item => {
+          const code = (item.code || '').toLowerCase();
+          const name = (item.name || '').toLowerCase();
+          return code.includes(q) || name.includes(q);
+        });
+      }
+      const vp = grid.querySelector('.stock-universe-viewport');
+      if (vp) this._paintUniverseViewport(vp);
+    }
+
     grid.querySelectorAll('.stock-code-btn').forEach(btn => {
       if (!q) {
         btn.classList.remove('h');
@@ -148,10 +184,87 @@ const Backtest = {
       const hit = code.includes(q) || name.includes(q);
       btn.classList.toggle('h', !hit);
     });
-    grid.querySelectorAll('.stock-code-group').forEach(sec => {
+    grid.querySelectorAll('.stock-code-group:not([data-group="universe"])').forEach(sec => {
       const visible = sec.querySelector('.stock-code-btn:not(.h)');
       sec.classList.toggle('h', !visible);
     });
+  },
+
+  _universeDisplayList() {
+    return this._universeFiltered ?? this._universeList;
+  },
+
+  _createCompactStockRow(item) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'stock-code-row';
+    row.dataset.code = item.code;
+    row.dataset.name = item.name || '';
+    row.title = `${item.code} ${item.name}`;
+
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'stock-code-row-icon stock-code-icon';
+    const img = document.createElement('img');
+    img.width = 28;
+    img.height = 28;
+    if (typeof Utils !== 'undefined' && Utils.bindStockIcon) {
+      Utils.bindStockIcon(img, item.code, item.name);
+    }
+    iconWrap.appendChild(img);
+
+    const rank = document.createElement('span');
+    rank.className = 'stock-code-row-rank';
+    rank.textContent = item.rank_mv != null ? `#${item.rank_mv}` : '';
+
+    const codeEl = document.createElement('span');
+    codeEl.className = 'stock-code-row-code';
+    codeEl.textContent = item.code;
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'stock-code-row-name';
+    nameEl.textContent = item.name || item.code;
+
+    row.append(iconWrap, rank, codeEl, nameEl);
+    if (this.getCode() === item.code) row.classList.add('a');
+    return row;
+  },
+
+  _paintUniverseViewport(viewport) {
+    const list = this._universeDisplayList();
+    const spacer = viewport.querySelector('.stock-universe-spacer');
+    const rows = viewport.querySelector('.stock-universe-rows');
+    if (!spacer || !rows) return;
+
+    spacer.style.height = `${list.length * this._UNIVERSE_ROW_H}px`;
+    const scrollTop = viewport.scrollTop;
+    const viewH = viewport.clientHeight || 320;
+    const start = Math.max(0, Math.floor(scrollTop / this._UNIVERSE_ROW_H) - 5);
+    const count = Math.ceil(viewH / this._UNIVERSE_ROW_H) + 12;
+    const end = Math.min(list.length, start + count);
+
+    rows.style.transform = `translateY(${start * this._UNIVERSE_ROW_H}px)`;
+    rows.replaceChildren();
+    for (let i = start; i < end; i++) {
+      rows.appendChild(this._createCompactStockRow(list[i]));
+    }
+  },
+
+  _mountUniverseVirtual(host, list) {
+    host.replaceChildren();
+    const viewport = document.createElement('div');
+    viewport.className = 'stock-universe-viewport';
+    const spacer = document.createElement('div');
+    spacer.className = 'stock-universe-spacer';
+    const rows = document.createElement('div');
+    rows.className = 'stock-universe-rows';
+    viewport.append(spacer, rows);
+
+    const onScroll = () => this._paintUniverseViewport(viewport);
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport._universeScroll = onScroll;
+
+    host.appendChild(viewport);
+    requestAnimationFrame(() => this._paintUniverseViewport(viewport));
   },
 
   _createStockButton(item) {
@@ -194,18 +307,20 @@ const Backtest = {
 
     this._stockMap = map;
     const groups = { demo: [], watchlist: [], universe: [], db: [] };
-    [...map.values()]
-      .sort((a, b) => a.code.localeCompare(b.code))
-      .forEach(item => {
-        const g = groups[item.group] ? item.group : 'db';
-        groups[g].push(item);
-      });
+    [...map.values()].forEach(item => {
+      if (item.group === 'universe') return;
+      const g = groups[item.group] ? item.group : 'db';
+      groups[g].push(item);
+    });
+    groups.demo.sort((a, b) => a.code.localeCompare(b.code));
+    groups.watchlist.sort((a, b) => a.code.localeCompare(b.code));
+    groups.db.sort((a, b) => a.code.localeCompare(b.code));
 
     const keep = this.getCode();
     grid.replaceChildren();
 
     let total = 0;
-    Object.keys(this._GROUP_LABELS).forEach(key => {
+    ['demo', 'watchlist', 'db'].forEach(key => {
       const list = groups[key];
       if (!list.length) return;
       total += list.length;
@@ -226,8 +341,30 @@ const Backtest = {
       grid.appendChild(sec);
     });
 
+    if (this._universeList.length) {
+      total += this._universeList.length;
+      const sec = document.createElement('div');
+      sec.className = 'stock-code-group stock-code-group-universe';
+      sec.dataset.group = 'universe';
+
+      const title = document.createElement('div');
+      title.className = 'stock-code-group-title';
+      const shown = this._universeDisplayList().length;
+      const suffix = this._searchQuery
+        ? ` · 篩選 ${shown} / ${this._universeList.length}`
+        : '';
+      title.textContent = `${this._GROUP_LABELS.universe}（${this._universeList.length}）${suffix}`;
+
+      const host = document.createElement('div');
+      host.className = 'stock-universe-host';
+      this._mountUniverseVirtual(host, this._universeList);
+
+      sec.append(title, host);
+      grid.appendChild(sec);
+    }
+
     if (!total) {
-      grid.innerHTML = '<p class="stock-code-grid-empty">暫無可選股票，請在「數據中心」同步行情或股票庫</p>';
+      grid.innerHTML = '<p class="stock-code-grid-empty">暫無可選股票，請在「數據中心」→ 股票庫 同步市值 TOP 20000</p>';
     }
 
     this._codesLoaded = total > 0;
@@ -241,8 +378,8 @@ const Backtest = {
     if (!grid) return;
     if (this._loadingStocks && !force) return;
     this._loadingStocks = true;
-    const hint = document.getElementById('btCodePickHint');
-    if (hint) hint.textContent = '載入股票列表…';
+    const loadHint = document.getElementById('btStockLoadHint');
+    if (loadHint) loadHint.textContent = '載入股票列表…';
 
     const map = new Map();
     const add = (code, name, group) => this._stockMapAdd(map, code, name, group);
@@ -252,11 +389,10 @@ const Backtest = {
 
     try {
       const silent = { silent: true };
-      const [cfg, rules, stocks, universe, names] = await Promise.all([
+      const [cfg, rules, stocks, names] = await Promise.all([
         this._withTimeout(Api.get('/api/config', silent)),
         this._withTimeout(Api.get('/api/alerts/rules', silent)),
-        this._withTimeout(Api.getStocks(300)),
-        this._withTimeout(Api.getStockUniverse('a_share', 150, 0, '')),
+        this._withTimeout(Api.getStocks(this._UNIVERSE_MAX), 60000),
         this._withTimeout(Api.get('/api/stocks/names', silent)),
       ]);
 
@@ -273,9 +409,21 @@ const Backtest = {
           add(code, r?.name || nameMap[code], 'watchlist');
         });
       }
-      (universe?.stocks || []).forEach(s => add(s.code, s.name, 'universe'));
-      (stocks?.stocks || []).forEach(s => add(s.code, s.name || nameMap[s.code], 'db'));
-      if (!universe?.stocks?.length && !stocks?.stocks?.length) {
+
+      const uniRows = stocks?.stocks || [];
+      this._universeList = uniRows
+        .map(s => ({
+          code: String(s.code || '').trim(),
+          name: (s.name || nameMap[s.code] || s.code || '').trim(),
+          rank_mv: s.rank_mv,
+          market: s.market,
+        }))
+        .filter(s => s.code)
+        .sort((a, b) => (a.rank_mv ?? 999999) - (b.rank_mv ?? 999999));
+
+      this._universeList.forEach(s => this._stockMapAdd(map, s.code, s.name, 'universe'));
+
+      if (!this._universeList.length) {
         Object.entries(nameMap).slice(0, 80).forEach(([code, name]) => add(code, name, 'db'));
       }
     } catch (e) {
@@ -285,6 +433,14 @@ const Backtest = {
     }
 
     this._applyStockPicker(map);
+    const n = this._universeList.length;
+    const loadHint = document.getElementById('btStockLoadHint');
+    if (loadHint) {
+      loadHint.textContent = n > 0
+        ? `已載入 ${n} 隻 · 滾動或搜尋`
+        : '請在數據中心同步股票庫';
+    }
+    this._updatePickHint(this.getCode());
   },
 
   async run() {

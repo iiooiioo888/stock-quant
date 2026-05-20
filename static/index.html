@@ -336,35 +336,67 @@
 
 <!-- ====== 回測 ====== -->
 <div id="tab-backtest" class="h">
-    <div class="sec">
+    <div class="sec bt-panel">
         <h2>🧪 策略回測</h2>
-        <div class="fr">
-            <div class="fg fg-stock-code">
-                <label>股票代碼</label>
-                <div class="stock-code-picker">
-                    <div class="stock-code-toolbar">
-                        <input type="hidden" id="btCode" value="600519">
-                        <input type="text" id="btCodeManual" class="input-sm stock-code-manual" value="600519" placeholder="手動 6 位代碼" maxlength="6" inputmode="numeric" title="當前選中代碼">
-                        <input type="search" id="btCodeSearch" class="input-sm stock-code-search" placeholder="搜尋代碼 / 名稱…" autocomplete="off">
-                        <span id="btCodePickHint" class="stock-code-hint">點擊圖標選股</span>
+        <p class="sec-desc">選擇標的與策略參數，支持市值 TOP 20000 股票庫與進階風控</p>
+
+        <section class="bt-stock-section">
+            <div class="bt-section-head">
+                <h3>① 選擇標的</h3>
+                <span id="btStockLoadHint" class="bt-load-hint"></span>
+            </div>
+            <div class="stock-code-picker">
+                <input type="hidden" id="btCode" value="600519">
+                <div class="bt-stock-toolbar">
+                    <div id="btSelectedStock" class="bt-selected-stock" title="當前選中">
+                        <div class="stock-code-icon bt-selected-icon">
+                            <img id="btSelectedIcon" width="48" height="48" alt="">
+                            <span class="stock-code-letter" id="btSelectedLetter">貴</span>
+                        </div>
+                        <div class="bt-selected-meta">
+                            <span class="bt-selected-code" id="btSelectedCode">600519</span>
+                            <span class="bt-selected-name" id="btSelectedName">貴州茅台</span>
+                        </div>
                     </div>
-                    <div id="btCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇股票"></div>
+                    <input type="text" id="btCodeManual" class="input-sm bt-code-manual" value="600519" placeholder="6 位代碼" maxlength="6" inputmode="numeric">
+                    <input type="search" id="btCodeSearch" class="input-sm bt-code-search" placeholder="搜尋市值 TOP 20000…" autocomplete="off">
+                </div>
+                <div id="btCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇股票"></div>
+            </div>
+        </section>
+
+        <section class="bt-config-section">
+            <div class="bt-section-head">
+                <h3>② 策略與風控</h3>
+            </div>
+            <div class="bt-params-grid">
+                <div class="fg bt-fg-strategy">
+                    <label>策略</label>
+                    <select id="btStrategy">
+                        <option value="dual_ma">雙均線金叉策略</option>
+                        <option value="macd">MACD金叉策略</option>
+                        <option value="bollinger">布林帶突破策略</option>
+                        <option value="momentum">動量ROC策略</option>
+                        <option value="rsi">RSI相對強弱策略</option>
+                    </select>
+                </div>
+                <div class="fg"><label>止損 %</label><input id="btSL" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+                <div class="fg"><label>止盈 %</label><input id="btTP" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+                <div class="fg"><label>滑點 %</label><input id="btSlippage" type="number" step="0.01" value="0" class="input-narrow"></div>
+                <div class="fg"><label>移動止損 %</label><input id="btTrailing" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
+            </div>
+            <div class="bt-actions-row">
+                <div class="bt-checks">
+                    <label class="scr-filter-item"><input type="checkbox" id="btT1" checked><span class="scr-filter-label">T+1 限制</span></label>
+                    <label class="scr-filter-item"><input type="checkbox" id="btLimit" checked><span class="scr-filter-label">漲跌停限制</span></label>
+                    <label class="scr-filter-item"><input type="checkbox" id="btBench"><span class="scr-filter-label">基準對比</span></label>
+                </div>
+                <div class="bt-btns">
+                    <button type="button" class="btn" onclick="runBacktest()">🚀 開始回測</button>
+                    <button type="button" class="btn s" onclick="runMultiBacktest()">全策略對比</button>
                 </div>
             </div>
-            <div class="fg"><label>策略</label><select id="btStrategy"></select></div>
-            <div class="fg"><label>止損 %</label><input id="btSL" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
-            <div class="fg"><label>止盈 %</label><input id="btTP" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
-            <div class="fg"><label>滑點 %</label><input id="btSlippage" type="number" step="0.01" value="0" class="input-narrow"></div>
-            <div class="fg"><label>移動止損 %</label><input id="btTrailing" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
-        </div>
-        <div class="fr" style="align-items:center;margin-top:4px">
-            <label class="scr-filter-item"><input type="checkbox" id="btT1" checked><span class="scr-filter-label">T+1 限制</span></label>
-            <label class="scr-filter-item"><input type="checkbox" id="btLimit" checked><span class="scr-filter-label">漲跌停限制</span></label>
-            <label class="scr-filter-item"><input type="checkbox" id="btBench"><span class="scr-filter-label">基準對比</span></label>
-            <span class="flex-spacer"></span>
-            <button class="btn" onclick="runBacktest()">🚀 回測</button>
-            <button class="btn s" onclick="runMultiBacktest()">全策略對比</button>
-        </div>
+        </section>
     </div>
     <div id="btResult" class="h">
         <div class="g" id="btStats"></div>

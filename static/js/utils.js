@@ -197,14 +197,43 @@ const Utils = {
     return `https://webquotepic.eastmoney.com/getpic/${m}${c}_70.png`;
   },
 
-  /** 圖標載入失敗時的 CDN 備用頭像 */
-  stockIconFallbackUrl(name, code) {
-    const label = encodeURIComponent(String(name || code || '?').slice(0, 2));
-    return `https://ui-avatars.com/api/?name=${label}&size=56&background=334155&color=38bdf8&bold=true&length=2`;
+  /** 本地 SVG 圖標：不依賴任何外部 CDN，確保股票永遠有對應圖標 */
+  stockIconLocalUrl(code, name, size = 56) {
+    const c = String(code || '').trim();
+    const n = String(name || c || '?').trim();
+    const label = (n.replace(/\s/g, '') || c || '?').slice(0, 2);
+    let hash = 0;
+    for (const ch of `${c}${n}`) {
+      hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
+    }
+    const hue = Math.abs(hash) % 360;
+    const hue2 = (hue + 42) % 360;
+    const fg = '#e0f2fe';
+    const codeText = c ? c.slice(-3) : '';
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="hsl(${hue},72%,36%)"/>
+            <stop offset="100%" stop-color="hsl(${hue2},78%,48%)"/>
+          </linearGradient>
+        </defs>
+        <rect width="${size}" height="${size}" rx="${Math.round(size * 0.28)}" fill="url(#g)"/>
+        <circle cx="${Math.round(size * 0.78)}" cy="${Math.round(size * 0.22)}" r="${Math.round(size * 0.22)}" fill="rgba(255,255,255,.13)"/>
+        <text x="50%" y="47%" text-anchor="middle" dominant-baseline="middle"
+          font-family="Arial,'Microsoft JhengHei','PingFang TC',sans-serif"
+          font-size="${Math.round(size * (label.length >= 2 ? 0.32 : 0.42))}"
+          font-weight="800" fill="${fg}">${label}</text>
+        <text x="50%" y="76%" text-anchor="middle" dominant-baseline="middle"
+          font-family="ui-monospace,Menlo,Consolas,monospace"
+          font-size="${Math.round(size * 0.16)}"
+          font-weight="700" fill="rgba(224,242,254,.78)">${codeText}</text>
+      </svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   },
 
   /**
-   * 綁定股票圖標：先東財 CDN，失敗再 ui-avatars CDN，再顯示首字
+   * 綁定股票圖標：先顯示本地 SVG，再嘗試外部 Logo；外部失敗不影響顯示
    */
   bindStockIcon(img, code, name) {
     if (!img) return;
@@ -215,31 +244,36 @@ const Utils = {
     img.decoding = 'async';
     img.referrerPolicy = 'no-referrer';
 
-    const showLetter = () => {
-      img.style.display = 'none';
-      const wrap = img.closest('.stock-code-icon');
-      if (wrap) {
-        let letter = wrap.querySelector('.stock-code-letter');
-        if (!letter) {
-          letter = document.createElement('span');
-          letter.className = 'stock-code-letter';
-          wrap.appendChild(letter);
+    const localUrl = this.stockIconLocalUrl(c, n, Math.max(img.width || 56, img.height || 56, 56));
+    img.onerror = null;
+    img.src = localUrl;
+
+    const wrap = img.closest('.stock-code-icon');
+    const letter = wrap?.querySelector('.stock-code-letter');
+    if (letter) letter.style.display = 'none';
+
+    // 只有 A 股 6 位數字嘗試東財 Logo；失敗時保留本地 SVG。
+    if (/^\d{6}$/.test(c)) {
+      const remote = new Image();
+      remote.referrerPolicy = 'no-referrer';
+      remote.decoding = 'async';
+      remote.onload = () => {
+        // 一些 CDN 會回傳透明/極小佔位圖，尺寸太小就不要覆蓋本地圖標。
+        if (remote.naturalWidth >= 16 && remote.naturalHeight >= 16) {
+          img.src = remote.src;
         }
-        letter.textContent = (n.replace(/\s/g, '') || c || '?').charAt(0);
-      }
-    };
+      };
+      remote.onerror = () => {};
+      remote.src = this.stockIconUrl(c);
+    }
+  },
 
-    img.onerror = () => {
-      if (img.dataset.fallback === '1') {
-        img.onerror = null;
-        showLetter();
-        return;
-      }
-      img.dataset.fallback = '1';
-      img.src = this.stockIconFallbackUrl(n, c);
-    };
-
-    img.src = c ? this.stockIconUrl(c) : this.stockIconFallbackUrl(n, c);
+  /** 套用本地 SVG 到任意元素背景，供非 img 場景使用 */
+  applyStockIconBackground(el, code, name) {
+    if (!el) return;
+    el.style.backgroundImage = `url("${this.stockIconLocalUrl(code, name, 56)}")`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
   },
 };
 

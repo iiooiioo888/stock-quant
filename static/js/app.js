@@ -123,6 +123,8 @@ const App = {
       const all = [...(d.builtin || []), ...(d.user || [])];
       if (all.length === 0) return;
 
+      const builtinNames = new Set((d.builtin || []).map(s => s.name));
+
       const options = all.map(s =>
         `<option value="${s.name}">${s.display_name || s.name}</option>`
       ).join('');
@@ -131,10 +133,12 @@ const App = {
       ['btStrategy', 'hmStrategy', 'wfStrategy', 'anStrategy'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-          const current = el.value;
+          const current = el.value || el.options[0]?.value;
           el.innerHTML = options;
           if (current && el.querySelector(`option[value="${current}"]`)) {
             el.value = current;
+          } else if (id === 'btStrategy' && builtinNames.has('dual_ma')) {
+            el.value = 'dual_ma';
           }
         }
       });
