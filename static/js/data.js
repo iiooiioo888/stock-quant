@@ -62,6 +62,7 @@ const Data = {
       ProCharts.loadCapitalTabCharts();
     }
     if (tab === 'north') this.loadNorthFlow();
+    if (tab === 'dragon') this.loadDragonTiger();
     if ((tab === 'sectors' || tab === 'heatmap') && typeof Charts !== 'undefined') {
       requestAnimationFrame(() => Charts.resizeTab('tab-data'));
     }
@@ -949,12 +950,19 @@ const Data = {
       container.innerHTML = '<p style="color:var(--text-dim)">暫無龍虎榜數據</p>';
       return;
     }
+    const marketBadge = (r) => {
+      const market = r.market_name || r.market || '-';
+      const cls = r.market === 'hk_stock' ? 'bl' : (r.market === 'us_stock' ? 'gn' : 'on');
+      return `<span class="chip ${cls}">${this._escHtml(market)}</span>`;
+    };
     container.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>代碼</th><th>名稱</th><th>原因</th><th>買入額</th><th>賣出額</th><th>淨額</th><th>漲跌幅</th></tr></thead>
+      <thead><tr><th>代碼</th><th>名稱</th><th>市場</th><th>板塊</th><th>原因</th><th>買入額</th><th>賣出額</th><th>淨額</th><th>漲跌幅</th></tr></thead>
       <tbody>${d.records.map(r => `<tr>
-        <td>${r.code || '-'}</td>
-        <td>${r.name || '-'}</td>
-        <td style="font-size:10px">${r.reason || '-'}</td>
+        <td>${this._escHtml(r.code || '-')}</td>
+        <td>${this._escHtml(r.name || '-')}</td>
+        <td>${marketBadge(r)}</td>
+        <td><span class="chip">${this._escHtml(r.sector || r.industry || '未分類')}</span></td>
+        <td style="font-size:10px">${this._escHtml(r.reason || '-')}</td>
         <td class="r">${r.buy_amount ? Utils.formatLargeNum(r.buy_amount) : '-'}</td>
         <td class="r">${r.sell_amount ? Utils.formatLargeNum(r.sell_amount) : '-'}</td>
         <td class="r"><span class="b ${Utils.badgeClass(r.net_amount)}">${r.net_amount ? Utils.formatLargeNum(r.net_amount) : '-'}</span></td>

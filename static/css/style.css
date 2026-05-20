@@ -2341,6 +2341,97 @@ pre.rpt {
   height: 260px;
 }
 
+.stock-picker-multi-summary {
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.stock-picker-multi-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.stock-picker-multi-head strong {
+  font-size: 0.95rem;
+}
+
+.stock-picker-multi-count {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.stock-picker-clear-all {
+  margin-left: auto;
+}
+
+.stock-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.stock-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 6px 8px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.stock-picker-chip-code {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.stock-picker-chip-sep {
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.stock-picker-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.stock-picker-chip-remove {
+  margin-left: 2px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stock-picker-chip-remove:hover {
+  color: var(--danger, #c0392b);
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.stock-picker-chip-hint {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .stock-code-grid {
   display: flex;
   flex-direction: column;

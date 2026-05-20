@@ -286,7 +286,7 @@ const Tasks = {
         <div class="empty-state">
           <span class="empty-icon">📋</span>
           <p><strong>暫無任務記錄</strong></p>
-          <p>前往回測或優化頁面提交任務後，將在此顯示</p>
+          <p>前往回測、組合回測、優化或數據中心提交任務後，將在此顯示</p>
         </div>
       </td></tr>`;
       return;

@@ -211,6 +211,7 @@ async def run_portfolio_api(
 
     codes = [a.get("code", "") for a in allocations]
     task_params = {
+        "method": "basic",
         "allocations": allocations,
         "codes": codes,
         "weights": weights,
@@ -219,7 +220,7 @@ async def run_portfolio_api(
         "cash": cash,
         "count": len(allocations),
     }
-    task = create_task("portfolio", task_params, title=f"組合回測 ({len(allocations)}隻)")
+    task = create_task("portfolio", task_params, title=f"組合回測 · 基礎等權 ({len(allocations)}子)")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同組合回測正在執行中，請等待完成", "async": True}

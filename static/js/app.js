@@ -1339,13 +1339,19 @@ App._viewTaskResult = async function(taskId) {
         ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">無數據</td></tr>'}
       </table></div>`;
   } else if (task.task_type === 'portfolio') {
-    // 組合回測結果
+    const pm = (r && (r.portfolio || r.pm)) || r;
+    const tr = pm.total_return_pct ?? r.total_return_pct ?? 0;
+    const sh = pm.sharpe_ratio ?? r.sharpe_ratio ?? 0;
+    const dd = pm.max_drawdown_pct ?? r.max_drawdown_pct ?? 0;
     content = `
       <h3>${typeName}結果 — ${task.title}</h3>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0">
-        <div class="c"><h3>收益率</h3><div class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</div></div>
-        <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio || 0, 4)}</div></div>
-        <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
+        <div class="c"><h3>收益率</h3><div class="v ${(tr || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(tr)}</div></div>
+        <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(sh, 4)}</div></div>
+        <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-dd)}</div></div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn s" onclick="Utils.closeModal();App.loadTab('portfolio')">📈 前往組合頁</button>
       </div>`;
   } else {
     // 通用結果顯示

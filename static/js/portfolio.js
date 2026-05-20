@@ -160,6 +160,9 @@ const Portfolio = {
     if (!d) return;
     if (!d.success) return Utils.toast('失敗: ' + (d.detail || ''), 3000, 'error');
     try {
+      if (d.async && d.task_id) {
+        Utils.toast('📋 預設組合回測已提交任務', 2000, 'info');
+      }
       const resolved = await Api.resolveTaskResponse(d);
       const r = Api.extractResult(resolved);
       if (!r || (typeof r === 'object' && r.error)) {

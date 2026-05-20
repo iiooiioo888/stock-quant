@@ -34,7 +34,6 @@ const StockPicker = {
       ['basicsCode', '選擇基本數據標的'],
     ];
     const multis = [
-      ['pfCodes', '選擇組合標的'],
       ['cmpCodes', '選擇對比股票'],
       ['sigCodes', '選擇信號評分股票'],
       ['dbDownloadCodes', '選擇下載股票'],
@@ -42,6 +41,13 @@ const StockPicker = {
 
     singles.forEach(([id, title]) => this.attach(id, { mode: 'single', title }));
     multis.forEach(([id, title]) => this.attach(id, { mode: 'multi', title }));
+    // 組合：多選可 toggle、已選以代碼＋名稱 chips 完整顯示
+    this.attach('pfCodes', {
+      mode: 'multi',
+      title: '選擇組合標的（可多選）',
+      multiToggle: true,
+      chipList: true,
+    });
   },
 
   attach(inputId, options = {}) {
@@ -57,6 +63,8 @@ const StockPicker = {
       title: options.title || '選擇股票',
       activeMarket: 'all',
       query: '',
+      multiToggle: !!options.multiToggle,
+      chipList: !!options.chipList,
     };
 
     input.classList.add('stock-picker-source');
@@ -109,7 +117,19 @@ const StockPicker = {
   },
 
   _template(state) {
-    const inputLabel = state.mode === 'multi' ? '代碼列表' : '股票代碼';
+    const inputLabel = state.mode === 'multi' ? '代碼列表（逗號分隔，可貼上）' : '股票代碼';
+    const chipBlock = state.chipList
+      ? `
+          <div class="stock-picker-multi-summary">
+            <div class="stock-picker-multi-head">
+              <strong>已選標的</strong>
+              <span class="stock-picker-multi-count" data-sp-count>0 隻</span>
+              <button type="button" class="btn s stock-picker-clear-all" data-sp-clear>清空</button>
+            </div>
+            <div class="stock-picker-chips" data-sp-chips></div>
+            <p class="stock-picker-chip-hint">點列表列可加入或取消選取；點標籤上的 × 可移除。</p>
+          </div>`
+      : '';
     return `
       <div class="bt-stock-section stock-picker-section">
         <div class="bt-section-head">
@@ -131,6 +151,7 @@ const StockPicker = {
             <input type="text" class="input-sm bt-code-manual stock-picker-manual" data-sp-manual placeholder="${inputLabel}" autocomplete="off">
             <input type="search" class="input-sm bt-code-search" data-sp-search placeholder="搜尋股票庫（代碼 / 名稱）…" autocomplete="off">
           </div>
+          ${chipBlock}
           <div class="bt-market-tabs" data-sp-tabs role="tablist" aria-label="${this._esc(state.title)}市場分類"></div>
           <div class="stock-code-grid" data-sp-grid role="listbox" aria-label="${this._esc(state.title)}"></div>
         </div>
@@ -139,14 +160,23 @@ const StockPicker = {
 
   _bind(state) {
     state.manual.addEventListener('input', () => {
-      state.input.value = state.manual.value;
+      if (state.chipList) {
+        const deduped = this._dedupeCodesPreserveOrder(this._parseCodes(state.manual.value));
+        const joined = deduped.join(',');
+        state.manual.value = joined;
+        state.input.value = joined;
+      } else {
+        state.input.value = state.manual.value;
+      }
       state.input.dispatchEvent(new Event('input', { bubbles: true }));
       this._syncSelected(state);
       this._refreshActiveRows(state);
     });
 
     state.manual.addEventListener('change', () => {
-      state.input.value = state.manual.value.trim();
+      state.input.value = state.chipList
+        ? this._dedupeCodesPreserveOrder(this._parseCodes(state.manual.value.trim())).join(',')
+        : state.manual.value.trim();
       state.manual.value = state.input.value;
       state.input.dispatchEvent(new Event('change', { bubbles: true }));
       this._syncSelected(state);
@@ -172,7 +202,14 @@ const StockPicker = {
       const code = row.dataset.code || '';
       if (state.mode === 'multi') {
         const codes = this._parseCodes(state.input.value);
-        if (!codes.includes(code)) codes.push(code);
+        const uc = String(code).toUpperCase();
+        const idx = codes.findIndex(c => String(c).toUpperCase() === uc);
+        if (state.multiToggle) {
+          if (idx >= 0) codes.splice(idx, 1);
+          else codes.push(code);
+        } else if (idx < 0) {
+          codes.push(code);
+        }
         state.input.value = codes.join(',');
       } else {
         state.input.value = code;
@@ -183,6 +220,34 @@ const StockPicker = {
       this._syncSelected(state);
       this._refreshActiveRows(state);
     });
+
+    if (state.chipList) {
+      state.chipsHost = state.shell.querySelector('[data-sp-chips]');
+      state.shell.querySelector('[data-sp-clear]')?.addEventListener('click', e => {
+        e.preventDefault();
+        state.input.value = '';
+        state.manual.value = '';
+        state.input.dispatchEvent(new Event('input', { bubbles: true }));
+        state.input.dispatchEvent(new Event('change', { bubbles: true }));
+        this._syncSelected(state);
+        this._refreshActiveRows(state);
+      });
+      state.shell.addEventListener('click', e => {
+        const rm = e.target.closest('[data-remove-code]');
+        if (!rm || !state.chipsHost?.contains(rm)) return;
+        e.preventDefault();
+        const rmCode = rm.dataset.removeCode || '';
+        const codes = this._parseCodes(state.input.value).filter(
+          c => String(c).toUpperCase() !== String(rmCode).toUpperCase()
+        );
+        state.input.value = codes.join(',');
+        state.manual.value = state.input.value;
+        state.input.dispatchEvent(new Event('input', { bubbles: true }));
+        state.input.dispatchEvent(new Event('change', { bubbles: true }));
+        this._syncSelected(state);
+        this._refreshActiveRows(state);
+      });
+    }
   },
 
   _normalizeStock(item, idx = 0) {
@@ -203,6 +268,19 @@ const StockPicker = {
       .filter(Boolean);
   },
 
+  /** 依出現順序去重（大小寫不敏感，保留第一次出現的寫法） */
+  _dedupeCodesPreserveOrder(codes) {
+    const seen = new Set();
+    const out = [];
+    codes.forEach(c => {
+      const u = String(c).toUpperCase();
+      if (seen.has(u)) return;
+      seen.add(u);
+      out.push(c);
+    });
+    return out;
+  },
+
   _selectedCodes(state) {
     return state.mode === 'multi' ? this._parseCodes(state.input.value) : [String(state.input.value || '').trim()].filter(Boolean);
   },
@@ -217,17 +295,60 @@ const StockPicker = {
     const stock = this._findStock(first);
     const name = stock?.name || first || '未選擇';
     const label = state.mode === 'multi'
-      ? (codes.length ? `${codes.length} 隻` : '—')
+      ? (codes.length ? `${codes.length} 隻已選` : '—')
       : (first || '—');
     state.selectedCode.textContent = label;
-    state.selectedName.textContent = state.mode === 'multi' && codes.length
-      ? codes.slice(0, 4).join(', ') + (codes.length > 4 ? '...' : '')
-      : name;
+    if (state.chipList) {
+      state.selectedName.textContent = codes.length ? '已選清單見下方標籤' : '未選擇';
+      this._renderChips(state, codes);
+    } else {
+      state.selectedName.textContent = state.mode === 'multi' && codes.length
+        ? codes.slice(0, 4).join(', ') + (codes.length > 4 ? '...' : '')
+        : name;
+    }
     state.selectedLetter.textContent = (name.replace(/\s/g, '') || first || '?').slice(0, 1);
     state.shell.querySelector('.bt-selected-stock')?.classList.toggle('bt-selected-stock--empty', !codes.length);
     if (state.selectedIcon && first && typeof Utils !== 'undefined') {
       Utils.bindStockIcon(state.selectedIcon, first, name, stock?.market || '');
     }
+  },
+
+  _renderChips(state, codes) {
+    if (!state.chipList || !state.chipsHost) return;
+    const host = state.chipsHost;
+    host.replaceChildren();
+    const countEl = state.shell.querySelector('[data-sp-count]');
+    if (countEl) countEl.textContent = `${codes.length} 隻`;
+
+    codes.forEach(code => {
+      const s = this._findStock(code);
+      const dispName = s?.name || code;
+      const chip = document.createElement('span');
+      chip.className = 'stock-picker-chip';
+      chip.title = `${code} ${dispName}`;
+
+      const codeEl = document.createElement('span');
+      codeEl.className = 'stock-picker-chip-code';
+      codeEl.textContent = code;
+
+      const sep = document.createElement('span');
+      sep.className = 'stock-picker-chip-sep';
+      sep.textContent = '·';
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'stock-picker-chip-name';
+      nameEl.textContent = dispName;
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'stock-picker-chip-remove';
+      btn.dataset.removeCode = code;
+      btn.setAttribute('aria-label', `移除 ${code}`);
+      btn.textContent = '×';
+
+      chip.append(codeEl, sep, nameEl, btn);
+      host.appendChild(chip);
+    });
   },
 
   _counts() {
@@ -301,7 +422,7 @@ const StockPicker = {
     const start = Math.max(0, Math.floor(viewport.scrollTop / this._ROW_H) - 4);
     const count = Math.ceil((viewport.clientHeight || 260) / this._ROW_H) + 8;
     const end = Math.min(list.length, start + count);
-    const selected = new Set(this._selectedCodes(state));
+    const selected = new Set(this._selectedCodes(state).map(c => String(c).toUpperCase()));
 
     rows.style.transform = `translateY(${start * this._ROW_H}px)`;
     rows.replaceChildren();
@@ -314,7 +435,7 @@ const StockPicker = {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'stock-code-row';
-    row.classList.toggle('a', selected.has(item.code));
+    row.classList.toggle('a', selected.has(String(item.code).toUpperCase()));
     row.dataset.code = item.code;
     row.dataset.name = item.name || '';
     row.title = `${item.code} ${item.name}`;

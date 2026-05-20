@@ -32,6 +32,7 @@ from src.api.routers.stocks import router as stocks_router
 from src.api.routers.backtest import router as backtest_router
 from src.api.routers.alerts import router as alerts_router
 from src.api.routers.data_center import router as data_center_router
+from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
 # 啟動時間
@@ -576,31 +577,46 @@ async def get_portfolio_presets():
 
 @app.post("/api/portfolio/preset/{preset_name}")
 async def run_preset_portfolio(preset_name: str, cash: float = None):
-    """用預設模板跑組合回測"""
+    """用預設模板跑組合回測（異步任務，納入任務面板）"""
     from src.core.portfolio import run_portfolio
 
     preset = settings.portfolio_presets.get(preset_name)
     if not preset:
         raise HTTPException(404, f"預設組合不存在: {preset_name}，可選: {list(settings.portfolio_presets.keys())}")
 
-    try:
+    allocations = preset["allocations"]
+    rebalance = preset.get("rebalance", "none")
+    rebalance_freq_days = preset.get("rebalance_freq_days", 20)
+    display = preset.get("name", preset_name)
+
+    def _work():
         result = run_portfolio(
-            allocations=preset["allocations"],
-            rebalance=preset.get("rebalance", "none"),
-            rebalance_freq_days=preset.get("rebalance_freq_days", 20),
+            allocations=allocations,
+            rebalance=rebalance,
+            rebalance_freq_days=rebalance_freq_days,
             cash=cash,
         )
         if not result or not result.get("portfolio"):
-            raise HTTPException(
-                400,
+            raise ValueError(
                 "所有子策略回測失敗，請先在「數據中心」下載預設股票日線數據（演示模式啟動時會自動下載）",
             )
-        return {"success": True, "preset": preset["name"], "result": result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"預設組合回測失敗: {e}")
-        raise HTTPException(500, str(e))
+        return result
+
+    d = dispatch_portfolio_async(
+        "preset",
+        allocations,
+        _work,
+        task_extra={
+            "preset_name": preset_name,
+            "preset_display": display,
+            "rebalance": rebalance,
+            "rebalance_freq_days": rebalance_freq_days,
+            "cash": cash,
+        },
+        title=f"組合回測 · 預設「{display}」",
+    )
+    d["preset"] = display
+    return d
 
 
 # ====== 進階組合功能 ======
@@ -618,17 +634,25 @@ async def run_dynamic_portfolio(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = dynamic_weight_portfolio(
+    def _work():
+        return dynamic_weight_portfolio(
             allocations=allocations,
             rolling_window=rolling_window,
             rebalance_freq_days=rebalance_freq_days,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"動態權重組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "dynamic",
+        allocations,
+        _work,
+        task_extra={
+            "rolling_window": rolling_window,
+            "rebalance_freq_days": rebalance_freq_days,
+            "cash": cash,
+        },
+        title="組合回測 · 動態權重",
+    )
 
 
 @app.post("/api/portfolio/kelly")
@@ -643,16 +667,20 @@ async def run_kelly_criterion(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = kelly_criterion(
+    def _work():
+        return kelly_criterion(
             allocations=allocations,
             cash=cash,
             fraction_limit=fraction_limit,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"Kelly 公式計算失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "kelly",
+        allocations,
+        _work,
+        task_extra={"cash": cash, "fraction_limit": fraction_limit},
+        title="組合回測 · Kelly",
+    )
 
 
 @app.post("/api/portfolio/degradation")
@@ -669,18 +697,27 @@ async def run_degradation_detection(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = detect_degradation(
+    def _work():
+        return detect_degradation(
             allocations=allocations,
             lookback_days=lookback_days,
             threshold_days=threshold_days,
             weight_reduction=weight_reduction,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"衰退檢測失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "degradation",
+        allocations,
+        _work,
+        task_extra={
+            "lookback_days": lookback_days,
+            "threshold_days": threshold_days,
+            "weight_reduction": weight_reduction,
+            "cash": cash,
+        },
+        title="組合回測 · 衰退檢測",
+    )
 
 
 @app.post("/api/portfolio/arbitrate")
@@ -696,17 +733,26 @@ async def run_signal_arbitration(body: dict):
     if not strategy_signals:
         raise HTTPException(400, "請提供 strategy_signals")
 
-    try:
-        result = arbitrate_signals(
+    def _work():
+        return arbitrate_signals(
             strategy_signals=strategy_signals,
             allocations=allocations,
             rolling_window=rolling_window,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"信號仲裁失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "arbitrate",
+        allocations or [],
+        _work,
+        task_extra={
+            "strategy_signals": strategy_signals,
+            "rolling_window": rolling_window,
+            "cash": cash,
+        },
+        title="組合回測 · 信號仲裁",
+        count_override=len(strategy_signals),
+    )
 
 
 @app.post("/api/portfolio/risk-parity")
@@ -720,12 +766,16 @@ async def run_risk_parity(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = risk_parity_portfolio(allocations=allocations, cash=cash)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"風險平價組合失敗: {e}")
-        raise HTTPException(500, str(e))
+    def _work():
+        return risk_parity_portfolio(allocations=allocations, cash=cash)
+
+    return dispatch_portfolio_async(
+        "risk-parity",
+        allocations,
+        _work,
+        task_extra={"cash": cash},
+        title="組合回測 · 風險平價",
+    )
 
 
 @app.post("/api/portfolio/mvo")
@@ -741,15 +791,23 @@ async def run_mean_variance(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = mean_variance_optimize(
+    def _work():
+        return mean_variance_optimize(
             allocations=allocations, objective=objective,
             cash=cash, n_simulations=n_simulations,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"均值-方差優化失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "mvo",
+        allocations,
+        _work,
+        task_extra={
+            "objective": objective,
+            "cash": cash,
+            "n_simulations": n_simulations,
+        },
+        title="組合回測 · 均值方差(MVO)",
+    )
 
 
 @app.post("/api/portfolio/vol-target")
@@ -765,15 +823,23 @@ async def run_vol_targeting(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = volatility_targeting(
+    def _work():
+        return volatility_targeting(
             allocations=allocations, target_vol=target_vol,
             lookback_days=lookback_days, cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"波動率目標組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "vol-target",
+        allocations,
+        _work,
+        task_extra={
+            "target_vol": target_vol,
+            "lookback_days": lookback_days,
+            "cash": cash,
+        },
+        title="組合回測 · 波動目標",
+    )
 
 
 @app.post("/api/portfolio/max-diversification")
@@ -788,14 +854,18 @@ async def run_max_diversification(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = max_diversification_portfolio(
+    def _work():
+        return max_diversification_portfolio(
             allocations=allocations, cash=cash, n_simulations=n_simulations,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"最大分散化組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "max-diversification",
+        allocations,
+        _work,
+        task_extra={"cash": cash, "n_simulations": n_simulations},
+        title="組合回測 · 最大分散化",
+    )
 
 
 @app.post("/api/portfolio/anti-correlation")
@@ -810,14 +880,18 @@ async def run_anti_correlation(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = anti_correlation_portfolio(
+    def _work():
+        return anti_correlation_portfolio(
             allocations=allocations, cash=cash, n_simulations=n_simulations,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"反相關組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "anti-correlation",
+        allocations,
+        _work,
+        task_extra={"cash": cash, "n_simulations": n_simulations},
+        title="組合回測 · 低相關",
+    )
 
 
 @app.post("/api/portfolio/regime-switch")
@@ -833,15 +907,23 @@ async def run_regime_switch(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = regime_switch_portfolio(
+    def _work():
+        return regime_switch_portfolio(
             allocations=allocations, regime_method=regime_method,
             lookback_days=lookback_days, cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"狀態切換組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "regime-switch",
+        allocations,
+        _work,
+        task_extra={
+            "regime_method": regime_method,
+            "lookback_days": lookback_days,
+            "cash": cash,
+        },
+        title="組合回測 · 狀態切換",
+    )
 
 
 @app.post("/api/portfolio/black-litterman")
@@ -859,15 +941,19 @@ async def run_black_litterman(body: dict):
     if not views:
         raise HTTPException(400, "請提供 views（投資者觀點）")
 
-    try:
-        result = black_litterman_portfolio(
+    def _work():
+        return black_litterman_portfolio(
             allocations=allocations, views=views,
             confidence=confidence, cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"Black-Litterman 組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "black-litterman",
+        allocations,
+        _work,
+        task_extra={"views": views, "confidence": confidence, "cash": cash},
+        title="組合回測 · Black-Litterman",
+    )
 
 
 @app.post("/api/portfolio/hrp")
@@ -881,12 +967,16 @@ async def run_hrp(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = hierarchical_risk_parity(allocations=allocations, cash=cash)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"HRP 組合失敗: {e}")
-        raise HTTPException(500, str(e))
+    def _work():
+        return hierarchical_risk_parity(allocations=allocations, cash=cash)
+
+    return dispatch_portfolio_async(
+        "hrp",
+        allocations,
+        _work,
+        task_extra={"cash": cash},
+        title="組合回測 · HRP",
+    )
 
 
 @app.post("/api/portfolio/cvar-optimize")
@@ -901,12 +991,16 @@ async def run_cvar_optimize(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = cvar_optimize(allocations=allocations, alpha=alpha, cash=cash)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"CVaR 優化失敗: {e}")
-        raise HTTPException(500, str(e))
+    def _work():
+        return cvar_optimize(allocations=allocations, alpha=alpha, cash=cash)
+
+    return dispatch_portfolio_async(
+        "cvar-optimize",
+        allocations,
+        _work,
+        task_extra={"alpha": alpha, "cash": cash},
+        title="組合回測 · CVaR",
+    )
 
 
 @app.post("/api/portfolio/multi-timeframe")
@@ -921,12 +1015,16 @@ async def run_multi_timeframe(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = multi_timeframe_signal(allocations=allocations, windows=windows, cash=cash)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"多時間框架信號失敗: {e}")
-        raise HTTPException(500, str(e))
+    def _work():
+        return multi_timeframe_signal(allocations=allocations, windows=windows, cash=cash)
+
+    return dispatch_portfolio_async(
+        "multi-timeframe",
+        allocations,
+        _work,
+        task_extra={"windows": windows, "cash": cash},
+        title="組合回測 · 多週期",
+    )
 
 
 @app.post("/api/portfolio/dynamic-rebalance")
@@ -942,15 +1040,23 @@ async def run_dynamic_rebalance(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = dynamic_rebalance_trigger(
+    def _work():
+        return dynamic_rebalance_trigger(
             allocations=allocations, threshold_pct=threshold_pct,
             vol_window=vol_window, cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"動態再平衡失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "dynamic-rebalance",
+        allocations,
+        _work,
+        task_extra={
+            "threshold_pct": threshold_pct,
+            "vol_window": vol_window,
+            "cash": cash,
+        },
+        title="組合回測 · 動態再平衡",
+    )
 
 
 @app.post("/api/portfolio/sector-limit")
@@ -965,14 +1071,18 @@ async def run_sector_limit(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = sector_exposure_limit(
+    def _work():
+        return sector_exposure_limit(
             allocations=allocations, max_sector_pct=max_sector_pct, cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"板塊敞口限制失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "sector-limit",
+        allocations,
+        _work,
+        task_extra={"max_sector_pct": max_sector_pct, "cash": cash},
+        title="組合回測 · 板塊限制",
+    )
 
 
 @app.post("/api/portfolio/voting")
@@ -987,16 +1097,20 @@ async def run_voting_portfolio(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = strategy_voting_portfolio(
+    def _work():
+        return strategy_voting_portfolio(
             allocations=allocations,
             min_votes=min_votes,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"投票式組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "voting",
+        allocations,
+        _work,
+        task_extra={"min_votes": min_votes, "cash": cash},
+        title="組合回測 · 投票式",
+    )
 
 
 @app.post("/api/portfolio/momentum-of-momentum")
@@ -1011,16 +1125,20 @@ async def run_momentum_of_momentum(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = momentum_of_momentum(
+    def _work():
+        return momentum_of_momentum(
             allocations=allocations,
             lookback=lookback,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"動量的動量組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "momentum-of-momentum",
+        allocations,
+        _work,
+        task_extra={"lookback": lookback, "cash": cash},
+        title="組合回測 · 動量動量",
+    )
 
 
 @app.post("/api/portfolio/adaptive-regime")
@@ -1034,15 +1152,19 @@ async def run_adaptive_regime(body: dict):
     if not allocations:
         raise HTTPException(400, "請提供 allocations")
 
-    try:
-        result = adaptive_regime_portfolio(
+    def _work():
+        return adaptive_regime_portfolio(
             allocations=allocations,
             cash=cash,
         )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"自適應狀態組合失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_portfolio_async(
+        "adaptive-regime",
+        allocations,
+        _work,
+        task_extra={"cash": cash},
+        title="組合回測 · 自適應狀態",
+    )
 
 
 # ====== 熱力圖 ======
@@ -1331,12 +1453,16 @@ async def run_portfolio_frontier(body: dict):
     if len(allocations) < 2:
         raise HTTPException(400, "至少需要 2 個子策略")
 
-    try:
-        result = efficient_frontier(allocations=allocations, n_points=n_points)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"有效前沿失敗: {e}")
-        raise HTTPException(500, str(e))
+    def _work():
+        return efficient_frontier(allocations=allocations, n_points=n_points)
+
+    return dispatch_portfolio_async(
+        "frontier",
+        allocations,
+        _work,
+        task_extra={"n_points": n_points},
+        title="組合回測 · 有效前沿",
+    )
 
 
 # ====== 策略開發框架 ======

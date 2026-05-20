@@ -97,8 +97,6 @@ def get_dragon_tiger(date: str = None) -> list[dict]:
             }
             result.append(record)
         
-        result = _enrich_market_and_sector(result)
-
         # 存入數據庫
         result = _enrich_market_and_sector(result)
         _save_dragon_tiger(result)

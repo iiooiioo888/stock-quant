@@ -128,6 +128,43 @@ const TaskCommon = {
         return parts.join(' · ');
       }
     }
+    if (task.task_type === 'portfolio') {
+      const p = task.params;
+      if (p && p.method) {
+        const METHOD_LABELS = {
+          preset: '預設',
+          dynamic: '動態權重',
+          kelly: 'Kelly',
+          degradation: '衰退檢測',
+          arbitrate: '信號仲裁',
+          'risk-parity': '風險平價',
+          mvo: '均值方差',
+          'vol-target': '波動目標',
+          'max-diversification': '最大分散',
+          'anti-correlation': '低相關',
+          'regime-switch': '狀態切換',
+          'black-litterman': 'BL',
+          hrp: 'HRP',
+          'cvar-optimize': 'CVaR',
+          'multi-timeframe': '多週期',
+          'dynamic-rebalance': '動態再平衡',
+          'sector-limit': '板塊限制',
+          voting: '投票式',
+          'momentum-of-momentum': '動量動量',
+          'adaptive-regime': '自適應',
+          frontier: '有效前沿',
+          basic: '基礎等權',
+        };
+        const lab = METHOD_LABELS[p.method] || p.method;
+        if (p.preset_display) return `${lab} · ${p.preset_display}`;
+        const codes = p.codes;
+        if (Array.isArray(codes) && codes.length) {
+          const head = codes.slice(0, 3).join(',');
+          return `${lab} · ${head}${codes.length > 3 ? '…' : ''}`;
+        }
+        return lab;
+      }
+    }
     return '';
   },
 
