@@ -40,6 +40,7 @@ const App = {
     if (typeof Data !== 'undefined') Data.init();
     if (typeof Portfolio !== 'undefined') Portfolio.init();
     if (typeof Analysis !== 'undefined') Analysis.init();
+    if (typeof Backtest !== 'undefined') Backtest.init();
   },
 
   quickAction(tab) {
@@ -198,11 +199,11 @@ const App = {
 
     // Search data
     const searchData = [
-      { icon: '📊', code: '000001', name: '平安銀行', type: 'A股', action: () => { this.loadTab('backtest'); document.getElementById('btCode').value = '000001'; } },
-      { icon: '📊', code: '600519', name: '貴州茅台', type: 'A股', action: () => { this.loadTab('backtest'); document.getElementById('btCode').value = '600519'; } },
-      { icon: '📊', code: '000858', name: '五糧液', type: 'A股', action: () => { this.loadTab('backtest'); document.getElementById('btCode').value = '000858'; } },
-      { icon: '📊', code: '601318', name: '中國平安', type: 'A股', action: () => { this.loadTab('backtest'); document.getElementById('btCode').value = '601318'; } },
-      { icon: '📊', code: '000333', name: '美的集團', type: 'A股', action: () => { this.loadTab('backtest'); document.getElementById('btCode').value = '000333'; } },
+      { icon: '📊', code: '000001', name: '平安銀行', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000001'); } },
+      { icon: '📊', code: '600519', name: '貴州茅台', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('600519'); } },
+      { icon: '📊', code: '000858', name: '五糧液', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000858'); } },
+      { icon: '📊', code: '601318', name: '中國平安', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('601318'); } },
+      { icon: '📊', code: '000333', name: '美的集團', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000333'); } },
       { icon: '🧪', code: '', name: '策略回測', type: '功能', action: () => this.loadTab('backtest') },
       { icon: '⚡', code: '', name: '參數優化', type: '功能', action: () => this.loadTab('optimize') },
       { icon: '🔄', code: '', name: 'Walk-Forward', type: '功能', action: () => this.loadTab('walkforward') },
@@ -214,6 +215,7 @@ const App = {
       { icon: '🗄️', code: '', name: '數據中心', type: '功能', action: () => this.loadTab('data') },
       { icon: '🔬', code: '', name: '深度分析', type: '功能', action: () => this.loadTab('analysis') },
       { icon: '📋', code: '', name: '策略報告', type: '功能', action: () => this.loadTab('reports') },
+      { icon: '⏰', code: '', name: '定時任務', type: '功能', action: () => this.loadTab('scheduler') },
       { icon: '🔔', code: '', name: '預警通知', type: '功能', action: () => this.loadTab('alerts') },
       { icon: '🌐', code: '', name: '多市場', type: '功能', action: () => this.loadTab('markets') },
       { icon: '📋', code: '', name: '任務面板', type: '功能', action: () => this.loadTab('tasks') },
@@ -366,6 +368,7 @@ const App = {
     if (typeof Charts !== 'undefined') {
       requestAnimationFrame(() => {
         Charts.resizeTab('tab-' + tab);
+        if (typeof ProCharts !== 'undefined') ProCharts.initTab(tab);
         if (tab === 'dashboard' && typeof Dashboard !== 'undefined') {
           Dashboard.ensureCharts();
         }
@@ -378,6 +381,9 @@ const App = {
     }
     if (tab !== 'tasks' && typeof Tasks !== 'undefined') {
       Tasks.unload();
+    }
+    if (tab !== 'scheduler' && typeof Scheduler !== 'undefined') {
+      Scheduler.unload();
     }
 
     // Tab 切換時載入數據
@@ -410,6 +416,9 @@ const App = {
         break;
       case 'tasks':
         if (typeof Tasks !== 'undefined') Tasks.load();
+        break;
+      case 'scheduler':
+        if (typeof Scheduler !== 'undefined') Scheduler.load();
         break;
     }
   },
@@ -546,6 +555,7 @@ const App = {
     if (!el) return;
 
     if (d && d.alerts && d.alerts.length > 0) {
+      if (typeof ProCharts !== 'undefined') ProCharts.renderAlertTrend(d.alerts);
       el.innerHTML = d.alerts.map(a =>
         `<div style="padding:8px;border-bottom:1px solid var(--border-color)">
           <div style="font-size:12px">${a.message || '-'}</div>
@@ -749,6 +759,7 @@ const App = {
     });
     html += '</tbody></table>';
     el.innerHTML = html;
+    if (typeof ProCharts !== 'undefined') ProCharts.renderMarketRealtime(d.data);
   },
 
   async testNotify() {
@@ -791,9 +802,16 @@ function runWalkForward() { App._runWalkForward(); }
 function runHeatmap() { Heatmap.run(); }
 function runScreener() { Screener.run(); }
 function generateReport() { App._generateReport(); }
-function enableScheduler() { App._enableScheduler(); }
-function disableScheduler() { App._disableScheduler(); }
-function listSchedulerJobs() { App._listSchedulerJobs(); }
+function setupScheduler() {
+  if (typeof Scheduler !== 'undefined') Scheduler.setupAll();
+  else App._setupScheduler();
+}
+function enableScheduler() { setupScheduler(); }
+function disableScheduler() {
+  if (typeof Scheduler !== 'undefined') Scheduler.disableAll();
+  else App._disableScheduler();
+}
+function listSchedulerJobs() { App.loadTab('scheduler'); }
 function testNotify() { App.testNotify(); }
 function showAddRule() { Dashboard.showAddRule(); }
 function addToWatchlist(code) { Screener.addToWatchlist(code); }
@@ -829,7 +847,8 @@ App._runCompare = async function() {
   }
 
   if (series.length) {
-    Charts.drawLineChart('cmpChart', series);
+    if (typeof ProCharts !== 'undefined') ProCharts.renderCompare(series);
+    else Charts.drawLineChart('cmpChart', series);
     document.getElementById('cmpResult').classList.remove('h');
     if (d.missing?.length) {
       Utils.toast(`已載入 ${series.length} 只；無本地數據: ${d.missing.join(', ')}`, 5000, 'warning');
@@ -866,6 +885,8 @@ App._loadHistory = async function() {
       <td style="font-size:10px;color:var(--text-dim)">${r.created_at || ''}</td>
     </tr>`
   ).join('') || '<tr><td colspan="12" style="color:var(--text-muted);text-align:center">暫無回測歷史</td></tr>';
+
+  if (typeof ProCharts !== 'undefined') ProCharts.renderHistoryAnalytics(rows);
 };
 
 App.renderWalkForwardResult = function(r) {
@@ -892,9 +913,12 @@ App.renderWalkForwardResult = function(r) {
     </tr>`
   ).join('');
 
-  const oosReturns = wins.map(w => w.test_return_pct);
-  const oosLabels = wins.map(w => 'W' + w.window);
-  Charts.drawBarChart('wfChart', oosReturns, oosLabels, '樣本外收益率 (%)');
+  if (typeof ProCharts !== 'undefined') ProCharts.renderWalkForward(wins);
+  else {
+    const oosReturns = wins.map(w => w.test_return_pct);
+    const oosLabels = wins.map(w => 'W' + w.window);
+    Charts.drawBarChart('wfChart', oosReturns, oosLabels, '樣本外收益率 (%)');
+  }
 
   document.getElementById('wfResult').classList.remove('h');
   Utils.toast('Walk-Forward 分析完成', 3000, 'success');
@@ -944,6 +968,7 @@ App._generateReport = async function() {
   try {
     const codes = ['000001', '600519', '000858'];
     let report = '📊 每日策略報告\n' + new Date().toLocaleString('zh-CN') + '\n' + '='.repeat(40) + '\n\n';
+    const perfItems = [];
 
     for (const code of codes) {
       try {
@@ -952,6 +977,11 @@ App._generateReport = async function() {
           const resolved = await Api.resolveTaskResponse(d);
           const r = Api.extractResult(resolved);
           if (!r) continue;
+          perfItems.push({
+            code,
+            sharpe: r.sharpe_ratio,
+            return_pct: r.total_return_pct,
+          });
           report += `🏆 ${code}: dual_ma | 夏普 ${r.sharpe_ratio?.toFixed(2)} | 收益 ${r.total_return_pct?.toFixed(2)}% | 回撤 ${r.max_drawdown_pct?.toFixed(1)}%\n`;
         }
       } catch {}
@@ -960,15 +990,24 @@ App._generateReport = async function() {
     report += '\n' + '='.repeat(40);
     document.getElementById('rptContent').textContent = report;
     document.getElementById('rptResult').classList.remove('h');
+    if (perfItems.length && typeof ProCharts !== 'undefined') {
+      ProCharts.renderReportPerf(perfItems);
+    }
   } catch {}
 
   Utils.btnLoading(btn, false, '生成報告');
 };
 
-App._enableScheduler = async function() {
-  const d = await Api.enableScheduler();
-  if (d) Utils.toast(d.message || '已啟用');
+App._setupScheduler = async function() {
+  if (typeof Scheduler !== 'undefined') {
+    await Scheduler.setupAll();
+    return;
+  }
+  const d = await Api.setupScheduler();
+  if (d) Utils.toast(d.message || '定時任務已註冊', 3000, 'success');
 };
+
+App._enableScheduler = App._setupScheduler;
 
 App._disableScheduler = async function() {
   const d = await Api.disableScheduler();
@@ -976,33 +1015,79 @@ App._disableScheduler = async function() {
 };
 
 App._listSchedulerJobs = async function() {
-  const d = await Api.getSchedulerJobs();
+  if (!document.getElementById('jobsList')) {
+    App.loadTab('scheduler');
+    return;
+  }
+  const d = await Api.getSchedulerCatalog();
   if (!d) return;
 
+  const catalog = d.catalog || [];
   const jobs = d.jobs || [];
+  const jobMap = Object.fromEntries(jobs.map(j => [j.id, j]));
   const el = document.getElementById('jobsList');
   if (!el) return;
 
-  if (jobs.length) {
+  if (catalog.length) {
     el.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>ID</th><th>名稱</th><th>下次執行</th><th>觸發器</th></tr></thead>
-      <tbody>${jobs.map(j => `<tr>
-        <td>${j.id}</td>
-        <td>${j.name}</td>
-        <td>${j.next_run || '-'}</td>
-        <td style="font-size:10px">${j.trigger}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
+      <thead><tr><th>任務</th><th>計劃</th><th>狀態</th><th>下次執行</th><th>操作</th></tr></thead>
+      <tbody>${catalog.map(c => {
+        const j = jobMap[c.id];
+        const status = c.enabled ? '<span style="color:#22c55e">已啟用</span>' : '<span style="color:var(--text-dim)">未啟用</span>';
+        return `<tr>
+          <td><strong>${c.name}</strong><br><span style="font-size:10px;color:var(--text-dim)">${c.id}</span></td>
+          <td style="font-size:11px">${c.schedule}</td>
+          <td>${status}</td>
+          <td style="font-size:11px">${j?.next_run || '-'}</td>
+          <td style="white-space:nowrap">
+            <button class="btn s" style="padding:2px 6px;font-size:10px" onclick="App._runSchedulerJob('${c.id}')">執行</button>
+            ${c.enabled
+              ? `<button class="btn s" style="padding:2px 6px;font-size:10px" onclick="App._disableSchedulerJob('${c.id}')">禁用</button>`
+              : `<button class="btn s" style="padding:2px 6px;font-size:10px" onclick="App._enableSchedulerJob('${c.id}')">啟用</button>`}
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <p style="font-size:11px;color:var(--text-dim);margin-top:8px">啟動服務時 SQ_SCHEDULER_AUTO_REGISTER=true 會自動註冊</p>`;
   } else {
-    el.innerHTML = '<p style="color:var(--text-muted)">無調度任務</p>';
+    el.innerHTML = '<p style="color:var(--text-muted)">無任務目錄</p>';
   }
 
   document.getElementById('schedulerJobs').classList.remove('h');
 };
 
+App._runSchedulerJob = async function(jobId) {
+  const d = await Api.runSchedulerJob(jobId);
+  if (d) Utils.toast(d.message || '已觸發', 2000, 'success');
+};
+
+App._enableSchedulerJob = async function(jobId) {
+  const d = await Api.enableSchedulerJob(jobId);
+  if (d) { Utils.toast(d.message || '已啟用', 2000, 'success'); App._listSchedulerJobs(); }
+};
+
+App._disableSchedulerJob = async function(jobId) {
+  const d = await Api.disableSchedulerJob(jobId);
+  if (d) { Utils.toast(d.message || '已禁用', 2000, 'success'); App._listSchedulerJobs(); }
+};
+
 // ============================================================
 // Task Panel — 任務面板（防止重複執行）
 // ============================================================
+
+App._pauseTaskPoll = false;
+App._lastPolledCompletedId = sessionStorage.getItem('lastSeenCompletedId') || '';
+
+/** 任務完成通知去重（Tasks Tab 與浮動面板共用） */
+App.markTaskCompletedSeen = function(recent) {
+  if (!recent?.task_id) return false;
+  const id = recent.task_id;
+  const prev = App._lastPolledCompletedId || sessionStorage.getItem('lastSeenCompletedId') || '';
+  if (prev === id) return false;
+  App._lastPolledCompletedId = id;
+  sessionStorage.setItem('lastSeenCompletedId', id);
+  return true;
+};
 
 App._initTaskPanel = function() {
   // 創建任務面板 DOM
@@ -1022,8 +1107,6 @@ App._initTaskPanel = function() {
     <div id="taskPanelQueue" style="padding:8px;border-bottom:1px solid var(--border-color,#334155)"></div>
     <div id="taskPanelList" style="max-height:220px;overflow-y:auto;padding:8px"></div>`;
   document.body.appendChild(panel);
-  App._lastPolledCompletedId = sessionStorage.getItem('lastSeenCompletedId') || '';
-
   // Header 任務指示器
   const indicator = document.createElement('div');
   indicator.id = 'taskIndicator';
@@ -1033,8 +1116,8 @@ App._initTaskPanel = function() {
   const hdrRight = document.querySelector('.hdr-right');
   if (hdrRight) hdrRight.insertBefore(indicator, hdrRight.firstChild);
 
-  // 定期刷新任務狀態
-  setInterval(() => App._pollTasks(), 5000);
+  // 定期刷新任務狀態（與任務 Tab 輪詢錯開，避免 429）
+  setInterval(() => App._pollTasks(), 8000);
 };
 
 App.toggleTaskPanel = function() {
@@ -1046,20 +1129,23 @@ App.toggleTaskPanel = function() {
 };
 
 App._pollTasks = async function() {
+  if (App._pauseTaskPoll) return;
   try {
-    const q = await Api.getTaskQueue();
-    if (!q) return;
-    const active = (q.stats?.running || 0) + (q.stats?.pending || 0);
+    const q = await Api.getTaskQueue({ silent: true });
+    if (!q || q._rateLimited) return;
+    const stats = q.stats || {};
+    const active = (stats.running || 0) + (stats.pending || 0);
     const indicator = document.getElementById('taskIndicator');
     const countEl = document.getElementById('taskIndicatorCount');
     if (indicator) {
       indicator.style.display = active > 0 ? 'inline-block' : 'none';
       if (countEl) countEl.textContent = active;
     }
+    if (typeof Tasks !== 'undefined' && Tasks._updateNavBadge) {
+      Tasks._updateNavBadge(stats);
+    }
     const recent = q.recent_completed;
-    if (recent?.task_id && recent.task_id !== App._lastPolledCompletedId) {
-      App._lastPolledCompletedId = recent.task_id;
-      sessionStorage.setItem('lastSeenCompletedId', recent.task_id);
+    if (recent?.task_id && App.markTaskCompletedSeen(recent)) {
       Utils.toast('✅ 任務完成: ' + (recent.title || ''), 3500, 'success');
       const panel = document.getElementById('taskPanel');
       if (panel && panel.style.display === 'none') {
@@ -1073,30 +1159,23 @@ App._pollTasks = async function() {
   } catch {}
 };
 
-App._TASK_TYPE_NAMES = {
-  backtest: '📊 回測',
-  backtest_advanced: '📊 進階回測',
-  backtest_multi: '📊 多策略對比',
-  optimize: '⚡ 參數優化',
-  portfolio: '📈 組合回測',
-  walkforward: '🔄 Walk-Forward',
-  auto_optimize: '🤖 自動優化',
-  heatmap: '🌡️ 熱力圖',
-};
-
 App._refreshTasks = async function() {
   const container = document.getElementById('taskPanelList');
   const queueEl = document.getElementById('taskPanelQueue');
   if (!container) return;
   container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim)"><span class="ld"></span> 載入中...</div>';
 
-  const q = await Api.getTaskQueue();
-  if (queueEl && q && typeof TaskCommon !== 'undefined') {
+  const d = await Api.getTasks(null, null, 30, { silent: true });
+  const q = d?.queue || await Api.getTaskQueue({ silent: true });
+  if (queueEl && q && !q._rateLimited && typeof TaskCommon !== 'undefined') {
     queueEl.innerHTML = TaskCommon.renderQueueSection(q, true);
   }
 
-  const d = await Api.getTasks(null, null, 30);
-  if (!d || !d.tasks || !d.tasks.length) {
+  if (!d || d._rateLimited) {
+    container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim)">任務載入中或請稍後重試…</div>';
+    return;
+  }
+  if (!d.tasks || !d.tasks.length) {
     container.innerHTML = `
       <div style="padding:20px;text-align:center;color:var(--text-dim)">
         <div style="font-size:24px;margin-bottom:8px">📋</div>
@@ -1106,7 +1185,11 @@ App._refreshTasks = async function() {
     return;
   }
 
-  const TC = (typeof TaskCommon !== 'undefined') ? TaskCommon : null;
+  if (typeof TaskCommon === 'undefined') {
+    container.innerHTML = '<div style="padding:12px;color:var(--text-dim)">任務模塊載入中…</div>';
+    return;
+  }
+  const TC = TaskCommon;
 
   // 統計摘要
   const stats = d.stats || {};
@@ -1119,15 +1202,15 @@ App._refreshTasks = async function() {
       <span style="color:#ef4444">❌ 失敗 ${stats.failed || 0}</span>
     </div>`;
 
-  const statusIcons = TC ? TC.STATUS_ICONS : { running: '⏳', completed: '✅', failed: '❌', cancelled: '🚫', pending: '⏸️' };
-  const statusColors = TC ? TC.STATUS_COLORS : { running: '#38bdf8', completed: '#22c55e', failed: '#ef4444', cancelled: '#94a3b8', pending: '#f59e0b' };
-  const typeNameMap = TC ? TC.TYPE_NAMES : App._TASK_TYPE_NAMES;
+  const statusIcons = TC.STATUS_ICONS;
+  const statusColors = TC.STATUS_COLORS;
+  const typeNameMap = TC.TYPE_NAMES;
 
   container.innerHTML = statsHtml + d.tasks.map(t => {
     const typeName = typeNameMap[t.task_type] || t.task_type;
     const canViewResult = t.status === 'completed' && t.has_result;
-    const elapsed = TC ? TC.elapsed(t.started_at || t.created_at, t.completed_at) : null;
-    const elapsedStr = TC ? TC.formatElapsed(elapsed) : '';
+    const elapsed = TC.elapsed(t.started_at || t.created_at, t.completed_at);
+    const elapsedStr = TC.formatElapsed(elapsed);
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px;margin-bottom:4px;background:var(--bg-primary,#0f172a);border-radius:8px;border:1px solid var(--border-color,#334155);${canViewResult ? 'cursor:pointer' : ''}" ${canViewResult ? `onclick="App._viewTaskResult('${t.task_id}')"` : ''}>
       <span style="font-size:16px">${statusIcons[t.status] || '❓'}</span>
@@ -1166,7 +1249,7 @@ App._viewTaskResult = async function(taskId) {
   }
 
   const r = task.result;
-  const typeName = App._TASK_TYPE_NAMES[task.task_type] || task.task_type;
+  const typeName = TaskCommon.typeName(task.task_type);
 
   // 根據任務類型顯示不同結果
   let content = '';
@@ -1266,8 +1349,7 @@ App._loadBacktestResult = async function(taskId) {
   if (typeof Backtest !== 'undefined') {
     Backtest._lastResult = r;
     // 設置股票代碼
-    const codeInput = document.getElementById('btCode');
-    if (codeInput) codeInput.value = r.code || '';
+    if (Backtest.setCode) Backtest.setCode(r.code || '');
     // 顯示結果
     if (Backtest._displayResult) {
       Backtest._displayResult(r);

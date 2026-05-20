@@ -164,8 +164,55 @@
 
     <!-- Stats Grid -->
     <div class="g" id="statsGrid"></div>
+    <!-- Major Indices (Professional K-line) -->
+    <div class="sec index-charts-sec">
+        <div class="index-charts-head">
+            <h2>🌍 全球主要指數</h2>
+            <span class="index-charts-meta" id="indexChartsMeta">專業 K 線 · 載入中…</span>
+        </div>
+        <div id="indexChartsGrid" class="index-charts-grid">
+            <div class="index-charts-loading"><span class="ld"></span> 載入指數行情…</div>
+        </div>
+    </div>
 
-    <!-- Dashboard Charts -->
+
+
+    <!-- 資金與板塊 -->
+    <div class="sec dash-market-sec">
+        <div class="index-charts-head">
+            <h2>💰 資金與板塊</h2>
+            <span class="index-charts-meta" id="marketChartsMeta">板塊資金 · 大盤流向 · 北向資金</span>
+        </div>
+        <div class="g dash-market-grid">
+            <div class="sec dash-chart-card">
+                <h3 class="dash-chart-title">板塊主力淨流入 Top 10</h3>
+                <div class="cw cw-market"><canvas id="dashSectorFlowChart"></canvas></div>
+            </div>
+            <div class="sec dash-chart-card">
+                <h3 class="dash-chart-title">漲跌幅 × 資金流向</h3>
+                <div class="cw cw-market"><canvas id="dashSectorScatterChart"></canvas></div>
+            </div>
+            <div class="sec dash-chart-card">
+                <h3 class="dash-chart-title">大盤資金流向</h3>
+                <div class="cw cw-market"><canvas id="dashMarketFlowChart"></canvas></div>
+            </div>
+            <div class="sec dash-chart-card">
+                <h3 class="dash-chart-title">北向資金</h3>
+                <div class="cw cw-market"><canvas id="dashNorthFlowChart"></canvas></div>
+            </div>
+            <div class="sec dash-chart-card dash-span-2">
+                <h3 class="dash-chart-title">板塊熱力圖</h3>
+                <div class="cw cw-treemap" id="dashSectorTreemapWrap"><canvas id="dashSectorTreemap"></canvas></div>
+            </div>
+            <div class="sec dash-chart-card">
+                <h3 class="dash-chart-title">概念板塊漲跌</h3>
+                <div class="cw cw-market"><canvas id="dashConceptSectorChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+
+        <!-- Dashboard Charts -->
     <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
         <div class="sec"><h2>📈 市場總覽</h2><div class="cw"><canvas id="dashSparklineChart"></canvas></div></div>
         <div class="sec"><h2>🧪 最近回測表現</h2><div class="cw"><canvas id="dashBacktestChart"></canvas></div></div>
@@ -181,7 +228,10 @@
         <table><thead><tr><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
         <tbody id="watchlistTable"></tbody></table>
         </div>
-        <div class="mt-sm"><button class="btn" onclick="showAddRule()">+ 添加監控規則</button></div>
+        <div class="mt-sm" style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="btn" onclick="showAddRule()">+ 添加監控規則</button>
+            <button class="btn s" onclick="Dashboard.showAutoAddRules()" title="依最新價自動計算突破/跌破價">🤖 智能批量添加</button>
+        </div>
     </div>
 
     <!-- Tips for beginners -->
@@ -200,7 +250,13 @@
     <div class="sec">
         <h2>🧪 策略回測</h2>
         <div class="fr">
-            <div class="fg"><label>股票代碼</label><input id="btCode" value="600519"></div>
+            <div class="fg">
+                <label>股票代碼</label>
+                <div class="code-picker">
+                    <select id="btCodeSelect" title="從列表選擇"><option value="">載入中…</option></select>
+                    <input id="btCode" value="600519" placeholder="或輸入 6 位代碼" maxlength="6" inputmode="numeric">
+                </div>
+            </div>
             <div class="fg"><label>策略</label><select id="btStrategy"></select></div>
             <div class="fg"><label>止損 %</label><input id="btSL" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
             <div class="fg"><label>止盈 %</label><input id="btTP" type="number" step="0.5" placeholder="0=禁用" class="input-narrow"></div>
@@ -475,7 +531,12 @@
             <button class="btn" onclick="loadHistory()">🔍 查詢</button>
         </div>
     </div>
-    <div class="sec">
+        <div class="sec chart-grid-pro">
+        <div class="chart-panel"><h3>收益率分佈</h3><div class="cw"><canvas id="histReturnChart"></canvas></div></div>
+        <div class="chart-panel"><h3>夏普趨勢</h3><div class="cw"><canvas id="histSharpeChart"></canvas></div></div>
+        <div class="chart-panel"><h3>回撤排行</h3><div class="cw"><canvas id="histDrawdownChart"></canvas></div></div>
+    </div>
+<div class="sec">
         <div class="table-wrap"><table><thead><tr><th>ID</th><th>股票</th><th>策略</th><th>收益率</th><th>夏普</th><th>Sortino</th><th>Calmar</th><th>回撤</th><th>VaR95</th><th>勝率</th><th>交易</th><th>時間</th></tr></thead><tbody id="histTable"></tbody></table></div>
     </div>
 </div>
@@ -497,7 +558,10 @@
     <div id="wfResult" class="h">
         <div class="g" id="wfStats"></div>
         <div class="sec"><h2>窗口結果</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>訓練期</th><th>測試期</th><th>測試收益</th><th>測試夏普</th><th>測試回撤</th><th>交易</th><th>參數</th></tr></thead><tbody id="wfTable"></tbody></table></div></div>
-        <div class="sec"><h2>樣本外收益走勢</h2><div class="cw"><canvas id="wfChart"></canvas></div></div>
+        <div class="sec chart-grid-pro wf-charts">
+            <div class="chart-panel"><h3>各窗口 OOS 收益</h3><div class="cw"><canvas id="wfChart"></canvas></div></div>
+            <div class="chart-panel"><h3>累積 OOS 收益</h3><div class="cw"><canvas id="wfCumChart"></canvas></div></div>
+        </div>
     </div>
 </div>
 
@@ -577,14 +641,17 @@
         <div class="sec"><h2>📊 信號時間線</h2><div class="cw"><canvas id="signalsTimelineChart"></canvas></div></div>
     </div>
     <div id="stab-strength" class="h mt-md">
-        <div class="sec"><h2>信號強度評分</h2><div class="fr"><div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div><button class="btn" onclick="Signals.loadStrength()">💪 評分</button></div><div id="strengthSignals"></div></div>
+        <div class="sec"><h2>信號強度評分</h2><div class="fr"><div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div><button class="btn" onclick="Signals.loadStrength()">💪 評分</button></div>
+        <div class="sec"><h2>強度雷達對比</h2><div class="cw"><canvas id="sigStrengthRadar"></canvas></div></div>
+        <div id="strengthSignals"></div></div>
     </div>
 </div>
 
 <!-- ====== 數據 ====== -->
 <div id="tab-data" class="h">
     <div class="data-tabs" id="dataTabs">
-        <button class="a" data-dtab="sectors">🏭 板塊行情</button>
+        <button class="a" data-dtab="download">📥 下載入庫</button>
+        <button data-dtab="sectors">🏭 板塊行情</button>
         <button data-dtab="rotation">🔄 板塊輪動</button>
         <button data-dtab="heatmap">🗺️ 全景圖</button>
         <button data-dtab="capital">💰 資金流向</button>
@@ -593,21 +660,67 @@
         <button data-dtab="fundamental">📊 基本面</button>
         <button data-dtab="basics">📋 基本數據</button>
     </div>
-    <div id="dtab-sectors" class="mt-md">
+
+    <div id="dtab-download" class="mt-md">
+        <div class="sec">
+            <h2>📥 爬取數據並寫入本地庫</h2>
+            <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>，之後回測、對比、K 線查詢一律讀庫。手動「下載」用於批量預載；「增量更新」用於補最新交易日。</p>
+            <div class="g" id="dbStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+                <div class="c"><h3>標的數</h3><div class="v" id="dbStatStocks">-</div></div>
+                <div class="c"><h3>K 線條數</h3><div class="v" id="dbStatKlines">-</div></div>
+                <div class="c"><h3>庫大小</h3><div class="v" id="dbStatSize">-</div></div>
+            </div>
+            <div class="fr flex-wrap" style="align-items:flex-end">
+                <div class="fg" style="flex:1;min-width:280px">
+                    <label>A 股代碼（逗號或換行，留空=配置默認 watchlist）</label>
+                    <textarea id="dbDownloadCodes" rows="3" class="input-wide" placeholder="000001,600519,000858"></textarea>
+                </div>
+                <div class="btn-group">
+                    <button class="btn" type="button" onclick="Data.downloadToDb()" id="dbDownloadBtn">📥 下載日 K</button>
+                    <button class="btn s" type="button" onclick="Data.incrementalToDb()" id="dbIncrementalBtn">🔄 增量更新</button>
+                    <button class="btn s" type="button" onclick="Data.refreshDbStats()">📊 刷新統計</button>
+                </div>
+            </div>
+            <label class="scr-filter-item mt-sm">
+                <input type="checkbox" id="dbForceUpdate">
+                <span class="scr-filter-label">強制全量重下（增量更新時）</span>
+            </label>
+            <div id="dbDownloadResult" class="mt-md"></div>
+            <p class="sec-desc mt-sm">多市場（美股、指數、加密等）請到側欄 <strong>市場</strong> Tab，或儀表盤「下載數據」一鍵下載。</p>
+            <button class="btn s mt-sm" type="button" onclick="App.loadTab('markets')">🌐 前往多市場下載</button>
+        </div>
+    </div>
+
+    <div id="dtab-sectors" class="h mt-md">
         <div class="sec"><h2>行業板塊行情</h2><button class="btn mb-md" onclick="Data.loadSectors()">🔄 載入</button><div id="sectorData"></div></div>
         <div class="sec"><h2>📊 板塊漲跌排行</h2><div class="cw"><canvas id="dataSectorChart"></canvas></div></div>
     </div>
     <div id="dtab-rotation" class="h mt-md">
-        <div class="sec"><h2>板塊輪動分析</h2><div class="fr"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn" onclick="Data.loadSectorRotation()">🔄 分析</button></div><div id="rotationData"></div></div>
+        <div class="sec"><h2>板塊輪動分析</h2><div class="fr"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn" onclick="Data.loadSectorRotation()">🔄 分析</button></div><div class="chart-grid-pro"><div class="chart-panel"><h3>排名變化</h3><div class="cw"><canvas id="rotationChart"></canvas></div></div></div><div id="rotationData"></div></div>
     </div>
     <div id="dtab-heatmap" class="h mt-md">
         <div class="sec"><h2>板塊全景熱力圖</h2><button class="btn mb-md" onclick="Data.loadSectorHeatmap()">🔄 載入</button><div id="heatmapData"></div></div>
     </div>
     <div id="dtab-capital" class="h mt-md">
-        <div class="sec"><h2>個股資金流向</h2><div class="fr"><div class="fg"><label>股票</label><input id="cfCode" value="000001"></div><button class="btn" onclick="Data.loadCapitalFlow()">🔍 查詢</button></div><div id="capitalFlowData"></div></div>
+        <div class="sec"><h2>個股資金流向</h2><div class="fr"><div class="fg"><label>股票</label><input id="cfCode" value="000001"></div><button class="btn" onclick="Data.loadCapitalFlow()">🔍 查詢</button></div>
+        <div class="chart-grid-pro">
+            <div class="chart-panel"><h3>主力淨流入</h3><div class="cw"><canvas id="cfNetChart"></canvas></div></div>
+            <div class="chart-panel"><h3>分單資金結構</h3><div class="cw"><canvas id="cfStackChart"></canvas></div></div>
+        </div>
+        <div class="sec chart-grid-pro" style="margin-top:14px">
+            <div class="chart-panel"><h3>板塊主力 Top</h3><div class="cw"><canvas id="dataCapitalSectorChart"></canvas></div></div>
+            <div class="chart-panel"><h3>漲跌×資金</h3><div class="cw"><canvas id="dataSectorScatterChart"></canvas></div></div>
+        </div>
+        <div id="capitalFlowData" class="mt-md"></div></div>
     </div>
     <div id="dtab-north" class="h mt-md">
-        <div class="sec"><h2>北向資金流入</h2><button class="btn mb-md" onclick="Data.loadNorthFlow()">🔄 載入</button><div id="northFlowData"></div></div>
+        <div class="sec"><h2>北向資金流入</h2><button class="btn mb-md" onclick="Data.loadNorthFlow()">🔄 載入</button>
+        <div class="chart-grid-pro">
+            <div class="chart-panel"><h3>滬深股通</h3><div class="cw"><canvas id="northStackChart"></canvas></div></div>
+            <div class="chart-panel"><h3>北向合計</h3><div class="cw"><canvas id="northTotalChart"></canvas></div></div>
+            <div class="chart-panel"><h3>北向趨勢</h3><div class="cw"><canvas id="dataNorthTrendChart"></canvas></div></div>
+        </div>
+        <div id="northFlowData" class="mt-md"></div></div>
     </div>
     <div id="dtab-dragon" class="h mt-md">
         <div class="sec"><h2>龍虎榜數據</h2><button class="btn mb-md" onclick="Data.loadDragonTiger()">🔄 載入</button><div id="dragonTigerData"></div></div>
@@ -676,7 +789,7 @@
             <button class="btn s" onclick="listSchedulerJobs()">📋 查看任務</button>
         </div>
     </div>
-    <div id="rptResult" class="h"><div class="sec"><h2>報告內容</h2><pre class="rpt" id="rptContent"></pre></div></div>
+    <div id="rptResult" class="h"><div class="sec"><h2>策略表現概覽</h2><div class="cw"><canvas id="rptPerfChart"></canvas></div></div><div class="sec"><h2>報告內容</h2><pre class="rpt" id="rptContent"></pre></div></div>
     <div id="schedulerJobs" class="h"><div class="sec"><h2>調度任務</h2><div id="jobsList"></div></div></div>
 </div>
 
@@ -687,6 +800,7 @@
         <div id="notifyChannels"><div class="state-loading"><span class="ld"></span> 載入中...</div></div>
         <div class="mt-sm"><button class="btn" onclick="testNotify()" id="testNotifyBtn">🔔 測試所有渠道</button></div>
     </div>
+    <div class="sec"><h2>預警趨勢</h2><div class="cw"><canvas id="alertTrendChart"></canvas></div></div>
     <div class="sec"><h2>預警歷史</h2><div id="alertList"><div class="state-loading"><span class="ld"></span> 載入中...</div></div></div>
 </div>
 
@@ -744,6 +858,7 @@
                 </select>
             </div>
         </div>
+        <div class="sec"><h2>漲跌幅排行</h2><div class="cw"><canvas id="rtMoversChart"></canvas></div></div>
         <div id="rtMarketData" class="mt-sm"><div class="state-empty"><span class="state-icon">📊</span><span class="state-text">選擇市場查看實時行情</span></div></div>
     </div>
 </div>
@@ -839,10 +954,11 @@
      JavaScript Modules（defer：不阻塞首屏渲染）
      ============================================================ -->
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script defer src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="/static/js/utils.js"></script>
 <script defer src="/static/js/api.js"></script>
 <script defer src="/static/js/charts.js"></script>
+<script defer src="/static/js/chart-pro.js"></script>
 <script defer src="/static/js/dashboard.js"></script>
 <script defer src="/static/js/backtest.js"></script>
 <script defer src="/static/js/optimize.js"></script>

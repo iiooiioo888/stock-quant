@@ -2069,6 +2069,72 @@ def cmd_user_reset_password(args):
         print(f"❌ 重置失敗")
 
 
+def cmd_scheduler(args):
+    """定時任務管理 (APScheduler)"""
+    from src.core.scheduler import (
+        get_catalog,
+        list_jobs,
+        setup_from_settings,
+        run_job_now,
+        enable_job,
+        disable_job,
+        _DISABLE_BY_ID,
+    )
+
+    action = args.scheduler_action
+    if action == "list":
+        catalog = get_catalog()
+        jobs = list_jobs()
+        print(f"\n{'='*60}")
+        print("定時任務目錄")
+        print(f"{'='*60}")
+        for c in catalog:
+            mark = "✅" if c["enabled"] else "○"
+            print(f"  {mark} {c['id']:<22} {c['name']}")
+            print(f"      計劃: {c['schedule']}")
+            print(f"      說明: {c['description']}")
+        print(f"\n已註冊任務 ({len(jobs)}):")
+        if not jobs:
+            print("  (無 — 執行 python main.py scheduler setup 註冊)")
+        for j in jobs:
+            print(f"  • {j['id']}: 下次 {j['next_run'] or '-'} | {j['trigger']}")
+        print()
+
+    elif action == "setup":
+        jobs = setup_from_settings()
+        print(f"✅ 已按配置註冊 {len(jobs)} 個定時任務")
+        for j in jobs:
+            print(f"   • {j['id']}: 下次 {j['next_run']}")
+
+    elif action == "run":
+        if not args.job_id:
+            print("❌ 請指定任務 ID，例如: python main.py scheduler run incremental_update")
+            return
+        print(f"⏳ 執行任務: {args.job_id} ...")
+        run_job_now(args.job_id)
+        print(f"✅ 任務 {args.job_id} 已執行")
+
+    elif action == "enable":
+        if not args.job_id:
+            jobs = setup_from_settings()
+            print(f"✅ 已啟用默認任務套件 ({len(jobs)} 個)")
+        else:
+            enable_job(args.job_id)
+            print(f"✅ 已啟用: {args.job_id}")
+
+    elif action == "disable":
+        if not args.job_id:
+            for fn in _DISABLE_BY_ID.values():
+                fn()
+            print("✅ 已禁用全部定時任務")
+        else:
+            disable_job(args.job_id)
+            print(f"✅ 已禁用: {args.job_id}")
+
+    else:
+        print("用法: python main.py scheduler {list|setup|run|enable|disable} [job_id]")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="stock-quant",
@@ -2354,6 +2420,18 @@ def main():
     p_risk_dd.add_argument("--max-dd", type=float, default=20.0, help="最大回撤百分比")
     p_risk_dd.add_argument("--code", help="股票代碼（用於模擬分析）")
 
+    # scheduler（定時任務）
+    p_sched = subparsers.add_parser("scheduler", help="定時任務 (APScheduler)")
+    sched_sub = p_sched.add_subparsers(dest="scheduler_action")
+    sched_sub.add_parser("list", help="列出任務目錄與狀態")
+    sched_sub.add_parser("setup", help="按 config 註冊默認任務")
+    p_sched_run = sched_sub.add_parser("run", help="立即執行一次")
+    p_sched_run.add_argument("job_id", nargs="?", help="任務 ID，如 incremental_update")
+    p_sched_en = sched_sub.add_parser("enable", help="啟用任務")
+    p_sched_en.add_argument("job_id", nargs="?", help="任務 ID（省略則啟用全套）")
+    p_sched_dis = sched_sub.add_parser("disable", help="禁用任務")
+    p_sched_dis.add_argument("job_id", nargs="?", help="任務 ID（省略則全部禁用）")
+
     # user（多用戶管理）
     p_user = subparsers.add_parser("user", help="用戶管理")
     user_sub = p_user.add_subparsers(dest="user_action")
@@ -2469,6 +2547,11 @@ def main():
             cmd_user_reset_password(args)
         else:
             p_user.print_help()
+    elif args.command == "scheduler":
+        if args.scheduler_action:
+            cmd_scheduler(args)
+        else:
+            p_sched.print_help()
     else:
         parser.print_help()
 

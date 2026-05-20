@@ -760,6 +760,208 @@ td.r {
   margin: 8px 0;
 }
 
+/* 首頁全球指數專業 K 線 */
+.index-charts-sec {
+  margin-bottom: 14px;
+}
+
+.index-charts-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.index-charts-head h2 {
+  margin-bottom: 0;
+}
+
+.index-charts-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.index-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.index-charts-loading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.index-chart-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.index-chart-card:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.35);
+}
+
+.index-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.index-chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.index-chart-symbol {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: ui-monospace, monospace;
+  margin-top: 2px;
+}
+
+.index-chart-quote {
+  text-align: right;
+}
+
+.index-chart-price {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.index-chart-change {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.index-chart-change.up {
+  color: #22c55e;
+}
+
+.index-chart-change.down {
+  color: #ef4444;
+}
+
+.index-chart-change.flat {
+  color: var(--text-dim);
+}
+
+.index-chart-cw {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  height: 200px;
+}
+
+.index-chart-cw .chart-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 儀表盤 — 資金與板塊 */
+.dash-market-sec {
+  margin-bottom: 14px;
+}
+
+.dash-market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.dash-chart-card {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.dash-chart-card.dash-span-2 {
+  grid-column: 1 / -1;
+}
+
+.dash-chart-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.cw-market {
+  height: 220px;
+  min-height: 220px;
+}
+
+/* 全站專業圖表網格 */
+.chart-grid-pro {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.chart-grid-pro.wf-charts {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.chart-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.chart-panel h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.chart-panel .cw {
+  height: 220px;
+  min-height: 200px;
+}
+
+.cw-treemap {
+  height: 280px;
+  min-height: 280px;
+  position: relative;
+}
+
+.cw-treemap canvas {
+  display: block;
+  width: 100%;
+}
+
 /* ============================================================
    Portfolio Cards
    ============================================================ */
@@ -1230,6 +1432,24 @@ pre.rpt {
 /* Input widths */
 .input-xs { width: 55px; }
 .input-narrow { width: 70px; }
+
+.code-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.code-picker select {
+  min-width: 168px;
+  max-width: 240px;
+  flex: 0 1 auto;
+}
+.code-picker input {
+  flex: 1;
+  min-width: 96px;
+  max-width: 120px;
+}
 .input-medium { width: 100px; }
 .input-wide { width: 200px; }
 .input-full { width: 250px; }
@@ -2071,6 +2291,69 @@ tbody tr:hover {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+
+/* ====== 定時任務 Tab ====== */
+.sched-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.sched-active-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sched-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+}
+.sched-chip-time {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.sched-empty-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
+.sched-foot-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 10px;
+}
+.sched-foot-hint code {
+  font-size: 10px;
+}
+.sched-job-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.sched-job-id {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.sched-actions {
+  white-space: nowrap;
+}
+.sched-actions .sched-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  margin-right: 4px;
+}
+tr.sched-row-on {
+  background: rgba(34, 197, 94, 0.06);
 }
 
 @media print {

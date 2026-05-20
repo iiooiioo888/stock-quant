@@ -10,7 +10,8 @@
  */
 
 const Data = {
-  _currentTab: 'sectors',
+  _currentTab: 'download',
+  _SUB_TABS: ['download', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
 
   init() {
     const tabs = document.getElementById('dataTabs');
@@ -21,16 +22,171 @@ const Data = {
       tabs.querySelectorAll('button').forEach(b => b.classList.remove('a'));
       btn.classList.add('a');
       this._currentTab = btn.dataset.dtab;
-      // toggle sub-tab divs
-      ['sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'].forEach(t => {
-        const el = document.getElementById('dtab-' + t);
-        if (el) el.classList.toggle('h', t !== this._currentTab);
-      });
+      this._applyTabVisibility();
+      this._onTabActivated(this._currentTab);
+    });
+    this._applyTabVisibility();
+    this._onTabActivated(this._currentTab);
+  },
+
+  _applyTabVisibility() {
+    this._SUB_TABS.forEach(t => {
+      const el = document.getElementById('dtab-' + t);
+      if (el) el.classList.toggle('h', t !== this._currentTab);
     });
   },
 
+  _escHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  _sectorOnclick(name) {
+    const esc = this._escHtml(name).replace(/'/g, "\\'");
+    return `Data.showSectorDetail('${esc}')`;
+  },
+
+  _onTabActivated(tab) {
+    if (tab === 'download') this.refreshDbStats();
+    if (tab === 'capital' && typeof ProCharts !== 'undefined') {
+      ProCharts.loadCapitalTabCharts();
+    }
+    if (tab === 'north') this.loadNorthFlow();
+    if ((tab === 'sectors' || tab === 'heatmap') && typeof Charts !== 'undefined') {
+      requestAnimationFrame(() => Charts.resizeTab('tab-data'));
+    }
+  },
+
+  _apiFailMessage(container, action) {
+    if (!container) return;
+    const loggedIn = typeof Api !== 'undefined' && Api.isLoggedIn();
+    container.innerHTML = loggedIn
+      ? `<p style="color:var(--text-dim)">${action}失敗，請稍後重試</p>`
+      : `<p style="color:var(--text-dim)">${action}需要登錄或接口暫不可用，請點右上角登錄後重試</p>`;
+  },
+
+  _flowOrderSize(f) {
+    return {
+      super: f.super_large ?? f.super_net ?? f.super_large_net ?? 0,
+      large: f.large ?? f.big_net ?? f.large_net ?? 0,
+      medium: f.medium ?? f.mid_net ?? f.medium_net ?? 0,
+      small: f.small ?? f.small_net ?? 0,
+    };
+  },
+
+  _northDailyRows(d) {
+    if (d?.daily?.length) return d.daily;
+    const flows = d?.flows || [];
+    const byDate = {};
+    flows.forEach(f => {
+      const date = f.date;
+      if (!date) return;
+      if (!byDate[date]) byDate[date] = { date, sh_net: 0, sz_net: 0, total_net: 0 };
+      const code = String(f.code || '');
+      const net = Number(f.main_net) || 0;
+      if (code.includes('沪')) byDate[date].sh_net += net;
+      else if (code.includes('深')) byDate[date].sz_net += net;
+      else {
+        byDate[date].sh_net += Number(f.sh_net) || 0;
+        byDate[date].sz_net += Number(f.sz_net) || 0;
+      }
+      byDate[date].total_net = byDate[date].sh_net + byDate[date].sz_net;
+    });
+    return Object.values(byDate).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  },
+
   load() {
-    // called when data tab is shown; user clicks button to load
+    this._applyTabVisibility();
+    this._onTabActivated(this._currentTab);
+  },
+
+  _parseDownloadCodes() {
+    const raw = document.getElementById('dbDownloadCodes')?.value?.trim();
+    if (!raw) return null;
+    return raw.split(/[,，\s\n]+/).map(s => s.trim()).filter(Boolean);
+  },
+
+  async refreshDbStats() {
+    const d = await Api.getHealth();
+    if (!d) return;
+    const fmt = n => (n ?? 0).toLocaleString();
+    const elStocks = document.getElementById('dbStatStocks');
+    const elKlines = document.getElementById('dbStatKlines');
+    const elSize = document.getElementById('dbStatSize');
+    if (elStocks) elStocks.textContent = fmt(d.total_stocks);
+    if (elKlines) elKlines.textContent = fmt(d.total_klines);
+    if (elSize) elSize.textContent = (d.db_size_mb ?? 0) + ' MB';
+  },
+
+  async downloadToDb() {
+    const btn = document.getElementById('dbDownloadBtn');
+    const el = document.getElementById('dbDownloadResult');
+    const codes = this._parseDownloadCodes();
+    Utils.btnLoading(btn, true, '提交中...');
+    if (el) el.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 任務已提交，正在爬取並寫入本地庫…</p>';
+    try {
+      const d = await Api.downloadStocks(codes);
+      const poll = typeof App !== 'undefined' && App._downloadPollOptions
+        ? App._downloadPollOptions((task) => {
+          if (!el || typeof TaskCommon === 'undefined') return;
+          const sub = TaskCommon.formatTaskSubtitle(task);
+          if (sub) el.innerHTML = `<p style="color:var(--text-dim)"><span class="ld"></span> ${sub}</p>`;
+        })
+        : { timeout: 7200000, interval: 2000 };
+      const resolved = await Api.resolveTaskResponse(d, poll);
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result) {
+        const line = (typeof TaskCommon !== 'undefined' && TaskCommon.downloadResultLine(result))
+          || `共 ${result.total_records ?? 0} 條`;
+        if (el) el.innerHTML = `<div class="chip on">✅ 已寫入本地庫：${line}</div>`;
+        await this.refreshDbStats();
+        Utils.toast('下載完成', 3000, 'success');
+      } else if (el) {
+        const err = resolved?.task?.error || '下載失敗';
+        el.innerHTML = `<div class="chip off">❌ ${err}</div>`;
+      }
+    } catch (e) {
+      if (el) el.innerHTML = `<div class="chip off">❌ ${e.message || e}</div>`;
+    } finally {
+      Utils.btnLoading(btn, false, '📥 下載日 K');
+    }
+  },
+
+  async incrementalToDb() {
+    const btn = document.getElementById('dbIncrementalBtn');
+    const el = document.getElementById('dbDownloadResult');
+    const codes = this._parseDownloadCodes();
+    const force = !!document.getElementById('dbForceUpdate')?.checked;
+    Utils.btnLoading(btn, true, '更新中...');
+    if (el) el.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 增量更新中…</p>';
+    try {
+      const d = await Api.updateStocks(codes, force);
+      const poll = typeof App !== 'undefined' && App._downloadPollOptions
+        ? App._downloadPollOptions((task) => {
+          if (!el || typeof TaskCommon === 'undefined') return;
+          const sub = TaskCommon.formatTaskSubtitle(task);
+          if (sub) el.innerHTML = `<p style="color:var(--text-dim)"><span class="ld"></span> ${sub}</p>`;
+        })
+        : { timeout: 3600000, interval: 2000 };
+      const resolved = await Api.resolveTaskResponse(d, poll);
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result) {
+        const msg = `更新 ${result.updated ?? 0} 只，跳過 ${result.skipped ?? 0} 只，新增 ${result.total_records ?? 0} 條`;
+        if (el) el.innerHTML = `<div class="chip on">✅ ${msg}</div>`;
+        await this.refreshDbStats();
+        Utils.toast('增量更新完成', 3000, 'success');
+      } else if (el) {
+        el.innerHTML = '<div class="chip off">❌ 增量更新失敗</div>';
+      }
+    } catch (e) {
+      if (el) el.innerHTML = `<div class="chip off">❌ ${e.message || e}</div>`.replace('<div class', '<div class').replace('</div>', '</div>');
+    } finally {
+      Utils.btnLoading(btn, false, '🔄 增量更新');
+    }
   },
 
   // ============================================================
@@ -43,7 +199,11 @@ const Data = {
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getSectors('industry', 30);
-    if (!d || !d.sectors || !d.sectors.length) {
+    if (!d) {
+      this._apiFailMessage(container, '板塊行情載入');
+      return;
+    }
+    if (!d.sectors || !d.sectors.length) {
       container.innerHTML = `<p style="color:var(--text-dim)">暫無板塊數據。東財接口可能暫時不可用，請稍後重試；若已保存過快照，可先點「數據」頁其他功能或收盤後執行快照。</p>
         <button class="btn s mt-sm" onclick="Data.loadSectors()">🔄 重試</button>`;
       return;
@@ -61,7 +221,7 @@ const Data = {
     container.innerHTML = `${cacheHint}<div class="table-wrap"><table>
       <thead><tr><th>板塊</th><th>漲跌幅</th><th>領漲股</th><th>成交額</th><th>漲/跌家數</th></tr></thead>
       <tbody>${d.sectors.map(s => `<tr>
-        <td><strong><a href="javascript:void(0)" onclick="Data.showSectorDetail('${s.name}')" style="color:var(--accent);text-decoration:none">${s.name || '-'}</a></strong></td>
+        <td><strong><a href="javascript:void(0)" onclick="${this._sectorOnclick(s.name)}" style="color:var(--accent);text-decoration:none">${this._escHtml(s.name) || '-'}</a></strong></td>
         <td class="r"><span class="b ${Utils.badgeClass(s.change_pct)}">${Utils.formatPct(s.change_pct)}</span></td>
         <td>${s.leader || '-'}</td>
         <td class="r">${s.amount ? Utils.formatLargeNum(s.amount) : '-'}</td>
@@ -107,8 +267,11 @@ const Data = {
 
     const days = parseInt(document.getElementById('rotationDays')?.value) || 10;
     const d = await Api.getSectorRotation(days);
-
-    if (!d || !d.rotation || !d.rotation.length) {
+    if (!d) {
+      this._apiFailMessage(container, '板塊輪動分析');
+      return;
+    }
+    if (!d.rotation || !d.rotation.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">板塊輪動需要至少 2 天數據。請先保存每日快照。</p>';
       return;
     }
@@ -126,7 +289,7 @@ const Data = {
         <div class="table-wrap"><table>
         <thead><tr><th>板塊</th><th>排名變化</th><th>當前排名</th><th>前期排名</th><th>平均漲跌</th><th>成交額</th></tr></thead>
         <tbody>${rising.map(r => `<tr>
-          <td><strong><a href="javascript:void(0)" onclick="Data.showSectorDetail('${r.name}')" style="color:var(--accent);text-decoration:none">${r.name}</a></strong></td>
+          <td><strong><a href="javascript:void(0)" onclick="${this._sectorOnclick(r.name)}" style="color:var(--accent);text-decoration:none">${this._escHtml(r.name)}</a></strong></td>
           <td class="r"><span class="b" style="background:rgba(34,197,94,0.15);color:#22c55e">↑${r.rank_change}</span></td>
           <td class="r">${r.current_rank}</td>
           <td class="r">${r.prev_rank}</td>
@@ -141,7 +304,7 @@ const Data = {
         <div class="table-wrap"><table>
         <thead><tr><th>板塊</th><th>排名變化</th><th>當前排名</th><th>前期排名</th><th>平均漲跌</th><th>成交額</th></tr></thead>
         <tbody>${falling.map(r => `<tr>
-          <td><strong><a href="javascript:void(0)" onclick="Data.showSectorDetail('${r.name}')" style="color:var(--accent);text-decoration:none">${r.name}</a></strong></td>
+          <td><strong><a href="javascript:void(0)" onclick="${this._sectorOnclick(r.name)}" style="color:var(--accent);text-decoration:none">${this._escHtml(r.name)}</a></strong></td>
           <td class="r"><span class="b" style="background:rgba(239,68,68,0.15);color:#ef4444">↓${Math.abs(r.rank_change)}</span></td>
           <td class="r">${r.current_rank}</td>
           <td class="r">${r.prev_rank}</td>
@@ -150,16 +313,19 @@ const Data = {
         </tr>`).join('')}</tbody></table></div></div>`;
     }
 
-    // 條形圖
-    html += '<div class="sec"><h3>📊 排名變化</h3><div class="cw" style="height:400px"><canvas id="rotationChart"></canvas></div></div>';
-
     container.innerHTML = html;
 
-    // 繪製排名變化條形圖
-    const top20 = rotation.slice(0, 20);
-    const labels = top20.map(r => r.name);
-    const data = top20.map(r => r.rank_change);
-    Charts.drawHorizontalBarChart('rotationChart', labels, data, '排名變化');
+    if (typeof ProCharts !== 'undefined') {
+      ProCharts.renderRotationChart(rotation);
+    } else {
+      const top20 = rotation.slice(0, 20);
+      Charts.drawHorizontalBarChart(
+        'rotationChart',
+        top20.map(r => r.name),
+        top20.map(r => r.rank_change),
+        '排名變化',
+      );
+    }
   },
 
   // ============================================================
@@ -172,14 +338,21 @@ const Data = {
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getSectorHeatmap('industry');
-    if (!d || !d.sectors || !d.sectors.length) {
+    if (!d) {
+      this._apiFailMessage(container, '板塊熱力圖載入');
+      return;
+    }
+    if (!d.sectors || !d.sectors.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">暫無板塊數據</p>';
       return;
     }
 
-    container.innerHTML = '<div class="cw" style="position:relative"><canvas id="sectorHeatmapCanvas" style="width:100%;cursor:pointer"></canvas></div>';
-
-    this._drawTreemap(d.sectors);
+    container.innerHTML = '<div class="cw cw-treemap" style="position:relative;min-height:500px"><canvas id="sectorHeatmapCanvas" style="width:100%;cursor:pointer"></canvas></div>';
+    if (typeof Charts !== 'undefined' && Charts.drawSectorTreemap) {
+      Charts.drawSectorTreemap('sectorHeatmapCanvas', d.sectors, 500);
+    } else {
+      this._drawTreemap(d.sectors);
+    }
   },
 
   /**
@@ -200,8 +373,14 @@ const Data = {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    // 過濾有效數據，按成交額排序
-    const valid = sectors.filter(s => s.amount > 0 && s.name);
+    const weight = s => {
+      const amount = Number(s.amount) || 0;
+      if (amount > 0) return amount;
+      const change = Math.abs(Number(s.change_pct) || 0);
+      if (change > 0) return change + 0.5;
+      return Number(s.stock_count) || 1;
+    };
+    const valid = sectors.filter(s => s && s.name);
     if (!valid.length) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = '14px sans-serif';
@@ -210,18 +389,18 @@ const Data = {
       return;
     }
 
-    valid.sort((a, b) => b.amount - a.amount);
-    const totalAmount = valid.reduce((sum, s) => sum + s.amount, 0);
+    valid.sort((a, b) => weight(b) - weight(a));
+    const totalAmount = valid.reduce((sum, s) => sum + weight(s), 0);
 
-    // 計算 treemap 布局（簡單的 squarified 算法）
-    const rects = this._squarify(valid, totalAmount, 0, 0, W, H);
+    const sized = valid.map(s => ({ ...s, amount: weight(s) }));
+    const rects = this._squarify(sized, totalAmount, 0, 0, W, H);
 
     // 顏色映射
     const colors = Charts.getThemeColors();
 
     // 繪製每個方塊
     rects.forEach((rect, i) => {
-      const s = valid[i];
+      const s = sized[i];
       const changePct = s.change_pct || 0;
 
       // 顏色：紅漲綠跌，深淺代表幅度
@@ -260,8 +439,9 @@ const Data = {
         ctx.fillText(Utils.formatPct(changePct), rect.x + rect.w / 2, rect.y + rect.h / 2 + fontSize / 2 + 2);
       }
 
-      // 保存 rect 信息供點擊用
+      // 保存 rect 信息供點擊/ tooltip
       rect.sectorName = s.name;
+      rect.changePct = changePct;
     });
 
     // 點擊顯示詳情
@@ -527,21 +707,29 @@ const Data = {
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getCapitalFlow(code, 20);
-    if (!d || !d.flows || !d.flows.length) {
+    if (!d) {
+      this._apiFailMessage(container, '資金流向查詢');
+      return;
+    }
+    if (!d.flows || !d.flows.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">暫無資金流向數據</p>';
       return;
     }
     container.innerHTML = `<div class="table-wrap"><table>
       <thead><tr><th>日期</th><th>主力淨流入</th><th>超大單</th><th>大單</th><th>中單</th><th>小單</th></tr></thead>
-      <tbody>${d.flows.map(f => `<tr>
+      <tbody>${d.flows.map(f => {
+        const o = this._flowOrderSize(f);
+        return `<tr>
         <td>${f.date || '-'}</td>
         <td class="r"><span class="b ${Utils.badgeClass(f.main_net)}">${Utils.formatLargeNum(f.main_net)}</span></td>
-        <td class="r"><span class="b ${Utils.badgeClass(f.super_large)}">${Utils.formatLargeNum(f.super_large)}</span></td>
-        <td class="r"><span class="b ${Utils.badgeClass(f.large)}">${Utils.formatLargeNum(f.large)}</span></td>
-        <td class="r"><span class="b ${Utils.badgeClass(f.medium)}">${Utils.formatLargeNum(f.medium)}</span></td>
-        <td class="r"><span class="b ${Utils.badgeClass(f.small)}">${Utils.formatLargeNum(f.small)}</span></td>
-      </tr>`).join('')}</tbody>
+        <td class="r"><span class="b ${Utils.badgeClass(o.super)}">${Utils.formatLargeNum(o.super)}</span></td>
+        <td class="r"><span class="b ${Utils.badgeClass(o.large)}">${Utils.formatLargeNum(o.large)}</span></td>
+        <td class="r"><span class="b ${Utils.badgeClass(o.medium)}">${Utils.formatLargeNum(o.medium)}</span></td>
+        <td class="r"><span class="b ${Utils.badgeClass(o.small)}">${Utils.formatLargeNum(o.small)}</span></td>
+      </tr>`;
+      }).join('')}</tbody>
     </table></div>`;
+    if (typeof ProCharts !== 'undefined') ProCharts.renderStockCapitalFlow(d.flows);
   },
 
   async loadNorthFlow() {
@@ -549,20 +737,26 @@ const Data = {
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
-    const d = await Api.getNorthFlow(10);
-    if (!d || !d.flows || !d.flows.length) {
+    const d = await Api.getNorthFlow(30);
+    if (!d) {
+      this._apiFailMessage(container, '北向資金載入');
+      return;
+    }
+    const daily = this._northDailyRows(d);
+    if (!daily.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">暫無北向資金數據</p>';
       return;
     }
     container.innerHTML = `<div class="table-wrap"><table>
       <thead><tr><th>日期</th><th>滬股通</th><th>深股通</th><th>合計</th></tr></thead>
-      <tbody>${d.flows.map(f => `<tr>
+      <tbody>${daily.map(f => `<tr>
         <td>${f.date || '-'}</td>
         <td class="r"><span class="b ${Utils.badgeClass(f.sh_net)}">${Utils.formatLargeNum(f.sh_net)}</span></td>
         <td class="r"><span class="b ${Utils.badgeClass(f.sz_net)}">${Utils.formatLargeNum(f.sz_net)}</span></td>
         <td class="r"><span class="b ${Utils.badgeClass(f.total_net)}">${Utils.formatLargeNum(f.total_net)}</span></td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+    if (typeof ProCharts !== 'undefined') ProCharts.renderNorthFlow(daily);
   },
 
   async loadDragonTiger() {
@@ -571,7 +765,11 @@ const Data = {
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getDragonTiger();
-    if (!d || !d.records || !d.records.length) {
+    if (!d) {
+      this._apiFailMessage(container, '龍虎榜載入');
+      return;
+    }
+    if (!d.records || !d.records.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">暫無龍虎榜數據</p>';
       return;
     }
@@ -620,7 +818,11 @@ const Data = {
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 篩選中...</p>';
 
     Api.post('/api/data/fundamentals/screen', { filters }).then(d => {
-      if (!d || !d.results || !d.results.length) {
+      if (!d) {
+        this._apiFailMessage(container, '基本面篩選');
+        return;
+      }
+      if (!d.results || !d.results.length) {
         container.innerHTML = '<p style="color:var(--text-dim)">無符合條件的股票</p>';
         return;
       }
@@ -652,7 +854,11 @@ const Data = {
     }
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
     Api.get(`/api/stocks/${encodeURIComponent(code)}/overview?lookback=${lookback}`).then(d => {
-      const o = d?.overview;
+      if (!d) {
+        this._apiFailMessage(container, '基本數據查詢');
+        return;
+      }
+      const o = d.overview;
       if (!o) {
         container.innerHTML = '<p style="color:var(--warn)">無數據</p>';
         return;

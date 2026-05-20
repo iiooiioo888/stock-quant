@@ -15,7 +15,7 @@ from src.utils.logger import logger
 class SignalEngine:
     """
     實時信號計算引擎。
-    對監控列表中的每隻股票，用所有 13 種策略計算最新一根 K 線的買賣信號。
+    對監控列表中的每隻股票，用所有 19 種內置策略計算最新一根 K 線的買賣信號。
     """
 
     def __init__(self):

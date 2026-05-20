@@ -2,7 +2,15 @@
 # Comprehensive API test for stock-quant
 set -e
 BASE="${STOCK_QUANT_URL:-http://localhost:8000}"
-ADMIN_PW="${SQ_DEMO_ADMIN_PASSWORD:-stockquant2024}"
+# 優先環境變量，其次 data/.admin_password（與 auth.py 一致）
+if [ -n "$SQ_DEMO_ADMIN_PASSWORD" ]; then
+  ADMIN_PW="$SQ_DEMO_ADMIN_PASSWORD"
+elif [ -f "data/.admin_password" ]; then
+  ADMIN_PW=$(cut -d: -f2 data/.admin_password | tr -d '\r\n')
+else
+  echo "❌ 請設置 SQ_DEMO_ADMIN_PASSWORD 或先啟動服務以生成 data/.admin_password"
+  exit 1
+fi
 TOKEN=$(curl -s -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PW\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))")

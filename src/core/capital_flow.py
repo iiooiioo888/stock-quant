@@ -1,247 +1,55 @@
 """
-資金流向數據模塊 — 個股資金流向、大盤資金流向、北向資金
+資金流向數據模塊 — 個股、大盤、北向資金（多源降級）
+
+優先：東方財富 HTTP 直連 → AKShare → 本地庫緩存
 """
-import akshare as ak
-import pandas as pd
-import time
 import sqlite3
-from datetime import datetime
+import time
+
+import akshare as ak
+
 from src.core.db import get_conn
 from src.utils.logger import logger
 
 _RATE_LIMIT = 0.5
 
-
-def _rate_sleep():
-    """限速等待"""
-    time.sleep(_RATE_LIMIT)
-
-
-# ============================================================
-# 數據庫表定義
-# ============================================================
-
 DDL_CAPITAL_FLOW = """
 CREATE TABLE IF NOT EXISTS capital_flow (
     code        TEXT NOT NULL,
     date        TEXT NOT NULL,
-    flow_type   TEXT NOT NULL,  -- 'individual' / 'market' / 'north'
-    main_net    REAL,       -- 主力淨流入
-    super_net   REAL,       -- 超大單淨流入
-    big_net     REAL,       -- 大單淨流入
-    mid_net     REAL,       -- 中單淨流入
-    small_net   REAL,       -- 小單淨流入
+    flow_type   TEXT NOT NULL,
+    main_net    REAL,
+    super_net   REAL,
+    big_net     REAL,
+    mid_net     REAL,
+    small_net   REAL,
     close       REAL,
     change_pct  REAL,
-    raw_json    TEXT,       -- 原始 JSON 數據備份
+    raw_json    TEXT,
     PRIMARY KEY (code, date, flow_type)
 )
 """
 
 
+def _rate_sleep():
+    time.sleep(_RATE_LIMIT)
+
+
 def init_capital_flow_table():
-    """初始化資金流向表"""
     with get_conn() as conn:
         conn.execute(DDL_CAPITAL_FLOW)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_code ON capital_flow(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_date ON capital_flow(date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_type ON capital_flow(flow_type)")
         conn.commit()
-    logger.info("資金流向表就緒")
 
-
-# ============================================================
-# 個股資金流向
-# ============================================================
-
-def get_capital_flow(code: str, days: int = 30) -> list[dict]:
-    """
-    獲取個股資金流向
-    
-    Args:
-        code: 股票代碼
-        days: 最近 N 天
-    
-    Returns:
-        資金流向記錄列表
-    """
-    try:
-        df = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith("6") else "sz")
-        
-        if df.empty:
-            logger.warning(f"{code}: 無資金流向數據")
-            return []
-        
-        # 統一列名
-        col_map = {
-            "日期": "date",
-            "收盘价": "close",
-            "涨跌幅": "change_pct",
-            "主力净流入-净额": "main_net",
-            "超大单净流入-净额": "super_net",
-            "大单净流入-净额": "big_net",
-            "中单净流入-净额": "mid_net",
-            "小单净流入-净額": "small_net",
-        }
-        
-        # 靈活匹配列名
-        rename_map = {}
-        for old_name, new_name in col_map.items():
-            for col in df.columns:
-                if old_name in col or col == old_name:
-                    rename_map[col] = new_name
-                    break
-        df = df.rename(columns=rename_map)
-        
-        # 只保留最近 N 天
-        if len(df) > days:
-            df = df.tail(days)
-        
-        result = []
-        for _, row in df.iterrows():
-            record = {
-                "code": code,
-                "date": str(row.get("date", "")),
-                "close": float(row.get("close", 0) or 0),
-                "change_pct": float(row.get("change_pct", 0) or 0),
-                "main_net": float(row.get("main_net", 0) or 0),
-                "super_net": float(row.get("super_net", 0) or 0),
-                "big_net": float(row.get("big_net", 0) or 0),
-                "mid_net": float(row.get("mid_net", 0) or 0),
-                "small_net": float(row.get("small_net", 0) or 0),
-            }
-            result.append(record)
-        
-        # 存入數據庫
-        _save_capital_flow(result, "individual")
-        _rate_sleep()
-        return result
-        
-    except Exception as e:
-        logger.error(f"獲取 {code} 資金流向失敗: {e}")
-        return []
-
-
-# ============================================================
-# 大盤資金流向
-# ============================================================
-
-def get_market_capital_flow() -> list[dict]:
-    """
-    獲取大盤資金流向（滬深兩市）
-    
-    Returns:
-        大盤資金流向記錄
-    """
-    try:
-        df = ak.stock_market_fund_flow()
-        
-        if df.empty:
-            logger.warning("大盤資金流向數據為空")
-            return []
-        
-        result = []
-        for _, row in df.iterrows():
-            record = {
-                "code": "market",
-                "date": str(row.get("日期", "")),
-                "close": float(row.get("上证指数", 0) or 0),
-                "change_pct": float(row.get("上证指数-涨跌幅", 0) or 0),
-                "main_net": float(row.get("主力净流入-净额", 0) or 0),
-                "super_net": float(row.get("超大单净流入-净额", 0) or 0),
-                "big_net": float(row.get("大单净流入-净额", 0) or 0),
-                "mid_net": float(row.get("中单净流入-净额", 0) or 0),
-                "small_net": float(row.get("小单净流入-净额", 0) or 0),
-            }
-            result.append(record)
-        
-        # 存入數據庫
-        _save_capital_flow(result, "market")
-        _rate_sleep()
-        return result
-        
-    except Exception as e:
-        logger.error(f"獲取大盤資金流向失敗: {e}")
-        return []
-
-
-# ============================================================
-# 北向資金
-# ============================================================
-
-def get_north_flow(days: int = 30) -> list[dict]:
-    """
-    獲取北向資金（滬股通+深股通）流入數據
-    
-    Args:
-        days: 最近 N 天
-    
-    Returns:
-        北向資金流入記錄
-    """
-    try:
-        # 滬股通
-        df_sh = ak.stock_hsgt_north_net_flow_in_em(symbol="沪股通")
-        _rate_sleep()
-        # 深股通
-        df_sz = ak.stock_hsgt_north_net_flow_in_em(symbol="深股通")
-        
-        result = []
-        
-        for label, df in [("滬股通", df_sh), ("深股通", df_sz)]:
-            if df.empty:
-                continue
-            
-            # 統一列名
-            rename_map = {}
-            for col in df.columns:
-                if "日期" in col or "date" in col.lower():
-                    rename_map[col] = "date"
-                elif "净流入" in col or "净买" in col:
-                    rename_map[col] = "main_net"
-            df = df.rename(columns=rename_map)
-            
-            if len(df) > days:
-                df = df.tail(days)
-            
-            for _, row in df.iterrows():
-                record = {
-                    "code": label,
-                    "date": str(row.get("date", "")),
-                    "close": 0,
-                    "change_pct": 0,
-                    "main_net": float(row.get("main_net", 0) or 0),
-                    "super_net": 0,
-                    "big_net": 0,
-                    "mid_net": 0,
-                    "small_net": 0,
-                }
-                result.append(record)
-        
-        # 存入數據庫
-        if result:
-            _save_capital_flow(result, "north")
-        
-        _rate_sleep()
-        return result
-        
-    except Exception as e:
-        logger.error(f"獲取北向資金失敗: {e}")
-        return []
-
-
-# ============================================================
-# 數據庫操作
-# ============================================================
 
 def _save_capital_flow(records: list[dict], flow_type: str):
-    """保存資金流向到數據庫"""
     if not records:
         return
-    
-    db_records = []
-    for r in records:
-        db_records.append((
+    init_capital_flow_table()
+    db_records = [
+        (
             r.get("code", ""),
             r.get("date", ""),
             flow_type,
@@ -252,28 +60,182 @@ def _save_capital_flow(records: list[dict], flow_type: str):
             r.get("small_net"),
             r.get("close"),
             r.get("change_pct"),
-            None,  # raw_json
-        ))
-    
+            None,
+        )
+        for r in records
+    ]
     with get_conn() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO capital_flow
                (code, date, flow_type, main_net, super_net, big_net, mid_net, small_net,
                 close, change_pct, raw_json)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            db_records
+            db_records,
         )
-    logger.debug(f"保存資金流向 ({flow_type}): {len(db_records)} 條")
+        conn.commit()
+
+
+def load_capital_flow_by_type(flow_type: str, code: str = None, days: int = 30) -> list[dict]:
+    """從本地庫讀取資金流向緩存"""
+    init_capital_flow_table()
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        if code:
+            rows = conn.execute(
+                """SELECT * FROM capital_flow
+                   WHERE flow_type = ? AND code = ?
+                   ORDER BY date DESC LIMIT ?""",
+                (flow_type, code, days),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM capital_flow
+                   WHERE flow_type = ?
+                   ORDER BY date DESC LIMIT ?""",
+                (flow_type, days * 3),
+            ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "code": r["code"],
+            "date": r["date"],
+            "close": r["close"],
+            "change_pct": r["change_pct"],
+            "main_net": r["main_net"],
+            "super_net": r["super_net"],
+            "big_net": r["big_net"],
+            "mid_net": r["mid_net"],
+            "small_net": r["small_net"],
+            "source": "local_db",
+        })
+    out.sort(key=lambda x: x["date"])
+    return out
+
+
+def get_capital_flow(code: str, days: int = 30) -> list[dict]:
+    """個股資金流向"""
+    try:
+        df = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith("6") else "sz")
+        if df.empty:
+            return load_capital_flow_by_type("individual", code, days)
+
+        col_map = {
+            "日期": "date",
+            "收盘价": "close",
+            "涨跌幅": "change_pct",
+            "主力净流入-净额": "main_net",
+            "超大单净流入-净额": "super_net",
+            "大单净流入-净额": "big_net",
+            "中单净流入-净额": "mid_net",
+            "小单净流入-净额": "small_net",
+        }
+        rename_map = {}
+        for old_name, new_name in col_map.items():
+            for col in df.columns:
+                if old_name in col or col == old_name:
+                    rename_map[col] = new_name
+                    break
+        df = df.rename(columns=rename_map)
+        if len(df) > days:
+            df = df.tail(days)
+
+        result = []
+        for _, row in df.iterrows():
+            result.append({
+                "code": code,
+                "date": str(row.get("date", "")),
+                "close": float(row.get("close", 0) or 0),
+                "change_pct": float(row.get("change_pct", 0) or 0),
+                "main_net": float(row.get("main_net", 0) or 0),
+                "super_net": float(row.get("super_net", 0) or 0),
+                "big_net": float(row.get("big_net", 0) or 0),
+                "mid_net": float(row.get("mid_net", 0) or 0),
+                "small_net": float(row.get("small_net", 0) or 0),
+                "source": "akshare",
+            })
+        _save_capital_flow(result, "individual")
+        _rate_sleep()
+        return result
+    except Exception as e:
+        logger.error(f"獲取 {code} 資金流向失敗: {e}")
+        cached = load_capital_flow_by_type("individual", code, days)
+        return cached
+
+
+def get_market_capital_flow() -> list[dict]:
+    """大盤資金流向（多源）"""
+    from src.core.eastmoney_flow import (
+        fetch_market_fund_flow,
+        fetch_market_fund_flow_akshare,
+    )
+
+    for fetcher in (fetch_market_fund_flow, fetch_market_fund_flow_akshare):
+        try:
+            result = fetcher() or []
+        except Exception as e:
+            logger.debug(f"大盤資金 {fetcher.__name__} 失敗: {e}")
+            result = []
+        if result:
+            _save_capital_flow(result, "market")
+            _rate_sleep()
+            return result
+
+    cached = load_capital_flow_by_type("market", "market", days=120)
+    if cached:
+        logger.info(f"使用本地大盤資金緩存: {len(cached)} 條")
+    else:
+        logger.warning("大盤資金流向全部數據源失敗")
+    return cached
+
+
+def aggregate_north_flow_daily(flows: list[dict]) -> list[dict]:
+    """將滬股通/深股通逐條記錄按日期合併，供表格與圖表使用。"""
+    by_date: dict[str, dict] = {}
+    for f in flows or []:
+        date = str(f.get("date") or "")[:10]
+        if not date:
+            continue
+        row = by_date.setdefault(
+            date,
+            {"date": date, "sh_net": 0.0, "sz_net": 0.0, "total_net": 0.0},
+        )
+        code = str(f.get("code") or "")
+        if f.get("sh_net") is not None:
+            row["sh_net"] += float(f.get("sh_net") or 0)
+        if f.get("sz_net") is not None:
+            row["sz_net"] += float(f.get("sz_net") or 0)
+        else:
+            net = float(f.get("main_net") or f.get("total_net") or 0)
+            if "沪" in code:
+                row["sh_net"] += net
+            elif "深" in code:
+                row["sz_net"] += net
+        row["total_net"] = row["sh_net"] + row["sz_net"]
+    return sorted(by_date.values(), key=lambda x: x["date"])
+
+
+def get_north_flow(days: int = 30) -> list[dict]:
+    """北向資金（多源）"""
+    from src.core.eastmoney_flow import fetch_north_flow, fetch_north_flow_akshare
+
+    for fetcher in (lambda: fetch_north_flow(days), lambda: fetch_north_flow_akshare(days)):
+        try:
+            result = fetcher() or []
+        except Exception as e:
+            logger.debug(f"北向資金拉取失敗: {e}")
+            result = []
+        if result:
+            _save_capital_flow(result, "north")
+            _rate_sleep()
+            return result
+
+    cached = load_capital_flow_by_type("north", days=days * 2)
+    if cached:
+        logger.info(f"使用本地北向資金緩存: {len(cached)} 條")
+    else:
+        logger.warning("北向資金全部數據源失敗")
+    return cached
 
 
 def load_capital_flow(code: str, days: int = 30) -> list[dict]:
-    """從數據庫讀取資金流向（緩存查詢）"""
-    with get_conn() as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """SELECT * FROM capital_flow 
-               WHERE code = ? 
-               ORDER BY date DESC LIMIT ?""",
-            (code, days)
-        ).fetchall()
-    return [dict(r) for r in rows]
+    return load_capital_flow_by_type("individual", code, days)

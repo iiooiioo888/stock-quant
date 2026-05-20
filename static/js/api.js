@@ -15,6 +15,9 @@ const Api = {
     '/api/strategies/list': 120000,
     '/api/config': 120000,
     '/api/stocks': 30000,
+    '/api/indices/charts': 120000,
+    '/api/tasks': 2500,
+    '/api/tasks/queue': 2500,
   },
 
   /**
@@ -176,6 +179,13 @@ const Api = {
         return null;
       }
 
+      if (resp.status === 429) {
+        if (!silent && typeof Utils !== 'undefined') {
+          Utils.toast('請求過於頻繁，請稍後再試', 3000, 'warning');
+        }
+        return { _rateLimited: true };
+      }
+
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
         const msg = err.detail || `HTTP ${resp.status}`;
@@ -213,7 +223,7 @@ const Api = {
     if (ttl > 0) {
       this._inflight.set(path, p);
       p.then(data => {
-        if (data != null) {
+        if (data != null && !data._rateLimited) {
           this._getCache.set(path, { ts: Date.now(), data });
         }
       }).finally(() => this._inflight.delete(path));
@@ -263,6 +273,16 @@ const Api = {
   // ====== 快捷方法 ======
 
   async getHealth() { return this.get('/api/health'); },
+
+  /** 下載 A 股日 K 到本地庫（異步任務） */
+  async downloadStocks(codes) {
+    return this.post('/api/stocks/download', codes ?? null);
+  },
+
+  /** 增量更新本地日 K */
+  async updateStocks(codes, force = false) {
+    return this.post(`/api/stocks/update?force=${force}`, codes ?? null);
+  },
   async getStatus() { return this.get('/api/status'); },
   async getStocks() { return this.get('/api/stocks'); },
 
@@ -328,9 +348,24 @@ const Api = {
   async getAlertRules() { return this.get('/api/alerts/rules'); },
   async updateAlertRules(rules) { return this.put('/api/alerts/rules', rules); },
   async deleteAlertRule(code) { return this.delete(`/api/alerts/rules/${code}`); },
+  async suggestAlertRule(code, opts = {}) {
+    const q = new URLSearchParams({ code });
+    if (opts.above_pct != null) q.set('above_pct', opts.above_pct);
+    if (opts.below_pct != null) q.set('below_pct', opts.below_pct);
+    if (opts.change_pct != null) q.set('change_pct', opts.change_pct);
+    return this.get(`/api/alerts/rules/suggest?${q}`);
+  },
+  async autoAddAlertRules(body) {
+    return this.post('/api/alerts/rules/auto', body || {});
+  },
 
-  async addToWatchlist(code, name = '') {
-    return this.post(`/api/watchlist/add?code=${code}&name=${encodeURIComponent(name)}`);
+  async addToWatchlist(code, name = '', opts = {}) {
+    const q = new URLSearchParams({ code, name: name || '' });
+    if (opts.auto_rule) q.set('auto_rule', 'true');
+    if (opts.above_pct != null) q.set('above_pct', opts.above_pct);
+    if (opts.below_pct != null) q.set('below_pct', opts.below_pct);
+    if (opts.change_pct != null) q.set('change_pct', opts.change_pct);
+    return this.post(`/api/watchlist/add?${q}`);
   },
 
   async getBacktestHistory(code, strategy, limit = 50) {
@@ -364,15 +399,20 @@ const Api = {
   async getNotifyChannels() { return this.get('/api/notify/channels'); },
   async testNotify() { return this.post('/api/notify/test'); },
   async getSchedulerJobs() { return this.get('/api/scheduler/jobs'); },
+  async getSchedulerCatalog() { return this.get('/api/scheduler/catalog'); },
+  async setupScheduler() { return this.post('/api/scheduler/setup'); },
+  async runSchedulerJob(jobId) { return this.post(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/run`); },
+  async enableSchedulerJob(jobId) { return this.post(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/enable`); },
+  async disableSchedulerJob(jobId) { return this.post(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/disable`); },
 
   // 任務管理
-  async getTasks(taskType, status, limit) {
+  async getTasks(taskType, status, limit, opts = {}) {
     let url = '/api/tasks?limit=' + (limit || 50);
     if (taskType) url += '&task_type=' + taskType;
     if (status) url += '&status=' + status;
-    return this.get(url);
+    return this.get(url, opts);
   },
-  async getTaskQueue() { return this.get('/api/tasks/queue'); },
+  async getTaskQueue(opts = {}) { return this.get('/api/tasks/queue', opts); },
 
   async pollTask(taskId, options = {}) {
     const interval = options.interval || 1500;
@@ -380,7 +420,11 @@ const Api = {
     const onProgress = options.onProgress;
     const start = Date.now();
     while (Date.now() - start < timeout) {
-      const d = await this.getTask(taskId);
+      const d = await this.getTask(taskId, { silent: true, noCache: true });
+      if (d?._rateLimited) {
+        await new Promise(r => setTimeout(r, Math.max(interval, 2000)));
+        continue;
+      }
       const task = d?.task;
       if (!task) return null;
       if (onProgress) onProgress(task);
@@ -418,7 +462,7 @@ const Api = {
     return { ...d, task, result, results: result };
   },
 
-  async getTask(taskId) { return this.get('/api/tasks/' + taskId); },
+  async getTask(taskId, opts = {}) { return this.get('/api/tasks/' + taskId, opts); },
   async getCacheStats() { return this.get('/api/cache/stats'); },
   async clearCache(code) {
     let url = '/api/cache/clear';
@@ -446,6 +490,11 @@ const Api = {
   async getSectorHeatmap(type = 'industry') { return this.get(`/api/data/sectors/heatmap?sector_type=${type}`); },
   async saveSectorSnapshot(type = 'industry') { return this.post(`/api/data/sectors/snapshot?sector_type=${type}`); },
   async getSectorCapitalFlow(name) { return this.get(`/api/data/sector/${encodeURIComponent(name)}/capital-flow`); },
+  async getSectorsCapitalFlowRank(topN = 20) { return this.get(`/api/data/sectors/capital-flow?top_n=${topN}`); },
+  async getSectorsChangeFlow(type = 'industry', topN = 40) {
+    return this.get(`/api/data/sectors/change-flow?sector_type=${type}&top_n=${topN}`);
+  },
+  async getDashboardMarketCharts(days = 20) { return this.get(`/api/dashboard/market-charts?days=${days}`); },
   async getCapitalFlow(code, days = 30) { return this.get(`/api/data/capital-flow?code=${code}&days=${days}`); },
   async getMarketFlow() { return this.get('/api/data/market-flow'); },
   async getNorthFlow(days = 30) { return this.get(`/api/data/north-flow?days=${days}`); },
@@ -480,6 +529,10 @@ const Api = {
 
   async getLeaderboard(sortBy = 'sharpe', limit = 50) {
     return this.get(`/api/strategies/leaderboard?sort_by=${sortBy}&limit=${limit}`);
+  },
+
+  async getIndicesCharts(days = 90) {
+    return this.get(`/api/indices/charts?days=${days}`);
   },
 
   async getMinutesData(code, period = '5m') { return this.get(`/api/data/minutes?code=${code}&period=${period}`); },

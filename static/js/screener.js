@@ -120,8 +120,8 @@ const Screener = {
   },
 
   async addToWatchlist(code) {
-    if (!confirm(`確定將 ${code} 加入監控列表？`)) return;
-    const d = await Api.addToWatchlist(code);
+    if (!confirm(`確定將 ${code} 加入監控列表？\n將依最新價自動生成突破/跌破預警。`)) return;
+    const d = await Api.addToWatchlist(code, '', { auto_rule: true });
     if (d && d.success) {
       Utils.toast(d.message);
       // 如果在儀表盤有監控列表，嘗試刷新

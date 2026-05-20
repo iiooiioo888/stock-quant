@@ -2009,9 +2009,11 @@ def _get_prepared_df(code: str) -> pd.DataFrame:
     if code in _prepared_df_cache:
         return _prepared_df_cache[code]
 
-    df = load_daily_kline(code)
+    from src.core.local_kline import ensure_daily_kline
+
+    df, _src = ensure_daily_kline(code, min_bars=60)
     if df.empty:
-        raise ValueError(f"股票 {code} 無歷史數據，請先下載")
+        raise ValueError(f"股票 {code} 無歷史數據（首次自動拉取失敗，請檢查代碼或網路）")
 
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])

@@ -27,12 +27,23 @@ def _get_scheduler():
     return _scheduler
 
 
-def start_scheduler():
-    """啟動後台調度器"""
+def start_scheduler(*, auto_register: bool | None = None):
+    """啟動後台調度器，可選按配置註冊默認任務"""
+    from src.config import settings
+
+    if not settings.scheduler_enabled:
+        logger.info("定時任務已關閉 (SQ_SCHEDULER_ENABLED=false)")
+        return
+
     scheduler = _get_scheduler()
     if not scheduler.running:
         scheduler.start()
-        logger.info("調度器已啟動")
+        logger.info("調度器已啟動 (Asia/Shanghai)")
+
+    if auto_register is None:
+        auto_register = settings.scheduler_auto_register
+    if auto_register:
+        setup_from_settings()
 
 
 def stop_scheduler():
@@ -320,3 +331,236 @@ def disable_data_quality_check():
     """禁用數據質量巡檢"""
     _remove_job_safe("data_quality_check")
     logger.info("已禁用數據質量巡檢")
+
+
+# ============================================================
+# 增量數據更新
+# ============================================================
+
+def enable_incremental_update(codes: list[str] = None):
+    """啟用增量數據更新（工作日 08:05，可配置）"""
+    from src.config import settings
+
+    scheduler = _get_scheduler()
+    _remove_job_safe("incremental_update")
+
+    def _job():
+        logger.info("執行定時增量數據更新...")
+        try:
+            from src.core.history import download_incremental
+            result = download_incremental(codes=codes)
+            logger.info(
+                f"增量更新完成: 更新 {result.get('updated', 0)} 只, "
+                f"跳過 {result.get('skipped', 0)} 只, "
+                f"共 {result.get('total_records', 0)} 條"
+            )
+        except Exception as e:
+            logger.error(f"增量更新失敗: {e}")
+
+    scheduler.add_job(
+        _job,
+        "cron",
+        day_of_week="mon-fri",
+        hour=settings.scheduler_incremental_hour,
+        minute=settings.scheduler_incremental_minute,
+        id="incremental_update",
+        replace_existing=True,
+        name="增量數據更新",
+    )
+    logger.info(
+        f"已啟用增量數據更新 "
+        f"({settings.scheduler_incremental_hour:02d}:{settings.scheduler_incremental_minute:02d} 工作日)"
+    )
+
+
+def disable_incremental_update():
+    _remove_job_safe("incremental_update")
+    logger.info("已禁用增量數據更新")
+
+
+# ============================================================
+# 策略排行榜刷新
+# ============================================================
+
+def enable_leaderboard_refresh(codes: list[str] = None):
+    """啟用策略排行榜刷新（每週日 17:00）"""
+    scheduler = _get_scheduler()
+    _remove_job_safe("leaderboard_refresh")
+
+    def _job():
+        logger.info("執行策略排行榜刷新...")
+        try:
+            from src.core.leaderboard import update_leaderboard
+            rows = update_leaderboard(codes)
+            logger.info(f"排行榜已更新: {len(rows)} 條記錄")
+        except Exception as e:
+            logger.error(f"排行榜刷新失敗: {e}")
+
+    scheduler.add_job(
+        _job,
+        "cron",
+        day_of_week="sun",
+        hour=17,
+        minute=0,
+        id="leaderboard_refresh",
+        replace_existing=True,
+        name="策略排行榜刷新",
+    )
+    logger.info("已啟用策略排行榜刷新 (每週日 17:00)")
+
+
+def disable_leaderboard_refresh():
+    _remove_job_safe("leaderboard_refresh")
+    logger.info("已禁用策略排行榜刷新")
+
+
+# ============================================================
+# 任務註冊表與統一管理
+# ============================================================
+
+JOB_CATALOG = [
+    {
+        "id": "incremental_update",
+        "name": "增量數據更新",
+        "schedule": "工作日 08:05（可配置）",
+        "description": "更新監控列表股票的日 K 線",
+    },
+    {
+        "id": "data_quality_check",
+        "name": "數據質量巡檢",
+        "schedule": "每日 09:00",
+        "description": "開盤前檢查數據完整性",
+    },
+    {
+        "id": "daily_report",
+        "name": "每日策略報告",
+        "schedule": "每日 15:30",
+        "description": "生成策略表現報告並可推送通知",
+    },
+    {
+        "id": "degradation_check",
+        "name": "策略衰減檢測",
+        "schedule": "每日 16:00",
+        "description": "檢測策略近期表現是否衰退",
+    },
+    {
+        "id": "correlation_monitor",
+        "name": "策略相關性監控",
+        "schedule": "每週一 16:30",
+        "description": "標記高相關冗餘策略對",
+    },
+    {
+        "id": "leaderboard_refresh",
+        "name": "策略排行榜刷新",
+        "schedule": "每週日 17:00",
+        "description": "全策略回測並更新排行榜",
+    },
+]
+
+_ENABLE_BY_ID = {
+    "incremental_update": enable_incremental_update,
+    "data_quality_check": enable_data_quality_check,
+    "daily_report": enable_daily_report,
+    "degradation_check": enable_degradation_check,
+    "correlation_monitor": enable_correlation_monitor,
+    "leaderboard_refresh": enable_leaderboard_refresh,
+}
+
+_DISABLE_BY_ID = {
+    "incremental_update": disable_incremental_update,
+    "data_quality_check": disable_data_quality_check,
+    "daily_report": disable_daily_report,
+    "degradation_check": disable_degradation_check,
+    "correlation_monitor": disable_correlation_monitor,
+    "leaderboard_refresh": disable_leaderboard_refresh,
+}
+
+
+def get_catalog() -> list[dict]:
+    """返回任務目錄及當前是否已註冊"""
+    active_ids = {j["id"] for j in list_jobs()}
+    out = []
+    for item in JOB_CATALOG:
+        row = dict(item)
+        row["enabled"] = row["id"] in active_ids
+        out.append(row)
+    return out
+
+
+def enable_job(job_id: str, **kwargs):
+    """按 ID 啟用單個定時任務"""
+    fn = _ENABLE_BY_ID.get(job_id)
+    if not fn:
+        raise ValueError(f"未知任務 ID: {job_id}")
+    start_scheduler(auto_register=False)
+    fn(**kwargs)
+
+
+def disable_job(job_id: str):
+    """按 ID 禁用單個定時任務"""
+    fn = _DISABLE_BY_ID.get(job_id)
+    if not fn:
+        raise ValueError(f"未知任務 ID: {job_id}")
+    fn()
+
+
+def run_job_now(job_id: str):
+    """立即執行一次（若未註冊則先註冊再執行）"""
+    if job_id not in _ENABLE_BY_ID:
+        raise ValueError(f"未知任務 ID: {job_id}")
+
+    start_scheduler(auto_register=False)
+    scheduler = _get_scheduler()
+    job = scheduler.get_job(job_id)
+    if not job:
+        _ENABLE_BY_ID[job_id]()
+        job = scheduler.get_job(job_id)
+    if not job:
+        raise RuntimeError(f"無法註冊任務: {job_id}")
+    logger.info(f"手動觸發定時任務: {job_id}")
+    job.func()
+
+
+def setup_from_settings():
+    """按 config 註冊默認定時任務（已存在的任務會 replace_existing）"""
+    from src.config import settings
+
+    if not settings.scheduler_enabled:
+        logger.info("跳過定時任務註冊：scheduler_enabled=false")
+        return list_jobs()
+
+    start_scheduler(auto_register=False)
+
+    if settings.scheduler_job_incremental:
+        enable_incremental_update()
+    else:
+        disable_incremental_update()
+
+    if settings.scheduler_job_data_quality:
+        enable_data_quality_check()
+    else:
+        disable_data_quality_check()
+
+    if settings.scheduler_job_daily_report:
+        enable_daily_report()
+    else:
+        disable_daily_report()
+
+    if settings.scheduler_job_degradation:
+        enable_degradation_check()
+    else:
+        disable_degradation_check()
+
+    if settings.scheduler_job_correlation:
+        enable_correlation_monitor()
+    else:
+        disable_correlation_monitor()
+
+    if settings.scheduler_job_leaderboard:
+        enable_leaderboard_refresh()
+    else:
+        disable_leaderboard_refresh()
+
+    jobs = list_jobs()
+    logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")
+    return jobs

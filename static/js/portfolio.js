@@ -370,7 +370,17 @@ const Portfolio = {
     if (r.portfolio_nav) series.push({ label: '組合', data: r.portfolio_nav, dates: r.dates });
     if (r.equal_weight_nav) series.push({ label: '等權', data: r.equal_weight_nav, dates: r.dates });
     if (r.nav) series.push({ label: '組合', data: r.nav, dates: r.dates });
-    if (series.length) Charts.drawLineChart('pfChart', series);
+    if (series.length) {
+      if (typeof Charts !== 'undefined' && typeof Charts.drawAreaChart === 'function') {
+        Charts.drawAreaChart('pfChart', series.map((s, i) => ({
+          ...s,
+          color: CHART_COLORS[i % CHART_COLORS.length],
+          fill: i === 0 ? 'origin' : false,
+        })));
+      } else {
+        Charts.drawLineChart('pfChart', series);
+      }
+    }
 
     // 配置餅圖 — 各子策略權重分配
     this._drawWeightPie(subs);

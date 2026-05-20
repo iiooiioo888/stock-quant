@@ -15,6 +15,26 @@ const Charts = {
     return typeof LightweightCharts !== 'undefined';
   },
 
+  /** v4: addCandlestickSeries；v5: addSeries(CandlestickSeries) */
+  _addCandlestickSeries(chart, options = {}) {
+    if (typeof chart.addCandlestickSeries === 'function') {
+      return chart.addCandlestickSeries(options);
+    }
+    const Series = LightweightCharts.CandlestickSeries;
+    if (!Series) throw new Error('LightweightCharts.CandlestickSeries 不可用');
+    return chart.addSeries(Series, options);
+  },
+
+  /** v4: addHistogramSeries；v5: addSeries(HistogramSeries) */
+  _addHistogramSeries(chart, options = {}) {
+    if (typeof chart.addHistogramSeries === 'function') {
+      return chart.addHistogramSeries(options);
+    }
+    const Series = LightweightCharts.HistogramSeries;
+    if (!Series) throw new Error('LightweightCharts.HistogramSeries 不可用');
+    return chart.addSeries(Series, options);
+  },
+
   _scheduleResize(canvas) {
     if (!canvas) return;
     const run = () => {
@@ -26,19 +46,42 @@ const Charts = {
 
   /** Tab 切換後重算圖表尺寸（避免在 display:none 時渲染成 0 高度） */
   resizeTab(tabOrId) {
-    if (!this._chartJsReady()) return;
     const root = typeof tabOrId === 'string' ? document.getElementById(tabOrId) : tabOrId;
     if (!root) return;
+
+    if (this._chartJsReady()) {
+      root.querySelectorAll('canvas').forEach(canvas => {
+        const chart = Chart.getChart(canvas);
+        if (chart) chart.resize();
+      });
+    }
+
+    if (this._lwReady()) {
+      root.querySelectorAll('[id^="idx-chart-"]').forEach(el => {
+        const chart = this._lwCharts[el.id];
+        if (!chart) return;
+        const w = el.clientWidth || 280;
+        const h = el.clientHeight || 200;
+        chart.applyOptions({ width: w, height: h });
+        try { chart.timeScale().fitContent(); } catch (e) { /* ignore */ }
+      });
+    }
+
     root.querySelectorAll('canvas').forEach(canvas => {
-      const chart = Chart.getChart(canvas);
-      if (chart) chart.resize();
+      if (canvas._treemapSectors?.length) {
+        this.drawSectorTreemap(
+          canvas.id,
+          canvas._treemapSectors,
+          canvas._treemapHeight || 280,
+        );
+      }
     });
   },
 
   setPlaceholder(canvasId, message) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const wrap = canvas.closest('.cw, .cw-tall');
+    const wrap = canvas.closest('.cw, .cw-tall, .cw-treemap');
     if (!wrap) return;
     let ph = wrap.querySelector('.chart-placeholder');
     if (!ph) {
@@ -58,7 +101,7 @@ const Charts = {
     canvas.style.visibility = '';
     canvas.style.position = '';
     canvas.style.pointerEvents = '';
-    canvas.closest('.cw, .cw-tall')?.querySelector('.chart-placeholder')?.remove();
+    canvas.closest('.cw, .cw-tall, .cw-treemap')?.querySelector('.chart-placeholder')?.remove();
   },
 
   getThemeColors() {
@@ -288,7 +331,7 @@ const Charts = {
     this._lwCharts[containerId] = chart;
 
     // 蠟燭圖系列
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = this._addCandlestickSeries(chart, {
       upColor: colors.upColor,
       downColor: colors.downColor,
       borderUpColor: colors.borderUpColor,
@@ -308,7 +351,7 @@ const Charts = {
     candleSeries.setData(candleData);
 
     // 成交量系列
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = this._addHistogramSeries(chart, {
       color: '#38bdf8',
       priceFormat: { type: 'volume' },
       priceScaleId: '',
@@ -361,6 +404,119 @@ const Charts = {
     container._resizeObserver = ro;
 
     return chart;
+  },
+
+  /**
+   * 首頁指數迷你 K 線（Lightweight Charts，含成交量）
+   */
+  drawIndexKlineChart(containerId, klineData) {
+    const container = document.getElementById(containerId);
+    if (!container) return null;
+    container.innerHTML = '';
+
+    if (this._lwCharts[containerId]) {
+      this._lwCharts[containerId].remove();
+      delete this._lwCharts[containerId];
+    }
+
+    if (!klineData || !klineData.length) {
+      container.innerHTML = '<div class="chart-placeholder">暫無 K 線數據</div>';
+      return null;
+    }
+
+    if (!this._lwReady()) {
+      container.innerHTML = '<div class="chart-placeholder">圖表庫載入中…</div>';
+      return null;
+    }
+
+    const colors = this.getThemeColors();
+    const chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth || 280,
+      height: container.clientHeight || 200,
+      layout: {
+        background: { type: 'solid', color: colors.bg },
+        textColor: colors.text,
+      },
+      grid: {
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: colors.crosshair, width: 1, style: 2, labelBackgroundColor: '#334155' },
+        horzLine: { color: colors.crosshair, width: 1, style: 2, labelBackgroundColor: '#334155' },
+      },
+      rightPriceScale: {
+        borderColor: colors.grid,
+        scaleMargins: { top: 0.08, bottom: 0.22 },
+      },
+      timeScale: {
+        borderColor: colors.grid,
+        timeVisible: true,
+        secondsVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      },
+      handleScroll: { vertTouchDrag: false },
+    });
+
+    this._lwCharts[containerId] = chart;
+
+    const candleSeries = this._addCandlestickSeries(chart, {
+      upColor: colors.upColor,
+      downColor: colors.downColor,
+      borderUpColor: colors.borderUpColor,
+      borderDownColor: colors.borderDownColor,
+      wickUpColor: colors.wickUpColor,
+      wickDownColor: colors.wickDownColor,
+    });
+
+    const candleData = klineData.map(d => ({
+      time: d.date,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+    }));
+    candleSeries.setData(candleData);
+
+    const volumeSeries = this._addHistogramSeries(chart, {
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+    });
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.82, bottom: 0 },
+    });
+    volumeSeries.setData(klineData.map(d => ({
+      time: d.date,
+      value: d.volume || 0,
+      color: d.close >= d.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+    })));
+
+    chart.timeScale().fitContent();
+
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        chart.applyOptions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height || 200,
+        });
+      }
+    });
+    ro.observe(container);
+    container._resizeObserver = ro;
+
+    return chart;
+  },
+
+  destroyIndexCharts(prefix = 'idx-chart-') {
+    Object.keys(this._lwCharts).forEach(id => {
+      if (!id.startsWith(prefix)) return;
+      try {
+        this._lwCharts[id].remove();
+      } catch (e) { /* ignore */ }
+      delete this._lwCharts[id];
+    });
   },
 
   /**
@@ -788,6 +944,365 @@ const Charts = {
         },
       },
     });
+  },
+
+  /**
+   * 主力淨流入水平條形圖（金額，元 → 自動格式化）
+   */
+  drawMoneyHorizontalBar(canvasId, labels, values, label = '主力淨流入') {
+    if (!this._chartJsReady()) return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const old = Chart.getChart(canvas);
+    if (old) old.destroy();
+
+    const colors = this.getThemeColors();
+    const yi = values.map(v => (Number(v) || 0) / 1e8);
+    const bgColors = yi.map(v => v >= 0 ? 'rgba(34,197,94,0.65)' : 'rgba(239,68,68,0.65)');
+    const bdColors = yi.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+
+    new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label, data: yi, borderColor: bdColors, backgroundColor: bgColors, borderWidth: 1 }] },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const raw = values[ctx.dataIndex];
+                return `${label}: ${Utils.formatLargeNum(raw)}`;
+              },
+            },
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: colors.text,
+              font: { size: 9 },
+              callback: v => `${v.toFixed(2)}亿`,
+            },
+            grid: { color: colors.grid },
+          },
+          y: { ticks: { color: colors.text, font: { size: 10 } }, grid: { display: false } },
+        },
+      },
+    });
+    this._scheduleResize(canvas);
+  },
+
+  /**
+   * 漲跌幅 × 資金流向散點圖
+   * points: [{ name, x: change_pct, y: main_net }]
+   */
+  drawChangeFlowScatter(canvasId, points) {
+    if (!this._chartJsReady()) return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !points?.length) return;
+    const old = Chart.getChart(canvas);
+    if (old) old.destroy();
+
+    const colors = this.getThemeColors();
+    const data = points.map(p => ({
+      x: Number(p.x) || 0,
+      y: (Number(p.y) || 0) / 1e8,
+      name: p.name || '',
+    }));
+    const maxAbs = Math.max(...data.map(d => Math.abs(d.y)), 0.01);
+
+    new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: '板塊',
+          data,
+          pointRadius: data.map(d => 4 + Math.min(10, (Math.abs(d.y) / maxAbs) * 8)),
+          pointBackgroundColor: data.map(d =>
+            d.x >= 0 ? (d.y >= 0 ? 'rgba(34,197,94,0.75)' : 'rgba(250,204,21,0.75)')
+              : (d.y >= 0 ? 'rgba(56,189,248,0.75)' : 'rgba(239,68,68,0.75)')),
+          pointBorderColor: 'rgba(15,23,42,0.4)',
+          pointBorderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const p = points[ctx.dataIndex];
+                return [
+                  p.name,
+                  `漲跌: ${(p.x || 0).toFixed(2)}%`,
+                  `主力: ${Utils.formatLargeNum(p.y)}`,
+                ];
+              },
+            },
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+          },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: '漲跌幅 (%)', color: colors.text, font: { size: 10 } },
+            ticks: { color: colors.text, font: { size: 9 } },
+            grid: { color: colors.grid },
+          },
+          y: {
+            title: { display: true, text: '主力淨流入 (亿)', color: colors.text, font: { size: 10 } },
+            ticks: { color: colors.text, font: { size: 9 } },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    });
+    this._scheduleResize(canvas);
+  },
+
+  /**
+   * 資金流向堆疊柱狀（主力/超大/大/中/小單）
+   */
+  drawFlowStackedBar(canvasId, flows) {
+    if (!this._chartJsReady() || !flows?.length) return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const old = Chart.getChart(canvas);
+    if (old) old.destroy();
+
+    const colors = this.getThemeColors();
+    const labels = flows.map(f => Utils.shortDate(f.date || ''));
+    const toYi = v => (Number(v) || 0) / 1e8;
+    const keys = [
+      { key: 'main_net', label: '主力', color: '#38bdf8' },
+      { key: 'super_net', label: '超大单', color: '#a78bfa' },
+      { key: 'big_net', label: '大单', color: '#22c55e' },
+      { key: 'mid_net', label: '中单', color: '#f59e0b' },
+      { key: 'small_net', label: '小单', color: '#94a3b8' },
+    ];
+
+    new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: keys.map(k => ({
+          label: k.label,
+          data: flows.map(f => toYi(f[k.key])),
+          backgroundColor: k.color + '99',
+          borderColor: k.color,
+          borderWidth: 1,
+          stack: 'flow',
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: colors.text, font: { size: 9 } } },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+          },
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: colors.text, font: { size: 8 }, maxTicksLimit: 12 }, grid: { color: colors.grid } },
+          y: {
+            stacked: true,
+            ticks: { color: colors.text, font: { size: 9 }, callback: v => `${v.toFixed(2)}亿` },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    });
+    this._scheduleResize(canvas);
+  },
+
+  _worstTreemapRatio(row, side) {
+    if (!row.length || side <= 0) return Infinity;
+    const sum = row.reduce((s, r) => s + r.area, 0);
+    if (sum <= 0) return Infinity;
+    const maxA = Math.max(...row.map(r => r.area));
+    const minA = Math.min(...row.map(r => r.area));
+    const len = sum / side;
+    const w = side;
+    return Math.max((len * len * maxA) / (w * w), (w * w) / (len * len * minA));
+  },
+
+  _treemapWeight(item) {
+    const amount = Number(item.amount) || 0;
+    if (amount > 0) return amount;
+    const change = Math.abs(Number(item.change_pct) || 0);
+    if (change > 0) return change + 0.5;
+    const count = Number(item.stock_count)
+      || (Number(item.rise_count) || 0) + (Number(item.fall_count) || 0);
+    if (count > 0) return count;
+    return 1;
+  },
+
+  _squarifyTreemap(items, totalValue, x, y, w, h) {
+    const rects = [];
+    if (!items.length || totalValue <= 0) return rects;
+    const areas = items.map(it => (this._treemapWeight(it) / totalValue) * w * h);
+    let remaining = areas.map((area, i) => ({ area, index: i }));
+    let cx = x; let cy = y; let cw = w; let ch = h;
+
+    while (remaining.length > 0) {
+      const isWide = cw >= ch;
+      const side = isWide ? ch : cw;
+      let row = [remaining[0]];
+      let bestRatio = this._worstTreemapRatio(row, side);
+      let bestRow = [...row];
+      for (let i = 1; i < remaining.length; i++) {
+        row.push(remaining[i]);
+        const ratio = this._worstTreemapRatio(row, side);
+        if (ratio <= bestRatio) {
+          bestRatio = ratio;
+          bestRow = [...row];
+        } else break;
+      }
+      const rowArea = bestRow.reduce((s, r) => s + r.area, 0);
+      const rowLen = rowArea / side;
+      let offset = 0;
+      bestRow.forEach(r => {
+        const itemLen = r.area / rowLen;
+        if (isWide) rects[r.index] = { x: cx, y: cy + offset, w: rowLen, h: itemLen };
+        else rects[r.index] = { x: cx + offset, y: cy, w: itemLen, h: rowLen };
+        offset += itemLen;
+      });
+      if (isWide) { cx += rowLen; cw -= rowLen; }
+      else { cy += rowLen; ch -= rowLen; }
+      remaining = remaining.slice(bestRow.length);
+    }
+    return rects;
+  },
+
+  /**
+   * 板塊 Treemap 熱力圖（面積=成交額或漲跌幅兜底，顏色=漲跌幅）
+   */
+  drawSectorTreemap(canvasId, sectors, height = 320) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const valid = (sectors || []).filter(s => s && s.name);
+    canvas._treemapSectors = valid;
+    canvas._treemapHeight = height;
+
+    const wrap = canvas.parentElement;
+    const W = Math.max(wrap?.clientWidth || 0, 320);
+    const H = height;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    this.clearPlaceholder(canvasId);
+
+    if (!valid.length) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('暫無板塊數據', W / 2, H / 2);
+      canvas._treemapRects = [];
+      return;
+    }
+
+    valid.sort((a, b) => this._treemapWeight(b) - this._treemapWeight(a));
+    const totalWeight = valid.reduce((s, it) => s + this._treemapWeight(it), 0);
+    const rects = this._squarifyTreemap(valid, totalWeight, 2, 2, W - 4, H - 4);
+    const drawn = [];
+
+    valid.forEach((s, i) => {
+      const rect = rects[i];
+      if (!rect || rect.w < 1 || rect.h < 1) return;
+      const changePct = Number(s.change_pct) || 0;
+      const intensity = Math.min(Math.abs(changePct) / 5, 1);
+      let r; let g; let b;
+      if (changePct >= 0) {
+        r = Math.round(34 + (220 - 34) * intensity);
+        g = Math.round(197 - 100 * intensity);
+        b = Math.round(94 - 60 * intensity);
+      } else {
+        r = Math.round(239 - 100 * intensity);
+        g = Math.round(68 + 50 * (1 - intensity));
+        b = Math.round(68 + 50 * (1 - intensity));
+      }
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      if (rect.w > 36 && rect.h > 22) {
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const fontSize = Math.max(8, Math.min(12, rect.w / 7));
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        const nameText = s.name.length > 5 ? `${s.name.slice(0, 5)}…` : s.name;
+        ctx.fillText(nameText, rect.x + rect.w / 2, rect.y + rect.h / 2 - 6);
+        ctx.font = `${fontSize - 1}px sans-serif`;
+        ctx.fillText(
+          typeof Utils !== 'undefined' ? Utils.formatPct(changePct) : `${changePct.toFixed(2)}%`,
+          rect.x + rect.w / 2,
+          rect.y + rect.h / 2 + 8,
+        );
+      }
+      const hit = { ...rect, sectorName: s.name, changePct };
+      drawn.push(hit);
+    });
+
+    canvas._treemapRects = drawn;
+    if (!canvas._treemapBound) {
+      canvas._treemapBound = true;
+      canvas.onclick = (e) => {
+        const box = canvas.getBoundingClientRect();
+        const x = e.clientX - box.left;
+        const y = e.clientY - box.top;
+        for (const r of canvas._treemapRects || []) {
+          if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+            if (typeof Data !== 'undefined' && Data.showSectorDetail) {
+              Data.showSectorDetail(r.sectorName);
+            }
+            break;
+          }
+        }
+      };
+      canvas.onmousemove = (e) => {
+        const box = canvas.getBoundingClientRect();
+        const x = e.clientX - box.left;
+        const y = e.clientY - box.top;
+        let title = '';
+        for (const r of canvas._treemapRects || []) {
+          if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+            title = `${r.sectorName}: ${
+              typeof Utils !== 'undefined' ? Utils.formatPct(r.changePct) : r.changePct
+            }`;
+            break;
+          }
+        }
+        canvas.title = title;
+      };
+    }
   },
 
   /**

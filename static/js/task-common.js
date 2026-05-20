@@ -454,9 +454,8 @@ const TaskCommon = {
     if (typeof App !== 'undefined' && App.loadTab) App.loadTab(tab);
 
     if (tab === 'backtest' && typeof Backtest !== 'undefined') {
-      const codeEl = document.getElementById('btCode');
       const stratEl = document.getElementById('btStrategy');
-      if (codeEl) codeEl.value = p.code || r.code || '';
+      if (Backtest.setCode) Backtest.setCode(p.code || r?.code || '');
       if (stratEl && p.strategy) stratEl.value = p.strategy;
       if (task.task_type === 'backtest_multi' && Backtest.displayMultiResults) {
         Backtest.displayMultiResults(Array.isArray(r) ? r : (r.results || []));

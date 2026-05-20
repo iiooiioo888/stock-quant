@@ -9,6 +9,8 @@ const Dashboard = {
   _maxPolls: 30,
 
   async load() {
+    this._pollCount = 0;
+    this._dataReady = false;
     const health = await Api.getHealth();
     await Promise.allSettled([
       this.loadStats(health),
@@ -20,7 +22,14 @@ const Dashboard = {
 
   /** Tab 顯示時補繪/重算圖表尺寸 */
   ensureCharts() {
-    const ids = ['dashSparklineChart', 'dashBacktestChart', 'dashSignalRadar', 'dashSectorChart', 'dashLeaderboardChart'];
+    const ids = [
+      'dashSparklineChart', 'dashBacktestChart', 'dashSignalRadar', 'dashSectorChart', 'dashLeaderboardChart',
+      'dashSectorFlowChart', 'dashSectorScatterChart', 'dashMarketFlowChart', 'dashNorthFlowChart', 'dashConceptSectorChart',
+    ];
+    const indexGrid = document.getElementById('indexChartsGrid');
+    if (indexGrid && !indexGrid.querySelector('.index-chart-card')) {
+      this._loadMajorIndicesCharts();
+    }
     const missing = ids.some(id => {
       const el = document.getElementById(id);
       return el && !Chart.getChart(el);
@@ -32,10 +41,14 @@ const Dashboard = {
     }
   },
 
-  stopPolling() {
+  stopPolling(hideBanner = true) {
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
+    }
+    if (hideBanner) {
+      const el = document.getElementById('dataLoadingBanner');
+      if (el) el.style.display = 'none';
     }
   },
 
@@ -115,6 +128,8 @@ const Dashboard = {
       return;
     }
     await Promise.allSettled([
+      this._loadMajorIndicesCharts(),
+      this._loadMarketCharts(),
       this._loadSparklineChart(),
       this._loadBacktestHistory(),
       this._loadSignalRadar(),
@@ -126,31 +141,165 @@ const Dashboard = {
     }
   },
 
+  _indexChartId(symbol) {
+    return 'idx-chart-' + String(symbol).replace(/[^a-zA-Z0-9]/g, '_');
+  },
+
+  _formatIndexPrice(value, symbol) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '-';
+    if (symbol.includes('^') || symbol.endsWith('.SS') || symbol.endsWith('.SZ')) {
+      return n >= 1000 ? n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+        : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  },
+
+  /**
+   * 全球主要指數 — 專業 K 線圖
+   */
+  async _loadMajorIndicesCharts() {
+    const grid = document.getElementById('indexChartsGrid');
+    const meta = document.getElementById('indexChartsMeta');
+    if (!grid) return;
+
+    const lwReady = typeof Charts !== 'undefined' && Charts._lwReady && Charts._lwReady();
+    if (!lwReady) {
+      setTimeout(() => this._loadMajorIndicesCharts(), 400);
+      return;
+    }
+
+    try {
+      const d = await Api.getIndicesCharts(90);
+      const list = d?.indices || [];
+      if (!list.length) {
+        grid.innerHTML = '<div class="index-charts-loading">暫無法取得指數行情，請稍後刷新</div>';
+        return;
+      }
+
+      if (meta) {
+        const srcHint = (d.sources && d.sources.length)
+          ? ` · ${d.sources.join(' / ')}`
+          : '';
+        meta.textContent = `專業 K 線 · ${list.length} 個指數 · 近 ${d.days || 90} 日${srcHint}`;
+      }
+
+      if (typeof Charts !== 'undefined' && Charts.destroyIndexCharts) {
+        Charts.destroyIndexCharts();
+      }
+
+      grid.innerHTML = list.map(item => {
+        const id = this._indexChartId(item.symbol);
+        const chg = Number(item.change_pct) || 0;
+        const chgCls = chg > 0 ? 'up' : (chg < 0 ? 'down' : 'flat');
+        const sign = chg > 0 ? '+' : '';
+        return `
+        <article class="index-chart-card" data-symbol="${item.symbol}">
+          <header class="index-chart-header">
+            <div>
+              <div class="index-chart-title">${item.name}</div>
+              <div class="index-chart-symbol">${item.symbol}</div>
+            </div>
+            <div class="index-chart-quote">
+              <div class="index-chart-price">${this._formatIndexPrice(item.latest, item.symbol)}</div>
+              <div class="index-chart-change ${chgCls}">${sign}${chg.toFixed(2)}%</div>
+            </div>
+          </header>
+          <div id="${id}" class="index-chart-cw"></div>
+        </article>`;
+      }).join('');
+
+      requestAnimationFrame(() => {
+        list.forEach(item => {
+          const cid = this._indexChartId(item.symbol);
+          if (typeof Charts !== 'undefined') {
+            Charts.drawIndexKlineChart(cid, item.kline || []);
+          }
+        });
+        if (typeof Charts !== 'undefined') {
+          Charts.resizeTab('tab-dashboard');
+        }
+      });
+    } catch (e) {
+      grid.innerHTML = '<div class="index-charts-loading">指數行情載入失敗，請檢查網路後重試</div>';
+    }
+  },
+
+  async _resolveSparklineCodes(max = 6) {
+    const cfg = await Api.getConfig();
+    const wl = cfg?.watchlist;
+    if (Array.isArray(wl) && wl.length) {
+      return wl.slice(0, max).map(c => String(c).trim()).filter(Boolean);
+    }
+    return ['000001', '600519', '000858'];
+  },
+
+  _strategyLabel(row) {
+    return row.strategy_name || row.strategy || row.name || '-';
+  },
+
+  _signalItems(stockRow) {
+    const raw = stockRow.signals || stockRow.strategies || [];
+    return Array.isArray(raw) ? raw : [];
+  },
+
+  async _leaderboardFromBacktest(limit = 10) {
+    const d = await Api.getBacktestHistory('', '', 200);
+    if (!d?.results?.length) return [];
+    const buckets = {};
+    for (const r of d.results) {
+      const name = r.strategy;
+      if (!name) continue;
+      if (!buckets[name]) {
+        buckets[name] = { strategy_name: name, sharpe_ratio: [], win_rate_pct: [] };
+      }
+      if (r.sharpe_ratio != null) buckets[name].sharpe_ratio.push(Number(r.sharpe_ratio));
+      if (r.win_rate_pct != null) buckets[name].win_rate_pct.push(Number(r.win_rate_pct));
+    }
+    const avg = arr => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    return Object.values(buckets)
+      .map(g => ({
+        strategy_name: g.strategy_name,
+        sharpe_ratio: avg(g.sharpe_ratio),
+        win_rate_pct: avg(g.win_rate_pct),
+      }))
+      .filter(g => g.sharpe_ratio || g.win_rate_pct)
+      .sort((a, b) => (b.sharpe_ratio || 0) - (a.sharpe_ratio || 0))
+      .slice(0, limit);
+  },
+
   /**
    * 市場總覽迷你圖 — 組合淨值走勢
    */
   async _loadSparklineChart() {
     const canvasId = 'dashSparklineChart';
     try {
-      const d = await Api.get('/api/sparkline?codes=000001,600519,000858&days=60');
+      const codes = await this._resolveSparklineCodes(6);
+      const d = await Api.get(`/api/sparkline?codes=${codes.join(',')}&days=60`);
       if (!d || !d.sparklines) {
-        Charts.setPlaceholder(canvasId, '暫無行情數據');
+        Charts.setPlaceholder(canvasId, '暫無行情數據，請在「下載入庫」同步 K 線');
         return;
       }
 
       const series = [];
       for (const [code, sp] of Object.entries(d.sparklines)) {
-        if (sp.prices && sp.prices.length > 2) {
-          const base = sp.prices[0];
-          const normalized = sp.prices.map(p => ((p / base) - 1) * 100);
-          series.push({ label: code, data: normalized, dates: sp.dates || normalized.map((_, i) => String(i)) });
-        }
+        const prices = sp.prices;
+        if (!prices || prices.length < 3) continue;
+        const base = Number(prices[0]);
+        if (!base || base <= 0) continue;
+        const normalized = prices.map(p => ((Number(p) / base) - 1) * 100);
+        series.push({
+          label: code,
+          data: normalized,
+          dates: sp.dates || normalized.map((_, i) => String(i)),
+        });
       }
       if (series.length) {
         Charts.clearPlaceholder(canvasId);
         Charts.drawLineChart(canvasId, series);
+        Charts._scheduleResize?.(document.getElementById(canvasId));
       } else {
-        Charts.setPlaceholder(canvasId, '暫無行情數據');
+        Charts.setPlaceholder(canvasId, '暫無行情數據，請在「下載入庫」同步 K 線');
       }
     } catch (e) {
       Charts.setPlaceholder(canvasId, '載入失敗，請稍後重試');
@@ -194,43 +343,191 @@ const Dashboard = {
 
       const signals = d.signals || d.data || [];
       if (!signals.length) {
-        Charts.setPlaceholder(canvasId, '暫無實時信號');
+        Charts.setPlaceholder(canvasId, '暫無實時信號（非交易時段或尚未計算）');
         return;
       }
 
-      // 取 top 5 股票
-      const top5 = signals.slice(0, 5);
-      const labels = ['動量', '趨勢', '波動率', '成交量', '均線'];
+      const top5 = [...signals]
+        .sort((a, b) => Math.abs(Number(b.strength) || 0) - Math.abs(Number(a.strength) || 0))
+        .slice(0, 5);
+      const labels = ['綜合強度', '買入占比', '賣出占比', '策略覆蓋', '觀望占比'];
 
       const datasets = top5.map((s, i) => {
-        // 從信號數據中提取多維強度，如果沒有則生成示例值
-        const strength = s.strength || s.strength_score || 0;
-        const strategies = s.strategies || [];
-        const buyCount = strategies.filter(st => st.signal === 'buy').length;
-        const sellCount = strategies.filter(st => st.signal === 'sell').length;
-        const total = strategies.length || 1;
+        const items = this._signalItems(s);
+        const buyCount = items.filter(st => st.signal === 'buy').length;
+        const sellCount = items.filter(st => st.signal === 'sell').length;
+        const holdCount = items.filter(st => st.signal === 'hold').length;
+        const total = items.length || 1;
+        const strength = Math.abs(Number(s.strength ?? s.strength_score) || 0);
+        const maxStrategies = 19;
 
         return {
-          label: s.code || s.name || '股票' + (i + 1),
+          label: s.code || s.name || ('股票' + (i + 1)),
           data: [
-            Math.min(100, Math.abs(strength) * 1.2),
-            buyCount / total * 100,
-            Math.min(100, Math.abs(s.strength || 50)),
-            Math.min(100, (s.volume_ratio || 1) * 30),
-            Math.min(100, 50 + (s.strength || 0) * 0.5),
+            Math.min(100, strength),
+            Math.min(100, (buyCount / total) * 100),
+            Math.min(100, (sellCount / total) * 100),
+            Math.min(100, (items.length / maxStrategies) * 100),
+            Math.min(100, (holdCount / total) * 100),
           ],
         };
       });
 
       Charts.clearPlaceholder(canvasId);
       Charts.drawRadarChart(canvasId, labels, datasets);
+      Charts._scheduleResize?.(document.getElementById(canvasId));
     } catch (e) {
       Charts.setPlaceholder(canvasId, '信號數據載入失敗');
     }
   },
 
   /**
-   * 板塊漲跌 Top 5 — 水平條形圖
+   * 資金與板塊圖表（單次 API）
+   */
+  async _loadMarketCharts() {
+    const meta = document.getElementById('marketChartsMeta');
+    try {
+      const d = await Api.getDashboardMarketCharts(20);
+      if (!d) {
+        if (meta) meta.textContent = '數據暫不可用';
+        return;
+      }
+
+      const parts = [];
+      if (d.sector_flow?.length) parts.push('板塊資金');
+      if (d.market_flow?.length) parts.push('大盤');
+      if (d.north_flow?.length) parts.push('北向');
+      const srcs = d.sources ? Object.values(d.sources).filter(Boolean) : [];
+      const srcHint = srcs.length ? ` · ${[...new Set(srcs)].join('/')}` : '';
+      if (meta) {
+        meta.textContent = parts.length
+          ? `${parts.join(' · ')} · 近 ${d.days || 20} 日${srcHint}`
+          : '外部數據源連線中，請稍後刷新';
+      }
+
+      this._renderSectorFlowChart(d.sector_flow);
+      this._renderSectorScatterChart(d.sector_scatter);
+      this._renderMarketFlowChart(d.market_flow);
+      this._renderNorthFlowChart(d.north_flow);
+      this._renderSectorTreemap(d.sector_heatmap, d.sector_scatter);
+      this._renderConceptSectorChart(d.concept_sectors);
+    } catch (e) {
+      if (meta) meta.textContent = '資金與板塊數據載入失敗';
+    }
+  },
+
+  _renderSectorFlowChart(sectors) {
+    const id = 'dashSectorFlowChart';
+    if (!sectors?.length) {
+      Charts.setPlaceholder(id, '板塊資金流向暫不可用');
+      return;
+    }
+    const topIn = [...sectors].sort((a, b) => (b.main_net || 0) - (a.main_net || 0)).slice(0, 5);
+    const topOut = [...sectors].sort((a, b) => (a.main_net || 0) - (b.main_net || 0)).slice(0, 5);
+    const merged = [...topIn, ...topOut.filter(s => !topIn.find(x => x.name === s.name))].slice(0, 10);
+    Charts.clearPlaceholder(id);
+    Charts.drawMoneyHorizontalBar(
+      id,
+      merged.map(s => s.name),
+      merged.map(s => s.main_net || 0),
+      '主力淨流入',
+    );
+  },
+
+  _renderSectorScatterChart(sectors) {
+    const id = 'dashSectorScatterChart';
+    if (!sectors?.length) {
+      Charts.setPlaceholder(id, '漲跌×資金數據不足');
+      return;
+    }
+    const points = sectors
+      .filter(s => s.name && (s.change_pct != null || s.main_net != null))
+      .slice(0, 50)
+      .map(s => ({ name: s.name, x: s.change_pct || 0, y: s.main_net || 0 }));
+    Charts.clearPlaceholder(id);
+    Charts.drawChangeFlowScatter(id, points);
+  },
+
+  _renderMarketFlowChart(flows) {
+    const id = 'dashMarketFlowChart';
+    if (!flows?.length) {
+      Charts.setPlaceholder(id, '大盤資金流向暫不可用');
+      return;
+    }
+    Charts.clearPlaceholder(id);
+    Charts.drawFlowStackedBar(id, flows);
+  },
+
+  _renderNorthFlowChart(flows) {
+    const id = 'dashNorthFlowChart';
+    if (!flows?.length) {
+      Charts.setPlaceholder(id, '北向資金暫不可用');
+      return;
+    }
+    const sh = flows.filter(f => String(f.code || '').includes('沪'));
+    const sz = flows.filter(f => String(f.code || '').includes('深'));
+    const dates = [...new Set(flows.map(f => f.date))].sort();
+    const shMap = Object.fromEntries(sh.map(f => [f.date, (f.main_net || 0) / 1e8]));
+    const szMap = Object.fromEntries(sz.map(f => [f.date, (f.main_net || 0) / 1e8]));
+    Charts.clearPlaceholder(id);
+    Charts.drawLineChart(id, [
+      { label: '滬股通', data: dates.map(d => shMap[d] ?? null), dates },
+      { label: '深股通', data: dates.map(d => szMap[d] ?? null), dates },
+    ]);
+  },
+
+  _ensureTreemapCanvas() {
+    const wrap = document.getElementById('dashSectorTreemapWrap');
+    if (!wrap) return null;
+    let canvas = document.getElementById('dashSectorTreemap');
+    if (!canvas) {
+      wrap.innerHTML = '';
+      canvas = document.createElement('canvas');
+      canvas.id = 'dashSectorTreemap';
+      wrap.appendChild(canvas);
+    }
+    return canvas;
+  },
+
+  _mergeSectorHeatmap(primary, fallback) {
+    const map = new Map();
+    for (const s of (primary || [])) {
+      if (s?.name) map.set(s.name, { ...s });
+    }
+    for (const s of (fallback || [])) {
+      if (!s?.name || map.has(s.name)) continue;
+      map.set(s.name, { ...s });
+    }
+    return [...map.values()];
+  },
+
+  _renderSectorTreemap(sectors, fallbackSectors) {
+    const canvasId = 'dashSectorTreemap';
+    this._ensureTreemapCanvas();
+    const merged = this._mergeSectorHeatmap(sectors, fallbackSectors);
+    if (!merged.length) {
+      Charts.setPlaceholder(canvasId, '板塊熱力圖暫不可用，請檢查網路後刷新');
+      return;
+    }
+    Charts.drawSectorTreemap(canvasId, merged.slice(0, 40), 280);
+  },
+
+  _renderConceptSectorChart(sectors) {
+    const id = 'dashConceptSectorChart';
+    if (!sectors?.length) {
+      Charts.setPlaceholder(id, '概念板塊暫不可用');
+      return;
+    }
+    const sorted = [...sectors].sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
+    const top = sorted.slice(0, 5);
+    const bottom = sorted.slice(-5).reverse();
+    const unique = [...top, ...bottom].filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i).slice(0, 10);
+    Charts.clearPlaceholder(id);
+    Charts.drawHorizontalBarChart(id, unique.map(s => s.name), unique.map(s => s.change_pct || 0), '漲跌幅 (%)');
+  },
+
+  /**
+   * 行業板塊漲跌 — 水平條形圖
    */
   async _loadSectorBars() {
     const canvasId = 'dashSectorChart';
@@ -273,12 +570,15 @@ const Dashboard = {
     const canvasId = 'dashLeaderboardChart';
     try {
       const d = await Api.getLeaderboard('sharpe', 10);
-      const strategies = (d?.results || d?.strategies || []).slice(0, 10);
+      let strategies = (d?.results || d?.strategies || []).slice(0, 10);
+      if (!strategies.length) {
+        strategies = await this._leaderboardFromBacktest(10);
+      }
       if (!strategies.length) {
         Charts.setPlaceholder(canvasId, d?.hint || '排行榜暫無數據，請先運行回測或更新排行榜');
         return;
       }
-      const labels = strategies.map(s => s.strategy || s.name || '-');
+      const labels = strategies.map(s => this._strategyLabel(s));
       const winRates = strategies.map(s => s.win_rate_pct || 0);
       const sharpes = strategies.map(s => s.sharpe_ratio || 0);
 
@@ -452,11 +752,17 @@ const Dashboard = {
     const isEdit = !!code;
     Utils.showModal(`
       <h3>${isEdit ? '編輯' : '添加'}預警規則</h3>
-      <div class="fg"><label>股票代碼</label><input id="mrCode" value="${code || ''}" ${isEdit ? 'readonly' : ''}></div>
+      <div class="fg"><label>股票代碼</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="mrCode" value="${code || ''}" ${isEdit ? 'readonly' : ''} style="flex:1">
+          ${isEdit ? '' : '<button type="button" class="btn s" onclick="Dashboard.fillRuleFromPrice()">依現價填充</button>'}
+        </div>
+      </div>
       <div class="fg"><label>名稱</label><input id="mrName" value="${rule.name || ''}"></div>
       <div class="fg"><label>突破價</label><input id="mrAbove" type="number" step="0.01" value="${rule.price_above || ''}"></div>
       <div class="fg"><label>跌破價</label><input id="mrBelow" type="number" step="0.01" value="${rule.price_below || ''}"></div>
       <div class="fg"><label>漲跌幅閾值 (%)</label><input id="mrPct" type="number" step="0.1" value="${rule.change_pct || ''}"></div>
+      <p class="state-loading-sub" style="margin:0 0 8px">「依現價填充」預設：突破 +3%、跌破 -3%、日內波動 5%</p>
       <div class="actions">
         <button class="btn s" onclick="Utils.closeModal()">取消</button>
         <button class="btn" onclick="Dashboard.saveRule()">保存</button>
@@ -483,6 +789,86 @@ const Dashboard = {
       Utils.toast('保存成功', 3000, 'success');
       Utils.closeModal();
       this.loadRules();
+    }
+  },
+
+  async fillRuleFromPrice() {
+    const code = document.getElementById('mrCode')?.value?.trim();
+    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      return Utils.toast('請先輸入 6 位股票代碼');
+    }
+    const d = await Api.suggestAlertRule(code, { above_pct: 3, below_pct: 3, change_pct: 5 });
+    if (!d?.rule) {
+      return Utils.toast('無法取得現價，請稍後重試', 3000, 'error');
+    }
+    document.getElementById('mrName').value = d.rule.name || '';
+    document.getElementById('mrAbove').value = d.rule.price_above ?? '';
+    document.getElementById('mrBelow').value = d.rule.price_below ?? '';
+    document.getElementById('mrPct').value = d.rule.change_pct ?? '';
+    Utils.toast(`已依現價 ${d.price} 填充`, 2500, 'success');
+  },
+
+  showAutoAddRules() {
+    Utils.showModal(`
+      <h3>🤖 智能批量添加預警規則</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px">
+        依最新價自動計算突破價、跌破價與日內漲跌幅閾值。
+      </p>
+      <div class="fg"><label>目標股票</label>
+        <select id="arSource">
+          <option value="missing">監控列表中尚未有規則的</option>
+          <option value="watchlist">全部監控列表</option>
+          <option value="custom">手動輸入代碼</option>
+        </select>
+      </div>
+      <div class="fg h" id="arCodesWrap"><label>代碼（逗號分隔）</label>
+        <input id="arCodes" placeholder="000001,600519">
+      </div>
+      <div class="fr" style="gap:10px">
+        <div class="fg" style="flex:1"><label>突破 +%</label><input id="arAbovePct" type="number" step="0.5" value="3"></div>
+        <div class="fg" style="flex:1"><label>跌破 -%</label><input id="arBelowPct" type="number" step="0.5" value="3"></div>
+        <div class="fg" style="flex:1"><label>日內波動 %</label><input id="arChangePct" type="number" step="0.5" value="5"></div>
+      </div>
+      <div class="fg"><label><input type="checkbox" id="arSkipExisting" checked> 跳過已有規則</label></div>
+      <div class="actions">
+        <button class="btn s" onclick="Utils.closeModal()">取消</button>
+        <button class="btn" id="arSubmitBtn" onclick="Dashboard.runAutoAddRules()">開始添加</button>
+      </div>
+    `);
+    const sel = document.getElementById('arSource');
+    const wrap = document.getElementById('arCodesWrap');
+    const toggle = () => wrap.classList.toggle('h', sel.value !== 'custom');
+    sel.addEventListener('change', toggle);
+    toggle();
+  },
+
+  async runAutoAddRules() {
+    const btn = document.getElementById('arSubmitBtn');
+    const source = document.getElementById('arSource')?.value || 'missing';
+    const body = {
+      source: source === 'custom' ? 'watchlist' : source,
+      above_pct: parseFloat(document.getElementById('arAbovePct')?.value) || 3,
+      below_pct: parseFloat(document.getElementById('arBelowPct')?.value) || 3,
+      change_pct: parseFloat(document.getElementById('arChangePct')?.value) || 5,
+      skip_existing: !!document.getElementById('arSkipExisting')?.checked,
+    };
+    if (source === 'custom') {
+      const raw = document.getElementById('arCodes')?.value?.trim();
+      body.codes = raw ? raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean) : [];
+      if (!body.codes.length) return Utils.toast('請輸入至少一個股票代碼');
+    }
+    Utils.btnLoading(btn, true, '生成中...');
+    try {
+      const d = await Api.autoAddAlertRules(body);
+      if (!d?.success) {
+        Utils.toast(d?.message || '添加失敗', 3000, 'error');
+        return;
+      }
+      Utils.closeModal();
+      Utils.toast(d.message || '已添加', 3500, 'success');
+      await this.loadRules();
+    } finally {
+      Utils.btnLoading(btn, false, '開始添加');
     }
   },
 

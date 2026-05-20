@@ -4,14 +4,6 @@ API 測試 — 測試健康檢查端點和基本 API 流程
 """
 import pytest
 from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
-
-
-@pytest.fixture
-def client():
-    """創建測試客戶端"""
-    from src.api.app import app
-    return TestClient(app)
 
 
 class TestHealthEndpoint:
@@ -59,17 +51,31 @@ class TestConfigEndpoint:
         assert "alert_rules" in data
 
 
+@pytest.fixture
+def auth_headers(client):
+    import uuid
+    pw = "api_test_pw_2026"
+    username = f"apitest_{uuid.uuid4().hex[:8]}"
+    client.post("/api/auth/register", json={"username": username, "password": pw})
+    resp = client.post("/api/auth/login", json={"username": username, "password": pw})
+    token = resp.json().get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
+
 class TestBacktestEndpoint:
     """回測端點測試"""
 
-    def test_backtest_invalid_strategy(self, client):
+    def test_backtest_invalid_strategy(self, client, auth_headers):
         """測試無效策略名稱"""
-        resp = client.post("/api/backtest?code=TEST&strategy=invalid_strategy")
+        resp = client.post(
+            "/api/backtest?code=TEST&strategy=invalid_strategy",
+            headers=auth_headers,
+        )
         assert resp.status_code == 400
 
-    def test_backtest_multi_invalid(self, client):
+    def test_backtest_multi_invalid(self, client, auth_headers):
         """測試多策略回測（無數據時應報錯）"""
-        resp = client.post("/api/backtest/multi?code=NONEXIST")
+        resp = client.post("/api/backtest/multi?code=NONEXIST", headers=auth_headers)
         # 無數據時返回 500
         assert resp.status_code in [200, 500]
 
@@ -78,7 +84,7 @@ class TestAlertsEndpoint:
     """預警端點測試"""
 
     def test_list_alerts(self, client):
-        """測試獲取預警列表"""
+        """測試獲取預警列表（演示模式可讀）"""
         resp = client.get("/api/alerts")
         assert resp.status_code == 200
         data = resp.json()
@@ -102,7 +108,7 @@ class TestStrategyEndpoints:
         data = resp.json()
         assert "builtin" in data
         assert "user" in data
-        assert data["total"] >= 8  # 至少 8 個內置策略
+        assert data["total"] >= 19
 
 
 class TestCacheIntegration:

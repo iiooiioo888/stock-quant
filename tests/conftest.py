@@ -13,8 +13,28 @@ _test_db = os.path.join(tempfile.gettempdir(), "test_stock.db")
 os.environ.setdefault("SQ_DB_PATH", _test_db)
 os.environ.setdefault("SQ_REDIS_ENABLED", "false")
 os.environ.setdefault("SQ_LOG_LEVEL", "WARNING")
+os.environ.setdefault("SQ_DEBUG", "true")
+os.environ.setdefault("SQ_DEMO_MODE", "true")
 
 import pytest
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """每個用例清空限流桶，避免 register/login 連續觸發 429"""
+    from src.api import app as api_module
+    for limiter in (api_module._rate_limiter, api_module._auth_rate_limiter):
+        limiter._store.clear()
+        limiter._last_seen.clear()
+    yield
+
+
+@pytest.fixture
+def client():
+    """創建測試客戶端"""
+    from src.api.app import app
+    return TestClient(app)
 
 
 @pytest.fixture(scope="session", autouse=True)

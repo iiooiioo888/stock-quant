@@ -7,19 +7,24 @@
 
 const Tasks = {
   _pollTimer: null,
-  _pollInterval: 4000,
+  _pollInterval: 6000,
   _maxPolls: 300,
   _pollCount: 0,
+  _lastData: null,
+  _loadError: '',
   _searchDebounce: null,
   _sortCol: 'created_at',
   _sortAsc: false,
   _expandedRows: new Set(),
   _paramsCache: new Map(),
+  _bound: false,
 
   /**
    * 初始化：綁定事件
    */
   init() {
+    if (this._bound) return;
+    this._bound = true;
     const searchInput = document.getElementById('taskSearch');
     if (searchInput) {
       searchInput.addEventListener('input', () => {
@@ -50,6 +55,7 @@ const Tasks = {
 
   async load() {
     this.init();
+    if (typeof App !== 'undefined') App._pauseTaskPoll = true;
     this._pollCount = 0;
     this._expandedRows.clear();
     await this.refresh();
@@ -58,6 +64,7 @@ const Tasks = {
 
   unload() {
     this._stopPolling();
+    if (typeof App !== 'undefined') App._pauseTaskPoll = false;
   },
 
   _startPolling() {
@@ -90,19 +97,54 @@ const Tasks = {
     const { taskType, status } = this._getFilters();
     if (!silent) this._setLoading(true);
 
-    const d = await Api.getTasks(taskType || null, status || null, 200);
+    const pollOpts = { silent: !!silent, noCache: !!silent };
+    const d = await Api.getTasks(taskType || null, status || null, 200, pollOpts);
     if (!silent) this._setLoading(false);
-    if (!d) return;
 
-    const queue = d.queue || await Api.getTaskQueue();
-    this._renderStats(d.stats);
-    this._renderQueue(queue);
-    this._renderRunningTasks(d.tasks);
-    this._renderTaskTable(d.tasks);
-    this._updateNavBadge(d.stats);
+    if (!d || d._rateLimited) {
+      if (d?._rateLimited && this._lastData) {
+        this._renderFromPayload(this._lastData);
+      } else if (!silent) {
+        this._loadError = d?._rateLimited ? '請求過於頻繁，稍後自動重試' : '任務列表載入失敗，請確認已登錄或刷新頁面';
+        this._showLoadError();
+      }
+      return;
+    }
+
+    this._loadError = '';
+    this._lastData = d;
+    this._renderFromPayload(d);
     for (const id of this._expandedRows) {
       this._loadParams(id);
     }
+  },
+
+  _renderFromPayload(d) {
+    const queue = d.queue || {};
+    const tasks = d.tasks || [];
+    this._renderStats(d.stats);
+    this._renderQueue(queue);
+    this._renderRunningTasks(tasks);
+    this._renderTaskTable(tasks);
+    this._updateNavBadge(d.stats);
+    this._hideLoadError();
+  },
+
+  _showLoadError() {
+    const tbody = document.getElementById('taskTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state">
+        <span class="empty-icon">⚠️</span>
+        <p><strong>${this._loadError || '載入失敗'}</strong></p>
+        <button class="btn s" style="margin-top:8px" onclick="Tasks.refresh()">🔄 重試</button>
+      </div>
+    </td></tr>`;
+  },
+
+  _hideLoadError() {
+    const el = document.getElementById('taskLoadErrorBanner');
+    if (el) el.style.display = 'none';
   },
 
   _renderQueue(snapshot) {
@@ -110,12 +152,10 @@ const Tasks = {
     if (!grid || typeof TaskCommon === 'undefined') return;
     grid.innerHTML = TaskCommon.renderQueueSection(snapshot || {}, false);
     const recent = TaskCommon.splitQueue(snapshot || {}).recent;
-    if (recent?.task_id) {
-      const prev = sessionStorage.getItem('lastSeenCompletedId');
-      if (prev && prev !== recent.task_id && typeof Utils !== 'undefined') {
+    if (recent?.task_id && typeof App !== 'undefined' && App.markTaskCompletedSeen(recent)) {
+      if (typeof Utils !== 'undefined') {
         Utils.toast('✅ 任務完成: ' + (recent.title || ''), 3000, 'success');
       }
-      sessionStorage.setItem('lastSeenCompletedId', recent.task_id);
     }
   },
 

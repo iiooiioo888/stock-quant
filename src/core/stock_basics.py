@@ -75,13 +75,15 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
     """
     彙總單股基本數據：最新價、漲跌、均線、量能、波動、區間高低等。
     """
+    from src.core.local_kline import ensure_daily_kline
+
     code = _normalize_code(code)
-    df = load_daily_kline(code)
+    df, kline_source = ensure_daily_kline(code, min_bars=20)
     if df.empty:
         return {
             "code": code,
             "has_kline": False,
-            "message": "本地無日 K，請先在「下載」頁下載該股票歷史數據",
+            "message": "無法取得日 K（外網拉取失敗），請稍後重試或手動下載",
         }
 
     if len(df) > lookback:
@@ -176,6 +178,7 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
         "code": code,
         "name": name,
         "has_kline": True,
+        "kline_source": kline_source,
         "bars": len(df),
         "date_from": str(df["date"].iloc[0]),
         "date_to": str(df["date"].iloc[-1]),

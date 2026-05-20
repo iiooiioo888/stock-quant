@@ -34,7 +34,7 @@ GitHub: https://github.com/iiooiioo888/stock-quant
 **安全加固（v5.0 新增）：**
 - JWT Secret 持久化（data/.jwt_secret，重啟不失效）
 - 默認管理員隨機密碼（data/.admin_password，600 權限）
-- 全 API 強制認證（Bearer Token，白名單僅 login/register/health）
+- 演示模式（`SQ_DEMO_MODE`）：GET 讀取白名單開放；POST/DELETE 危險寫入需 Bearer Token
 - CORS 收緊（默認 localhost，非 *）
 - Redis 密碼認證 + 不暴露端口
 - WebSocket 支持 ?token=xxx 認證
@@ -117,7 +117,7 @@ main.py                 — CLI 入口（config/serve/download/backtest/optimize
 ### ✅ 第五輪（v5.0 — 安全加固 + 配置優化）
 26. JWT Secret 持久化（data/.jwt_secret，重啟後 Token 不失效）
 27. 默認管理員隨機密碼（首次啟動生成，寫入 data/.admin_password）
-28. 全 API 強制認證（Bearer Token，白名單僅保留 login/register/health）
+28. 演示模式認證：讀開放、寫受控（login/register/health + 數據/任務/儀表盤 GET 白名單）
 29. CORS 收緊（默認 localhost，生產環境需設置 SQ_CORS_ORIGINS）
 30. Redis 安全加固（密碼認證 + 不暴露端口到宿主機）
 31. WebSocket 認證（支持 ?token=xxx 參數）
@@ -146,6 +146,7 @@ main.py                 — CLI 入口（config/serve/download/backtest/optimize
 - 定期清理舊數據的策略（保留最近 N 年）
 
 #### 3. 測試補全
+- CI：`pytest tests/ -q`（含 `test_smoke_api`、`test_auth_write_protection`）；全量手動：`./test_all.sh`
 - 現有 3 個測試文件 → 目標覆蓋核心模塊：
   - test_signals.py（信號引擎）
   - test_portfolio.py 補全（11 種組合方法）

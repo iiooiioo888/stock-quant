@@ -90,7 +90,8 @@ const Analysis = {
       dates: data.map((_, i) => String(i)),
     }));
     if (pathSeries.length) {
-      Charts.drawLineChart('anMcChart', pathSeries);
+      if (typeof ProCharts !== 'undefined') ProCharts.renderMonteCarloFan(curves);
+      else Charts.drawLineChart('anMcChart', pathSeries);
     }
 
     this._showSection('mc');

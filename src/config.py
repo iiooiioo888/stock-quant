@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     # ====== 歷史數據 ======
     history_start_date: str = Field(default="20200101", pattern=r"^\d{8}$")
+    # True：讀 K 線時本地無數據則自動爬取一次入庫；之後僅讀本地
+    local_first_auto_fetch: bool = Field(default=True)
 
     # ====== 盯盤 ======
     watchlist: list[str] = Field(default=[
@@ -84,6 +86,18 @@ class Settings(BaseSettings):
     # ====== 演示模式 ======
     demo_mode: bool = False
 
+    # ====== 定時任務 (APScheduler) ======
+    scheduler_enabled: bool = True
+    scheduler_auto_register: bool = True
+    scheduler_job_incremental: bool = True
+    scheduler_job_daily_report: bool = True
+    scheduler_job_data_quality: bool = True
+    scheduler_job_degradation: bool = False
+    scheduler_job_correlation: bool = False
+    scheduler_job_leaderboard: bool = True
+    scheduler_incremental_hour: int = Field(default=8, ge=0, le=23)
+    scheduler_incremental_minute: int = Field(default=5, ge=0, le=59)
+
     # ====== 緩存 ======
     cache_enabled: bool = True
     cache_backtest_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
@@ -99,7 +113,7 @@ class Settings(BaseSettings):
     redis_password: str = ""
 
     # ====== WebSocket 安全 ======
-    ws_auth_required: bool = False  # 本地默認免登錄 WS；生產請設 SQ_WS_AUTH_REQUIRED=true
+    ws_auth_required: bool = False  # 本地/演示可關閉；非演示模式見 effective_ws_auth_required
 
     # ====== 安全 ======
     jwt_secret: str = ""  # 留空時由 auth.py 自動生成隨機密鑰並持久化到 data/.jwt_secret
@@ -238,6 +252,15 @@ class Settings(BaseSettings):
         if v < 1 or v > 65535:
             raise ValueError("端口號必須在 1-65535 之間")
         return v
+
+    @property
+    def effective_ws_auth_required(self) -> bool:
+        """WebSocket 是否要求認證：顯式開啟，或非演示/非 debug 時默認啟用。"""
+        if self.ws_auth_required:
+            return True
+        if self.demo_mode or self.debug:
+            return False
+        return True
 
     def get_strategy_defaults(self, strategy_name: str) -> dict:
         """獲取策略默認參數（config 中的值優先）"""

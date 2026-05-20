@@ -5,9 +5,115 @@
 const Backtest = {
   _lastResult: null,
   _running: false,
+  _codesLoaded: false,
+
+  /** 預設示範股（與演示配置一致） */
+  _DEFAULT_STOCKS: [
+    { code: '000001', name: '平安銀行' },
+    { code: '600519', name: '貴州茅台' },
+    { code: '000858', name: '五糧液' },
+    { code: '601318', name: '中國平安' },
+    { code: '000333', name: '美的集團' },
+  ],
+
+  init() {
+    this._bindCodeControls();
+    this.loadStockOptions();
+  },
+
+  getCode() {
+    return document.getElementById('btCode')?.value?.trim() || '';
+  },
+
+  setCode(code) {
+    const c = String(code || '').trim();
+    const inp = document.getElementById('btCode');
+    const sel = document.getElementById('btCodeSelect');
+    if (inp) inp.value = c;
+    if (sel) {
+      const hit = c && [...sel.options].some(o => o.value === c);
+      sel.value = hit ? c : '';
+    }
+  },
+
+  _bindCodeControls() {
+    const sel = document.getElementById('btCodeSelect');
+    const inp = document.getElementById('btCode');
+    if (!sel || !inp || sel.dataset.bound) return;
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      if (sel.value) this.setCode(sel.value);
+    });
+    inp.addEventListener('input', () => {
+      const v = inp.value.trim();
+      if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
+      else if (!v) sel.value = '';
+      else sel.value = '';
+    });
+  },
+
+  async loadStockOptions() {
+    const sel = document.getElementById('btCodeSelect');
+    if (!sel) return;
+
+    const map = new Map();
+    const add = (code, name, group) => {
+      const c = String(code || '').trim();
+      if (!c || map.has(c)) return;
+      map.set(c, { code: c, name: name || c, group });
+    };
+
+    this._DEFAULT_STOCKS.forEach(s => add(s.code, s.name, 'demo'));
+
+    try {
+      const [cfg, rules, stocks] = await Promise.all([
+        Api.getConfig(),
+        Api.getAlertRules(),
+        Api.getStocks(),
+      ]);
+      (cfg?.watchlist || []).forEach(code => {
+        const r = rules?.rules?.[code];
+        add(code, r?.name, 'watchlist');
+      });
+      if (rules?.rules) {
+        Object.entries(rules.rules).forEach(([code, r]) => add(code, r?.name, 'watchlist'));
+      }
+      const list = stocks?.stocks || [];
+      const cap = 400;
+      if (list.length && list.length <= cap) {
+        list.forEach(s => add(s.code, s.name, 'db'));
+      } else if (list.length > cap) {
+        list.slice(0, cap).forEach(s => add(s.code, s.name, 'db'));
+      }
+    } catch (e) {
+      console.warn('載入股票列表失敗:', e);
+    }
+
+    const groups = { demo: '示範股票', watchlist: '監控列表', db: '本地數據' };
+    const byGroup = { demo: [], watchlist: [], db: [] };
+    [...map.values()].sort((a, b) => a.code.localeCompare(b.code)).forEach(item => {
+      const g = byGroup[item.group] ? item.group : 'db';
+      byGroup[g].push(item);
+    });
+
+    let html = '<option value="">— 從列表選擇 —</option>';
+    Object.keys(groups).forEach(key => {
+      if (!byGroup[key].length) return;
+      html += `<optgroup label="${groups[key]}">`;
+      html += byGroup[key].map(s =>
+        `<option value="${s.code}">${s.code} ${s.name}</option>`,
+      ).join('');
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+    this._codesLoaded = true;
+
+    const current = this.getCode();
+    if (current) this.setCode(current);
+  },
 
   async run() {
-    const code = document.getElementById('btCode').value.trim();
+    const code = this.getCode();
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
     if (this._running) return Utils.toast('回測進行中，請稍候', 2000, 'error');
     this._running = true;
@@ -158,7 +264,7 @@ const Backtest = {
   },
 
   async runMulti() {
-    const code = document.getElementById('btCode').value.trim();
+    const code = this.getCode();
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
     if (this._running) return Utils.toast('回測進行中，請稍候', 2000, 'error');
     this._running = true;

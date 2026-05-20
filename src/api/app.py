@@ -20,144 +20,18 @@ from src.core.db import init_db, get_db_stats, get_alert_logs, get_conn
 from src.core.auth import require_auth, require_admin
 from src.utils.logger import logger
 
+from src.api.constants import STOCK_NAMES
+from src.api.demo import seed_demo_data
+from src.api import state
+from src.api.routers.health import router as health_router
+from src.api.routers.tasks import router as tasks_router
+from src.api.routers.indices import router as indices_router
+from src.api.routers.dashboard_market import router as dashboard_market_router
+from src.api.ws import router as ws_router, ws_realtime_push
 
 # 啟動時間
-_start_time = time.time()
 
 
-# 常用 A 股中文名映射
-STOCK_NAMES = {
-    "000001": "平安銀行", "000002": "萬科A", "000063": "中興通訊",
-    "000100": "TCL科技", "000157": "中聯重科", "000333": "美的集團",
-    "000338": "濰柴動力", "000425": "徐工機械", "000538": "雲南白藥",
-    "000568": "瀘州老窖", "000625": "長安汽車", "000651": "格力電器",
-    "000661": "長春高新", "000725": "京東方A", "000768": "中航西飛",
-    "000776": "廣發證券", "000858": "五糧液", "000895": "雙匯發展",
-    "000938": "紫光股份", "000977": "浪潮信息", "002027": "分眾傳媒",
-    "002049": "紫光國微", "002120": "韻達股份", "002142": "寧波銀行",
-    "002230": "科大訊飛", "002271": "東方雨虹", "002304": "洋河股份",
-    "002352": "順豐控股", "002371": "北方華創", "002415": "海康威視",
-    "002460": "贛鋒鋰業", "002475": "立訊精密", "002594": "比亞迪",
-    "002714": "牧原股份", "002812": "恩捷股份", "002916": "深南電路",
-    "003816": "中南傳媒", "300003": "樂普醫療", "300015": "愛爾眼科",
-    "300033": "同花順", "300059": "東方財富", "300124": "匯川技術",
-    "300142": "沃森生物", "300274": "陽光電源", "300347": "泰格醫藥",
-    "300408": "三環集團", "300413": "芒果超媒", "300450": "先導智能",
-    "300454": "深信服", "300496": "中科创達", "300529": "健帆生物",
-    "300601": "康泰生物", "300628": "億聯網絡", "300750": "寧德時代",
-    "300760": "邁瑞醫療", "300782": "卓勝微", "300896": "愛美客",
-    "600000": "浦發銀行", "600009": "上海機場", "600016": "民生銀行",
-    "600018": "上港集團", "600019": "寶鋼股份", "600028": "中國石化",
-    "600030": "中信證券", "600031": "三一重工", "600036": "招商銀行",
-    "600048": "保利發展", "600050": "中國聯通", "600056": "中國醫藥",
-    "600085": "同仁堂", "600089": "特變電工", "600104": "上汽集團",
-    "600111": "北方稀土", "600115": "東方航空", "600132": "重慶啤酒",
-    "600150": "中國船舶", "600176": "中國巨石", "600183": "生益科技",
-    "600196": "復星醫藥", "600276": "恒瑞醫藥", "600309": "萬華化學",
-    "600346": "恒力石化", "600352": "浙江龍盛", "600406": "國電南瑞",
-    "600436": "片仔癀", "600438": "通威股份", "600460": "士蘭微",
-    "600489": "中金黃金", "600519": "貴州茅台", "600547": "山東黃金",
-    "600570": "恒生電子", "600585": "海螺水泥", "600588": "用友網絡",
-    "600600": "青島啤酒", "600660": "福耀玻璃", "600690": "海爾智家",
-    "600703": "三安光電", "600745": "聞泰科技", "600760": "中航沈飛",
-    "600809": "山西汾酒", "600837": "海通證券", "600845": "寶信軟件",
-    "600887": "伊利股份", "600893": "航發動力", "600900": "長江電力",
-    "600918": "中泰證券", "600919": "江蘇銀行", "600938": "中國海油",
-    "601006": "大秦鐵路", "601012": "隆基綠能", "601021": "春秋航空",
-    "601066": "中信建投", "601088": "中國神華", "601100": "恒立液壓",
-    "601111": "中國國航", "601138": "工業富聯", "601155": "新城控股",
-    "601166": "興業銀行", "601169": "北京銀行", "601211": "國泰君安",
-    "601225": "陝西煤業", "601236": "紅塔證券", "601288": "農業銀行",
-    "601318": "中國平安", "601328": "交通銀行", "601336": "新華保險",
-    "601390": "中國中鐵", "601398": "工商銀行", "601601": "中國太保",
-    "601628": "中國人壽", "601668": "中國建築", "601669": "中國電建",
-    "601688": "華泰證券", "601698": "中國衛通", "601766": "中國中車",
-    "601788": "光大證券", "601799": "星宇股份", "601816": "京滬高鐵",
-    "601818": "光大銀行", "601857": "中國石油", "601877": "正泰電器",
-    "601881": "中國銀河", "601888": "中國中免", "601899": "紫金礦業",
-    "601919": "中遠海控", "601985": "中國核電", "601988": "中國銀行",
-    "601989": "中國重工", "601995": "中金公司", "601998": "中信銀行",
-    "603019": "中科曙光", "603160": "匯頂科技", "603259": "藥明康德",
-    "603288": "海天味業", "603501": "韋爾股份", "603799": "華友鈷業",
-    "603882": "金域醫學", "603986": "兆易創新", "688005": "容百科技",
-    "688009": "中國通號", "688012": "中微公司", "688036": "傳音控股",
-    "688111": "金山辦公", "688169": "石頭科技", "688187": "時代電氣",
-    "688223": "晶科能源", "688303": "大全能源", "688396": "華潤微",
-    "688561": "奇安信", "688599": "天合光能", "688981": "中芯國際",
-}
-
-
-def _seed_demo_data():
-    """演示模式：後台填充示範數據（不阻塞啟動，自動重試）"""
-    import threading
-
-    DEMO_CODES = ["000001", "600519", "000858", "601318", "000333"]
-    DEMO_STRATEGIES = ["dual_ma", "macd", "bollinger", "rsi", "momentum"]
-
-    def _worker():
-        try:
-            from src.core.db import load_all_codes, load_daily_kline, init_db
-            from src.core.auth import ensure_default_admin
-
-            # Step 0: 確保數據庫和管理員存在
-            init_db()
-            ensure_default_admin()
-
-            # Step 1: 檢查是否已有數據
-            has_data = True
-            for code in DEMO_CODES[:2]:
-                df = load_daily_kline(code)
-                if df.empty:
-                    has_data = False
-                    break
-
-            if has_data:
-                logger.info("📦 演示模式：數據已存在，跳過填充")
-                return
-
-            # Step 2: 下載 A 股示範數據（帶重試）
-            logger.info("📦 演示模式：正在下載 A 股示範數據...")
-            from src.core.history import download_one
-
-            total = 0
-            for i, code in enumerate(DEMO_CODES, 1):
-                for attempt in range(3):
-                    try:
-                        count = download_one(code)
-                        if count > 0:
-                            total += count
-                            logger.info(f"📦 [{i}/{len(DEMO_CODES)}] {code}: {count} 條")
-                            break
-                    except Exception as e:
-                        logger.debug(f"📦 {code} 第{attempt+1}次下載失敗: {e}")
-                        if attempt < 2:
-                            time.sleep(3)
-                time.sleep(1)
-
-            logger.info(f"📦 A 股下載完成: {total} 條記錄")
-
-            # Step 3: 執行回測填充歷史（每個 demo 股票跑全策略）
-            if total > 0:
-                logger.info("📦 演示模式：正在生成回測歷史...")
-                from src.core.backtest import run_backtest
-                bt_count = 0
-                for code in DEMO_CODES[:3]:
-                    for strat in DEMO_STRATEGIES[:3]:
-                        try:
-                            run_backtest(code, strategy_name=strat)
-                            bt_count += 1
-                        except Exception as e:
-                            logger.debug(f"📦 回測 {code}/{strat} 跳過: {e}")
-                logger.info(f"📦 演示模式：已生成 {bt_count} 條回測記錄")
-
-            logger.info("📦 演示模式初始化完成 ✅")
-
-        except Exception as e:
-            logger.warning(f"📦 演示數據填充失敗（服務仍正常運行）: {e}")
-
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
-    logger.info("📦 演示模式：後台數據填充已啟動")
 
 
 @asynccontextmanager
@@ -169,7 +43,7 @@ async def lifespan(app: FastAPI):
 
     # 演示模式或數據為空時：自動填充數據
     if settings.demo_mode:
-        _seed_demo_data()
+        seed_demo_data()
     else:
         # 非演示模式也檢查：如果數據庫為空，自動下載基礎數據
         try:
@@ -177,9 +51,9 @@ async def lifespan(app: FastAPI):
             codes = load_all_codes()
             if not codes:
                 logger.info("📦 數據庫為空，自動下載基礎數據...")
-                _seed_demo_data()
+                seed_demo_data()
         except Exception:
-            _seed_demo_data()
+            seed_demo_data()
 
     # 初始化排行榜表
     try:
@@ -207,13 +81,13 @@ async def lifespan(app: FastAPI):
         logger.debug(f"調度器啟動跳過: {e}")
 
     # 安全摘要
-    _ws_auth = "✅ 已啟用" if settings.ws_auth_required else "⚠️ 已關閉（開發模式）"
+    _ws_auth = "✅ 已啟用" if settings.effective_ws_auth_required else "⚠️ 已關閉（演示/開發模式）"
     _jwt_ok = "✅ 已配置" if settings.jwt_secret else "⚠️ 未配置（自動生成）"
     logger.info(f"🔒 安全摘要: WS認證={_ws_auth} | JWT={_jwt_ok} | CORS={settings.cors_origins[:50]}")
 
     # 啟動 WebSocket 後台推送
     import asyncio
-    _ws_task = asyncio.create_task(_ws_realtime_push())
+    _ws_task = asyncio.create_task(ws_realtime_push())
 
     yield
 
@@ -237,6 +111,12 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+app.include_router(health_router)
+app.include_router(tasks_router)
+app.include_router(indices_router)
+app.include_router(dashboard_market_router)
+app.include_router(ws_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -350,16 +230,35 @@ class _RateLimiter:
 
 
 _rate_limiter = _RateLimiter(settings.rate_limit_per_minute)
+_auth_rate_limiter = _RateLimiter(10)  # login/register 防暴力
+
+
+_RATE_LIMIT_SKIP_PREFIX = (
+    "/api/health",
+    "/api/status",
+    "/api/tasks",
+    "/static",
+    "/ws",
+)
+if settings.demo_mode or settings.debug:
+    _RATE_LIMIT_SKIP_PREFIX = _RATE_LIMIT_SKIP_PREFIX + (
+        "/api/dashboard",
+        "/api/data/",
+    )
 
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """滑動窗口限流：每 IP 每分鐘最多 N 次請求"""
-    if not request.url.path.startswith("/api/"):
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    if any(path.startswith(prefix) for prefix in _RATE_LIMIT_SKIP_PREFIX):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-    allowed, retry_after = _rate_limiter.check(client_ip)
+    limiter = _auth_rate_limiter if path.startswith("/api/auth/login") or path.startswith("/api/auth/register") else _rate_limiter
+    allowed, retry_after = limiter.check(client_ip)
 
     if not allowed:
         from fastapi.responses import JSONResponse
@@ -377,7 +276,50 @@ async def rate_limit_middleware(request: Request, call_next):
 # ============================================================
 
 # 不需要認證的路徑前綴（白名單）
-AUTH_WHITELIST = ("/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status", "/api/config", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources", "/api/markets", "/docs", "/openapi.json", "/redoc", "/static", "/", "/ws")
+AUTH_WHITELIST_PREFIX = (
+    "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
+    "/api/config", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources",
+    "/api/markets", "/api/indices", "/api/dashboard", "/api/data/", "/api/tasks",
+    "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts",
+    "/docs", "/openapi.json",
+    "/redoc", "/static", "/", "/ws",
+)
+# 精確匹配，避免 /api/strategies/leaderboard/update 被誤放行
+AUTH_WHITELIST_EXACT = (
+    "/api/strategies/leaderboard",
+    "/api/strategies/params",
+)
+
+# 演示模式：GET 可讀，POST/PUT/PATCH/DELETE 需登錄
+_AUTH_WRITE_PROTECTED_PREFIX = (
+    "/api/tasks",
+    "/api/stocks",
+    "/api/markets",
+    "/api/data/",
+    "/api/backtest",
+    "/api/alerts",
+    "/api/portfolio",
+    "/api/strategies/",
+    "/api/scheduler/",
+)
+
+
+def _auth_read_allowed(path: str) -> bool:
+    return path in AUTH_WHITELIST_EXACT or any(
+        path.startswith(prefix) for prefix in AUTH_WHITELIST_PREFIX
+    )
+
+
+def _auth_write_requires_login(path: str, method: str) -> bool:
+    if method in ("GET", "HEAD", "OPTIONS"):
+        return False
+    if not path.startswith("/api/"):
+        return False
+    if path.startswith("/api/auth/login") or path.startswith("/api/auth/register"):
+        return False
+    if _auth_read_allowed(path):
+        return any(path.startswith(prefix) for prefix in _AUTH_WRITE_PROTECTED_PREFIX)
+    return True
 
 
 @app.middleware("http")
@@ -385,16 +327,23 @@ async def auth_middleware(request: Request, call_next):
     """
     認證中間件 — 檢查 Authorization header
 
-    - 白名單路徑：放行
+    - 白名單路徑 GET：放行（演示可讀）
+    - 白名單下寫操作：需登錄
     - 有有效 token：注入 request.state.user
-    - 無 token：返回 401（安全模式）
+    - 無 token：返回 401
     """
     path = request.url.path
+    method = request.method.upper()
 
-    # 白名單路徑直接放行
-    is_whitelisted = any(path.startswith(prefix) for prefix in AUTH_WHITELIST)
+    needs_auth = (
+        path.startswith("/api/")
+        and (
+            not _auth_read_allowed(path)
+            or _auth_write_requires_login(path, method)
+        )
+    )
 
-    if not is_whitelisted and path.startswith("/api/"):
+    if needs_auth:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
@@ -722,117 +671,6 @@ async def admin_delete_user(target_user_id: int, user = Depends(require_admin)):
     return {"success": True, "message": "用戶已刪除"}
 
 
-@app.get("/api/health")
-async def health_check():
-    """健康檢查"""
-    from src.core.api_cache import cached_response
-
-    def _build():
-        uptime_sec = int(time.time() - _start_time)
-        hours, remainder = divmod(uptime_sec, 3600)
-        minutes, seconds = divmod(remainder, 60)
-
-        try:
-            stats = get_db_stats()
-            db_status = "ok"
-        except Exception:
-            stats = {"db_size_mb": 0, "total_stocks": 0, "total_alerts": 0}
-            db_status = "error"
-
-        data_ready = stats.get("total_stocks", 0) > 0
-        return {
-            "status": "ok",
-            "version": settings.app_version,
-            "database": db_status,
-            "data_ready": data_ready,
-            "ws_auth_required": settings.ws_auth_required,
-            "uptime": f"{hours}h {minutes}m {seconds}s",
-            **stats,
-        }
-
-    return cached_response("api:health", ttl=3, builder=_build)
-
-
-@app.get("/api/health/detailed")
-async def health_detailed():
-    """
-    詳細健康檢查 — 包含 Redis、DB、磁盤、內存狀態
-    """
-    import shutil
-
-    uptime_sec = int(time.time() - _start_time)
-    hours, remainder = divmod(uptime_sec, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    result = {
-        "status": "ok",
-        "version": settings.app_version,
-        "uptime": f"{hours}h {minutes}m {seconds}s",
-        "uptime_seconds": uptime_sec,
-    }
-
-    # ---- 數據庫狀態 ----
-    try:
-        stats = get_db_stats()
-        result["database"] = {"status": "ok", **stats}
-    except Exception as e:
-        result["database"] = {"status": "error", "error": str(e)}
-        result["status"] = "degraded"
-
-    # ---- Redis 狀態 ----
-    try:
-        from src.core.cache import get_cache
-        cache = get_cache()
-        cache_stats = cache.stats()
-        result["redis"] = {
-            "available": cache.is_redis_available,
-            "backend": cache_stats.get("backend", "unknown"),
-            **cache_stats,
-        }
-    except Exception as e:
-        result["redis"] = {"available": False, "error": str(e)}
-
-    # ---- 磁盤空間 ----
-    try:
-        disk = shutil.disk_usage("/")
-        result["disk"] = {
-            "total_gb": round(disk.total / (1024**3), 2),
-            "used_gb": round(disk.used / (1024**3), 2),
-            "free_gb": round(disk.free / (1024**3), 2),
-            "usage_pct": round(disk.used / disk.total * 100, 1),
-        }
-    except Exception:
-        result["disk"] = {"status": "unavailable"}
-
-    # ---- 內存使用 ----
-    try:
-        import resource
-        usage = resource.getrusage(resource.RUSAGE_SELF)
-        # maxrss 單位：Linux 是 KB，macOS 是 bytes
-        import sys
-        maxrss_kb = usage.ru_maxrss if sys.platform == "linux" else usage.ru_maxrss / 1024
-        result["memory"] = {
-            "max_rss_mb": round(maxrss_kb / 1024, 2),
-        }
-        # 嘗試 psutil 獲取更詳細信息
-        try:
-            import psutil
-            proc = psutil.Process()
-            mem_info = proc.memory_info()
-            result["memory"]["rss_mb"] = round(mem_info.rss / (1024**2), 2)
-            result["memory"]["vms_mb"] = round(mem_info.vms / (1024**2), 2)
-            sys_mem = psutil.virtual_memory()
-            result["memory"]["system_total_gb"] = round(sys_mem.total / (1024**3), 2)
-            result["memory"]["system_available_gb"] = round(sys_mem.available / (1024**3), 2)
-            result["memory"]["system_usage_pct"] = sys_mem.percent
-        except ImportError:
-            pass
-    except Exception:
-        result["memory"] = {"status": "unavailable"}
-
-    return result
-
-
 @app.get("/api/data-sources")
 async def get_data_sources():
     """獲取所有數據源狀態"""
@@ -844,7 +682,7 @@ async def get_data_sources():
 async def system_status():
     """系統狀態"""
     stats = get_db_stats()
-    uptime_sec = int(time.time() - _start_time)
+    uptime_sec = int(time.time() - state.start_time)
 
     return {
         "version": settings.app_version,
@@ -893,9 +731,7 @@ def _normalize_compare_code(code: str) -> str:
 
 @app.post("/api/stocks/compare")
 async def compare_stocks(body: dict):
-    """多股收益率對比"""
-    from src.core.db import load_daily_kline
-
+    """多股收益率對比（本地優先，缺失時首次自動入庫）"""
     codes = body.get("codes", [])
     days = body.get("days", 250)
     start = body.get("start")
@@ -903,11 +739,13 @@ async def compare_stocks(body: dict):
     if not codes:
         raise HTTPException(400, "請提供股票代碼列表")
 
+    from src.core.local_kline import ensure_daily_kline
+
     result = {}
     missing = []
     for raw in codes:
         code = _normalize_compare_code(raw)
-        df = load_daily_kline(code, start_date=start)
+        df, _src = ensure_daily_kline(code, start_date=start, min_bars=2)
         if df.empty:
             missing.append(raw)
             continue
@@ -973,19 +811,20 @@ async def get_all_strategy_params_api():
 
 @app.get("/api/stocks/{code}/kline")
 async def get_kline(code: str, start: str = None, end: str = None, limit: int = 500):
-    """獲取 K 線數據"""
-    from src.core.db import load_daily_kline
-    df = load_daily_kline(code, start_date=start, end_date=end)
+    """獲取 K 線數據（本地優先，僅首次無數據時爬取入庫）"""
+    from src.core.local_kline import ensure_daily_kline, normalize_kline_code
+
+    code = normalize_kline_code(code)
+    df, source = ensure_daily_kline(code, start_date=start, end_date=end, min_bars=1)
 
     if df.empty:
-        raise HTTPException(404, f"股票 {code} 無數據")
+        raise HTTPException(404, f"股票 {code} 無數據（外網拉取亦失敗）")
 
-    # 限制返回量
     if len(df) > limit:
         df = df.tail(limit)
 
     records = df.to_dict(orient="records")
-    return {"code": code, "data": records, "count": len(records)}
+    return {"code": code, "data": records, "count": len(records), "source": source}
 
 
 @app.post("/api/stocks/download")
@@ -1210,35 +1049,12 @@ async def get_market_realtime(market: str, symbols: str = None):
 async def get_sparkline(codes: str, days: int = 30):
     """
     獲取多個標的的迷你走勢圖數據（最近 N 天收盤價）。
-    用於儀表盤監控列表的迷你圖。
+    多源降級：本地庫 → Yahoo → 東財 → Twelve Data。
     """
-    from src.core.db import load_daily_kline
+    from src.core.market_fetch import build_sparkline_item
 
     code_list = [c.strip() for c in codes.split(",") if c.strip()]
-    result = {}
-
-    for code in code_list:
-        df = load_daily_kline(code)
-        if df.empty:
-            result[code] = {"prices": [], "change_pct": 0}
-            continue
-
-        df = df.tail(days)
-        prices = df["close"].tolist()
-        dates = df["date"].tolist()
-
-        if len(prices) >= 2:
-            change = (prices[-1] - prices[0]) / prices[0] * 100
-        else:
-            change = 0
-
-        result[code] = {
-            "prices": [round(p, 4) for p in prices],
-            "dates": dates,
-            "change_pct": round(change, 2),
-            "latest": round(prices[-1], 4) if prices else 0,
-        }
-
+    result = {code: build_sparkline_item(code, days) for code in code_list}
     return {"sparklines": result}
 
 
@@ -1544,20 +1360,96 @@ async def delete_alert_rule(code: str):
     raise HTTPException(404, f"規則不存在: {code}")
 
 
+@app.get("/api/alerts/rules/suggest")
+async def suggest_alert_rule_api(
+    code: str,
+    above_pct: float = 3.0,
+    below_pct: float = 3.0,
+    change_pct: float = 5.0,
+):
+    """依最新價建議單條預警閾值（供前端一鍵填充）"""
+    from src.core.alert_rules_auto import suggest_alert_rule
+
+    try:
+        return suggest_alert_rule(
+            code,
+            above_pct=above_pct,
+            below_pct=below_pct,
+            change_pct=change_pct,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/alerts/rules/auto")
+async def auto_add_alert_rules_api(body: dict = None):
+    """
+    批量自動添加預警規則（依最新價 ± 百分比）
+
+    body:
+      codes: 可選代碼列表
+      source: missing | watchlist | config
+      above_pct / below_pct / change_pct
+      skip_existing: 跳過已有規則
+      overwrite: 覆蓋已有規則
+    """
+    from src.core.alert_rules_auto import auto_add_alert_rules
+
+    body = body or {}
+    try:
+        return auto_add_alert_rules(
+            codes=body.get("codes"),
+            source=(body.get("source") or "missing").strip(),
+            above_pct=float(body.get("above_pct", 3.0)),
+            below_pct=float(body.get("below_pct", 3.0)),
+            change_pct=float(body.get("change_pct", 5.0)),
+            skip_existing=bool(body.get("skip_existing", True)),
+            overwrite=bool(body.get("overwrite", False)),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/watchlist/add")
-async def add_to_watchlist(code: str, name: str = ""):
-    """添加股票到監控列表"""
+async def add_to_watchlist(
+    code: str,
+    name: str = "",
+    auto_rule: bool = False,
+    above_pct: float = 3.0,
+    below_pct: float = 3.0,
+    change_pct: float = 5.0,
+):
+    """添加股票到監控列表；auto_rule=true 時依最新價生成預警閾值"""
     if code in settings.alert_rules:
-        return {"success": True, "message": f"{code} 已在監控列表"}
-    settings.alert_rules[code] = {
+        return {"success": True, "message": f"{code} 已在監控列表", "rules": settings.alert_rules}
+
+    rule = {
         "name": name or code,
         "price_above": None,
         "price_below": None,
-        "change_pct": 5.0,
+        "change_pct": change_pct,
     }
+    if auto_rule:
+        from src.core.alert_rules_auto import suggest_alert_rule
+
+        try:
+            suggested = suggest_alert_rule(
+                code,
+                above_pct=above_pct,
+                below_pct=below_pct,
+                change_pct=change_pct,
+            )
+            rule = suggested["rule"]
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    settings.alert_rules[code] = rule
     if code not in settings.watchlist:
         settings.watchlist.append(code)
-    return {"success": True, "message": f"{code} 已加入監控", "rules": settings.alert_rules}
+    msg = f"{code} 已加入監控"
+    if auto_rule:
+        msg += "（已自動生成預警規則）"
+    return {"success": True, "message": msg, "rules": settings.alert_rules, "rule": rule}
 
 
 # ====== 回測歷史 ======
@@ -1681,26 +1573,84 @@ async def cache_clear_api(code: str = None):
 
 @app.get("/api/scheduler/jobs")
 async def list_scheduler_jobs():
-    """列出調度任務"""
+    """列出已註冊的調度任務"""
     from src.core.scheduler import list_jobs
     return {"jobs": list_jobs()}
 
 
+@app.get("/api/scheduler/catalog")
+async def scheduler_catalog():
+    """定時任務目錄（含是否已啟用）"""
+    from src.core.scheduler import get_catalog, list_jobs
+    return {"catalog": get_catalog(), "jobs": list_jobs()}
+
+
+@app.post("/api/scheduler/setup")
+async def scheduler_setup():
+    """按 config 重新註冊默認定時任務"""
+    from src.core.scheduler import setup_from_settings
+    jobs = setup_from_settings()
+    return {
+        "success": True,
+        "message": f"已註冊 {len(jobs)} 個定時任務",
+        "jobs": jobs,
+    }
+
+
 @app.post("/api/scheduler/enable")
 async def enable_scheduler():
-    """啟用每日報告"""
-    from src.core.scheduler import start_scheduler, enable_daily_report
-    start_scheduler()
-    enable_daily_report()
-    return {"success": True, "message": "每日報告已啟用 (15:30)"}
+    """啟用默認定時任務套件（同 /api/scheduler/setup）"""
+    from src.core.scheduler import setup_from_settings
+    jobs = setup_from_settings()
+    return {
+        "success": True,
+        "message": f"已啟用 {len(jobs)} 個定時任務",
+        "jobs": jobs,
+    }
 
 
 @app.post("/api/scheduler/disable")
 async def disable_scheduler():
-    """禁用每日報告"""
-    from src.core.scheduler import disable_daily_report
-    disable_daily_report()
-    return {"success": True, "message": "每日報告已禁用"}
+    """禁用全部定時任務"""
+    from src.core.scheduler import _DISABLE_BY_ID
+    for fn in _DISABLE_BY_ID.values():
+        fn()
+    return {"success": True, "message": "已禁用全部定時任務"}
+
+
+@app.post("/api/scheduler/jobs/{job_id}/enable")
+async def enable_scheduler_job(job_id: str):
+    """啟用單個定時任務"""
+    from src.core.scheduler import enable_job
+    try:
+        enable_job(job_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "message": f"任務 {job_id} 已啟用"}
+
+
+@app.post("/api/scheduler/jobs/{job_id}/disable")
+async def disable_scheduler_job(job_id: str):
+    """禁用單個定時任務"""
+    from src.core.scheduler import disable_job
+    try:
+        disable_job(job_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "message": f"任務 {job_id} 已禁用"}
+
+
+@app.post("/api/scheduler/jobs/{job_id}/run")
+async def run_scheduler_job_now(job_id: str):
+    """立即執行一次定時任務"""
+    from src.core.scheduler import run_job_now
+    try:
+        run_job_now(job_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    return {"success": True, "message": f"任務 {job_id} 已觸發執行"}
 
 
 # ====== 通知渠道 ======
@@ -1718,85 +1668,6 @@ async def test_notify():
     from src.core.alerts import test_all_channels
     results = test_all_channels()
     return {"success": True, "results": results}
-
-
-# ====== 任務管理 ======
-
-@app.get("/api/tasks")
-async def list_tasks_api(task_type: str = None, status: str = None, limit: int = 50):
-    """獲取任務列表"""
-    from src.core.task_manager import get_tasks, get_task_stats, get_queue_snapshot
-    tasks = get_tasks(task_type=task_type, status=status, limit=limit)
-    stats = get_task_stats()
-    return {"tasks": tasks, "stats": stats, "queue": get_queue_snapshot()}
-
-
-@app.get("/api/tasks/queue")
-async def get_task_queue_api():
-    """獲取執行佇列快照（目前 / 下一個 / 剛完成）"""
-    from src.core.task_manager import get_queue_snapshot
-    return get_queue_snapshot()
-
-
-@app.get("/api/tasks/{task_id}")
-async def get_task_api(task_id: str):
-    """獲取單個任務詳情"""
-    from src.core.task_manager import get_task
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(404, "任務不存在")
-    return {"task": task}
-
-
-@app.post("/api/tasks/{task_id}/cancel")
-async def cancel_task_api(task_id: str):
-    """取消任務"""
-    from src.core.task_manager import cancel_task
-    success = cancel_task(task_id)
-    if not success:
-        raise HTTPException(400, "任務無法取消（可能已完成或不存在）")
-    return {"success": True, "message": "任務已取消"}
-
-
-@app.post("/api/tasks/cleanup")
-async def cleanup_tasks_api(timeout_sec: int = 3600):
-    """清理超時任務"""
-    from src.core.task_manager import cleanup_stale_tasks
-    cleaned = cleanup_stale_tasks(timeout_sec)
-    return {"success": True, "cleaned": cleaned}
-
-
-@app.delete("/api/tasks/{task_id}")
-async def delete_task_api(task_id: str):
-    """刪除已完成/失敗/取消的任務"""
-    from src.core.task_manager import delete_task
-    ok = delete_task(task_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="任務不存在或仍在運行中，請先取消")
-    return {"success": True}
-
-
-@app.get("/api/tasks/{task_id}/params")
-async def get_task_params_api(task_id: str):
-    """獲取任務參數（輕量，不含大型 result）"""
-    from src.core.task_manager import get_task_params
-    task = get_task_params(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任務不存在")
-    return {"task": task}
-
-
-@app.get("/api/tasks/{task_id}/full")
-async def get_task_full_api(task_id: str):
-    """獲取任務完整信息（含 params 和 result）"""
-    from src.core.task_manager import get_task_full
-    task = get_task_full(task_id, include_result=True)
-    if not task:
-        raise HTTPException(status_code=404, detail="任務不存在")
-    if isinstance(task, dict):
-        task.pop("last_accessed", None)
-        task.pop("_worker_fn", None)
-    return {"task": task}
 
 
 # ====== 配置 ======
@@ -2789,137 +2660,6 @@ async def get_realtime(codes: str = None):
         raise HTTPException(500, str(e))
 
 
-# ====== WebSocket 實時推送 ======
-
-class ConnectionManager:
-    MAX_CONNECTIONS = 50  # 最大 WebSocket 連接數
-
-    def __init__(self):
-        self.active: list[WebSocket] = []
-
-    async def connect(self, ws: WebSocket):
-        if len(self.active) >= self.MAX_CONNECTIONS:
-            await ws.close(code=4003, reason="連接數已達上限")
-            logger.warning(f"WebSocket 連接拒絕：已達上限 {self.MAX_CONNECTIONS}")
-            return
-        await ws.accept()
-        self.active.append(ws)
-        logger.info(f"WebSocket 連接: {len(self.active)} 個客戶端")
-
-    def disconnect(self, ws: WebSocket):
-        try:
-            self.active.remove(ws)
-        except ValueError:
-            pass
-        logger.info(f"WebSocket 斷開: {len(self.active)} 個客戶端")
-
-    async def broadcast(self, data: dict):
-        import json
-        text = json.dumps(data, ensure_ascii=False)
-        failed = []
-        for ws in self.active[:]:
-            try:
-                await ws.send_text(text)
-            except Exception:
-                failed.append(ws)
-        for ws in failed:
-            self.disconnect(ws)
-
-
-manager = ConnectionManager()
-
-
-async def _ws_realtime_push():
-    """後台任務: 每隔一段時間向所有 WebSocket 客戶端推送行情 + 信號"""
-    import asyncio
-    from src.core.realtime import fetch_realtime
-    from src.core.signals import SignalEngine, compute_and_push_signals
-    signal_engine = SignalEngine()
-    # 用最近回測結果更新策略權重
-    try:
-        signal_engine.update_weights_from_backtest()
-    except Exception:
-        pass
-    signal_push_counter = 0
-    signal_push_interval = 6  # 每 6 個 poll 週期推送一次信號（約 60 秒）
-    while True:
-        await asyncio.sleep(settings.poll_interval_sec)
-        if not manager.active:
-            continue
-        if not _is_trading_time():
-            continue
-        try:
-            df = fetch_realtime(settings.watchlist)
-            if not df.empty:
-                await manager.broadcast({
-                    "type": "quotes",
-                    "data": df.to_dict(orient="records"),
-                    "timestamp": datetime.now().isoformat(),
-                })
-        except Exception as e:
-            logger.debug(f"WebSocket 推送失敗: {e}")
-
-        # 每隔 signal_push_interval 次推送一次信號
-        signal_push_counter += 1
-        if signal_push_counter >= signal_push_interval:
-            signal_push_counter = 0
-            try:
-                signals_data = compute_and_push_signals(signal_engine, settings.watchlist)
-                if signals_data:
-                    await manager.broadcast({
-                        "type": "signals",
-                        "data": signals_data,
-                        "timestamp": datetime.now().isoformat(),
-                    })
-            except Exception as e:
-                logger.debug(f"WebSocket 信號推送失敗: {e}")
-
-
-def _is_trading_time() -> bool:
-    """判斷是否在交易時段"""
-    now = datetime.now()
-    if now.weekday() >= 5:
-        return False
-    t = now.hour * 100 + now.minute
-    return (915 <= t <= 1130) or (1300 <= t <= 1500)
-
-
-# WebSocket 推送已在 lifespan 中啟動，此處不再使用已廢棄的 @app.on_event
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket, token: str = None):
-    """WebSocket 實時行情推送（支持 ?token=xxx 認證）"""
-    # 認證邏輯：ws_auth_required=True 時強制要求 token
-    if settings.ws_auth_required:
-        if not token:
-            await ws.close(code=4001, reason="需要認證：請在 URL 中添加 ?token=xxx")
-            logger.warning("WebSocket 連接被拒絕：缺少 token（生產環境強制認證）")
-            return
-        from src.core.auth import verify_token
-        payload = verify_token(token)
-        if not payload:
-            await ws.close(code=4001, reason="Token 無效或已過期")
-            logger.warning("WebSocket 連接被拒絕：token 無效")
-            return
-    else:
-        # 開發環境：可選認證
-        if token:
-            from src.core.auth import verify_token
-            payload = verify_token(token)
-            if not payload:
-                await ws.close(code=4001, reason="Token 無效或已過期")
-                return
-    await manager.connect(ws)
-    try:
-        while True:
-            data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_text('{"type":"pong"}')
-    except WebSocketDisconnect:
-        manager.disconnect(ws)
-
-
 # ====== 風險管理 API ======
 
 @app.post("/api/risk/position-size")
@@ -3335,8 +3075,11 @@ async def get_north_flow_api(days: int = 30):
     from src.core.capital_flow import get_north_flow
     
     try:
+        from src.core.capital_flow import aggregate_north_flow_daily
+
         flows = get_north_flow(days=days)
-        return {"flows": flows, "total": len(flows)}
+        daily = aggregate_north_flow_daily(flows)
+        return {"flows": flows, "daily": daily, "total": len(flows), "daily_total": len(daily)}
     except Exception as e:
         logger.error(f"獲取北向資金失敗: {e}")
         raise HTTPException(500, str(e))

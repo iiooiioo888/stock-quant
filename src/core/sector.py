@@ -16,6 +16,11 @@ _RATE_LIMIT = 0.5
 # 板塊列表內存緩存（秒），避免儀表盤輪詢反覆打東財
 _SECTOR_LIST_CACHE_TTL = 300
 _sector_list_cache: dict[str, tuple[float, list[dict]]] = {}
+# 上次成功結果（過期後仍可在東財斷線時兜底）
+_sector_list_stale: dict[str, list[dict]] = {}
+# 全源失敗後冷卻，避免短時間內重複請求東財
+_SECTOR_FETCH_COOLDOWN = 90
+_sector_fetch_blocked_until: dict[str, float] = {}
 # 連線失敗日誌節流（秒）
 _SECTOR_FAIL_LOG_INTERVAL = 120
 _last_sector_fail_log: dict[str, float] = {}
@@ -66,24 +71,47 @@ def _cache_get_sector_list(sector_type: str) -> list[dict] | None:
 def _cache_set_sector_list(sector_type: str, sectors: list[dict]) -> None:
     if sectors:
         _sector_list_cache[sector_type] = (time.time(), sectors)
+        _sector_list_stale[sector_type] = sectors
+        _sector_fetch_blocked_until.pop(sector_type, None)
+
+
+def _cache_get_stale_sector_list(sector_type: str) -> list[dict] | None:
+    data = _sector_list_stale.get(sector_type)
+    return list(data) if data else None
+
+
+def _sector_fetch_in_cooldown(sector_type: str) -> bool:
+    until = _sector_fetch_blocked_until.get(sector_type, 0)
+    return time.time() < until
+
+
+def _sector_mark_fetch_failed(sector_type: str) -> None:
+    _sector_fetch_blocked_until[sector_type] = time.time() + _SECTOR_FETCH_COOLDOWN
 
 
 def _requests_session():
-    """帶重試的 HTTP Session（東財直連用）"""
-    import requests
+    """帶重試的 HTTP Session（東財直連用，與 data_sources 池共用）"""
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
 
-    session = requests.Session()
+    from src.core.data_sources import get_session
+
+    session = get_session("eastmoney_sector")
+    session.headers.setdefault(
+        "User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    )
     retry = Retry(
-        total=2,
-        connect=2,
-        read=2,
-        backoff_factor=0.8,
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=1.0,
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
     )
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=4)
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=6, pool_maxsize=6)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
@@ -184,19 +212,52 @@ def _load_sectors_from_snapshot(sector_type: str = "industry") -> list[dict]:
 
 
 _EM_HOSTS = (
-    "17.push2.eastmoney.com",
-    "63.push2.eastmoney.com",
     "82.push2.eastmoney.com",
+    "63.push2.eastmoney.com",
+    "17.push2.eastmoney.com",
+    "80.push2.eastmoney.com",
+    "7.push2.eastmoney.com",
     "push2.eastmoney.com",
 )
 
 
-def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
-    """東財 push2 直連（AKShare 斷線時的備選，多節點重試）"""
+def _parse_em_sector_diff(diff: list, sector_type: str) -> list[dict]:
+    result = []
+    for item in diff:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("f14") or "").strip()
+        if not name:
+            continue
+        change_raw = item.get("f3")
+        change_pct = float(change_raw) / 100.0 if change_raw is not None else 0.0
+        result.append({
+            "name": name,
+            "code": str(item.get("f12") or ""),
+            "change_pct": change_pct,
+            "turnover": float(item.get("f8") or 0),
+            "amount": float(item.get("f20") or 0),
+            "stock_count": int((item.get("f104") or 0) + (item.get("f105") or 0)),
+            "rise_count": int(item.get("f104") or 0),
+            "fall_count": int(item.get("f105") or 0),
+            "leader": str(item.get("f128") or item.get("f140") or ""),
+            "leader_change_pct": float(item.get("f136") or 0) / 100.0,
+            "type": sector_type,
+            "source": "eastmoney_http",
+        })
+    return result
+
+
+def _fetch_sector_list_em_http(sector_type: str = "industry") -> tuple[list[dict], bool]:
+    """
+    東財 push2 直連（多節點 + 節點內重試）。
+    Returns:
+        (sectors, connection_failed)
+    """
     try:
         session = _requests_session()
     except ImportError:
-        return []
+        return [], False
 
     fs = "m:90+t:3" if sector_type == "concept" else "m:90+t:2"
     params = {
@@ -212,55 +273,46 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> list[dict]:
         "fields": "f12,f14,f3,f8,f20,f104,f105,f128,f136,f140",
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://quote.eastmoney.com/",
+        "Referer": "https://quote.eastmoney.com/center/boardlist.html",
+        "Accept": "application/json, text/plain, */*",
     }
 
     last_err = None
+    connection_failed = False
     for host in _EM_HOSTS:
         url = f"https://{host}/api/qt/clist/get"
-        try:
-            resp = session.get(url, params=params, headers=headers, timeout=(8, 25))
-            resp.raise_for_status()
-            payload = resp.json()
-            diff = (payload.get("data") or {}).get("diff") or []
-            if not diff:
-                continue
+        for attempt in range(2):
+            try:
+                if attempt:
+                    time.sleep(1.2 * attempt)
+                resp = session.get(url, params=params, headers=headers, timeout=(10, 30))
+                resp.raise_for_status()
+                payload = resp.json()
+                diff = (payload.get("data") or {}).get("diff") or []
+                if not diff:
+                    break
 
-            result = []
-            for item in diff:
-                if not isinstance(item, dict):
-                    continue
-                name = str(item.get("f14") or "").strip()
-                if not name:
-                    continue
-                change_raw = item.get("f3")
-                change_pct = float(change_raw) / 100.0 if change_raw is not None else 0.0
-                result.append({
-                    "name": name,
-                    "code": str(item.get("f12") or ""),
-                    "change_pct": change_pct,
-                    "turnover": float(item.get("f8") or 0),
-                    "amount": float(item.get("f20") or 0),
-                    "stock_count": int((item.get("f104") or 0) + (item.get("f105") or 0)),
-                    "rise_count": int(item.get("f104") or 0),
-                    "fall_count": int(item.get("f105") or 0),
-                    "leader": str(item.get("f128") or item.get("f140") or ""),
-                    "leader_change_pct": float(item.get("f136") or 0) / 100.0,
-                    "type": sector_type,
-                    "source": "eastmoney_http",
-                })
-
-            _rate_sleep()
-            logger.info(f"東財 HTTP({host}) 獲取{sector_type}板塊: {len(result)} 條")
-            return result
-        except Exception as e:
-            last_err = e
-            logger.debug(f"東財 {host} 獲取{sector_type}板塊失敗: {e}")
+                result = _parse_em_sector_diff(diff, sector_type)
+                if result:
+                    _rate_sleep()
+                    logger.info(f"東財 HTTP({host}) 獲取{sector_type}板塊: {len(result)} 條")
+                    return result, False
+            except Exception as e:
+                last_err = e
+                if _is_connection_error(e):
+                    connection_failed = True
+                logger.debug(
+                    f"東財 {host} 獲取{sector_type}板塊失敗 "
+                    f"(attempt {attempt + 1}): {e}"
+                )
 
     if last_err:
-        _log_sector_fail(sector_type, f"東財 HTTP 獲取{sector_type}板塊失敗: {last_err}")
-    return []
+        hint = "將嘗試快照/本地緩存" if _sector_list_stale.get(sector_type) else "請稍後重試或收盤後保存板塊快照"
+        _log_sector_fail(
+            sector_type,
+            f"東財 HTTP 獲取{sector_type}板塊失敗（多節點已重試）: {last_err}；{hint}",
+        )
+    return [], connection_failed
 
 
 def _load_sectors_from_local_kline(sector_type: str = "industry") -> list[dict]:
@@ -380,32 +432,52 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
     if cached is not None:
         return cached
 
-    # 東財直連通常比 AKShare 包裝層更穩；連線錯誤時優先 HTTP
-    sectors = _fetch_sector_list_em_http(sector_type)
-    if not sectors:
+    if _sector_fetch_in_cooldown(sector_type):
+        stale = _cache_get_stale_sector_list(sector_type)
+        if stale:
+            logger.debug(f"板塊 {sector_type} 請求冷卻中，使用內存緩存 {len(stale)} 條")
+            return stale
+        snap = _load_sectors_from_snapshot(sector_type)
+        if snap:
+            return snap
+
+    sectors: list[dict] = []
+    conn_err = False
+    sectors, conn_err = _fetch_sector_list_em_http(sector_type)
+
+    # 連線被對端重置時，AKShare 底層同樣打東財，跳過以加快兜底
+    if not sectors and not conn_err:
         sectors = _fetch_sector_list_live(sector_type)
+
     if sectors:
         _cache_set_sector_list(sector_type, sectors)
         return sectors
 
-    cached = _load_sectors_from_snapshot(sector_type)
-    if cached:
+    snap = _load_sectors_from_snapshot(sector_type)
+    if snap:
         logger.info(
-            f"使用板塊快照緩存: {sector_type}, {len(cached)} 條, "
-            f"日期={cached[0].get('snapshot_date')}"
+            f"使用板塊快照緩存: {sector_type}, {len(snap)} 條, "
+            f"日期={snap[0].get('snapshot_date')}"
         )
-        _cache_set_sector_list(sector_type, cached)
-        return cached
+        _cache_set_sector_list(sector_type, snap)
+        return snap
 
     local = _load_sectors_from_local_kline(sector_type)
     if local:
         _cache_set_sector_list(sector_type, local)
-    else:
-        _log_sector_fail(
-            sector_type,
-            f"{sector_type}板塊實時與快照均不可用，請檢查網絡或稍後重試",
-        )
-    return local
+        return local
+
+    stale = _cache_get_stale_sector_list(sector_type)
+    if stale:
+        logger.info(f"東財不可用，使用過期內存緩存 {sector_type}: {len(stale)} 條")
+        return stale
+
+    _sector_mark_fetch_failed(sector_type)
+    _log_sector_fail(
+        sector_type,
+        f"{sector_type}板塊實時與快照均不可用，請檢查網絡或稍後重試",
+    )
+    return []
 
 
 def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[dict]:
@@ -663,39 +735,114 @@ def get_sector_trend(sector_name: str, days: int = 20) -> list[dict]:
 # 板塊資金流向
 # ============================================================
 
-def get_sector_capital_flow(sector_name: str = None) -> list[dict]:
-    """
-    板塊資金流向 — 使用 AKShare 獲取板塊資金流向排名。
-    如果指定 sector_name，只返回該板塊的數據。
-    """
-    try:
-        df = ak.stock_sector_fund_flow_rank(indicator="今日")
-        if df is None or df.empty:
-            logger.warning("板塊資金流向數據為空")
-            return []
-
-        result = []
-        for _, row in df.iterrows():
-            item = {
-                "name": str(row.get("名称", "")),
-                "change_pct": float(row.get("今日涨跌幅", 0) or 0),
-                "main_net": float(row.get("主力净流入-净额", 0) or 0),
-                "main_net_pct": float(row.get("主力净流入-净占比", 0) or 0),
-                "super_large_net": float(row.get("超大单净流入-净额", 0) or 0),
-                "large_net": float(row.get("大单净流入-净额", 0) or 0),
-                "medium_net": float(row.get("中单净流入-净额", 0) or 0),
-                "small_net": float(row.get("小单净流入-净額", 0) or 0),
-            }
-            if sector_name and item["name"] != sector_name:
-                continue
-            result.append(item)
-
-        _rate_sleep()
-        return result
-
-    except Exception as e:
-        logger.error(f"獲取板塊資金流向失敗: {e}")
+def get_sector_capital_flow_rank(top_n: int = 20) -> list[dict]:
+    """板塊主力淨流入排名（今日）"""
+    items = get_sector_capital_flow()
+    if not items:
         return []
+    items.sort(key=lambda x: x.get("main_net", 0) or 0, reverse=True)
+    return items[:top_n]
+
+
+def get_sector_change_flow_matrix(
+    sector_type: str = "industry",
+    top_n: int = 40,
+) -> list[dict]:
+    """
+    板塊漲跌幅 × 資金流向（散點圖數據）。
+    合併板塊行情與資金排名，按名稱對齊。
+    """
+    perf = get_sector_performance(sector_type=sector_type, top_n=top_n) or []
+    flows = get_sector_capital_flow() or []
+    flow_map = {f.get("name"): f for f in flows if f.get("name")}
+
+    merged = []
+    seen = set()
+    for p in perf:
+        name = p.get("name")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        f = flow_map.get(name, {})
+        merged.append({
+            "name": name,
+            "change_pct": float(p.get("change_pct", 0) or 0),
+            "main_net": float(f.get("main_net", 0) or 0),
+            "main_net_pct": float(f.get("main_net_pct", 0) or 0),
+            "amount": float(p.get("amount", 0) or 0),
+            "source": p.get("source") or f.get("source") or "",
+        })
+
+    for f in flows:
+        name = f.get("name")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        merged.append({
+            "name": name,
+            "change_pct": float(f.get("change_pct", 0) or 0),
+            "main_net": float(f.get("main_net", 0) or 0),
+            "main_net_pct": float(f.get("main_net_pct", 0) or 0),
+            "amount": 0,
+            "source": "capital_flow",
+        })
+
+    return merged
+
+
+def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industry") -> list[dict]:
+    """
+    板塊資金流向排名（多源降級）。
+    優先：東財 HTTP 直連 → AKShare → 板塊行情列表（無資金欄位時僅漲跌）
+    """
+    from src.core.eastmoney_flow import (
+        fetch_sector_fund_flow_akshare,
+        fetch_sector_fund_flow_rank,
+    )
+
+    result: list[dict] = []
+    for fetcher in (
+        lambda: fetch_sector_fund_flow_rank(indicator="今日", sector_type=sector_type),
+        lambda: fetch_sector_fund_flow_akshare(indicator="今日"),
+    ):
+        try:
+            items = fetcher() or []
+        except Exception as e:
+            logger.debug(f"板塊資金拉取失敗: {e}")
+            items = []
+        if items:
+            result = items
+            break
+
+    if not result:
+        sectors = get_sector_list(sector_type)
+        if sectors:
+            logger.info(f"板塊資金接口不可用，使用{sector_type}板塊行情列表（無主力淨額）")
+            result = [
+                {
+                    "name": s.get("name", ""),
+                    "code": s.get("code", ""),
+                    "change_pct": float(s.get("change_pct", 0) or 0),
+                    "main_net": 0.0,
+                    "main_net_pct": 0.0,
+                    "super_large_net": 0.0,
+                    "large_net": 0.0,
+                    "medium_net": 0.0,
+                    "small_net": 0.0,
+                    "source": s.get("source", "sector_list_fallback"),
+                }
+                for s in sectors
+                if s.get("name")
+            ]
+
+    if sector_name:
+        result = [x for x in result if x.get("name") == sector_name]
+
+    if result:
+        _rate_sleep()
+    else:
+        _log_sector_fail("industry", "板塊資金流向全部數據源失敗", level="warning")
+    return result
 
 
 # ============================================================
@@ -713,10 +860,15 @@ def get_sector_heatmap_data(sector_type: str = "industry") -> list[dict]:
 
     result = []
     for s in sectors:
+        amount = float(s.get("amount", 0) or 0)
+        if amount <= 0:
+            change = abs(float(s.get("change_pct", 0) or 0))
+            count = int(s.get("rise_count", 0) or 0) + int(s.get("fall_count", 0) or 0)
+            amount = change + 0.5 if change > 0 else (float(count) if count > 0 else 1.0)
         result.append({
             "name": s.get("name", ""),
             "change_pct": s.get("change_pct", 0),
-            "amount": s.get("amount", 0),
+            "amount": amount,
             "stock_count": s.get("rise_count", 0) + s.get("fall_count", 0),
             "rise_count": s.get("rise_count", 0),
             "fall_count": s.get("fall_count", 0),

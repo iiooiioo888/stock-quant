@@ -48,7 +48,7 @@ const Signals = {
       return;
     }
     container.innerHTML = signals.map(s => {
-      const strategies = (s.strategies || []).map(st => {
+      const strategies = (s.signals || s.strategies || []).map(st => {
         const cls = st.signal === 'buy' ? 'on' : st.signal === 'sell' ? 'off' : 'cfg';
         return `<span class="chip ${cls}">${st.strategy}: ${st.signal}</span>`;
       }).join(' ');
@@ -223,17 +223,7 @@ const Signals = {
   async _drawStrengthGauge(codes) {
     if (!codes || codes.length < 2) return; // 至少 2 只股票才畫圖
 
-    // 確保容器存在
-    let chartDiv = document.getElementById('signalsStrengthChart');
-    if (!chartDiv) {
-      const container = document.getElementById('strengthSignals');
-      if (!container) return;
-      chartDiv = document.createElement('div');
-      chartDiv.id = 'signalsStrengthChart';
-      chartDiv.className = 'cw mt-md';
-      chartDiv.innerHTML = '<canvas id="sigStrengthRadar"></canvas>';
-      container.appendChild(chartDiv);
-    }
+    if (!document.getElementById('sigStrengthRadar')) return;
 
     // 獲取每只股票的信號數據
     const datasets = [];

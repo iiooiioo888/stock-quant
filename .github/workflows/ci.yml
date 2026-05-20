@@ -47,6 +47,8 @@ jobs:
         env:
           SQ_DB_PATH: /tmp/test_stock.db
           SQ_REDIS_ENABLED: "false"
+          SQ_DEBUG: "true"
+          SQ_DEMO_MODE: "true"
 
   # ====== Docker 構建 ======
   docker:
@@ -62,3 +64,21 @@ jobs:
       - name: 驗證鏡像
         run: |
           docker run --rm stock-quant:latest python -c "from src.config import settings; print(f'✅ {settings.app_name} v{settings.app_version}')"
+
+      - name: 容器健康檢查
+        run: |
+          docker run -d --name sq-ci -p 8000:8000 \
+            -e SQ_DEMO_MODE=true \
+            -e SQ_DB_PATH=/tmp/ci_stock.db \
+            -e SQ_REDIS_ENABLED=false \
+            stock-quant:latest
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/health; then
+              docker rm -f sq-ci
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs sq-ci
+          docker rm -f sq-ci
+          exit 1

@@ -27,10 +27,15 @@ services:
         value: "8000"
       - key: SQ_DEMO_MODE
         value: "true"
+      - key: SQ_CORS_ORIGINS
+        value: https://stock-quant.onrender.com
+      - key: SQ_WS_AUTH_REQUIRED
+        value: "false"
       - key: SQ_DB_PATH
         value: /app/data/stock.db
       - key: SQ_DEMO_ADMIN_PASSWORD
-        value: "stockquant2024"
+        sync: false
+        # 在 Render Dashboard 手動設置強密碼，勿使用公開默認值
       - key: SQ_HISTORY_START_DATE
         value: "20230101"
     healthCheckPath: /api/health

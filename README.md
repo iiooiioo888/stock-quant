@@ -7,7 +7,7 @@
 - **異步任務佇列**：回測、優化、組合、Walk-Forward 等提交後立即返回，Web 端輪詢並在「任務面板」查看進度
 - **並行加速**：可配置任務槽位、網格搜索進程/線程池；Windows 自動使用線程池避免 SQLite 多進程問題
 - **結果緩存**：相同參數 + 相同 K 線版本命中緩存，秒級返回；支持本地 LRU 或 Redis（Docker 默認帶 Redis）
-- **19 種內置策略** + 11 種組合方法 + Optuna 貝葉斯優化
+- **19 種內置策略** + 多種組合方法（約 21 個 API）+ Optuna 貝葉斯優化
 
 ## 🌐 在線演示
 
@@ -15,9 +15,11 @@
 
 **演示地址：** `https://stock-quant.onrender.com`
 
-演示模式特性：
+演示模式特性（`SQ_DEMO_MODE=true`）：
 - 自動下載 5 只示範股票數據（平安銀行、貴州茅台、五糧液、中國平安、美的集團）
-- 包含 13 種策略的完整回測功能
+- 5 隻示範股票 + 5 種示範策略（系統內建共 19 種策略可回測）
+- **未登錄可讀**：儀表盤、數據中心、任務列表、信號等 GET 接口
+- **寫入需登錄**：下載入庫、取消任務、回測提交、調度器變更等 POST/DELETE
 - 參數優化、Walk-Forward、組合回測均可體驗
 - 實時盯盤功能在非交易時段使用歷史數據模擬
 
@@ -101,6 +103,11 @@ python main.py screener
 
 # 策略排行榜
 python main.py leaderboard
+
+# 定時任務（APScheduler）
+python main.py scheduler list
+python main.py scheduler setup
+python main.py scheduler run incremental_update
 ```
 
 ## Web API
@@ -228,9 +235,12 @@ python main.py leaderboard
 | `/api/watchlist/add` | POST | 加入監控列表 |
 | `/api/notify/channels` | GET | 通知渠道狀態 |
 | `/api/notify/test` | POST | 測試通知 |
-| `/api/scheduler/jobs` | GET | 調度任務列表 |
-| `/api/scheduler/enable` | POST | 啟用定時任務 |
-| `/api/scheduler/disable` | POST | 禁用定時任務 |
+| `/api/scheduler/jobs` | GET | 已註冊的調度任務 |
+| `/api/scheduler/catalog` | GET | 任務目錄與啟用狀態 |
+| `/api/scheduler/setup` | POST | 按 config 註冊默認任務 |
+| `/api/scheduler/jobs/{id}/run` | POST | 立即執行一次 |
+| `/api/scheduler/enable` | POST | 啟用默認任務套件 |
+| `/api/scheduler/disable` | POST | 禁用全部定時任務 |
 
 ### 用戶系統端點
 
@@ -263,7 +273,10 @@ stock-quant/
 ├── src/
 │   ├── config.py           # 配置管理（支持環境變量 + .env）
 │   ├── api/
-│   │   └── app.py          # FastAPI 應用 + 70+ 端點 + 內建儀表盤
+│   │   ├── app.py          # FastAPI 主應用
+│   │   ├── routers/        # 健康檢查、任務等路由
+│   │   ├── ws.py           # WebSocket 推送
+│   │   └── demo.py         # 演示數據填充
 │   ├── core/
 │   │   ├── db.py           # 數據庫操作（SQLite + 進程內 LRU）
 │   │   ├── yahoo_finance.py # Yahoo Finance（A股/全球 主源）
@@ -276,7 +289,7 @@ stock-quant/
 │   │   ├── alerts.py       # 預警引擎 + 多渠道通知
 │   │   ├── backtest.py     # 回測引擎（19 種策略 + 滑點/T+1/漲跌停）
 │   │   ├── optimize.py     # 參數優化（網格 + Optuna）
-│   │   ├── portfolio.py    # 11 種組合方法 + 相關性 + 有效前沿
+│   │   ├── portfolio.py    # 組合分析（風險平價/MVO/Black-Litterman 等）
 │   │   ├── walkforward.py  # Walk-Forward 分析
 │   │   ├── auto_optimize.py# 全自動參數尋優
 │   │   ├── heatmap.py      # 參數敏感性熱力圖
@@ -316,7 +329,6 @@ stock-quant/
 │   │   ├── heatmap.js      # 熱力圖 Tab
 │   │   ├── data.js         # 數據中心 Tab
 │   │   └── utils.js        # 工具函數
-│   └── lib/                # CDN 備份
 ├── data/
 │   └── stock.db            # SQLite 數據庫
 └── logs/
@@ -508,6 +520,18 @@ docker run -p 8000:8000 \
 
 Compose 會將 `SQ_REDIS_URL` 指向 `redis` 服務，並掛載 `./data`、`./logs`。
 
+### 測試
+
+```bash
+# CI 與日常開發（推薦）
+SQ_DEMO_MODE=true pytest tests/ -q
+
+# 手動全量 API 煙霧（需本機已啟動服務並設置 SQ_DEMO_ADMIN_PASSWORD）
+./test_all.sh
+```
+
+`tests/test_smoke_api.py` 覆蓋核心 GET 端點；`tests/test_auth_write_protection.py` 驗證演示模式下寫入保護。
+
 ### 生產部署必改配置
 
 部署到雲端時，以下配置項**必須修改**，否則存在安全風險：
@@ -516,7 +540,7 @@ Compose 會將 `SQ_REDIS_URL` 指向 `redis` 服務，並掛載 `./data`、`./lo
 |----------|------|------|
 | `SQ_CORS_ORIGINS` | 允許的前端域名（不要用 `*`） | `https://your-domain.com` |
 | `SQ_JWT_SECRET` | JWT 簽名密鑰（至少 32 字符） | `openssl rand -hex 32` |
-| `SQ_WS_AUTH_REQUIRED` | WebSocket 強制認證（默認 true） | `true` |
+| `SQ_WS_AUTH_REQUIRED` | WebSocket 強制認證（非演示模式默認啟用） | `true` |
 | `SQ_DEMO_ADMIN_PASSWORD` | 管理員密碼（不設則隨機生成） | 自定義強密碼 |
 | `SQ_REDIS_PASSWORD` | Docker Redis 密碼 | 與 `SQ_REDIS_URL` 一致 |
 | `SQ_CACHE_ENABLED` | 計算結果緩存 | `true` |
