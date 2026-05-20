@@ -20,6 +20,7 @@ const TaskCommon = {
     walkforward: '🔄 Walk-Forward',
     auto_optimize: '🤖 自動優化',
     stock_universe_sync: '📚 股票庫同步',
+    stock_universe_intro: '📝 股票簡介',
     data_download: '📥 市場數據下載',
     data_download_all: '📥 全市場下載',
     data_incremental: '🔄 增量更新',
@@ -49,6 +50,7 @@ const TaskCommon = {
     walkforward: 'walkforward',
     auto_optimize: 'optimize',
     stock_universe_sync: 'data',
+    stock_universe_intro: 'data',
     data_download: 'data',
     data_download_all: 'data',
     data_incremental: 'data',
@@ -127,6 +129,13 @@ const TaskCommon = {
         if (r.total_pool != null) parts.push(`池內 ${r.total_pool}`);
         return parts.join(' · ');
       }
+    }
+    if (task.task_type === 'stock_universe_intro') {
+      const r = task.result;
+      if (r && task.status === 'completed') {
+        return `簡介 ${r.enriched ?? 0} / ${r.attempted ?? 0}`;
+      }
+      if (task.status_message) return task.status_message;
     }
     if (task.task_type === 'portfolio') {
       const p = task.params;
@@ -575,7 +584,7 @@ const TaskCommon = {
       if (codeEl) codeEl.value = p.code || '';
       if (stratEl && p.strategy) stratEl.value = p.strategy;
       App.renderWalkForwardResult(r);
-    } else if (task.task_type === 'stock_universe_sync' && typeof Data !== 'undefined') {
+    } else if ((task.task_type === 'stock_universe_sync' || task.task_type === 'stock_universe_intro') && typeof Data !== 'undefined') {
       const tabs = document.getElementById('dataTabs');
       tabs?.querySelectorAll('button').forEach(b => b.classList.remove('a'));
       const btn = tabs?.querySelector('button[data-dtab="universe"]');
@@ -585,6 +594,11 @@ const TaskCommon = {
       Data._onTabActivated('universe');
       if (Data.loadUniverseStats) Data.loadUniverseStats();
       if (Data.searchUniverse) Data.searchUniverse(0);
+    } else if (task.task_type === 'data_download_all' && typeof Data !== 'undefined') {
+      if (Data.loadUniverseStats) Data.loadUniverseStats();
+      if (Data._currentTab === 'universe' && Data.searchUniverse) {
+        Data.searchUniverse(Data._universeOffset || 0);
+      }
     } else if (tab === 'data' && typeof App !== 'undefined') {
       if (App.loadMarkets) App.loadMarkets();
       if (typeof Tasks !== 'undefined' && Tasks.viewResult) Tasks.viewResult(taskId);

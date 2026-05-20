@@ -832,6 +832,7 @@
             </div>
             <div class="fr flex-wrap" style="align-items:flex-end;margin-bottom:12px">
                 <button class="btn" type="button" id="univSyncBtn" onclick="Data.syncStockUniverse()">⚡ 一鍵同步股票庫</button>
+                <button class="btn s" type="button" id="univIntroBtn" onclick="Data.enrichUniverseIntros()" title="每次約 500 檔，可多次點擊直到補齊">📝 補充簡介</button>
                 <button class="btn s" type="button" onclick="Data.loadUniverseStats()">📊 刷新統計</button>
                 <span id="univSyncHint" class="sec-desc" style="margin:0;flex:1;min-width:200px"></span>
             </div>
@@ -847,8 +848,8 @@
                     </select>
                 </div>
                 <div class="fg" style="flex:1;min-width:160px">
-                    <label>代碼 / 名稱</label>
-                    <input id="univKeyword" class="input-sm input-wide" placeholder="000001 或 茅台">
+                    <label>代碼 / 名稱 / 簡介</label>
+                    <input id="univKeyword" class="input-sm input-wide" placeholder="000001、茅台、白酒">
                 </div>
                 <div class="fg">
                     <label>每頁</label>

@@ -80,6 +80,38 @@ async def stock_universe_sync(
     )
 
 
+@router.post("/api/stock-universe/enrich-intros")
+async def stock_universe_enrich_intros(
+    limit: int = Query(None, ge=0, le=20000),
+    user=Depends(require_auth),
+):
+    """補充股票庫簡介（異步任務，需登錄）"""
+    from src.core.task_manager import create_task
+    from src.core.stock_universe import enrich_universe_intros
+
+    cap = limit if limit is not None else settings.stock_universe_intro_enrich_limit
+    task_params = {"limit": cap}
+    task = create_task(
+        "stock_universe_intro",
+        task_params,
+        title=f"補充股票簡介（前 {cap} 檔）",
+    )
+    if task.get("is_duplicate"):
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同簡介補充任務執行中",
+            "async": True,
+        }
+
+    task_id = task["task_id"]
+    return dispatch_async_task(
+        task_id,
+        lambda: enrich_universe_intros(limit=cap, task_id=task_id),
+    )
+
+
 # ====== 股票 ======
 
 @router.get("/api/stocks")
@@ -103,6 +135,7 @@ async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
                     "market": r.get("market", "a_share"),
                     "total_mv": r.get("total_mv"),
                     "rank_mv": r.get("rank_mv"),
+                    "intro": r.get("intro") or "",
                     "data_points": 0,
                 }
                 for r in rows

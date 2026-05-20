@@ -6,7 +6,7 @@
 
 const StockPicker = {
   _UNIVERSE_MAX: 20000,
-  _ROW_H: 36,
+  _ROW_H: 52,
   _stocks: [],
   _loading: null,
   _MARKET_LABELS: {
@@ -258,6 +258,7 @@ const StockPicker = {
       name: String(item?.name || item?.stock_name || item?.company_name || code).trim(),
       market: item?.market || item?.market_type || 'a_share',
       rank: Number(item?.rank_mv || item?.rank || idx + 1),
+      intro: String(item?.intro || '').trim(),
     };
   },
 
@@ -382,7 +383,8 @@ const StockPicker = {
     return this._stocks.filter(s => {
       if (state.activeMarket !== 'all' && s.market !== state.activeMarket) return false;
       if (!q) return true;
-      return s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+      return s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+        || (s.intro || '').toLowerCase().includes(q);
     });
   },
 
@@ -438,7 +440,7 @@ const StockPicker = {
     row.classList.toggle('a', selected.has(String(item.code).toUpperCase()));
     row.dataset.code = item.code;
     row.dataset.name = item.name || '';
-    row.title = `${item.code} ${item.name}`;
+    row.title = `${item.code} ${item.name}${item.intro ? '\n' + item.intro : ''}`;
 
     const iconWrap = document.createElement('span');
     iconWrap.className = 'stock-code-row-icon stock-code-icon';
@@ -456,11 +458,22 @@ const StockPicker = {
     code.className = 'stock-code-row-code';
     code.textContent = item.code;
 
+    const textWrap = document.createElement('span');
+    textWrap.className = 'stock-code-row-text';
+
     const name = document.createElement('span');
     name.className = 'stock-code-row-name';
     name.textContent = item.name || item.code;
 
-    row.append(iconWrap, rank, code, name);
+    textWrap.appendChild(name);
+    if (item.intro) {
+      const intro = document.createElement('span');
+      intro.className = 'stock-code-row-intro';
+      intro.textContent = item.intro;
+      textWrap.appendChild(intro);
+    }
+
+    row.append(iconWrap, rank, code, textWrap);
     return row;
   },
 

@@ -4,7 +4,7 @@
 
 const Analysis = {
   _UNIVERSE_MAX: 20000,
-  _UNIVERSE_ROW_H: 42,
+  _UNIVERSE_ROW_H: 52,
   _universeList: [],
   _activeMarket: 'all',
   _searchQuery: '',
@@ -96,7 +96,8 @@ const Analysis = {
       code,
       name: String(item?.name || item?.stock_name || item?.company_name || code).trim(),
       market: item?.market || item?.market_type || 'a_share',
-      rank: Number(item?.rank || idx + 1),
+      rank: Number(item?.rank_mv || item?.rank || idx + 1),
+      intro: String(item?.intro || '').trim(),
     };
   },
 
@@ -150,7 +151,8 @@ const Analysis = {
     return this._universeList.filter(s => {
       if (this._activeMarket !== 'all' && s.market !== this._activeMarket) return false;
       if (!q) return true;
-      return s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+      return s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+        || (s.intro || '').toLowerCase().includes(q);
     });
   },
 
@@ -160,11 +162,15 @@ const Analysis = {
     row.className = `stock-code-row ${this.getCode() === item.code ? 'a' : ''}`;
     row.dataset.code = item.code;
     row.dataset.name = item.name || '';
+    row.title = `${item.code} ${item.name}${item.intro ? '\n' + item.intro : ''}`;
     row.innerHTML = `
       <span class="stock-code-row-rank">#${this._esc(item.rank)}</span>
       <span class="stock-code-icon stock-code-row-icon"><img width="28" height="28" alt=""><span class="stock-code-letter">${this._esc((item.name || item.code).slice(0, 1))}</span></span>
       <span class="stock-code-row-code">${this._esc(item.code)}</span>
-      <span class="stock-code-row-name">${this._esc(item.name || item.code)}</span>
+      <span class="stock-code-row-text">
+        <span class="stock-code-row-name">${this._esc(item.name || item.code)}</span>
+        ${item.intro ? `<span class="stock-code-row-intro">${this._esc(item.intro)}</span>` : ''}
+      </span>
     `;
     const img = row.querySelector('img');
     if (img) Utils.bindStockIcon(img, item.code, item.name);

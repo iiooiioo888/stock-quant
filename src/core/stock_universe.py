@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS stock_universe (
     rank_mv         INTEGER,
     updated_at      TEXT NOT NULL,
     source          TEXT,
+    intro           TEXT,
     extra_json      TEXT,
     PRIMARY KEY (code, market)
 )
@@ -71,6 +72,12 @@ _COL_CANDIDATES = {
 def init_stock_universe_table():
     with get_conn() as conn:
         conn.execute(DDL_STOCK_UNIVERSE)
+        cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(stock_universe)").fetchall()
+        }
+        if "intro" not in cols:
+            conn.execute("ALTER TABLE stock_universe ADD COLUMN intro TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_univ_rank ON stock_universe(rank_mv)"
         )
@@ -82,6 +89,228 @@ def init_stock_universe_table():
         )
         conn.commit()
     logger.info("股票庫表 stock_universe 就緒")
+
+
+def _normalize_intro(text: str | None, max_len: int = 480) -> str:
+    if not text:
+        return ""
+    s = " ".join(str(text).split())
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 1].rstrip() + "…"
+
+
+def _infer_intro_from_row(row: dict) -> str:
+    industry = (row.get("industry") or "").strip()
+    if industry:
+        return industry
+    name = (row.get("name") or "").strip()
+    code = (row.get("code") or "").strip()
+    if name and name != code:
+        market = row.get("market")
+        label = {"a_share": "A股", "hk_stock": "港股", "us_stock": "美股"}.get(market, "")
+        return f"{label} {name}".strip() if label else name
+    return ""
+
+
+def _a_share_em_code(code: str) -> str:
+    code = str(code).zfill(6)
+    prefix = "SH" if code.startswith(("5", "6", "9")) else "SZ"
+    return f"{prefix}{code}"
+
+
+def _fetch_intro_a_share(code: str) -> str:
+    try:
+        resp = _HTTP.get(
+            "https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/PageAjax",
+            params={"code": _a_share_em_code(code)},
+            timeout=12,
+            headers={"Referer": "https://emweb.securities.eastmoney.com/"},
+        )
+        resp.raise_for_status()
+        jb = resp.json().get("jbzl")
+        if isinstance(jb, list) and jb:
+            jb = jb[0]
+        if not isinstance(jb, dict):
+            return ""
+        scope = (jb.get("BUSINESS_SCOPE") or "").strip()
+        if scope:
+            return _normalize_intro(scope)
+        profile = (jb.get("ORG_PROFILE") or "").strip()
+        if profile:
+            return _normalize_intro(profile)
+        em2016 = (jb.get("EM2016") or jb.get("INDUSTRYCSRC1") or "").strip()
+        return _normalize_intro(em2016)
+    except Exception as e:
+        logger.debug(f"A股簡介 {code} 失敗: {e}")
+        return ""
+
+
+def _fetch_intro_hk(code: str) -> str:
+    num = str(code).zfill(5)
+    secu = f"{num}.HK"
+    try:
+        resp = _HTTP.get(
+            "https://datacenter.eastmoney.com/securities/api/data/v1/get",
+            params={
+                "reportName": "RPT_HKF10_INFO_ORGPROFILE",
+                "columns": "SECUCODE,ORG_NAME,ORG_PROFILE",
+                "filter": f'(SECUCODE="{secu}")',
+                "pageNumber": 1,
+                "pageSize": 1,
+                "source": "SECURITIES",
+                "client": "PC",
+            },
+            timeout=12,
+        )
+        resp.raise_for_status()
+        data = (resp.json().get("result") or {}).get("data") or []
+        if not data:
+            return ""
+        row = data[0]
+        profile = (row.get("ORG_PROFILE") or "").strip()
+        if profile:
+            return _normalize_intro(profile)
+        return _normalize_intro(row.get("ORG_NAME"))
+    except Exception as e:
+        logger.debug(f"港股簡介 {code} 失敗: {e}")
+        return ""
+
+
+def _fetch_intro_us(code: str) -> str:
+    sym = str(code).strip().upper()
+    for secu in (f"{sym}.O", f"{sym}.N", sym):
+        try:
+            resp = _HTTP.get(
+                "https://datacenter.eastmoney.com/securities/api/data/v1/get",
+                params={
+                    "reportName": "RPT_USF10_INFO_ORGPROFILE",
+                    "columns": "SECUCODE,ORG_NAME,ORG_PROFILE",
+                    "filter": f'(SECUCODE="{secu}")',
+                    "pageNumber": 1,
+                    "pageSize": 1,
+                    "source": "SECURITIES",
+                    "client": "PC",
+                },
+                timeout=12,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            if not body.get("success"):
+                continue
+            data = (body.get("result") or {}).get("data") or []
+            if not data:
+                continue
+            row = data[0]
+            profile = (row.get("ORG_PROFILE") or "").strip()
+            if profile:
+                return _normalize_intro(profile)
+            return _normalize_intro(row.get("ORG_NAME"))
+        except Exception:
+            continue
+    return ""
+
+
+def _fetch_intro(code: str, market: str) -> str:
+    if market == "a_share":
+        return _fetch_intro_a_share(code)
+    if market == "hk_stock":
+        return _fetch_intro_hk(code)
+    if market == "us_stock":
+        return _fetch_intro_us(code)
+    return ""
+
+
+def enrich_universe_intros(
+    limit: int | None = None,
+    task_id: str | None = None,
+    *,
+    replace_short: bool = True,
+) -> dict:
+    """為股票庫補充簡介（按 rank_mv 優先，東財 F10）。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.core.task_manager import update_task, update_task_meta, is_task_cancelled
+
+    cap = limit if limit is not None else settings.stock_universe_intro_enrich_limit
+    if cap <= 0:
+        return {"enriched": 0, "skipped": True, "attempted": 0, "failed": 0}
+
+    init_stock_universe_table()
+    intro_filter = (
+        "intro IS NULL OR intro = ''"
+        + (" OR (length(intro) < 36 AND intro NOT LIKE '%。%' AND intro NOT LIKE '%；%')" if replace_short else "")
+    )
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            f"""
+            SELECT code, market, name, industry, intro, rank_mv
+            FROM stock_universe
+            WHERE {intro_filter}
+            ORDER BY rank_mv ASC
+            LIMIT ?
+            """,
+            (cap,),
+        ).fetchall()
+
+    total = len(rows)
+    if total == 0:
+        result = {"enriched": 0, "failed": 0, "attempted": 0, "note": "所有標的已有簡介"}
+        if task_id:
+            update_task(task_id, status="completed", progress=100, result=result)
+            update_task_meta(task_id, message="無需補充（簡介已齊）")
+        return result
+
+    if task_id:
+        update_task_meta(task_id, message=f"準備補充簡介（{total} 檔）…")
+        update_task(task_id, progress=5)
+
+    def _one(row_dict: dict) -> tuple[str, str, str]:
+        code = row_dict["code"]
+        market = row_dict["market"]
+        intro = _fetch_intro(code, market)
+        if not intro:
+            intro = _infer_intro_from_row(row_dict)
+        return code, market, intro
+
+    workers = min(6, max(total, 1))
+    pending: list[tuple[str, str, str]] = []
+    done = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, dict(r)) for r in rows]
+        for fut in as_completed(futures):
+            if task_id and is_task_cancelled(task_id):
+                raise RuntimeError("任務已取消")
+            code, market, intro = fut.result()
+            if intro:
+                pending.append((code, market, intro))
+            done += 1
+            if task_id and (done == 1 or done % 25 == 0 or done == total):
+                pct = 5 + int(done / max(total, 1) * 85)
+                update_task(task_id, progress=min(92, pct))
+                update_task_meta(
+                    task_id,
+                    message=f"拉取簡介 {done}/{total}（待寫入 {len(pending)}）",
+                )
+
+    enriched = 0
+    with get_conn() as conn:
+        for code, market, intro in pending:
+            conn.execute(
+                "UPDATE stock_universe SET intro = ? WHERE code = ? AND market = ?",
+                (intro, code, market),
+            )
+            enriched += 1
+        conn.commit()
+
+    failed = total - enriched
+    result = {"enriched": enriched, "failed": failed, "attempted": total}
+    logger.info(f"股票庫簡介補充: 嘗試 {total}，成功 {enriched}，無資料 {failed}")
+    if task_id:
+        update_task(task_id, progress=100, result=result)
+        update_task_meta(task_id, message=f"簡介補充完成（{enriched}/{total}）")
+    return result
 
 
 def _find_col(df: pd.DataFrame, keys: list[str]) -> Optional[str]:
@@ -168,6 +397,14 @@ def _parse_spot_df(
             "amount": _to_float(row.get(_find_col(df, _COL_CANDIDATES["amount"]))),
             "turnover": _to_float(row.get(_find_col(df, _COL_CANDIDATES["turnover"]))),
             "source": source,
+            "intro": _infer_intro_from_row({
+                "code": code,
+                "market": market,
+                "name": name,
+                "industry": str(row.get(_find_col(df, _COL_CANDIDATES["industry"]), "") or "")
+                if _find_col(df, _COL_CANDIDATES["industry"])
+                else "",
+            }),
         }
         rows.append(item)
     return rows
@@ -419,6 +656,296 @@ _HK_YAHOO_SYMBOLS = [
 ]
 
 
+_EM_HOSTS = (
+    "https://82.push2.eastmoney.com",
+    "https://85.push2.eastmoney.com",
+    "https://push2.eastmoney.com",
+    "https://47.push2.eastmoney.com",
+)
+_EM_FS = {
+    "a_share": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
+    "hk_stock": "m:116+t:31",
+    "us_stock": "m:105+t:55,m:105+t:43",
+}
+_EM_FIELDS = "f12,f14,f2,f3,f5,f6,f8,f9,f20,f21,f23"
+
+
+def _em_clist_page(host: str, fs: str, page: int, page_size: int = 100) -> list[dict]:
+    url = f"{host}/api/qt/clist/get"
+    params = {
+        "pn": page,
+        "pz": page_size,
+        "po": 1,
+        "np": 1,
+        "fltt": 2,
+        "invt": 2,
+        "fid": "f20",
+        "fs": fs,
+        "fields": _EM_FIELDS,
+        "ut": "fa5fd1943c7b386f172d6893dbbd1",
+    }
+    resp = _HTTP.get(url, params=params, timeout=20)
+    resp.raise_for_status()
+    data = resp.json().get("data") or {}
+    return data.get("diff") or []
+
+
+def _fetch_eastmoney_spot_df(market: str, max_pages: int = 220) -> pd.DataFrame:
+    """東財 clist 直連（akshare 失敗時備援，多節點輪詢）。"""
+    fs = _EM_FS.get(market)
+    if not fs:
+        return pd.DataFrame()
+
+    last_err = None
+    for host in _EM_HOSTS:
+        rows: list[dict] = []
+        try:
+            for page in range(1, max_pages + 1):
+                batch = _em_clist_page(host, fs, page)
+                if not batch:
+                    break
+                for item in batch:
+                    code = str(item.get("f12") or "").strip()
+                    if not code or code == "-":
+                        continue
+                    rows.append({
+                        "代码": code,
+                        "名称": str(item.get("f14") or ""),
+                        "最新价": item.get("f2"),
+                        "涨跌幅": item.get("f3"),
+                        "成交量": item.get("f5"),
+                        "成交额": item.get("f6"),
+                        "换手率": item.get("f8"),
+                        "市盈率-动态": item.get("f9"),
+                        "总市值": item.get("f20"),
+                        "流通市值": item.get("f21"),
+                        "市净率": item.get("f23"),
+                    })
+                if len(batch) < 100:
+                    break
+                time.sleep(0.12)
+            if rows:
+                logger.info(f"股票庫 {market} 東財直連: {len(rows)} 條 ({host})")
+                return pd.DataFrame(rows)
+        except Exception as e:
+            last_err = e
+            logger.warning(f"股票庫 {market} 東財 {host} 失敗: {e}")
+            time.sleep(0.5)
+    if last_err:
+        logger.debug(f"股票庫 {market} 東財直連全部失敗: {last_err}")
+    return pd.DataFrame()
+
+
+def _fetch_market_spot_df(market: str) -> pd.DataFrame:
+    """拉取單市場全量行情：東財直連 → akshare。"""
+    ak_fetchers = {
+        "a_share": ak.stock_zh_a_spot_em,
+        "hk_stock": ak.stock_hk_spot_em,
+        "us_stock": ak.stock_us_spot_em,
+    }
+    df = _fetch_eastmoney_spot_df(market)
+    if not df.empty:
+        return df
+    fetcher = ak_fetchers.get(market)
+    if fetcher:
+        return _fetch_with_retry(fetcher, market)
+    return pd.DataFrame()
+
+
+def _kline_code_to_universe(code: str, market: str) -> str:
+    """daily_kline 代碼 → stock_universe 代碼。"""
+    code = str(code).strip()
+    if market == "hk_stock":
+        if code.endswith(".HK"):
+            return code[:-3].zfill(5)
+        return code.zfill(5) if code.isdigit() else code
+    if market == "a_share":
+        if code.endswith((".SS", ".SZ")):
+            return code[:-3].zfill(6)
+        return code.zfill(6) if code.isdigit() else code
+    return code
+
+
+def _build_catalog_name_map() -> dict[tuple[str, str], str]:
+    from src.core.global_market import MARKET_CATALOG
+
+    out: dict[tuple[str, str], str] = {}
+    for mk, cat in MARKET_CATALOG.items():
+        if mk not in ("us_stock", "hk_stock"):
+            continue
+        for sym, name in cat.get("symbols", {}).items():
+            ucode = _kline_code_to_universe(sym, mk)
+            out[(ucode, mk)] = name
+            out[(sym, mk)] = name
+    return out
+
+
+def _apply_catalog_meta(rows: list[dict]) -> None:
+    """為目錄內標的補名稱與簡介。"""
+    name_map = _build_catalog_name_map()
+    for row in rows:
+        key = (row.get("code"), row.get("market"))
+        cat_name = name_map.get(key)
+        if cat_name:
+            if not row.get("name") or row.get("name") == row.get("code"):
+                row["name"] = cat_name
+            if not row.get("intro"):
+                row["intro"] = cat_name
+
+
+def refresh_universe_from_local_kline(task_id: str | None = None) -> dict:
+    """
+    用本地 daily_kline 更新股票庫（全球/全市場下載完成後調用）。
+    已存在則更新價格；不存在則新增。
+    """
+    from src.core.task_manager import update_task, update_task_meta, is_task_cancelled
+
+    init_stock_universe_table()
+    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    name_map = _build_catalog_name_map()
+    exchange_map = {"a_share": "CN", "us_stock": "US", "hk_stock": "HK"}
+
+    if task_id:
+        update_task_meta(task_id, message="正在用本地日 K 更新股票庫…")
+        update_task(task_id, progress=96)
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT k.code, k.market, k.close, k.volume,
+                   (
+                       SELECT k2.close FROM daily_kline k2
+                       WHERE k2.code = k.code AND k2.market = k.market AND k2.date < k.date
+                       ORDER BY k2.date DESC LIMIT 1
+                   ) AS prev_close
+            FROM daily_kline k
+            INNER JOIN (
+                SELECT code, market, MAX(date) AS max_date
+                FROM daily_kline
+                WHERE market IN ('a_share', 'us_stock', 'hk_stock')
+                GROUP BY code, market
+            ) latest ON k.code = latest.code
+                AND k.market = latest.market
+                AND k.date = latest.max_date
+            WHERE k.market IN ('a_share', 'us_stock', 'hk_stock')
+            """
+        ).fetchall()
+
+        max_rank = conn.execute(
+            "SELECT COALESCE(MAX(rank_mv), 0) FROM stock_universe"
+        ).fetchone()[0]
+
+        for kline_code, market, close, volume, prev_close in rows:
+            if task_id and is_task_cancelled(task_id):
+                raise RuntimeError("任務已取消")
+
+            ucode = _kline_code_to_universe(kline_code, market)
+            if not ucode or close is None:
+                skipped += 1
+                continue
+
+            price = float(close)
+            change_pct = 0.0
+            if prev_close and float(prev_close) > 0:
+                change_pct = (price - float(prev_close)) / float(prev_close) * 100
+
+            name = (
+                name_map.get((ucode, market))
+                or name_map.get((kline_code, market))
+                or ucode
+            )
+            exchange = exchange_map.get(market, "")
+
+            existing = conn.execute(
+                "SELECT code FROM stock_universe WHERE code = ? AND market = ?",
+                (ucode, market),
+            ).fetchone()
+
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE stock_universe SET
+                        name = CASE WHEN name IS NULL OR name = '' THEN ? ELSE name END,
+                        price = ?, change_pct = ?, volume = ?,
+                        updated_at = ?,
+                        source = CASE
+                            WHEN source IS NULL OR source = '' THEN 'local_kline'
+                            WHEN source LIKE '%local_kline%' THEN source
+                            ELSE source || '+local_kline'
+                        END
+                    WHERE code = ? AND market = ?
+                    """,
+                    (
+                        name,
+                        price,
+                        round(change_pct, 4),
+                        float(volume or 0),
+                        updated_at,
+                        ucode,
+                        market,
+                    ),
+                )
+                updated += 1
+            else:
+                max_rank += 1
+                intro = name if name and name != ucode else ""
+                conn.execute(
+                    """
+                    INSERT INTO stock_universe (
+                        code, market, name, exchange, industry, list_date,
+                        price, change_pct, total_mv, circulating_mv, pe_ttm, pb,
+                        volume, amount, turnover, rank_mv, updated_at, source, intro, extra_json
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        ucode,
+                        market,
+                        name,
+                        exchange,
+                        None,
+                        None,
+                        price,
+                        round(change_pct, 4),
+                        0,
+                        0,
+                        0,
+                        0,
+                        float(volume or 0),
+                        0,
+                        0,
+                        max_rank,
+                        updated_at,
+                        "local_kline",
+                        intro or None,
+                        None,
+                    ),
+                )
+                inserted += 1
+
+        conn.commit()
+
+    result = {
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "updated_at": updated_at,
+    }
+    logger.info(
+        f"股票庫本地更新: 新增 {inserted}，更新 {updated}，跳過 {skipped}"
+    )
+    if task_id:
+        update_task(task_id, progress=99)
+        update_task_meta(
+            task_id,
+            message=f"股票庫已更新（新增 {inserted}，更新 {updated}）",
+        )
+    return result
+
+
 def _fallback_hk_yahoo() -> list[dict]:
     rows = [{
         "code": code,
@@ -445,15 +972,15 @@ def _fallback_hk_yahoo() -> list[dict]:
 
 def fetch_all_market_basics() -> list[dict]:
     """從多市場實時行情拉取基本資料並合併。"""
-    batches: list[tuple[str, str, str, Callable]] = [
-        ("a_share", "CN", "eastmoney_a", lambda: ak.stock_zh_a_spot_em()),
-        ("hk_stock", "HK", "eastmoney_hk", lambda: ak.stock_hk_spot_em()),
-        ("us_stock", "US", "eastmoney_us", lambda: ak.stock_us_spot_em()),
+    batches: list[tuple[str, str, str]] = [
+        ("a_share", "CN", "eastmoney_a"),
+        ("hk_stock", "HK", "eastmoney_hk"),
+        ("us_stock", "US", "eastmoney_us"),
     ]
 
     merged: list[dict] = []
-    for market, exchange, source, fetcher in batches:
-        df = _fetch_with_retry(fetcher, market)
+    for market, exchange, source in batches:
+        df = _fetch_market_spot_df(market)
         rows = _parse_spot_df(df, market, exchange, source)
         if rows:
             merged.extend(rows)
@@ -543,6 +1070,7 @@ def sync_stock_universe(
 
     deduped.sort(key=lambda x: x.get("total_mv") or 0, reverse=True)
     top = deduped[:max_count]
+    _apply_catalog_meta(top)
 
     if task_id:
         update_task(task_id, progress=60)
@@ -550,6 +1078,20 @@ def sync_stock_universe(
             task_id,
             message=f"寫入股票庫 {len(top)} / {len(deduped)} 條",
         )
+
+    saved_intros: dict[tuple[str, str], str] = {}
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(
+            "SELECT code, market, intro FROM stock_universe WHERE intro IS NOT NULL AND intro != ''"
+        ):
+            saved_intros[(row["code"], row["market"])] = row["intro"]
+
+    for row in top:
+        if not row.get("intro"):
+            row["intro"] = saved_intros.get((row["code"], row["market"]), "")
+        if not row.get("intro"):
+            row["intro"] = _infer_intro_from_row(row)
 
     with get_conn() as conn:
         conn.execute("DELETE FROM stock_universe")
@@ -574,6 +1116,7 @@ def sync_stock_universe(
                 rank,
                 updated_at,
                 row.get("source"),
+                row.get("intro") or None,
                 json.dumps({"raw_rank_pool": len(deduped)}, ensure_ascii=False),
             ))
 
@@ -581,11 +1124,21 @@ def sync_stock_universe(
             """INSERT OR REPLACE INTO stock_universe (
                 code, market, name, exchange, industry, list_date,
                 price, change_pct, total_mv, circulating_mv, pe_ttm, pb,
-                volume, amount, turnover, rank_mv, updated_at, source, extra_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                volume, amount, turnover, rank_mv, updated_at, source, intro, extra_json
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             records,
         )
         conn.commit()
+
+    intro_stats = {"enriched": 0, "attempted": 0, "failed": 0}
+    if settings.stock_universe_intro_enrich_limit > 0:
+        if task_id:
+            update_task_meta(task_id, message="正在補充公司簡介…")
+        try:
+            intro_stats = enrich_universe_intros(task_id=task_id)
+        except Exception as e:
+            logger.warning(f"股票庫簡介補充失敗: {e}")
+            intro_stats = {"error": str(e)}
 
     by_market: dict[str, int] = {}
     by_source: dict[str, int] = {}
@@ -602,6 +1155,7 @@ def sync_stock_universe(
         "updated_at": updated_at,
         "by_market": by_market,
         "by_source": by_source,
+        "intro_enrich": intro_stats,
         "note": (
             "已按總市值排序取前 N；若 Yahoo/交易所備援仍無市值，會保留代碼與名稱並排在後段。"
             if len(deduped) < max_count
@@ -638,9 +1192,9 @@ def query_stock_universe(
         conditions.append("market = ?")
         params.append(market)
     if keyword:
-        conditions.append("(code LIKE ? OR name LIKE ?)")
+        conditions.append("(code LIKE ? OR name LIKE ? OR intro LIKE ?)")
         kw = f"%{keyword.strip()}%"
-        params.extend([kw, kw])
+        params.extend([kw, kw, kw])
 
     where = " AND ".join(conditions)
     with get_conn() as conn:

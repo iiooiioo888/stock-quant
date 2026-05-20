@@ -28,6 +28,7 @@ ASYNC_TASK_TYPES = frozenset({
     "walkforward",
     "auto_optimize",
     "stock_universe_sync",
+    "stock_universe_intro",
     "data_download",
     "data_download_all",
     "data_incremental",

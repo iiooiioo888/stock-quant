@@ -2471,11 +2471,11 @@ pre.rpt {
 
 .stock-code-row {
   display: grid;
-  grid-template-columns: 36px 48px 72px 1fr;
+  grid-template-columns: 36px 48px 72px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 36px;
+  height: 52px;
   padding: 0 10px;
   border: none;
   border-bottom: 1px solid var(--border-color);
@@ -2513,6 +2513,23 @@ pre.rpt {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stock-code-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  justify-content: center;
+  gap: 1px;
+}
+
+.stock-code-row-intro {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
 }
 
 .stock-code-row-icon {
@@ -3773,6 +3790,15 @@ tr.sched-row-on {
   border-radius: 3px;
   background: var(--accent-bg);
   color: var(--accent);
+}
+
+.univ-intro {
+  max-width: 280px;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .univ-rank {

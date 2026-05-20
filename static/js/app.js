@@ -694,7 +694,19 @@ const App = {
           resultEl.innerHTML = html;
         }
         this.loadMarkets();
-        if (typeof Utils !== 'undefined') Utils.toast('全市場下載完成', 3000, 'success');
+        if (typeof Data !== 'undefined') {
+          if (Data.loadUniverseStats) Data.loadUniverseStats();
+          if (Data._currentTab === 'universe' && Data.searchUniverse) {
+            Data.searchUniverse(Data._universeOffset || 0);
+          }
+        }
+        if (typeof Utils !== 'undefined') {
+          const ur = result.universe_refresh;
+          const uniHint = ur && !ur.error
+            ? `，股票庫已更新（+${ur.inserted || 0}/↻${ur.updated || 0}）`
+            : '';
+          Utils.toast(`全市場下載完成${uniHint}`, 3500, 'success');
+        }
       } else {
         if (resultEl) resultEl.innerHTML = '<div class="chip off">❌ 下載失敗</div>';
       }
@@ -746,7 +758,17 @@ const App = {
           detail.textContent = txt;
         }
         if (typeof Dashboard !== 'undefined') Dashboard.load();
-        Utils.toast(`下載完成: ${(result.total_records || 0).toLocaleString()} 條記錄`);
+        if (typeof Data !== 'undefined' && Data.loadUniverseStats) {
+          Data.loadUniverseStats();
+          if (Data._currentTab === 'universe' && Data.searchUniverse) {
+            Data.searchUniverse(Data._universeOffset || 0);
+          }
+        }
+        const ur = result.universe_refresh;
+        const uniHint = ur && !ur.error
+          ? ` | 股票庫 +${ur.inserted || 0}/↻${ur.updated || 0}`
+          : '';
+        Utils.toast(`下載完成: ${(result.total_records || 0).toLocaleString()} 條記錄${uniHint}`);
       } else {
         if (statusEl) statusEl.textContent = '❌ 下載失敗';
       }

@@ -11,7 +11,7 @@ const Backtest = {
   _searchQuery: '',
 
   _UNIVERSE_MAX: 20000,
-  _UNIVERSE_ROW_H: 36,
+  _UNIVERSE_ROW_H: 52,
   _universeList: [],
   _universeFiltered: null,
   _activeMarket: 'all',
@@ -252,7 +252,8 @@ const Backtest = {
       const market = (item.market || '').toLowerCase();
       return code.includes(this._searchQuery)
         || name.includes(this._searchQuery)
-        || market.includes(this._searchQuery);
+        || market.includes(this._searchQuery)
+        || (item.intro || '').toLowerCase().includes(this._searchQuery);
     });
   },
 
@@ -262,7 +263,7 @@ const Backtest = {
     row.className = 'stock-code-row';
     row.dataset.code = item.code;
     row.dataset.name = item.name || '';
-    row.title = `${item.code} ${item.name}`;
+    row.title = `${item.code} ${item.name}${item.intro ? '\n' + item.intro : ''}`;
 
     const iconWrap = document.createElement('span');
     iconWrap.className = 'stock-code-row-icon stock-code-icon';
@@ -282,11 +283,22 @@ const Backtest = {
     codeEl.className = 'stock-code-row-code';
     codeEl.textContent = item.code;
 
+    const textWrap = document.createElement('span');
+    textWrap.className = 'stock-code-row-text';
+
     const nameEl = document.createElement('span');
     nameEl.className = 'stock-code-row-name';
     nameEl.textContent = item.name || item.code;
 
-    row.append(iconWrap, rank, codeEl, nameEl);
+    textWrap.appendChild(nameEl);
+    if (item.intro) {
+      const introEl = document.createElement('span');
+      introEl.className = 'stock-code-row-intro';
+      introEl.textContent = item.intro;
+      textWrap.appendChild(introEl);
+    }
+
+    row.append(iconWrap, rank, codeEl, textWrap);
     if (this.getCode() === item.code) row.classList.add('a');
     return row;
   },
@@ -480,6 +492,7 @@ const Backtest = {
           name: (s.name || nameMap[s.code] || s.code || '').trim(),
           rank_mv: s.rank_mv,
           market: s.market,
+          intro: (s.intro || '').trim(),
         }))
         .filter(s => s.code)
         .sort((a, b) => (a.rank_mv ?? 999999) - (b.rank_mv ?? 999999));

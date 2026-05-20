@@ -518,6 +518,10 @@ const Api = {
     const q = maxCount ? `?max_count=${maxCount}` : '';
     return this.post(`/api/stock-universe/sync${q}`);
   },
+  async enrichStockUniverseIntros(limit = null) {
+    const q = limit != null ? `?limit=${limit}` : '';
+    return this.post(`/api/stock-universe/enrich-intros${q}`);
+  },
   async getSectors(type = 'industry', topN = 30) { return this.get(`/api/data/sectors?sector_type=${type}&top_n=${topN}`); },
   async getSectorStocks(name, type = 'industry') { return this.get(`/api/data/sector/${encodeURIComponent(name)}/stocks?sector_type=${type}`); },
   async getSectorRotation(days = 10) { return this.get(`/api/data/sectors/rotation?days=${days}`); },

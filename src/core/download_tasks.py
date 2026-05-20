@@ -153,7 +153,7 @@ def run_market_download(
     results, grand_total = _download_codes_parallel(market, market_name, codes, task_id)
 
     success = sum(1 for r in results if r["records"] > 0)
-    return {
+    result = {
         "market": market,
         "market_name": market_name,
         "total_records": grand_total,
@@ -162,6 +162,18 @@ def run_market_download(
         "failed_symbols": total - success,
         "details": results,
     }
+
+    if market in ("a_share", "us_stock", "hk_stock", "global"):
+        try:
+            from src.core.stock_universe import refresh_universe_from_local_kline
+
+            uni = refresh_universe_from_local_kline(task_id=task_id)
+            result["universe_refresh"] = uni
+        except Exception as e:
+            logger.warning(f"市場下載後股票庫更新失敗: {e}")
+            result["universe_refresh"] = {"error": str(e)}
+
+    return result
 
 
 def run_stocks_download(codes: list[str], task_id: str = None) -> dict:
@@ -259,7 +271,7 @@ def run_download_all(task_id: str = None) -> dict:
         if r["records"] > 0:
             by_market[mk]["success"] += 1
 
-    return {
+    result = {
         "total_records": grand_total,
         "total_symbols": len(all_results),
         "success_symbols": success_count,
@@ -267,6 +279,22 @@ def run_download_all(task_id: str = None) -> dict:
         "market_summary": list(by_market.values()),
         "details": all_results,
     }
+
+    try:
+        from src.core.stock_universe import refresh_universe_from_local_kline
+
+        _update_download_meta(
+            task_id,
+            message="正在用本地日 K 更新股票庫…",
+            progress=97,
+        )
+        uni = refresh_universe_from_local_kline(task_id=task_id)
+        result["universe_refresh"] = uni
+    except Exception as e:
+        logger.warning(f"下載後股票庫更新失敗: {e}")
+        result["universe_refresh"] = {"error": str(e)}
+
+    return result
 
 
 def run_incremental(codes: list[str] = None, force: bool = False, task_id: str = None) -> dict:

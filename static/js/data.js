@@ -272,6 +272,55 @@ const Data = {
     }
   },
 
+  async enrichUniverseIntros() {
+    const btn = document.getElementById('univIntroBtn');
+    const el = document.getElementById('univSyncResult');
+    if (!Api.isLoggedIn()) {
+      Utils.toast('請先登錄後再補充簡介', 4000, 'warning');
+      Api.showLoginModal(false);
+      return;
+    }
+    Utils.btnLoading(btn, true, '補充中...');
+    if (el) el.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 已提交簡介補充任務（按市值優先，約數分鐘）…</p>';
+    try {
+      const d = await Api.enrichStockUniverseIntros();
+      if (!d?.success) {
+        const msg = d?.detail || d?.message || (d == null ? '接口不可用（請重啟後端服務後再試）' : '提交失敗');
+        if (el) el.innerHTML = `<div class="chip off">❌ ${msg}</div>`;
+        return;
+      }
+      const poll = typeof App !== 'undefined' && App._downloadPollOptions
+        ? App._downloadPollOptions((task) => {
+          if (!el || typeof TaskCommon === 'undefined') return;
+          const sub = TaskCommon.formatTaskSubtitle(task) || task.message;
+          if (sub) el.innerHTML = `<p style="color:var(--text-dim)"><span class="ld"></span> ${sub}</p>`;
+        })
+        : { timeout: 900000, interval: 2500 };
+      const resolved = await Api.resolveTaskResponse(d, poll);
+      const result = Api.extractResult(resolved);
+      const task = resolved?.task;
+      if (task?.status === 'failed' || task?.status === 'cancelled') {
+        if (el) el.innerHTML = `<div class="chip off">❌ ${task.error || '任務失敗'}</div>`;
+        return;
+      }
+      if (resolved?.success && result != null) {
+        const note = result.note ? `<p class="sec-desc mt-sm">${result.note}</p>` : '';
+        if (el) {
+          el.innerHTML = `<div class="chip on">✅ 簡介補充完成：${result.enriched ?? 0} / ${result.attempted ?? 0}</div>${note}`;
+        }
+        await this.loadUniverseStats();
+        this.searchUniverse(0);
+        Utils.toast(`已更新 ${result.enriched ?? 0} 檔簡介`, 3500, 'success');
+      } else if (el) {
+        el.innerHTML = `<div class="chip off">❌ ${task?.error || resolved?.message || '補充失敗（請重啟後端）'}</div>`;
+      }
+    } catch (e) {
+      if (el) el.innerHTML = `<div class="chip off">❌ ${e.message || e}</div>`;
+    } finally {
+      Utils.btnLoading(btn, false, '📝 補充簡介');
+    }
+  },
+
   async searchUniverse(offset) {
     const wrap = document.getElementById('univTableWrap');
     const pager = document.getElementById('univPager');
@@ -300,16 +349,18 @@ const Data = {
 
     wrap.innerHTML = `<div class="table-wrap"><table>
       <thead><tr>
-        <th>排名</th><th>代碼</th><th>名稱</th><th>市場</th>
+        <th>排名</th><th>代碼</th><th>名稱</th><th>簡介</th><th>市場</th>
         <th class="r">市值(億)</th><th class="r">漲跌幅</th><th class="r">PE</th><th class="r">PB</th><th>行業</th>
       </tr></thead>
       <tbody>${stocks.map(s => {
         const chg = s.change_pct;
         const chgCls = Utils.badgeClass(chg);
+        const intro = s.intro || s.industry || '-';
         return `<tr>
           <td class="univ-rank">#${s.rank_mv ?? '-'}</td>
           <td><code>${this._escHtml(s.code)}</code></td>
           <td>${this._escHtml(s.name || '-')}</td>
+          <td class="univ-intro" title="${this._escHtml(intro)}">${this._escHtml(intro)}</td>
           <td><span class="univ-market-tag">${this._escHtml(this._marketLabel(s.market))}</span></td>
           <td class="r">${s.total_mv != null ? Number(s.total_mv).toFixed(2) : '-'}</td>
           <td class="r"><span class="b ${chgCls}">${chg != null ? Utils.formatPct(chg) : '-'}</span></td>

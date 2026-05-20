@@ -74,6 +74,12 @@ TASK_REGISTRY: dict[str, dict] = {
         "tab": "data",
         "async": True,
     },
+    "stock_universe_intro": {
+        "label": "股票簡介補充",
+        "icon": "📝",
+        "tab": "data",
+        "async": True,
+    },
     "data_download": {
         "label": "市場數據下載",
         "icon": "📥",

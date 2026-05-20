@@ -58,6 +58,64 @@ def test_sync_stock_universe_mock(monkeypatch):
     assert rows[0]["code"] == "600519"
 
 
+def test_kline_code_to_universe():
+    assert su._kline_code_to_universe("0700.HK", "hk_stock") == "00700"
+    assert su._kline_code_to_universe("600519.SS", "a_share") == "600519"
+    assert su._kline_code_to_universe("AAPL", "us_stock") == "AAPL"
+
+
+def test_refresh_universe_from_local_kline():
+    from src.core.db import get_conn, save_daily_kline, init_db
+    import pandas as pd
+
+    init_db()
+    su.init_stock_universe_table()
+
+    df = pd.DataFrame([
+        {"date": "2026-05-19", "open": 99, "high": 101, "low": 98, "close": 100, "volume": 1000, "amount": 0},
+        {"date": "2026-05-20", "open": 100, "high": 106, "low": 99, "close": 105, "volume": 1200, "amount": 0},
+    ])
+    save_daily_kline(df, "TEST1", market="us_stock")
+
+    result = su.refresh_universe_from_local_kline()
+    assert result["inserted"] >= 1 or result["updated"] >= 1
+
+    rows, total = su.query_stock_universe(market="us_stock", keyword="TEST1", limit=5)
+    assert total >= 1
+    assert rows[0]["price"] == 105
+    assert rows[0]["change_pct"] == 5.0
+
+    with get_conn() as conn:
+        conn.execute("DELETE FROM stock_universe WHERE code = 'TEST1'")
+        conn.execute("DELETE FROM daily_kline WHERE code = 'TEST1'")
+        conn.commit()
+
+
+def test_fetch_intro_a_share(monkeypatch):
+    def fake_get(*args, **kwargs):
+        class Resp:
+            status_code = 200
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            @staticmethod
+            def json():
+                return {
+                    "jbzl": [{
+                        "BUSINESS_SCOPE": "茅台酒及系列酒的生产与销售",
+                        "ORG_PROFILE": "贵州茅台酒股份有限公司…",
+                    }],
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(su._HTTP, "get", fake_get)
+    intro = su._fetch_intro_a_share("600519")
+    assert "茅台酒" in intro
+
+
 def test_stock_universe_api(client, monkeypatch):
     df = pd.DataFrame([{
         "代码": "000001", "名称": "測試", "总市值": 1e11,

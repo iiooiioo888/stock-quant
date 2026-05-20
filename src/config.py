@@ -63,6 +63,7 @@ class Settings(BaseSettings):
 
     # ====== 股票庫 ======
     stock_universe_max_count: int = Field(default=20000, ge=100, le=50000)
+    stock_universe_intro_enrich_limit: int = Field(default=500, ge=0, le=20000)
 
     # ====== 數據下載並行 ======
     download_max_workers: int = Field(default=3, ge=1, le=8)
