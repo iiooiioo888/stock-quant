@@ -3,7 +3,243 @@
  */
 
 const Analysis = {
-  init() {},
+  _UNIVERSE_MAX: 20000,
+  _UNIVERSE_ROW_H: 42,
+  _universeList: [],
+  _activeMarket: 'all',
+  _searchQuery: '',
+  _MARKET_LABELS: {
+    all: '全部',
+    a_share: 'A股',
+    hk_stock: '港股',
+    us_stock: '美股',
+  },
+  _MARKET_ORDER: ['all', 'a_share', 'hk_stock', 'us_stock'],
+
+  init() {
+    this._bindCodeControls();
+    this.setCode(this.getCode() || '600519');
+    this.loadStockOptions();
+  },
+
+  getCode() {
+    return document.getElementById('anCode')?.value?.trim() || '';
+  },
+
+  setCode(code, name = '') {
+    const clean = String(code || '').trim();
+    if (!clean) return;
+    const found = this._universeList.find(s => String(s.code) === clean);
+    const stockName = name || found?.name || this._stockName(clean) || clean;
+
+    const hidden = document.getElementById('anCode');
+    const manual = document.getElementById('anCodeManual');
+    if (hidden) hidden.value = clean;
+    if (manual) manual.value = clean;
+    this._updateSelectedStock(clean, stockName);
+    this._refreshActiveRows(clean);
+  },
+
+  _refreshActiveRows(code) {
+    document.querySelectorAll('#anCodeGrid .stock-code-row').forEach(row => {
+      row.classList.toggle('a', row.dataset.code === code);
+    });
+  },
+
+  _bindCodeControls() {
+    if (this._boundCodeControls) return;
+    this._boundCodeControls = true;
+
+    const manual = document.getElementById('anCodeManual');
+    manual?.addEventListener('input', e => {
+      this.setCode(e.target.value || '');
+    });
+    manual?.addEventListener('change', e => {
+      this.setCode(e.target.value || '');
+    });
+
+    const search = document.getElementById('anCodeSearch');
+    search?.addEventListener('input', e => {
+      this._searchQuery = (e.target.value || '').trim().toLowerCase();
+      this._renderStockPicker();
+    });
+
+    document.getElementById('anMarketTabs')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-market]');
+      if (!btn) return;
+      this._activeMarket = btn.dataset.market || 'all';
+      this._renderMarketTabs();
+      this._renderStockPicker();
+    });
+
+    document.getElementById('anCodeGrid')?.addEventListener('click', e => {
+      const row = e.target.closest('[data-code]');
+      if (!row) return;
+      this.setCode(row.dataset.code, row.dataset.name || '');
+    });
+  },
+
+  _esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
+  },
+
+  _normalizeStock(item, idx = 0) {
+    const code = String(item?.code || item?.symbol || '').trim();
+    if (!code) return null;
+    return {
+      code,
+      name: String(item?.name || item?.stock_name || item?.company_name || code).trim(),
+      market: item?.market || item?.market_type || 'a_share',
+      rank: Number(item?.rank || idx + 1),
+    };
+  },
+
+  _stockName(code) {
+    const map = {
+      '600519': '貴州茅台',
+      '000001': '平安銀行',
+      '00700': '騰訊控股',
+      AAPL: 'Apple',
+      MSFT: 'Microsoft',
+    };
+    return map[String(code || '').toUpperCase()] || '';
+  },
+
+  _updateSelectedStock(code, name) {
+    const card = document.getElementById('anSelectedStock');
+    const codeEl = document.getElementById('anSelectedCode');
+    const nameEl = document.getElementById('anSelectedName');
+    const letterEl = document.getElementById('anSelectedLetter');
+    const icon = document.getElementById('anSelectedIcon');
+
+    card?.classList.toggle('bt-selected-stock--empty', !code);
+    if (codeEl) codeEl.textContent = code || '-';
+    if (nameEl) nameEl.textContent = name || '未選擇';
+    if (letterEl) letterEl.textContent = (name || code || '?').slice(0, 1).toUpperCase();
+    if (icon && code) Utils.bindStockIcon(icon, code, name);
+  },
+
+  _marketCounts() {
+    const counts = { all: this._universeList.length, a_share: 0, hk_stock: 0, us_stock: 0 };
+    this._universeList.forEach(s => {
+      if (counts[s.market] != null) counts[s.market] += 1;
+    });
+    return counts;
+  },
+
+  _renderMarketTabs() {
+    const host = document.getElementById('anMarketTabs');
+    if (!host) return;
+    const counts = this._marketCounts();
+    host.innerHTML = this._MARKET_ORDER.map(market => `
+      <button type="button" class="bt-market-tab ${this._activeMarket === market ? 'a' : ''}" data-market="${market}">
+        ${this._MARKET_LABELS[market] || market}
+        <strong>${counts[market] || 0}</strong>
+      </button>
+    `).join('');
+  },
+
+  _displayList() {
+    const q = this._searchQuery;
+    return this._universeList.filter(s => {
+      if (this._activeMarket !== 'all' && s.market !== this._activeMarket) return false;
+      if (!q) return true;
+      return s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+    });
+  },
+
+  _createStockRow(item) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `stock-code-row ${this.getCode() === item.code ? 'a' : ''}`;
+    row.dataset.code = item.code;
+    row.dataset.name = item.name || '';
+    row.innerHTML = `
+      <span class="stock-code-row-rank">#${this._esc(item.rank)}</span>
+      <span class="stock-code-icon stock-code-row-icon"><img width="28" height="28" alt=""><span class="stock-code-letter">${this._esc((item.name || item.code).slice(0, 1))}</span></span>
+      <span class="stock-code-row-code">${this._esc(item.code)}</span>
+      <span class="stock-code-row-name">${this._esc(item.name || item.code)}</span>
+    `;
+    const img = row.querySelector('img');
+    if (img) Utils.bindStockIcon(img, item.code, item.name);
+    return row;
+  },
+
+  _mountVirtualList(host, list) {
+    host.innerHTML = `
+      <div class="stock-universe-viewport" style="height:${Math.min(480, Math.max(160, list.length * this._UNIVERSE_ROW_H))}px">
+        <div class="stock-universe-spacer" style="height:${list.length * this._UNIVERSE_ROW_H}px"></div>
+        <div class="stock-universe-rows"></div>
+      </div>
+    `;
+    const viewport = host.querySelector('.stock-universe-viewport');
+    viewport._stockList = list;
+    viewport.addEventListener('scroll', () => this._paintVirtualList(viewport));
+    this._paintVirtualList(viewport);
+  },
+
+  _paintVirtualList(viewport) {
+    const list = viewport?._stockList || [];
+    const rows = viewport?.querySelector('.stock-universe-rows');
+    if (!rows) return;
+    const start = Math.max(0, Math.floor(viewport.scrollTop / this._UNIVERSE_ROW_H) - 4);
+    const visible = Math.ceil(viewport.clientHeight / this._UNIVERSE_ROW_H) + 8;
+    const end = Math.min(list.length, start + visible);
+    rows.style.transform = `translateY(${start * this._UNIVERSE_ROW_H}px)`;
+    rows.innerHTML = '';
+    list.slice(start, end).forEach(item => rows.appendChild(this._createStockRow(item)));
+  },
+
+  _renderStockPicker() {
+    const host = document.getElementById('anCodeGrid');
+    const hint = document.getElementById('anStockLoadHint');
+    if (!host) return;
+    const list = this._displayList();
+    if (hint) {
+      const suffix = this._searchQuery ? `，篩選 ${list.length} 隻` : '';
+      hint.textContent = `已載入 ${this._universeList.length} 隻${suffix}`;
+    }
+    if (!list.length) {
+      host.innerHTML = `<div class="state-empty"><span class="state-icon">🔍</span><span class="state-text">找不到符合條件的股票</span></div>`;
+      return;
+    }
+    this._mountVirtualList(host, list);
+  },
+
+  async loadStockOptions() {
+    const host = document.getElementById('anCodeGrid');
+    const hint = document.getElementById('anStockLoadHint');
+    if (host) host.innerHTML = `<div class="state-loading"><span class="ld"></span> 載入股票庫...</div>`;
+    if (hint) hint.textContent = `載入 TOP ${this._UNIVERSE_MAX} 中...`;
+
+    try {
+      const data = await Api.getStocks(this._UNIVERSE_MAX);
+      const stocks = (data?.stocks || [])
+        .map((s, idx) => this._normalizeStock(s, idx))
+        .filter(Boolean);
+      if (!stocks.length) throw new Error('empty stock universe');
+      this._universeList = stocks;
+    } catch (err) {
+      console.warn('analysis stock universe load failed', err);
+      this._universeList = [
+        { code: '600519', name: '貴州茅台', market: 'a_share', rank: 1 },
+        { code: '000001', name: '平安銀行', market: 'a_share', rank: 2 },
+        { code: '00700', name: '騰訊控股', market: 'hk_stock', rank: 3 },
+        { code: 'AAPL', name: 'Apple', market: 'us_stock', rank: 4 },
+      ];
+      if (hint) hint.textContent = '股票庫載入失敗，已使用內建標的';
+    }
+
+    this._renderMarketTabs();
+    this.setCode(this.getCode() || this._universeList[0]?.code || '600519');
+    this._renderStockPicker();
+  },
 
   _showSection(which) {
     document.getElementById('anResult')?.classList.remove('h');

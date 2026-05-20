@@ -2272,6 +2272,13 @@ pre.rpt {
   min-width: 0;
 }
 
+.bt-analysis-actions {
+  grid-column: span 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .bt-actions-row {
   display: flex;
   flex-wrap: wrap;
@@ -2302,10 +2309,36 @@ pre.rpt {
   .bt-fg-strategy {
     grid-column: 1 / -1;
   }
+  .bt-analysis-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 .stock-code-picker {
   width: 100%;
+}
+
+.stock-picker-source {
+  display: none !important;
+}
+
+.stock-picker-embed {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.stock-picker-section {
+  margin: 0;
+  padding: 12px;
+}
+
+.stock-picker-manual {
+  min-width: 180px;
+  width: 220px;
+}
+
+.stock-picker-viewport {
+  height: 260px;
 }
 
 .stock-code-grid {

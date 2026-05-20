@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 
 <!-- Styles -->
-<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/css/style.css?v=stockpicker-20260520b">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 </head>
 <body>
@@ -968,7 +968,7 @@
                 <h3>② 分析策略與類型</h3>
             </div>
             <div class="bt-params-grid bt-analysis-grid">
-                <div class="fg bt-fg-strategy"><label>策略</label><select id="anStrategy"></select></div>
+                <div class="fg bt-fg-strategy"><label>策略</label><select id="anStrategy" title="分析策略" aria-label="分析策略"></select></div>
                 <div class="btn-group bt-analysis-actions">
                     <button class="btn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
                     <button class="btn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
@@ -1176,11 +1176,12 @@
      JavaScript Modules（defer：不阻塞首屏渲染）
      ============================================================ -->
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script defer src="/static/js/utils.js"></script>
+<script defer src="/static/js/utils.js?v=stockpicker-20260520b"></script>
 <script defer src="/static/js/api.js"></script>
+<script defer src="/static/js/stock-picker.js?v=stockpicker-20260520b"></script>
 <script defer src="/static/js/charts.js"></script>
 <script defer src="/static/js/chart-pro.js"></script>
-<script defer src="/static/js/dashboard.js"></script>
+<script defer src="/static/js/dashboard.js?v=stockpicker-20260520b"></script>
 <script defer src="/static/js/backtest.js"></script>
 <script defer src="/static/js/optimize.js"></script>
 <script defer src="/static/js/portfolio.js"></script>
@@ -1192,7 +1193,7 @@
 <script defer src="/static/js/task-common.js"></script>
 <script defer src="/static/js/tasks.js"></script>
 <script defer src="/static/js/scheduler.js"></script>
-<script defer src="/static/js/app.js"></script>
+<script defer src="/static/js/app.js?v=stockpicker-20260520b"></script>
 
 </body>
 </html>

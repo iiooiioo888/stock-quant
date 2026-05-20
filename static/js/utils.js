@@ -190,11 +190,76 @@ const Utils = {
     return 'SZ';
   },
 
-  /** 東財 Logo CDN（A 股） */
-  stockIconUrl(code) {
-    const c = String(code || '').trim().padStart(6, '0');
-    const m = this.stockMarketPrefix(c);
-    return `https://webquotepic.eastmoney.com/getpic/${m}${c}_70.png`;
+  /** 將股票代碼轉成常見 Logo 服務可識別的 symbol */
+  stockLogoSymbol(code, market = '') {
+    const c = String(code || '').trim().toUpperCase();
+    const m = String(market || '').trim();
+    if (!c) return '';
+    if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(c)) return c;
+    if (/^\d{5}$/.test(c)) return `${c.replace(/^0(?=\d{4}$)/, '')}.HK`;
+    if (/^\d{6}$/.test(c)) return `${c}.${this.stockMarketPrefix(c) === 'SH' ? 'SS' : 'SZ'}`;
+    if (m === 'hk_stock') return `${c.replace(/^0+(?=\d)/, '')}.HK`;
+    return c;
+  },
+
+  /** 常見股票代碼到公司網域，用 favicon 服務補足 FMP 沒收錄的標的 */
+  stockLogoDomain(code) {
+    const c = String(code || '').trim().toUpperCase();
+    const map = {
+      AAPL: 'apple.com',
+      MSFT: 'microsoft.com',
+      GOOGL: 'google.com',
+      GOOG: 'google.com',
+      AMZN: 'amazon.com',
+      META: 'meta.com',
+      TSLA: 'tesla.com',
+      NVDA: 'nvidia.com',
+      NFLX: 'netflix.com',
+      AMD: 'amd.com',
+      INTC: 'intel.com',
+      BABA: 'alibabagroup.com',
+      TSM: 'tsmc.com',
+      JPM: 'jpmorganchase.com',
+      V: 'visa.com',
+      MA: 'mastercard.com',
+      DIS: 'disney.com',
+      '00700': 'tencent.com',
+      '09988': 'alibabagroup.com',
+      '03690': 'meituan.com',
+      '09618': 'jd.com',
+      '01810': 'mi.com',
+      '02318': 'pingan.cn',
+      '00941': 'chinamobileltd.com',
+      '00005': 'hsbc.com',
+      '01299': 'aia.com',
+      '00388': 'hkexgroup.com',
+      '600519': 'moutaichina.com',
+      '000001': 'bank.pingan.com',
+      '000858': 'wuliangye.com.cn',
+      '601318': 'pingan.cn',
+      '600036': 'cmbchina.com',
+      '601398': 'icbc.com.cn',
+    };
+    return map[c] || '';
+  },
+
+  /**
+   * 外部 Logo 候選來源（不再使用東財）。
+   * FMP image-stock 對美股較完整，部分港股/A股使用 .HK/.SS/.SZ symbol。
+   * 網域 favicon 作為第二層補強，失敗時仍回落本地 SVG。
+   */
+  stockLogoUrls(code, name = '', market = '') {
+    const symbol = this.stockLogoSymbol(code, market);
+    const domain = this.stockLogoDomain(code, name);
+    const urls = [];
+    if (symbol) {
+      urls.push(`https://financialmodelingprep.com/image-stock/${encodeURIComponent(symbol)}.png`);
+    }
+    if (domain) {
+      urls.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`);
+      urls.push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`);
+    }
+    return [...new Set(urls)];
   },
 
   /** 本地 SVG 圖標：不依賴任何外部 CDN，確保股票永遠有對應圖標 */
@@ -233,11 +298,11 @@ const Utils = {
   },
 
   /**
-   * 綁定股票圖標：默認只使用本地 SVG，避免外部 CDN timeout 洗版。
-   * 若確實想嘗試外部 Logo，可在控制台執行：
+   * 綁定股票圖標：先使用本地 SVG，外部 Logo 只作可選增強。
+   * 若想嘗試 FMP / favicon 外部 Logo，可在控制台執行：
    * localStorage.setItem('sq_remote_stock_icons', '1')
    */
-  bindStockIcon(img, code, name) {
+  bindStockIcon(img, code, name, market = '') {
     if (!img) return;
     const c = String(code || '').trim();
     const n = String(name || c || '?');
@@ -255,20 +320,43 @@ const Utils = {
     if (letter) letter.style.display = 'none';
 
     const allowRemote = localStorage.getItem('sq_remote_stock_icons') === '1';
-    // 外部 Logo 是可選增強，不作為默認路徑，避免東財超時造成大量 Console 錯誤。
-    if (allowRemote && /^\d{6}$/.test(c)) {
+    if (!allowRemote) return;
+
+    const urls = this.stockLogoUrls(c, n, market);
+    if (!urls.length) return;
+
+    let idx = 0;
+    const tryNext = () => {
+      if (idx >= urls.length) return;
       const remote = new Image();
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        tryNext();
+      }, 2500);
       remote.referrerPolicy = 'no-referrer';
       remote.decoding = 'async';
       remote.onload = () => {
-        // 一些 CDN 會回傳透明/極小佔位圖，尺寸太小就不要覆蓋本地圖標。
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        // 一些服務會回傳極小/透明佔位圖，尺寸太小就不要覆蓋本地 SVG。
         if (remote.naturalWidth >= 16 && remote.naturalHeight >= 16) {
           img.src = remote.src;
+        } else {
+          tryNext();
         }
       };
-      remote.onerror = () => {};
-      remote.src = this.stockIconUrl(c);
-    }
+      remote.onerror = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        tryNext();
+      };
+      remote.src = urls[idx++];
+    };
+    tryNext();
   },
 
   /** 套用本地 SVG 到任意元素背景，供非 img 場景使用 */

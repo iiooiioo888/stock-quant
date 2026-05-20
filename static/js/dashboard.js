@@ -1174,6 +1174,9 @@ const Dashboard = {
         <button class="btn" onclick="Dashboard.saveRule()">保存</button>
       </div>
     `);
+    if (!isEdit && typeof StockPicker !== 'undefined') {
+      StockPicker.attach('mrCode', { mode: 'single', title: '選擇預警股票' });
+    }
   },
 
   async saveRule() {
@@ -1246,6 +1249,9 @@ const Dashboard = {
     const toggle = () => wrap.classList.toggle('h', sel.value !== 'custom');
     sel.addEventListener('change', toggle);
     toggle();
+    if (typeof StockPicker !== 'undefined') {
+      StockPicker.attach('arCodes', { mode: 'multi', title: '選擇批量預警股票' });
+    }
   },
 
   async runAutoAddRules() {

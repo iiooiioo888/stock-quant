@@ -97,7 +97,10 @@ def get_dragon_tiger(date: str = None) -> list[dict]:
             }
             result.append(record)
         
+        result = _enrich_market_and_sector(result)
+
         # 存入數據庫
+        result = _enrich_market_and_sector(result)
         _save_dragon_tiger(result)
         _rate_sleep()
         return result
@@ -117,6 +120,87 @@ def _get_col(row, candidates: list, default):
     return default
 
 
+def _infer_market(code: str) -> tuple[str, str]:
+    """從代碼推斷市場，股票庫無資料時作為兜底。"""
+    c = str(code or "").strip().upper()
+    if not c:
+        return "unknown", "未知"
+    if c.endswith(".HK") or (c.isdigit() and len(c) == 5):
+        return "hk_stock", "港股"
+    if c.isalpha() or "." in c:
+        return "us_stock", "美股"
+    if c.isdigit() and len(c) == 6:
+        return "a_share", "A股"
+    return "unknown", "未知"
+
+
+def _market_name(market: str) -> str:
+    return {
+        "a_share": "A股",
+        "hk_stock": "港股",
+        "us_stock": "美股",
+    }.get(market or "", "未知")
+
+
+def _enrich_market_and_sector(records: list[dict]) -> list[dict]:
+    """用股票庫與本地板塊成分表補齊市場與板塊資訊。"""
+    if not records:
+        return records
+
+    codes = sorted({str(r.get("code") or "").strip() for r in records if r.get("code")})
+    if not codes:
+        return records
+
+    universe_map: dict[str, dict] = {}
+    sector_map: dict[str, str] = {}
+
+    try:
+        placeholders = ",".join("?" for _ in codes)
+        with get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""SELECT code, market, industry
+                    FROM stock_universe
+                    WHERE code IN ({placeholders})""",
+                codes,
+            ).fetchall()
+            for row in rows:
+                universe_map[str(row["code"])] = dict(row)
+    except sqlite3.Error as e:
+        logger.debug(f"讀取股票庫補龍虎榜市場/行業失敗: {e}")
+
+    try:
+        placeholders = ",".join("?" for _ in codes)
+        with get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""SELECT code, sector_name, sector_type
+                    FROM sector_data
+                    WHERE code IN ({placeholders})
+                    ORDER BY CASE sector_type WHEN 'industry' THEN 0 ELSE 1 END, sector_name""",
+                codes,
+            ).fetchall()
+            for row in rows:
+                row_code = str(row["code"])
+                if row_code not in sector_map:
+                    sector_map[row_code] = str(row["sector_name"] or "")
+    except sqlite3.Error as e:
+        logger.debug(f"讀取板塊成分補龍虎榜板塊失敗: {e}")
+
+    for record in records:
+        code = str(record.get("code") or "").strip()
+        inferred_market, inferred_name = _infer_market(code)
+        universe = universe_map.get(code, {})
+        market = universe.get("market") or inferred_market
+        sector = universe.get("industry") or sector_map.get(code) or "未分類"
+
+        record["market"] = market
+        record["market_name"] = _market_name(market) if market != "unknown" else inferred_name
+        record["sector"] = sector
+
+    return records
+
+
 def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
     """
     獲取某只股票的龍虎榜歷史
@@ -131,7 +215,7 @@ def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
     # 先從數據庫查
     cached = _load_dragon_tiger_from_db(code, days)
     if cached:
-        return cached
+        return _enrich_market_and_sector(cached)
     
     # 數據庫無數據，嘗試從 API 獲取最近一段時間
     try:

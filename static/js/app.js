@@ -39,6 +39,7 @@ const App = {
     if (typeof Signals !== 'undefined') Signals.init();
     if (typeof Data !== 'undefined') Data.init();
     if (typeof Portfolio !== 'undefined') Portfolio.init();
+    if (typeof StockPicker !== 'undefined') StockPicker.initAll();
     if (typeof Analysis !== 'undefined') Analysis.init();
     if (typeof Backtest !== 'undefined') Backtest.init();
   },
