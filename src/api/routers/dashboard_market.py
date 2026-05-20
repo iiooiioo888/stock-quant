@@ -11,9 +11,17 @@ async def sectors_capital_flow_rank(top_n: int = Query(20, ge=5, le=50)):
     """板塊主力淨流入排名（今日）"""
     from src.core.sector import get_sector_capital_flow_rank
 
+    from src.core.sector import sector_flow_is_degraded
+
     try:
         sectors = get_sector_capital_flow_rank(top_n)
-        return {"sectors": sectors, "total": len(sectors)}
+        degraded = sector_flow_is_degraded(sectors)
+        return {
+            "sectors": sectors,
+            "total": len(sectors),
+            "degraded": degraded,
+            "degraded_message": "資料降級：僅板塊漲跌，無主力淨額" if degraded else None,
+        }
     except Exception as e:
         logger.error(f"板塊資金排名失敗: {e}", exc_info=True)
         return {"sectors": [], "total": 0, "error": str(e)}
@@ -71,8 +79,16 @@ async def dashboard_market_charts(days: int = Query(20, ge=5, le=60)):
                 return src
             return "mixed"
 
+        from src.core.sector import sector_flow_is_degraded
+
+        flow_degraded = sector_flow_is_degraded(sector_flow)
         return {
             "sector_flow": sector_flow,
+            "sector_flow_degraded": flow_degraded,
+            "sector_flow_degraded_message": (
+                "資料降級：僅板塊漲跌，無主力淨額"
+                if flow_degraded else None
+            ),
             "sector_scatter": sector_scatter,
             "sector_heatmap": sector_heatmap,
             "concept_sectors": concept_sectors,

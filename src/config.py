@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     backtest_commission: float = Field(default=0.001, ge=0, le=0.1)
     backtest_stamp_tax: float = Field(default=0.001, ge=0, le=0.1)
 
+    # ====== 數據下載並行 ======
+    download_max_workers: int = Field(default=3, ge=1, le=8)
+    download_throttle_sec: float = Field(default=0.5, ge=0.1, le=2.0)
+
     # ====== 任務並行 ======
     task_max_workers: int = Field(default=0, ge=0, le=32)  # 0 = 自動 min(4, CPU-1)
     task_parallel_grid: bool = True
@@ -281,6 +285,44 @@ class Settings(BaseSettings):
             f"   預設組合: {', '.join(self.portfolio_presets.keys())}",
         ]
         return "\n".join(lines)
+
+    def cors_origin_list(self) -> list[str]:
+        if not self.cors_origins:
+            return []
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    def is_public_demo_deployment(self) -> bool:
+        """演示模式且 CORS 含非 localhost 域名（公開部署特徵）。"""
+        if not self.demo_mode:
+            return False
+        localhost_markers = ("localhost", "127.0.0.1")
+        for origin in self.cors_origin_list():
+            low = origin.lower()
+            if not any(m in low for m in localhost_markers):
+                return True
+        return False
+
+    def log_demo_security_warnings(self, logger) -> None:
+        """啟動時輸出演示/生產安全配置風險。"""
+        if not self.demo_mode:
+            if not self.jwt_secret:
+                logger.warning(
+                    "SQ_JWT_SECRET 未設置，將使用自動生成密鑰；生產環境建議顯式配置。"
+                )
+            return
+
+        if self.is_public_demo_deployment():
+            logger.warning(
+                "⚠️  公開演示模式：SQ_DEMO_MODE=true 且 CORS 含公網域名。"
+                " GET 讀取白名單較寬，請務必設置 SQ_DEMO_ADMIN_PASSWORD 並勿用於私有生產數據。"
+            )
+        else:
+            logger.info("演示模式已啟用（本地/開發）。")
+
+        if not os.environ.get("SQ_DEMO_ADMIN_PASSWORD"):
+            logger.warning(
+                "SQ_DEMO_ADMIN_PASSWORD 未設置：管理員密碼見 data/.admin_password 或首次啟動日誌。"
+            )
 
 
 # 全局單例

@@ -802,6 +802,7 @@ def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industr
     )
 
     result: list[dict] = []
+    degraded = False
     for fetcher in (
         lambda: fetch_sector_fund_flow_rank(indicator="今日", sector_type=sector_type),
         lambda: fetch_sector_fund_flow_akshare(indicator="今日"),
@@ -818,6 +819,7 @@ def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industr
     if not result:
         sectors = get_sector_list(sector_type)
         if sectors:
+            degraded = True
             logger.info(f"板塊資金接口不可用，使用{sector_type}板塊行情列表（無主力淨額）")
             result = [
                 {
@@ -830,11 +832,15 @@ def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industr
                     "large_net": 0.0,
                     "medium_net": 0.0,
                     "small_net": 0.0,
-                    "source": s.get("source", "sector_list_fallback"),
+                    "source": "sector_list_fallback",
+                    "degraded": True,
                 }
                 for s in sectors
                 if s.get("name")
             ]
+    else:
+        for row in result:
+            row.setdefault("degraded", False)
 
     if sector_name:
         result = [x for x in result if x.get("name") == sector_name]
@@ -842,8 +848,24 @@ def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industr
     if result:
         _rate_sleep()
     else:
+        degraded = True
         _log_sector_fail("industry", "板塊資金流向全部數據源失敗", level="warning")
+    if degraded and result:
+        for row in result:
+            row["degraded"] = True
     return result
+
+
+def sector_flow_is_degraded(items: list[dict]) -> bool:
+    """是否為降級資料（無真實主力淨額）。"""
+    if not items:
+        return True
+    return any(
+        i.get("degraded")
+        or i.get("source") == "sector_list_fallback"
+        or (float(i.get("main_net") or 0) == 0 and float(i.get("main_net_pct") or 0) == 0)
+        for i in items[: min(5, len(items))]
+    )
 
 
 # ============================================================

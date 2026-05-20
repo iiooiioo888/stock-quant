@@ -254,6 +254,9 @@ def init_db():
         conn.execute(DDL_USER_ALERT_RULES)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_code ON daily_kline(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_kline(date)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_kline(code, date)"
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bt_code ON backtest_results(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bt_created ON backtest_results(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sig_code ON signal_log(code)")
@@ -515,7 +518,12 @@ def save_backtest_result(result: dict):
         )
 
 
-def get_backtest_history(code: str = None, strategy: str = None, limit: int = 50) -> list[dict]:
+def get_backtest_history(
+    code: str = None,
+    strategy: str = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
     """查詢回測歷史"""
     sql = "SELECT * FROM backtest_results WHERE 1=1"
     params = []
@@ -525,8 +533,8 @@ def get_backtest_history(code: str = None, strategy: str = None, limit: int = 50
     if strategy:
         sql += " AND strategy = ?"
         params.append(strategy)
-    sql += " ORDER BY id DESC LIMIT ?"
-    params.append(limit)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, max(0, offset)])
 
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row

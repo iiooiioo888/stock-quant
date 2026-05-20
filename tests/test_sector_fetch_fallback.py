@@ -101,3 +101,22 @@ def test_cooldown_skips_http(monkeypatch):
     out = sec.get_sector_list("concept")
     assert called["http"] == 0
     assert out[0]["name"] == "AI"
+
+
+def test_sector_flow_is_degraded_detects_fallback_rows():
+    items = [
+        {
+            "name": "銀行",
+            "main_net": 0.0,
+            "source": "sector_list_fallback",
+            "degraded": True,
+        },
+    ]
+    assert sec.sector_flow_is_degraded(items) is True
+
+
+def test_sector_flow_is_degraded_false_when_real_flow():
+    items = [
+        {"name": "銀行", "main_net": 1.5e8, "main_net_pct": 2.1, "source": "eastmoney"},
+    ]
+    assert sec.sector_flow_is_degraded(items) is False

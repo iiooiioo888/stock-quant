@@ -25,6 +25,7 @@ services:
         value: "0.0.0.0"
       - key: SQ_WEB_PORT
         value: "8000"
+      # 僅公開演示用；私有生產部署請改為 "false" 並設置 SQ_JWT_SECRET
       - key: SQ_DEMO_MODE
         value: "true"
       - key: SQ_CORS_ORIGINS

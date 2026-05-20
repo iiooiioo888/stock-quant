@@ -7,16 +7,60 @@ const Dashboard = {
   _pollTimer: null,
   _pollCount: 0,
   _maxPolls: 30,
+  _healthCache: null,
+  _healthCacheAt: 0,
+  _chartsLoaded: false,
+  _backtestAggCache: null,
+  _sparklineCache: {},
+  _sparklineCacheTtlMs: 60000,
+
+  async _getHealth(force = false) {
+    const now = Date.now();
+    if (!force && this._healthCache && now - this._healthCacheAt < 15000) {
+      return this._healthCache;
+    }
+    const d = await Api.getHealth();
+    if (d) {
+      this._healthCache = d;
+      this._healthCacheAt = now;
+    }
+    return d;
+  },
+
+  async _getSparklines(codes, days) {
+    const key = codes.join(',') + ':' + days;
+    const hit = this._sparklineCache[key];
+    if (hit && Date.now() - hit.at < this._sparklineCacheTtlMs) {
+      return hit.data;
+    }
+    const d = await Api.get(`/api/sparkline?codes=${codes.join(',')}&days=${days}`);
+    if (d?.sparklines) {
+      this._sparklineCache[key] = { at: Date.now(), data: d };
+    }
+    return d;
+  },
+
+  async _getBacktestAgg(limit = 50) {
+    if (this._backtestAggCache && this._backtestAggCache.limit >= limit) {
+      return this._backtestAggCache.results;
+    }
+    const d = await Api.getBacktestHistory('', '', limit);
+    const results = d?.results || [];
+    this._backtestAggCache = { limit, results };
+    return results;
+  },
 
   async load() {
     this._pollCount = 0;
     this._dataReady = false;
-    const health = await Api.getHealth();
+    this._chartsLoaded = false;
+    const health = await this._getHealth(true);
     await Promise.allSettled([
       this.loadStats(health),
       this.loadRules(),
       this.loadDashboardCharts(),
     ]);
+    this._chartsLoaded = true;
     this._checkDataReady(health);
   },
 
@@ -36,7 +80,7 @@ const Dashboard = {
       return el && !Chart.getChart(el);
     });
     if (missing) {
-      this.loadDashboardCharts();
+      this.loadDashboardCharts(true);
     } else if (typeof Charts !== 'undefined') {
       Charts.resizeTab('tab-dashboard');
     }
@@ -61,11 +105,11 @@ const Dashboard = {
       this._showDataLoading('數據下載較慢，請手動刷新頁面查看');
       return;
     }
-    const d = cachedHealth || await Api.getHealth();
+    const d = cachedHealth || await this._getHealth();
     if (!d) return;
     if (d.data_ready) {
       this._dataReady = true;
-      this._hideDataLoading();
+      this._hideDataLoading(d);
       this.stopPolling();
       return;
     }
@@ -89,16 +133,21 @@ const Dashboard = {
     el.style.display = 'flex';
   },
 
-  _hideDataLoading() {
+  _hideDataLoading(cachedHealth) {
     const el = document.getElementById('dataLoadingBanner');
     if (el) el.style.display = 'none';
-    this.loadStats();
-    this.loadRules();
-    this.loadDashboardCharts();
+    if (cachedHealth) {
+      this._healthCache = cachedHealth;
+      this._healthCacheAt = Date.now();
+    }
+    this.loadStats(cachedHealth);
+    if (!this._chartsLoaded) {
+      this.loadDashboardCharts().then(() => { this._chartsLoaded = true; });
+    }
   },
 
   async loadStats(cachedHealth) {
-    const d = cachedHealth || await Api.getHealth();
+    const d = cachedHealth || await this._getHealth();
     if (!d) return;
 
     document.getElementById('statsGrid').innerHTML = `
@@ -150,10 +199,11 @@ const Dashboard = {
   /**
    * 載入儀表盤所有新增圖表
    */
-  async loadDashboardCharts() {
+  async loadDashboardCharts(force = false) {
+    if (this._chartsLoaded && !force) return;
     const ready = await this._waitChartLibs();
     if (!ready) {
-      setTimeout(() => this.loadDashboardCharts(), 400);
+      setTimeout(() => this.loadDashboardCharts(force), 400);
       return;
     }
     await Promise.allSettled([
@@ -169,6 +219,7 @@ const Dashboard = {
     if (typeof Charts !== 'undefined') {
       Charts.resizeTab('tab-dashboard');
     }
+    this._chartsLoaded = true;
   },
 
   _indexChartId(symbol) {
@@ -242,7 +293,7 @@ const Dashboard = {
 
     try {
       const codes = await this._resolveSparklineCodes(8);
-      const d = await Api.get(`/api/sparkline?codes=${codes.join(',')}&days=90`);
+      const d = await this._getSparklines(codes, 90);
       const sparklines = d?.sparklines || {};
       const metrics = codes
         .map(code => this._calcSeriesMetrics(code, sparklines[code] || {}))
@@ -483,10 +534,10 @@ const Dashboard = {
   },
 
   async _leaderboardFromBacktest(limit = 10) {
-    const d = await Api.getBacktestHistory('', '', 200);
-    if (!d?.results?.length) return [];
+    const rows = await this._getBacktestAgg(50);
+    if (!rows.length) return [];
     const buckets = {};
-    for (const r of d.results) {
+    for (const r of rows) {
       const name = r.strategy;
       if (!name) continue;
       if (!buckets[name]) {
@@ -514,7 +565,7 @@ const Dashboard = {
     const canvasId = 'dashSparklineChart';
     try {
       const codes = await this._resolveSparklineCodes(6);
-      const d = await Api.get(`/api/sparkline?codes=${codes.join(',')}&days=60`);
+      const d = await this._getSparklines(codes, 90);
       if (!d || !d.sparklines) {
         Charts.setPlaceholder(canvasId, '暫無行情數據，請在「下載入庫」同步 K 線');
         return;
@@ -643,8 +694,9 @@ const Dashboard = {
           ? `${parts.join(' · ')} · 近 ${d.days || 20} 日${srcHint}`
           : '外部數據源連線中，請稍後刷新';
       }
+      this._setDegradedBadge('dashSectorFlowWrap', d.sector_flow_degraded, d.sector_flow_degraded_message);
 
-      this._renderSectorFlowChart(d.sector_flow);
+      this._renderSectorFlowChart(d.sector_flow, d.sector_flow_degraded);
       this._renderSectorScatterChart(d.sector_scatter);
       this._renderMarketFlowChart(d.market_flow);
       this._renderNorthFlowChart(d.north_flow);
@@ -655,10 +707,26 @@ const Dashboard = {
     }
   },
 
-  _renderSectorFlowChart(sectors) {
+  _setDegradedBadge(wrapId, degraded, message) {
+    const wrap = document.getElementById(wrapId) || document.getElementById('marketChartsMeta')?.parentElement;
+    if (!wrap) return;
+    let badge = wrap.querySelector('.dash-degraded-badge');
+    if (!degraded) {
+      if (badge) badge.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'dash-degraded-badge';
+      wrap.insertBefore(badge, wrap.firstChild);
+    }
+    badge.textContent = message || '資料降級：僅板塊漲跌，無主力淨額';
+  },
+
+  _renderSectorFlowChart(sectors, degraded) {
     const id = 'dashSectorFlowChart';
     if (!sectors?.length) {
-      Charts.setPlaceholder(id, '板塊資金流向暫不可用');
+      Charts.setPlaceholder(id, degraded ? '板塊資金降級：僅漲跌幅' : '板塊資金流向暫不可用');
       return;
     }
     const topIn = [...sectors].sort((a, b) => (b.main_net || 0) - (a.main_net || 0)).slice(0, 5);

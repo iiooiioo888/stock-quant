@@ -1116,8 +1116,7 @@ App._initTaskPanel = function() {
   const hdrRight = document.querySelector('.hdr-right');
   if (hdrRight) hdrRight.insertBefore(indicator, hdrRight.firstChild);
 
-  // 定期刷新任務狀態（與任務 Tab 輪詢錯開，避免 429）
-  setInterval(() => App._pollTasks(), 8000);
+  App._taskPollTimer = setInterval(() => App._pollTasks(), 8000);
 };
 
 App.toggleTaskPanel = function() {
@@ -1130,6 +1129,10 @@ App.toggleTaskPanel = function() {
 
 App._pollTasks = async function() {
   if (App._pauseTaskPoll) return;
+  const panel = document.getElementById('taskPanel');
+  const panelOpen = panel && panel.style.display !== 'none';
+  const onTasksTab = App._currentTab === 'tasks';
+  if (!panelOpen && !onTasksTab) return;
   try {
     const q = await Api.getTaskQueue({ silent: true });
     if (!q || q._rateLimited) return;

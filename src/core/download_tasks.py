@@ -1,11 +1,15 @@
 """
 市場數據下載任務 — 支持進度回報與任務列表展示
 """
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from src.config import settings
 from src.utils.logger import logger
+
+_meta_lock = threading.Lock()
 
 MARKET_NAMES = {
     "a_share": "A股",
@@ -63,18 +67,77 @@ def _check_cancelled(task_id: str):
         raise RuntimeError("任務已取消")
 
 
+def _market_key_to_mkt(market: str) -> str:
+    if market == "a_share":
+        return "a_share"
+    if market in ("crypto", "forex"):
+        return market
+    return "global"
+
+
+def _download_codes_parallel(
+    market: str,
+    market_name: str,
+    codes: list[str],
+    task_id: str = None,
+) -> tuple[list[dict], int]:
+    """並發下載標的列表，返回 details 與總記錄數。"""
+    from src.core.history import download_one
+
+    codes = codes or []
+    total = len(codes)
+    if total == 0:
+        return [], 0
+
+    workers = min(settings.download_max_workers, total)
+    throttle = settings.download_throttle_sec
+    mkt = _market_key_to_mkt(market)
+    results: list[dict | None] = [None] * total
+    grand_total = 0
+    completed = 0
+
+    def _one(index: int, code: str) -> tuple[int, str, int]:
+        _check_cancelled(task_id)
+        count = download_one(code, market=mkt)
+        if throttle > 0:
+            time.sleep(throttle)
+        return index, code, count
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_one, i, code): (i, code)
+            for i, code in enumerate(codes)
+        }
+        for fut in as_completed(futures):
+            _check_cancelled(task_id)
+            idx, code, count = fut.result()
+            results[idx] = {"code": code, "records": count, "market": market}
+            with _meta_lock:
+                completed += 1
+                grand_total += count
+                _update_download_meta(
+                    task_id,
+                    message=f"{market_name}: {code} ({completed}/{total})",
+                    market=market,
+                    current_code=code,
+                    index=completed,
+                    total=total,
+                    records_total=grand_total,
+                    progress=min(95, int(completed / max(total, 1) * 100)),
+                )
+
+    details = [r for r in results if r is not None]
+    return details, grand_total
+
+
 def run_market_download(
     market: str,
     codes: list[str],
     task_id: str = None,
 ) -> dict:
     """下載單一市場歷史數據"""
-    from src.core.history import download_one
-
     codes = codes or []
     total = len(codes)
-    results = []
-    grand_total = 0
     market_name = MARKET_NAMES.get(market, market)
 
     _update_download_meta(
@@ -87,27 +150,7 @@ def run_market_download(
         progress=1,
     )
 
-    for i, code in enumerate(codes, 1):
-        _check_cancelled(task_id)
-        _update_download_meta(
-            task_id,
-            message=f"{market_name}: {code} ({i}/{total})",
-            current_code=code,
-            index=i,
-            total=total,
-            records_total=grand_total,
-            progress=min(95, int((i - 1) / max(total, 1) * 100)),
-        )
-        if market == "a_share":
-            mkt = "a_share"
-        elif market in ("crypto", "forex"):
-            mkt = market
-        else:
-            mkt = "global"
-        count = download_one(code, market=mkt)
-        grand_total += count
-        results.append({"code": code, "records": count, "market": market})
-        time.sleep(0.3 if market == "crypto" else 0.5)
+    results, grand_total = _download_codes_parallel(market, market_name, codes, task_id)
 
     success = sum(1 for r in results if r["records"] > 0)
     return {
@@ -162,31 +205,48 @@ def run_download_all(task_id: str = None) -> dict:
         progress=1,
     )
 
+    flat_codes: list[str] = []
+    flat_meta: list[tuple[str, str]] = []
     for market_key, market_label, codes in plan:
-        _check_cancelled(task_id)
-        logger.info(f"===== 任務下載 {market_label} ({len(codes)} 個) =====")
         for code in codes:
+            flat_codes.append(code)
+            flat_meta.append((market_key, market_label))
+
+    workers = min(settings.download_max_workers, max(len(flat_codes), 1))
+    throttle = settings.download_throttle_sec
+
+    def _one(global_idx: int, code: str) -> tuple[int, str, str, int]:
+        _check_cancelled(task_id)
+        market_key, market_label = flat_meta[global_idx]
+        mkt = _market_key_to_mkt(market_key)
+        count = download_one(code, market=mkt)
+        if throttle > 0:
+            time.sleep(0.5 if market_key == "a_share" else 0.3)
+        return global_idx, market_key, code, count
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_one, i, code): (i, code)
+            for i, code in enumerate(flat_codes)
+        }
+        for fut in as_completed(futures):
             _check_cancelled(task_id)
+            gi, market_key, code, count = fut.result()
+            _, market_label = flat_meta[gi]
             done += 1
-            _update_download_meta(
-                task_id,
-                message=f"{market_label}: {code} ({done}/{total_symbols})",
-                market=market_key,
-                current_code=code,
-                index=done,
-                total=total_symbols,
-                records_total=grand_total,
-                progress=min(95, int((done - 1) / max(total_symbols, 1) * 100)),
-            )
-            mkt = "a_share" if market_key == "a_share" else (
-                "crypto" if market_key == "crypto" else (
-                    "forex" if market_key == "forex" else "global"
-                )
-            )
-            count = download_one(code, market=mkt)
             grand_total += count
             all_results.append({"market": market_key, "code": code, "records": count})
-            time.sleep(0.5 if market_key == "a_share" else 0.3)
+            with _meta_lock:
+                _update_download_meta(
+                    task_id,
+                    message=f"{market_label}: {code} ({done}/{total_symbols})",
+                    market=market_key,
+                    current_code=code,
+                    index=done,
+                    total=total_symbols,
+                    records_total=grand_total,
+                    progress=min(95, int(done / max(total_symbols, 1) * 100)),
+                )
 
     success_count = sum(1 for r in all_results if r["records"] > 0)
     by_market = {}

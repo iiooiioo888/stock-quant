@@ -12,3 +12,7 @@ build/
 venv/
 .qwen/
 .playwright-mcp/
+
+# Cursor Agent Skills (sync via scripts/sync-cursor-skills.ps1)
+.cursor/skills/
+.cursor/claude-skills-upstream/

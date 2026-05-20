@@ -536,17 +536,21 @@ SQ_DEMO_MODE=true pytest tests/ -q
 
 部署到雲端時，以下配置項**必須修改**，否則存在安全風險：
 
-| 環境變量 | 說明 | 示例 |
-|----------|------|------|
-| `SQ_CORS_ORIGINS` | 允許的前端域名（不要用 `*`） | `https://your-domain.com` |
-| `SQ_JWT_SECRET` | JWT 簽名密鑰（至少 32 字符） | `openssl rand -hex 32` |
-| `SQ_WS_AUTH_REQUIRED` | WebSocket 強制認證（非演示模式默認啟用） | `true` |
-| `SQ_DEMO_ADMIN_PASSWORD` | 管理員密碼（不設則隨機生成） | 自定義強密碼 |
-| `SQ_REDIS_PASSWORD` | Docker Redis 密碼 | 與 `SQ_REDIS_URL` 一致 |
-| `SQ_CACHE_ENABLED` | 計算結果緩存 | `true` |
+| 環境變量 | 說明 | 演示 (Render) | 私有生產 |
+|----------|------|---------------|----------|
+| `SQ_DEMO_MODE` | 演示：GET 讀開放、寫需登錄 | `true` | **`false`** |
+| `SQ_CORS_ORIGINS` | 允許的前端域名（不要用 `*`） | 實際域名 | 實際域名 |
+| `SQ_JWT_SECRET` | JWT 簽名密鑰（至少 32 字符） | 建議設置 | **必設** |
+| `SQ_WS_AUTH_REQUIRED` | WebSocket 強制認證 | 可 `false` | **`true`** |
+| `SQ_DEMO_ADMIN_PASSWORD` | 管理員密碼 | **必設強密碼** | 登入後改密碼 |
+| `SQ_REDIS_PASSWORD` | Docker Redis 密碼 | 與 `SQ_REDIS_URL` 一致 | 同左 |
+| `SQ_CACHE_ENABLED` | 計算結果緩存 | `true` | `true` |
+
+啟動時若為「公開演示模式」（`SQ_DEMO_MODE=true` 且 CORS 含公網域名），日誌會輸出安全警告。
 
 ```bash
-# 示例：生產環境啟動
+# 示例：私有生產環境啟動
+export SQ_DEMO_MODE=false
 export SQ_CORS_ORIGINS=https://your-domain.com
 export SQ_JWT_SECRET=$(openssl rand -hex 32)
 export SQ_WS_AUTH_REQUIRED=true

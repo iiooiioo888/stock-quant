@@ -73,11 +73,16 @@ class TestBacktestEndpoint:
         )
         assert resp.status_code == 400
 
-    def test_backtest_multi_invalid(self, client, auth_headers):
-        """測試多策略回測（無數據時應報錯）"""
-        resp = client.post("/api/backtest/multi?code=NONEXIST", headers=auth_headers)
-        # 無數據時返回 500
-        assert resp.status_code in [200, 500]
+    def test_backtest_multi_invalid(self, client, auth_headers, monkeypatch):
+        """測試多策略回測（無效代碼應快速失敗，不刷 error 日誌）"""
+        from src.core import backtest as bt
+
+        def _fail_fast(*args, **kwargs):
+            raise ValueError("股票 INVALID 無歷史數據")
+
+        monkeypatch.setattr(bt, "run_backtest", _fail_fast)
+        resp = client.post("/api/backtest/multi?code=INVALID", headers=auth_headers)
+        assert resp.status_code in [200, 400, 500]
 
 
 class TestAlertsEndpoint:

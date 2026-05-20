@@ -1254,6 +1254,7 @@ td.r {
 .dash-quick-grid {
   margin-bottom: 0;
   gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .dash-page .qa-card {
@@ -1530,10 +1531,19 @@ td.r {
 
 @media (max-width: 1100px) {
   .dash-kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
   .dash-market-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .dash-chart-card.dash-span-2 {
+    grid-column: auto;
+  }
+  .tv-pro-grid {
+    grid-template-columns: 1fr;
+  }
+  .index-charts-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 }
 
@@ -2508,6 +2518,28 @@ pre.rpt {
     width: 100%;
     text-align: center;
   }
+
+  .cw-dash { height: 160px; min-height: 140px; }
+  .cw-dash-tall { height: 200px; min-height: 180px; }
+  .cw-market { height: 180px; min-height: 160px; }
+  .cw-treemap { height: 220px; min-height: 200px; }
+  .chart-panel .cw { height: 180px; min-height: 160px; }
+
+  .index-charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-table-card {
+    position: relative;
+  }
+  .dash-table-card::after {
+    content: '← 橫向滑動 →';
+    display: block;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 4px 0;
+  }
 }
 
 /* ============================================================
@@ -2893,6 +2925,15 @@ tbody tr:hover {
   .pc {
     grid-template-columns: 1fr;
   }
+  .dash-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .quick-actions,
+  .dash-quick-grid {
+    grid-template-columns: 1fr;
+  }
+  .cw-dash { height: 140px; min-height: 120px; }
+  .cw-market { height: 160px; min-height: 140px; }
 }
 
 /* ============================================================
@@ -3039,6 +3080,18 @@ tbody tr:hover {
 }
 tr.sched-row-on {
   background: rgba(34, 197, 94, 0.06);
+}
+
+.dash-degraded-badge {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--yellow, #f59e0b);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 4px;
 }
 
 @media print {

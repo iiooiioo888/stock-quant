@@ -130,6 +130,15 @@ main.py                 — CLI 入口（config/serve/download/backtest/optimize
 38. 移除廢棄的 @app.on_event，統一到 lifespan 上下文管理器
 39. reset-password 不再有默認密碼，必須顯式提供
 
+## 生產檢查清單（技術債 Phase1）
+
+| 變量 | 演示 (Render) | 私有生產 |
+|------|---------------|----------|
+| `SQ_DEMO_MODE` | `true` | `false` |
+| `SQ_DEMO_ADMIN_PASSWORD` | 必設 | 可選（登入後改密） |
+| `SQ_CORS_ORIGINS` | 實際域名 | 實際域名 |
+| `SQ_WS_AUTH_REQUIRED` | 可 false | `true` |
+
 ## 待優化（第六輪）
 
 ### 🔥 高優（建議優先做）
