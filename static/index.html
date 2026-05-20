@@ -361,6 +361,7 @@
                     <input type="text" id="btCodeManual" class="input-sm bt-code-manual" value="600519" placeholder="6 位代碼" maxlength="6" inputmode="numeric">
                     <input type="search" id="btCodeSearch" class="input-sm bt-code-search" placeholder="搜尋市值 TOP 20000…" autocomplete="off">
                 </div>
+                <div id="btMarketTabs" class="bt-market-tabs" role="tablist" aria-label="股票市場分類"></div>
                 <div id="btCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇股票"></div>
             </div>
         </section>
@@ -932,18 +933,49 @@
 
 <!-- ====== 深度分析 ====== -->
 <div id="tab-analysis" class="h">
-    <div class="sec">
+    <div class="sec bt-panel">
         <h2>🔬 深度分析工具</h2>
         <p class="sec-desc">對回測結果進行多維度深度分析</p>
-        <div class="fr">
-            <div class="fg"><label>股票</label><input id="anCode" value="600519"></div>
-            <div class="fg"><label>策略</label><select id="anStrategy"></select></div>
-        </div>
-        <div class="btn-group mt-sm">
-            <button class="btn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
-            <button class="btn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
-            <button class="btn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
-        </div>
+
+        <section class="bt-stock-section">
+            <div class="bt-section-head">
+                <h3>① 選擇分析標的</h3>
+                <span id="anStockLoadHint" class="bt-load-hint"></span>
+            </div>
+            <div class="stock-code-picker">
+                <input type="hidden" id="anCode" value="600519">
+                <div class="bt-stock-toolbar">
+                    <div id="anSelectedStock" class="bt-selected-stock" title="當前選中">
+                        <div class="stock-code-icon bt-selected-icon">
+                            <img id="anSelectedIcon" width="48" height="48" alt="">
+                            <span class="stock-code-letter" id="anSelectedLetter">貴</span>
+                        </div>
+                        <div class="bt-selected-meta">
+                            <span class="bt-selected-code" id="anSelectedCode">600519</span>
+                            <span class="bt-selected-name" id="anSelectedName">貴州茅台</span>
+                        </div>
+                    </div>
+                    <input type="text" id="anCodeManual" class="input-sm bt-code-manual" value="600519" placeholder="6 位代碼" maxlength="12" inputmode="text">
+                    <input type="search" id="anCodeSearch" class="input-sm bt-code-search" placeholder="搜尋股票庫（代碼 / 名稱）…" autocomplete="off">
+                </div>
+                <div id="anMarketTabs" class="bt-market-tabs" role="tablist" aria-label="分析股票市場分類"></div>
+                <div id="anCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇分析股票"></div>
+            </div>
+        </section>
+
+        <section class="bt-config-section">
+            <div class="bt-section-head">
+                <h3>② 分析策略與類型</h3>
+            </div>
+            <div class="bt-params-grid bt-analysis-grid">
+                <div class="fg bt-fg-strategy"><label>策略</label><select id="anStrategy"></select></div>
+                <div class="btn-group bt-analysis-actions">
+                    <button class="btn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
+                    <button class="btn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
+                    <button class="btn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
+                </div>
+            </div>
+        </section>
     </div>
     <div id="anResult" class="h">
         <div class="g" id="anStats"></div>
@@ -1144,7 +1176,6 @@
      JavaScript Modules（defer：不阻塞首屏渲染）
      ============================================================ -->
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="/static/js/utils.js"></script>
 <script defer src="/static/js/api.js"></script>
 <script defer src="/static/js/charts.js"></script>

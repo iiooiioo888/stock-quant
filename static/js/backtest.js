@@ -14,6 +14,7 @@ const Backtest = {
   _UNIVERSE_ROW_H: 36,
   _universeList: [],
   _universeFiltered: null,
+  _activeMarket: 'all',
 
   _GROUP_LABELS: {
     demo: '快捷示範',
@@ -21,6 +22,15 @@ const Backtest = {
     universe: '市值 TOP',
     db: '本地 K 線',
   },
+
+  _MARKET_LABELS: {
+    all: '全部',
+    a_share: 'A 股',
+    hk_stock: '港股',
+    us_stock: '美股',
+  },
+
+  _MARKET_ORDER: ['all', 'a_share', 'hk_stock', 'us_stock'],
 
   /** 預設示範股（與演示配置一致） */
   _DEFAULT_STOCKS: [
@@ -124,6 +134,7 @@ const Backtest = {
     const grid = document.getElementById('btCodeGrid');
     const manual = document.getElementById('btCodeManual');
     const search = document.getElementById('btCodeSearch');
+    const marketTabs = document.getElementById('btMarketTabs');
     if (!grid || grid.dataset.bound) return;
     grid.dataset.bound = '1';
 
@@ -153,6 +164,46 @@ const Backtest = {
         this._filterStockButtons();
       });
     }
+
+    if (marketTabs && !marketTabs.dataset.bound) {
+      marketTabs.dataset.bound = '1';
+      marketTabs.addEventListener('click', e => {
+        const btn = e.target.closest('.bt-market-tab');
+        if (!btn?.dataset.market) return;
+        this._activeMarket = btn.dataset.market;
+        this._universeFiltered = null;
+        this._renderMarketTabs();
+        this._applyStockPicker(this._stockMap);
+      });
+    }
+  },
+
+  _marketCounts() {
+    const counts = { all: this._universeList.length };
+    this._universeList.forEach(item => {
+      const m = item.market || 'unknown';
+      counts[m] = (counts[m] || 0) + 1;
+    });
+    return counts;
+  },
+
+  _renderMarketTabs() {
+    const el = document.getElementById('btMarketTabs');
+    if (!el) return;
+    const counts = this._marketCounts();
+    const markets = this._MARKET_ORDER.filter(m => m === 'all' || counts[m] > 0);
+    el.replaceChildren();
+    markets.forEach(market => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bt-market-tab';
+      btn.dataset.market = market;
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', String(this._activeMarket === market));
+      btn.classList.toggle('a', this._activeMarket === market);
+      btn.innerHTML = `<span>${this._MARKET_LABELS[market] || market}</span><strong>${counts[market] || 0}</strong>`;
+      el.appendChild(btn);
+    });
   },
 
   _filterStockButtons() {
@@ -191,7 +242,18 @@ const Backtest = {
   },
 
   _universeDisplayList() {
-    return this._universeFiltered ?? this._universeList;
+    const base = this._activeMarket === 'all'
+      ? this._universeList
+      : this._universeList.filter(item => item.market === this._activeMarket);
+    if (!this._searchQuery) return base;
+    return base.filter(item => {
+      const code = (item.code || '').toLowerCase();
+      const name = (item.name || '').toLowerCase();
+      const market = (item.market || '').toLowerCase();
+      return code.includes(this._searchQuery)
+        || name.includes(this._searchQuery)
+        || market.includes(this._searchQuery);
+    });
   },
 
   _createCompactStockRow(item) {
@@ -350,10 +412,11 @@ const Backtest = {
       const title = document.createElement('div');
       title.className = 'stock-code-group-title';
       const shown = this._universeDisplayList().length;
+      const marketLabel = this._MARKET_LABELS[this._activeMarket] || this._activeMarket;
       const suffix = this._searchQuery
         ? ` · 篩選 ${shown} / ${this._universeList.length}`
         : '';
-      title.textContent = `${this._GROUP_LABELS.universe}（${this._universeList.length}）${suffix}`;
+      title.textContent = `${marketLabel} ${this._GROUP_LABELS.universe}（${shown}）${suffix}`;
 
       const host = document.createElement('div');
       host.className = 'stock-universe-host';
@@ -422,6 +485,7 @@ const Backtest = {
         .sort((a, b) => (a.rank_mv ?? 999999) - (b.rank_mv ?? 999999));
 
       this._universeList.forEach(s => this._stockMapAdd(map, s.code, s.name, 'universe'));
+      this._renderMarketTabs();
 
       if (!this._universeList.length) {
         Object.entries(nameMap).slice(0, 80).forEach(([code, name]) => add(code, name, 'db'));
@@ -434,7 +498,7 @@ const Backtest = {
 
     this._applyStockPicker(map);
     const n = this._universeList.length;
-    const loadHint = document.getElementById('btStockLoadHint');
+    this._renderMarketTabs();
     if (loadHint) {
       loadHint.textContent = n > 0
         ? `已載入 ${n} 隻 · 滾動或搜尋`

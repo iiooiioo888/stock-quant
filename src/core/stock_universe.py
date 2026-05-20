@@ -11,10 +11,20 @@ from typing import Callable, Optional
 
 import akshare as ak
 import pandas as pd
+import requests
 
 from src.config import settings
 from src.core.db import get_conn
 from src.utils.logger import logger
+
+_HTTP = requests.Session()
+_HTTP.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+})
 
 DDL_STOCK_UNIVERSE = """
 CREATE TABLE IF NOT EXISTS stock_universe (
@@ -180,6 +190,259 @@ def _fetch_with_retry(fetcher: Callable[[], pd.DataFrame], label: str, retries: 
     return pd.DataFrame()
 
 
+def _chunked(items: list[str], size: int = 80):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _yahoo_chart_quote(symbol: str, timeout: int = 10) -> dict:
+    """Yahoo chart 端點備援；通常不需要 crumb，可取價格/成交量。"""
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        resp = _HTTP.get(url, params={"range": "5d", "interval": "1d"}, timeout=timeout)
+        if resp.status_code in (401, 403, 404, 429):
+            return {}
+        resp.raise_for_status()
+        result = resp.json().get("chart", {}).get("result", [])
+        if not result:
+            return {}
+        meta = result[0].get("meta", {})
+        quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+        closes = [x for x in quote.get("close", []) if x is not None]
+        volumes = [x for x in quote.get("volume", []) if x is not None]
+        if not closes:
+            return {}
+        price = float(closes[-1])
+        prev = float(closes[-2]) if len(closes) > 1 else float(meta.get("previousClose") or price)
+        return {
+            "symbol": symbol,
+            "shortName": symbol,
+            "regularMarketPrice": price,
+            "regularMarketChangePercent": ((price - prev) / prev * 100) if prev > 0 else 0,
+            "regularMarketVolume": int(volumes[-1]) if volumes else 0,
+            "currency": meta.get("currency"),
+        }
+    except Exception:
+        return {}
+
+
+def _yahoo_quote_batch(symbols: list[str], timeout: int = 15) -> dict[str, dict]:
+    """Yahoo Finance 批量報價。免費端點，失敗時返回空 dict。"""
+    if not symbols:
+        return {}
+    out: dict[str, dict] = {}
+    url = "https://query1.finance.yahoo.com/v7/finance/quote"
+    chart_fallback_remaining = 120
+    for chunk in _chunked(symbols, 80):
+        try:
+            resp = _HTTP.get(url, params={"symbols": ",".join(chunk)}, timeout=timeout)
+            if resp.status_code in (401, 403):
+                # 部分環境會擋 v7 quote；退回 v8 chart，限制數量避免同步過慢。
+                for symbol in chunk:
+                    if chart_fallback_remaining <= 0:
+                        break
+                    q = _yahoo_chart_quote(symbol)
+                    if q:
+                        out[symbol.upper()] = q
+                    chart_fallback_remaining -= 1
+                    time.sleep(0.05)
+                continue
+            if resp.status_code == 429:
+                logger.warning("Yahoo quote 觸發限流，暫停後繼續")
+                time.sleep(2)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            for q in data.get("quoteResponse", {}).get("result", []):
+                sym = str(q.get("symbol") or "").upper()
+                if sym:
+                    out[sym] = q
+        except Exception as e:
+            logger.warning(f"Yahoo quote 批次失敗 ({len(chunk)}): {e}")
+        time.sleep(0.15)
+    return out
+
+
+def _quote_to_row(
+    quote: dict,
+    market: str,
+    exchange: str,
+    source: str,
+    fallback_code: str = "",
+    fallback_name: str = "",
+) -> dict:
+    symbol = str(quote.get("symbol") or fallback_code).strip()
+    code = fallback_code or symbol
+    if market == "hk_stock" and symbol.endswith(".HK"):
+        code = symbol[:-3].zfill(5)
+    elif market == "a_share" and symbol.endswith((".SS", ".SZ")):
+        code = symbol[:-3].zfill(6)
+    name = (
+        quote.get("shortName")
+        or quote.get("longName")
+        or fallback_name
+        or code
+    )
+    market_cap = _to_float(quote.get("marketCap"))
+    return {
+        "code": _normalize_code(code, market),
+        "market": market,
+        "name": str(name),
+        "exchange": exchange,
+        "industry": "",
+        "list_date": "",
+        "price": _to_float(quote.get("regularMarketPrice")),
+        "change_pct": _to_float(quote.get("regularMarketChangePercent")),
+        "total_mv": round(_mv_to_yi(market_cap, market), 4),
+        "circulating_mv": 0,
+        "pe_ttm": _to_float(quote.get("trailingPE")),
+        "pb": 0,
+        "volume": _to_float(quote.get("regularMarketVolume")),
+        "amount": 0,
+        "turnover": 0,
+        "source": source,
+    }
+
+
+def _fetch_us_symbols_nasdaq_trader(limit: int = 12000) -> list[dict]:
+    """NASDAQ Trader 免費符號目錄（涵蓋 NASDAQ/NYSE/AMEX）。"""
+    urls = [
+        ("NASDAQ", "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"),
+        ("US", "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"),
+    ]
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for exchange, url in urls:
+        try:
+            resp = _HTTP.get(url, timeout=20)
+            resp.raise_for_status()
+            lines = [ln for ln in resp.text.splitlines() if ln and not ln.startswith("File Creation Time")]
+            if not lines:
+                continue
+            header = lines[0].split("|")
+            for ln in lines[1:]:
+                parts = ln.split("|")
+                if len(parts) != len(header):
+                    continue
+                rec = dict(zip(header, parts))
+                symbol = (rec.get("Symbol") or rec.get("ACT Symbol") or "").strip()
+                if not symbol or symbol in seen:
+                    continue
+                if rec.get("Test Issue", "N") == "Y":
+                    continue
+                if rec.get("ETF", "N") == "Y":
+                    continue
+                name = (rec.get("Security Name") or rec.get("Company Name") or symbol).strip()
+                rows.append({
+                    "code": symbol,
+                    "market": "us_stock",
+                    "name": name,
+                    "exchange": exchange,
+                    "industry": "",
+                    "list_date": "",
+                    "price": 0,
+                    "change_pct": 0,
+                    "total_mv": 0,
+                    "circulating_mv": 0,
+                    "pe_ttm": 0,
+                    "pb": 0,
+                    "volume": 0,
+                    "amount": 0,
+                    "turnover": 0,
+                    "source": "nasdaq_trader",
+                })
+                seen.add(symbol)
+                if len(rows) >= limit:
+                    break
+        except Exception as e:
+            logger.warning(f"NASDAQ Trader 符號目錄失敗 {exchange}: {e}")
+        if len(rows) >= limit:
+            break
+    logger.info(f"股票庫 NASDAQ Trader: {len(rows)} 條")
+    return rows
+
+
+def _enrich_rows_with_yahoo(rows: list[dict], market: str, max_quotes: int = 2500) -> list[dict]:
+    """用 Yahoo quote 為符號目錄補價格/市值。"""
+    if not rows:
+        return []
+    selected = rows[:max_quotes]
+    symbols = []
+    row_by_symbol = {}
+    for row in selected:
+        code = row["code"]
+        if market == "hk_stock":
+            symbol = f"{str(code).zfill(4)}.HK"
+        elif market == "a_share":
+            suffix = "SS" if str(code).startswith(("5", "6", "9")) else "SZ"
+            symbol = f"{str(code).zfill(6)}.{suffix}"
+        else:
+            symbol = str(code).replace(".", "-")
+        symbols.append(symbol)
+        row_by_symbol[symbol.upper()] = row
+
+    quotes = _yahoo_quote_batch(symbols)
+    enriched: list[dict] = []
+    for sym, row in row_by_symbol.items():
+        q = quotes.get(sym)
+        if q:
+            enriched.append(_quote_to_row(
+                q,
+                market=row["market"],
+                exchange=row.get("exchange") or ("US" if market == "us_stock" else "HK"),
+                source=f"{row.get('source') or 'symbol_dir'}+yahoo",
+                fallback_code=row["code"],
+                fallback_name=row.get("name", ""),
+            ))
+        else:
+            enriched.append(row)
+    if len(rows) > len(selected):
+        enriched.extend(rows[len(selected):])
+    return enriched
+
+
+_HK_YAHOO_SYMBOLS = [
+    ("0001", "長和"), ("0002", "中電控股"), ("0003", "香港中華煤氣"), ("0005", "匯豐控股"),
+    ("0011", "恒生銀行"), ("0016", "新鴻基地產"), ("0017", "新世界發展"), ("0027", "銀河娛樂"),
+    ("0388", "香港交易所"), ("0669", "創科實業"), ("0700", "騰訊控股"), ("0762", "中國聯通"),
+    ("0823", "領展房產基金"), ("0857", "中國石油股份"), ("0883", "中國海洋石油"),
+    ("0939", "建設銀行"), ("0941", "中國移動"), ("0981", "中芯國際"), ("0992", "聯想集團"),
+    ("1024", "快手"), ("1038", "長江基建集團"), ("1088", "中國神華"), ("1093", "石藥集團"),
+    ("1099", "國藥控股"), ("1109", "華潤置地"), ("1177", "中國生物製藥"), ("1211", "比亞迪股份"),
+    ("1299", "友邦保險"), ("1398", "工商銀行"), ("1810", "小米集團-W"), ("1876", "百威亞太"),
+    ("1928", "金沙中國有限公司"), ("2015", "理想汽車-W"), ("2020", "安踏體育"), ("2269", "藥明生物"),
+    ("2318", "中國平安"), ("2319", "蒙牛乳業"), ("2331", "李寧"), ("2382", "舜宇光學科技"),
+    ("2388", "中銀香港"), ("2628", "中國人壽"), ("2688", "新奧能源"), ("3690", "美團-W"),
+    ("3968", "招商銀行"), ("3988", "中國銀行"), ("6098", "碧桂園服務"), ("6618", "京東健康"),
+    ("6862", "海底撈"), ("9618", "京東集團-SW"), ("9633", "農夫山泉"), ("9866", "蔚來-SW"),
+    ("9888", "百度集團-SW"), ("9988", "阿里巴巴-SW"), ("9999", "網易-S"),
+]
+
+
+def _fallback_hk_yahoo() -> list[dict]:
+    rows = [{
+        "code": code,
+        "market": "hk_stock",
+        "name": name,
+        "exchange": "HK",
+        "industry": "",
+        "list_date": "",
+        "price": 0,
+        "change_pct": 0,
+        "total_mv": 0,
+        "circulating_mv": 0,
+        "pe_ttm": 0,
+        "pb": 0,
+        "volume": 0,
+        "amount": 0,
+        "turnover": 0,
+        "source": "hk_bluechip_seed",
+    } for code, name in _HK_YAHOO_SYMBOLS]
+    enriched = _enrich_rows_with_yahoo(rows, "hk_stock", max_quotes=len(rows))
+    logger.info(f"股票庫 Yahoo 港股備援: {len(enriched)} 條")
+    return enriched
+
+
 def fetch_all_market_basics() -> list[dict]:
     """從多市場實時行情拉取基本資料並合併。"""
     batches: list[tuple[str, str, str, Callable]] = [
@@ -191,7 +454,14 @@ def fetch_all_market_basics() -> list[dict]:
     merged: list[dict] = []
     for market, exchange, source, fetcher in batches:
         df = _fetch_with_retry(fetcher, market)
-        merged.extend(_parse_spot_df(df, market, exchange, source))
+        rows = _parse_spot_df(df, market, exchange, source)
+        if rows:
+            merged.extend(rows)
+        elif market == "hk_stock":
+            merged.extend(_fallback_hk_yahoo())
+        elif market == "us_stock":
+            us_rows = _fetch_us_symbols_nasdaq_trader()
+            merged.extend(_enrich_rows_with_yahoo(us_rows, "us_stock", max_quotes=2500))
         time.sleep(0.8)
 
     # 無市值的標的 total_mv=0，排序時靠後
@@ -255,6 +525,8 @@ def sync_stock_universe(
     all_rows = fetch_all_market_basics()
     if not all_rows:
         all_rows = _fallback_a_share_codes()
+    elif not any(r.get("market") == "a_share" for r in all_rows):
+        all_rows.extend(_fallback_a_share_codes())
 
     if task_id and is_task_cancelled(task_id):
         raise RuntimeError("任務已取消")
@@ -316,8 +588,11 @@ def sync_stock_universe(
         conn.commit()
 
     by_market: dict[str, int] = {}
+    by_source: dict[str, int] = {}
     for r in top:
         by_market[r["market"]] = by_market.get(r["market"], 0) + 1
+        src = r.get("source") or "unknown"
+        by_source[src] = by_source.get(src, 0) + 1
 
     result = {
         "success": True,
@@ -326,8 +601,9 @@ def sync_stock_universe(
         "max_count": max_count,
         "updated_at": updated_at,
         "by_market": by_market,
+        "by_source": by_source,
         "note": (
-            "已按總市值排序取前 N；A 股約 5000+，需港股/美股湊滿更大池。"
+            "已按總市值排序取前 N；若 Yahoo/交易所備援仍無市值，會保留代碼與名稱並排在後段。"
             if len(deduped) < max_count
             else None
         ),

@@ -233,7 +233,9 @@ const Utils = {
   },
 
   /**
-   * 綁定股票圖標：先顯示本地 SVG，再嘗試外部 Logo；外部失敗不影響顯示
+   * 綁定股票圖標：默認只使用本地 SVG，避免外部 CDN timeout 洗版。
+   * 若確實想嘗試外部 Logo，可在控制台執行：
+   * localStorage.setItem('sq_remote_stock_icons', '1')
    */
   bindStockIcon(img, code, name) {
     if (!img) return;
@@ -252,8 +254,9 @@ const Utils = {
     const letter = wrap?.querySelector('.stock-code-letter');
     if (letter) letter.style.display = 'none';
 
-    // 只有 A 股 6 位數字嘗試東財 Logo；失敗時保留本地 SVG。
-    if (/^\d{6}$/.test(c)) {
+    const allowRemote = localStorage.getItem('sq_remote_stock_icons') === '1';
+    // 外部 Logo 是可選增強，不作為默認路徑，避免東財超時造成大量 Console 錯誤。
+    if (allowRemote && /^\d{6}$/.test(c)) {
       const remote = new Image();
       remote.referrerPolicy = 'no-referrer';
       remote.decoding = 'async';

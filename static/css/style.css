@@ -2221,6 +2221,45 @@ pre.rpt {
   max-width: 360px;
 }
 
+.bt-market-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.bt-market-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.bt-market-tab:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: var(--text-primary);
+}
+
+.bt-market-tab.a {
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent, #38bdf8);
+}
+
+.bt-market-tab strong {
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: inherit;
+  opacity: 0.85;
+}
+
 .bt-params-grid {
   display: grid;
   grid-template-columns: minmax(200px, 2fr) repeat(4, minmax(88px, 1fr));
@@ -2423,6 +2462,17 @@ pre.rpt {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.bt-selected-icon.stock-code-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.stock-code-row-icon.stock-code-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
 }
 
 .stock-code-icon img {
