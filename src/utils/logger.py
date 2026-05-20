@@ -8,6 +8,17 @@ from logging.handlers import RotatingFileHandler
 from src.config import settings
 
 
+def _make_console_stream_safe():
+    """避免 Windows 非 UTF-8 控制台遇到 emoji 日誌時拋 UnicodeEncodeError。"""
+    stream = getattr(sys, "__stdout__", None) or sys.stdout
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:
+            pass
+    return stream
+
+
 def setup_logger(name: str = "stock_quant") -> logging.Logger:
     """
     配置日誌器
@@ -32,7 +43,7 @@ def setup_logger(name: str = "stock_quant") -> logging.Logger:
     )
 
     # 控制台 handler
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(_make_console_stream_safe())
     console.setLevel(logging.INFO)
     console.setFormatter(fmt)
     logger.addHandler(console)

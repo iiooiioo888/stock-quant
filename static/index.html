@@ -98,150 +98,220 @@
 <div class="main" id="mainContent">
 
 <!-- ====== 儀表盤 ====== -->
-<div id="tab-dashboard">
-    <!-- Welcome / Greeting -->
-    <div class="welcome-section" id="welcomeSection">
-        <div class="welcome-left">
-            <h2 id="greetingText">歡迎回來 👋</h2>
-            <p id="greetingSubtext" class="welcome-sub">今天也要元氣滿滿地分析市場！</p>
-        </div>
-        <div class="welcome-right">
-            <div class="market-status" id="marketStatus">
+<div id="tab-dashboard" class="dash-page">
+
+    <!-- Hero：問候 + 核心 KPI -->
+    <section class="dash-hero" id="welcomeSection">
+        <div class="dash-hero-top">
+            <div class="dash-hero-text">
+                <p class="dash-hero-eyebrow">量化交易工作台</p>
+                <h2 class="dash-hero-title" id="greetingText">歡迎回來 👋</h2>
+                <p class="dash-hero-sub welcome-sub" id="greetingSubtext">今天也要元氣滿滿地分析市場！</p>
+            </div>
+            <div class="dash-hero-badge" id="marketStatus">
                 <span class="market-dot" id="marketDot"></span>
                 <span id="marketStatusText">載入中...</span>
             </div>
         </div>
-    </div>
+        <div class="dash-kpi-grid" id="statsGrid"></div>
+    </section>
 
-    <!-- Quick Actions -->
-    <div class="quick-actions" id="quickActions">
-        <button class="qa-card" onclick="App.quickAction('backtest')">
-            <span class="qa-icon">🧪</span>
-            <span class="qa-label">策略回測</span>
-            <span class="qa-desc">測試你的交易策略</span>
-        </button>
-        <button class="qa-card" onclick="App.quickAction('signals')">
-            <span class="qa-icon">📡</span>
-            <span class="qa-label">今日信號</span>
-            <span class="qa-desc">查看最新買賣信號</span>
-        </button>
-        <button class="qa-card" onclick="App.quickAction('screener')">
-            <span class="qa-icon">🔍</span>
-            <span class="qa-label">選股篩選</span>
-            <span class="qa-desc">找到符合條件的股票</span>
-        </button>
-        <button class="qa-card" onclick="App.quickAction('portfolio')">
-            <span class="qa-icon">💼</span>
-            <span class="qa-label">組合分析</span>
-            <span class="qa-desc">多策略組合回測</span>
-        </button>
-        <button class="qa-card" onclick="App.downloadAllFromDashboard()" id="qaDownload">
-            <span class="qa-icon">📥</span>
-            <span class="qa-label">下載數據</span>
-            <span class="qa-desc">一鍵下載全市場股票數據</span>
-        </button>
-        <button class="qa-card" onclick="App.quickAction('markets')">
-            <span class="qa-icon">🌐</span>
-            <span class="qa-label">多市場</span>
-            <span class="qa-desc">美股、港股、加密貨幣</span>
-        </button>
-    </div>
+    <!-- 快捷入口 -->
+    <section class="dash-section dash-section--flat">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">快捷操作</h2>
+                <p class="dash-section-meta">一鍵進入常用功能</p>
+            </div>
+        </div>
+        <div class="quick-actions dash-quick-grid" id="quickActions">
+            <button type="button" class="qa-card" onclick="App.quickAction('backtest')">
+                <span class="qa-icon-wrap"><span class="qa-icon">🧪</span></span>
+                <span class="qa-label">策略回測</span>
+                <span class="qa-desc">測試交易策略</span>
+            </button>
+            <button type="button" class="qa-card" onclick="App.quickAction('signals')">
+                <span class="qa-icon-wrap"><span class="qa-icon">📡</span></span>
+                <span class="qa-label">今日信號</span>
+                <span class="qa-desc">買賣信號速覽</span>
+            </button>
+            <button type="button" class="qa-card" onclick="App.quickAction('screener')">
+                <span class="qa-icon-wrap"><span class="qa-icon">🔍</span></span>
+                <span class="qa-label">選股篩選</span>
+                <span class="qa-desc">條件選股</span>
+            </button>
+            <button type="button" class="qa-card" onclick="App.quickAction('portfolio')">
+                <span class="qa-icon-wrap"><span class="qa-icon">💼</span></span>
+                <span class="qa-label">組合分析</span>
+                <span class="qa-desc">多策略組合</span>
+            </button>
+            <button type="button" class="qa-card qa-card--accent" onclick="App.downloadAllFromDashboard()" id="qaDownload">
+                <span class="qa-icon-wrap"><span class="qa-icon">📥</span></span>
+                <span class="qa-label">下載數據</span>
+                <span class="qa-desc">全市場入庫</span>
+            </button>
+            <button type="button" class="qa-card" onclick="App.quickAction('markets')">
+                <span class="qa-icon-wrap"><span class="qa-icon">🌐</span></span>
+                <span class="qa-label">多市場</span>
+                <span class="qa-desc">美股 · 港股 · 加密</span>
+            </button>
+        </div>
+    </section>
 
-    <!-- Download Progress (hidden by default) -->
-    <div class="sec" id="downloadSection" style="display:none">
+    <div class="sec dash-download-sec" id="downloadSection" style="display:none">
         <h2>📥 數據下載</h2>
         <div id="downloadContent">
             <div class="status-row">
                 <span class="ld"></span>
-                <span id="dlStatus" style="font-size:13px;color:var(--text-secondary)">正在下載全市場數據，請稍候...</span>
+                <span id="dlStatus" class="dash-dl-status">正在下載全市場數據，請稍候...</span>
             </div>
             <div class="progress-bar-wrap">
                 <div id="dlBar" class="progress-bar"></div>
             </div>
-            <div id="dlDetail" style="font-size:11px;color:var(--text-dim)"></div>
+            <div id="dlDetail" class="dash-dl-detail"></div>
         </div>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="g" id="statsGrid"></div>
-    <!-- Major Indices (Professional K-line) -->
-    <div class="sec index-charts-sec">
-        <div class="index-charts-head">
-            <h2>🌍 全球主要指數</h2>
-            <span class="index-charts-meta" id="indexChartsMeta">專業 K 線 · 載入中…</span>
+    <!-- 核心概覽 -->
+    <section class="dash-section">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">📊 核心概覽</h2>
+                <p class="dash-section-meta">市場 · 回測 · 信號 · 板塊</p>
+            </div>
+        </div>
+        <div class="dash-insights-grid">
+            <article class="dash-panel">
+                <h3 class="dash-panel-title">市場總覽</h3>
+                <div class="cw cw-dash"><canvas id="dashSparklineChart"></canvas></div>
+            </article>
+            <article class="dash-panel">
+                <h3 class="dash-panel-title">最近回測表現</h3>
+                <div class="cw cw-dash"><canvas id="dashBacktestChart"></canvas></div>
+            </article>
+            <article class="dash-panel">
+                <h3 class="dash-panel-title">信號強度分佈</h3>
+                <div class="cw cw-dash"><canvas id="dashSignalRadar"></canvas></div>
+            </article>
+            <article class="dash-panel">
+                <h3 class="dash-panel-title">板塊漲跌 Top 5</h3>
+                <div class="cw cw-dash"><canvas id="dashSectorChart"></canvas></div>
+            </article>
+        </div>
+        <article class="dash-panel dash-panel--wide">
+            <h3 class="dash-panel-title">🏆 策略勝率排行</h3>
+            <div class="cw cw-dash cw-dash-tall"><canvas id="dashLeaderboardChart"></canvas></div>
+        </article>
+    </section>
+
+    <!-- 資金與板塊 -->
+    <section class="dash-section dash-market-sec">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">💰 資金與板塊</h2>
+                <p class="dash-section-meta" id="marketChartsMeta">板塊資金 · 大盤流向 · 北向資金</p>
+            </div>
+        </div>
+        <div class="dash-market-grid">
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">板塊主力淨流入 Top 10</h3>
+                <div class="cw cw-market"><canvas id="dashSectorFlowChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">漲跌幅 × 資金流向</h3>
+                <div class="cw cw-market"><canvas id="dashSectorScatterChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">大盤資金流向</h3>
+                <div class="cw cw-market"><canvas id="dashMarketFlowChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">北向資金</h3>
+                <div class="cw cw-market"><canvas id="dashNorthFlowChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card dash-span-2">
+                <h3 class="dash-chart-title">板塊熱力圖</h3>
+                <div class="cw cw-treemap" id="dashSectorTreemapWrap"><canvas id="dashSectorTreemap"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">概念板塊漲跌</h3>
+                <div class="cw cw-market"><canvas id="dashConceptSectorChart"></canvas></div>
+            </article>
+        </div>
+    </section>
+
+    <!-- 全球指數 -->
+    <section class="dash-section index-charts-sec">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">🌍 全球主要指數</h2>
+                <p class="dash-section-meta" id="indexChartsMeta">專業 K 線 · 載入中…</p>
+            </div>
         </div>
         <div id="indexChartsGrid" class="index-charts-grid">
             <div class="index-charts-loading"><span class="ld"></span> 載入指數行情…</div>
         </div>
-    </div>
+    </section>
 
-
-
-    <!-- 資金與板塊 -->
-    <div class="sec dash-market-sec">
-        <div class="index-charts-head">
-            <h2>💰 資金與板塊</h2>
-            <span class="index-charts-meta" id="marketChartsMeta">板塊資金 · 大盤流向 · 北向資金</span>
-        </div>
-        <div class="g dash-market-grid">
-            <div class="sec dash-chart-card">
-                <h3 class="dash-chart-title">板塊主力淨流入 Top 10</h3>
-                <div class="cw cw-market"><canvas id="dashSectorFlowChart"></canvas></div>
-            </div>
-            <div class="sec dash-chart-card">
-                <h3 class="dash-chart-title">漲跌幅 × 資金流向</h3>
-                <div class="cw cw-market"><canvas id="dashSectorScatterChart"></canvas></div>
-            </div>
-            <div class="sec dash-chart-card">
-                <h3 class="dash-chart-title">大盤資金流向</h3>
-                <div class="cw cw-market"><canvas id="dashMarketFlowChart"></canvas></div>
-            </div>
-            <div class="sec dash-chart-card">
-                <h3 class="dash-chart-title">北向資金</h3>
-                <div class="cw cw-market"><canvas id="dashNorthFlowChart"></canvas></div>
-            </div>
-            <div class="sec dash-chart-card dash-span-2">
-                <h3 class="dash-chart-title">板塊熱力圖</h3>
-                <div class="cw cw-treemap" id="dashSectorTreemapWrap"><canvas id="dashSectorTreemap"></canvas></div>
-            </div>
-            <div class="sec dash-chart-card">
-                <h3 class="dash-chart-title">概念板塊漲跌</h3>
-                <div class="cw cw-market"><canvas id="dashConceptSectorChart"></canvas></div>
+    <!-- TradingView 行情牆 -->
+    <section class="dash-section tv-market-sec">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">📺 專業行情牆</h2>
+                <p class="dash-section-meta" id="tvChartsMeta">監控股 · 動量 · 波動 · 回撤</p>
             </div>
         </div>
-    </div>
-
-
-        <!-- Dashboard Charts -->
-    <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
-        <div class="sec"><h2>📈 市場總覽</h2><div class="cw"><canvas id="dashSparklineChart"></canvas></div></div>
-        <div class="sec"><h2>🧪 最近回測表現</h2><div class="cw"><canvas id="dashBacktestChart"></canvas></div></div>
-        <div class="sec"><h2>📡 信號強度分佈</h2><div class="cw"><canvas id="dashSignalRadar"></canvas></div></div>
-        <div class="sec"><h2>🏭 板塊漲跌 Top 5</h2><div class="cw"><canvas id="dashSectorChart"></canvas></div></div>
-    </div>
-    <div class="sec" style="margin-top:14px"><h2>🏆 策略勝率排行</h2><div class="cw"><canvas id="dashLeaderboardChart"></canvas></div></div>
-
-    <!-- Watchlist -->
-    <div class="sec">
-        <h2>📋 監控列表 <span class="ct" id="wlCount"></span></h2>
-        <div class="table-wrap">
-        <table><thead><tr><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
-        <tbody id="watchlistTable"></tbody></table>
+        <div id="tvWatchlistGrid" class="tv-watchlist-grid">
+            <div class="index-charts-loading"><span class="ld"></span> 載入監控股專業圖表…</div>
         </div>
-        <div class="mt-sm" style="display:flex;flex-wrap:wrap;gap:8px">
-            <button class="btn" onclick="showAddRule()">+ 添加監控規則</button>
-            <button class="btn s" onclick="Dashboard.showAutoAddRules()" title="依最新價自動計算突破/跌破價">🤖 智能批量添加</button>
+        <div class="tv-pro-grid">
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">20日動量排行</h3>
+                <div class="cw cw-market"><canvas id="dashMomentumRankChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">年化波動率排行</h3>
+                <div class="cw cw-market"><canvas id="dashVolatilityRankChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">最大回撤排行</h3>
+                <div class="cw cw-market"><canvas id="dashDrawdownRankChart"></canvas></div>
+            </article>
+            <article class="dash-panel dash-chart-card">
+                <h3 class="dash-chart-title">動量 × 波動風險圖</h3>
+                <div class="cw cw-market"><canvas id="dashRiskScatterChart"></canvas></div>
+            </article>
         </div>
-    </div>
+    </section>
 
-    <!-- Tips for beginners -->
-    <div class="tip-card" id="tipCard">
+    <!-- 監控列表 -->
+    <section class="dash-section dash-watchlist-sec">
+        <div class="dash-section-head dash-section-head--row">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">📋 監控列表</h2>
+                <p class="dash-section-meta">價格突破 / 跌破預警</p>
+            </div>
+            <span class="dash-wl-badge" id="wlCount">0 只</span>
+        </div>
+        <div class="dash-table-card table-wrap">
+            <table class="dash-watchlist-table">
+                <thead><tr><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
+                <tbody id="watchlistTable"></tbody>
+            </table>
+        </div>
+        <div class="dash-watchlist-actions">
+            <button type="button" class="btn" onclick="showAddRule()">+ 添加監控規則</button>
+            <button type="button" class="btn s" onclick="Dashboard.showAutoAddRules()" title="依最新價自動計算突破/跌破價">🤖 智能批量添加</button>
+        </div>
+    </section>
+
+    <div class="tip-card dash-tip" id="tipCard">
         <span class="tip-icon">💡</span>
         <div class="tip-content">
             <strong>新手提示</strong>
             <p id="tipText">夏普比率 (Sharpe Ratio) 表示每承受一單位風險能獲得多少超額收益，大於 1 算不錯，大於 2 算優秀。</p>
         </div>
-        <button class="tip-dismiss" onclick="App.dismissTip()">✕</button>
+        <button type="button" class="tip-dismiss" onclick="App.dismissTip()" aria-label="關閉提示">✕</button>
     </div>
 </div>
 

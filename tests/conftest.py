@@ -15,6 +15,7 @@ os.environ.setdefault("SQ_REDIS_ENABLED", "false")
 os.environ.setdefault("SQ_LOG_LEVEL", "WARNING")
 os.environ.setdefault("SQ_DEBUG", "true")
 os.environ.setdefault("SQ_DEMO_MODE", "true")
+os.environ.setdefault("SQ_LOCAL_FIRST_AUTO_FETCH", "false")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,8 +32,24 @@ def _reset_rate_limiters():
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """創建測試客戶端"""
+    # API 單元測試只驗證路由契約，避免儀表盤/數據中心端點觸發外部行情源。
+    monkeypatch.setattr("src.core.capital_flow.get_market_capital_flow", lambda: [])
+    monkeypatch.setattr("src.core.capital_flow.get_north_flow", lambda days=30: [])
+    monkeypatch.setattr("src.core.sector.get_sector_capital_flow_rank", lambda top_n=20: [])
+    monkeypatch.setattr(
+        "src.core.sector.get_sector_change_flow_matrix",
+        lambda sector_type="industry", top_n=40: [],
+    )
+    monkeypatch.setattr(
+        "src.core.sector.get_sector_heatmap_data",
+        lambda sector_type="industry": [],
+    )
+    monkeypatch.setattr(
+        "src.core.sector.get_sector_performance",
+        lambda sector_type="industry", top_n=20: [],
+    )
     from src.api.app import app
     return TestClient(app)
 

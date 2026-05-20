@@ -241,26 +241,29 @@ def _download_a_share(code: str, start_date: str = None) -> int:
 
     time.sleep(random.uniform(1.0, 2.0))  # 備選源間冷卻
 
-    # 備選接口 2：網易 (ak.stock_zh_a_hist_163)
-    try:
-        logger.info(f"{code}: 嘗試網易備選接口...")
-        _patch_akshare_session()
-        df = ak.stock_zh_a_hist_163(
-            symbol=code, start_date=start_date, adjust="qfq"
-        )
-        if not df.empty:
-            col_map = {
-                "日期": "date", "开盘": "open", "最高": "high",
-                "最低": "low", "收盘": "close", "成交量": "volume",
-                "成交额": "amount",
-            }
-            df = df.rename(columns=col_map)
-            count = save_daily_kline(df, code)
-            logger.info(f"{code}: {count} 條記錄 (網易備選)")
-            return count
+    # 備選接口 2：網易。部分 akshare 版本已移除此接口，缺失時直接跳過。
+    if hasattr(ak, "stock_zh_a_hist_163"):
+        try:
+            logger.info(f"{code}: 嘗試網易備選接口...")
+            _patch_akshare_session()
+            df = ak.stock_zh_a_hist_163(
+                symbol=code, start_date=start_date, adjust="qfq"
+            )
+            if not df.empty:
+                col_map = {
+                    "日期": "date", "开盘": "open", "最高": "high",
+                    "最低": "low", "收盘": "close", "成交量": "volume",
+                    "成交额": "amount",
+                }
+                df = df.rename(columns=col_map)
+                count = save_daily_kline(df, code)
+                logger.info(f"{code}: {count} 條記錄 (網易備選)")
+                return count
 
-    except Exception as e:
-        logger.warning(f"{code}: 網易備選失敗: {e}")
+        except Exception as e:
+            logger.warning(f"{code}: 網易備選失敗: {e}")
+    else:
+        logger.debug(f"{code}: 當前 akshare 版本無網易備選接口，跳過")
 
     time.sleep(random.uniform(1.0, 2.0))  # 備選源間冷卻
 

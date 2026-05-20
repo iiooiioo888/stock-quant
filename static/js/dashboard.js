@@ -25,6 +25,7 @@ const Dashboard = {
     const ids = [
       'dashSparklineChart', 'dashBacktestChart', 'dashSignalRadar', 'dashSectorChart', 'dashLeaderboardChart',
       'dashSectorFlowChart', 'dashSectorScatterChart', 'dashMarketFlowChart', 'dashNorthFlowChart', 'dashConceptSectorChart',
+      'dashMomentumRankChart', 'dashVolatilityRankChart', 'dashDrawdownRankChart', 'dashRiskScatterChart',
     ];
     const indexGrid = document.getElementById('indexChartsGrid');
     if (indexGrid && !indexGrid.querySelector('.index-chart-card')) {
@@ -101,10 +102,38 @@ const Dashboard = {
     if (!d) return;
 
     document.getElementById('statsGrid').innerHTML = `
-      <div class="c stat-card"><h3>📊 監控股票</h3><div class="v bl">${d.total_stocks || 0}</div><div class="stat-hint">正在追蹤</div></div>
-      <div class="c stat-card"><h3>📁 數據條數</h3><div class="v">${(d.total_klines || 0).toLocaleString()}</div><div class="stat-hint">歷史記錄</div></div>
-      <div class="c stat-card"><h3>🔔 累計預警</h3><div class="v rd">${d.total_alerts || 0}</div><div class="stat-hint">已觸發</div></div>
-      <div class="c stat-card"><h3>💾 數據庫</h3><div class="v">${d.db_size_mb || 0} MB</div><div class="stat-hint">存儲佔用</div></div>`;
+      <div class="dash-kpi dash-kpi--blue stat-card">
+        <span class="dash-kpi-icon" aria-hidden="true">📊</span>
+        <div class="dash-kpi-body">
+          <span class="dash-kpi-label">監控股票</span>
+          <span class="dash-kpi-value bl"><span class="dash-kpi-num">${d.total_stocks || 0}</span></span>
+          <span class="dash-kpi-hint stat-hint">正在追蹤</span>
+        </div>
+      </div>
+      <div class="dash-kpi dash-kpi--green stat-card">
+        <span class="dash-kpi-icon" aria-hidden="true">📁</span>
+        <div class="dash-kpi-body">
+          <span class="dash-kpi-label">數據條數</span>
+          <span class="dash-kpi-value"><span class="dash-kpi-num">${(d.total_klines || 0).toLocaleString()}</span></span>
+          <span class="dash-kpi-hint stat-hint">歷史 K 線</span>
+        </div>
+      </div>
+      <div class="dash-kpi dash-kpi--red stat-card">
+        <span class="dash-kpi-icon" aria-hidden="true">🔔</span>
+        <div class="dash-kpi-body">
+          <span class="dash-kpi-label">累計預警</span>
+          <span class="dash-kpi-value rd"><span class="dash-kpi-num">${d.total_alerts || 0}</span></span>
+          <span class="dash-kpi-hint stat-hint">已觸發</span>
+        </div>
+      </div>
+      <div class="dash-kpi dash-kpi--purple stat-card">
+        <span class="dash-kpi-icon" aria-hidden="true">💾</span>
+        <div class="dash-kpi-body">
+          <span class="dash-kpi-label">數據庫</span>
+          <span class="dash-kpi-value"><span class="dash-kpi-num">${d.db_size_mb || 0}</span><span class="dash-kpi-unit">MB</span></span>
+          <span class="dash-kpi-hint stat-hint">存儲佔用</span>
+        </div>
+      </div>`;
 
     document.getElementById('sysStatus').textContent = '運行 ' + (d.uptime || '');
   },
@@ -129,6 +158,7 @@ const Dashboard = {
     }
     await Promise.allSettled([
       this._loadMajorIndicesCharts(),
+      this._loadTradingViewWall(),
       this._loadMarketCharts(),
       this._loadSparklineChart(),
       this._loadBacktestHistory(),
@@ -153,6 +183,215 @@ const Dashboard = {
         : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  },
+
+  _tvChartId(code) {
+    return 'tv-chart-' + String(code).replace(/[^a-zA-Z0-9]/g, '_');
+  },
+
+  _escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+  },
+
+  _calcSeriesMetrics(code, sp) {
+    const prices = (sp.prices || []).map(Number).filter(Number.isFinite);
+    const dates = sp.dates || prices.map((_, i) => String(i));
+    if (prices.length < 3) return null;
+    const returns = [];
+    for (let i = 1; i < prices.length; i++) {
+      if (prices[i - 1] > 0) returns.push(prices[i] / prices[i - 1] - 1);
+    }
+    const avg = returns.length ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+    const variance = returns.length
+      ? returns.reduce((sum, r) => sum + Math.pow(r - avg, 2), 0) / returns.length
+      : 0;
+    let peak = prices[0];
+    let maxDd = 0;
+    prices.forEach(p => {
+      peak = Math.max(peak, p);
+      if (peak > 0) maxDd = Math.min(maxDd, p / peak - 1);
+    });
+    const base20 = prices[Math.max(0, prices.length - 21)];
+    const momentum20 = base20 > 0 ? (prices[prices.length - 1] / base20 - 1) * 100 : 0;
+    const totalReturn = prices[0] > 0 ? (prices[prices.length - 1] / prices[0] - 1) * 100 : 0;
+    const vol = Math.sqrt(variance) * Math.sqrt(252) * 100;
+    return {
+      code,
+      dates,
+      prices,
+      latest: prices[prices.length - 1],
+      totalReturn,
+      momentum20,
+      volatility: vol,
+      maxDrawdown: maxDd * 100,
+      riskScore: vol ? momentum20 / vol : 0,
+      changePct: sp.change_pct ?? totalReturn,
+    };
+  },
+
+  async _loadTradingViewWall() {
+    const grid = document.getElementById('tvWatchlistGrid');
+    const meta = document.getElementById('tvChartsMeta');
+    if (!grid || typeof Charts === 'undefined') return;
+    if (!Charts._lwReady?.()) {
+      setTimeout(() => this._loadTradingViewWall(), 400);
+      return;
+    }
+
+    try {
+      const codes = await this._resolveSparklineCodes(8);
+      const d = await Api.get(`/api/sparkline?codes=${codes.join(',')}&days=90`);
+      const sparklines = d?.sparklines || {};
+      const metrics = codes
+        .map(code => this._calcSeriesMetrics(code, sparklines[code] || {}))
+        .filter(Boolean);
+
+      if (!metrics.length) {
+        grid.innerHTML = '<div class="index-charts-loading">暫無本地行情數據，請先在「下載數據」同步 K 線</div>';
+        this._renderProfessionalMetrics([]);
+        if (meta) meta.textContent = '本地行情不足';
+        return;
+      }
+
+      if (meta) {
+        meta.textContent = `TradingView Lightweight Charts · ${metrics.length} 檔監控股 · 近 90 日`;
+      }
+
+      if (typeof Charts.destroyIndexCharts === 'function') {
+        Charts.destroyIndexCharts('tv-chart-');
+      }
+
+      grid.innerHTML = metrics.map(m => {
+        const chgCls = m.totalReturn > 0 ? 'up' : (m.totalReturn < 0 ? 'down' : 'flat');
+        const sign = m.totalReturn > 0 ? '+' : '';
+        const riskCls = m.riskScore >= 0 ? 'up' : 'down';
+        return `
+          <article class="tv-chart-card">
+            <header class="tv-chart-header">
+              <div>
+                <div class="tv-chart-code">${this._escapeHtml(m.code)}</div>
+                <div class="tv-chart-sub">90日走勢 · 本地資料庫</div>
+              </div>
+              <div class="tv-chart-quote">
+                <div class="tv-chart-price">${this._formatIndexPrice(m.latest, m.code)}</div>
+                <div class="index-chart-change ${chgCls}">${sign}${m.totalReturn.toFixed(2)}%</div>
+              </div>
+            </header>
+            <div id="${this._tvChartId(m.code)}" class="tv-chart-cw"></div>
+            <footer class="tv-metrics-row">
+              <span>動量 <b class="${m.momentum20 >= 0 ? 'up' : 'down'}">${m.momentum20.toFixed(2)}%</b></span>
+              <span>波動 <b>${m.volatility.toFixed(1)}%</b></span>
+              <span>回撤 <b class="down">${m.maxDrawdown.toFixed(2)}%</b></span>
+              <span>風險比 <b class="${riskCls}">${m.riskScore.toFixed(2)}</b></span>
+            </footer>
+          </article>`;
+      }).join('');
+
+      requestAnimationFrame(() => {
+        metrics.forEach(m => {
+          Charts.drawTVSparklineChart(this._tvChartId(m.code), m.dates, m.prices, { changePct: m.totalReturn });
+        });
+        this._renderProfessionalMetrics(metrics);
+        Charts.resizeTab('tab-dashboard');
+      });
+    } catch (e) {
+      grid.innerHTML = '<div class="index-charts-loading">專業行情牆載入失敗，請稍後刷新</div>';
+    }
+  },
+
+  _renderProfessionalMetrics(metrics) {
+    if (typeof Charts === 'undefined') return;
+    if (!metrics?.length) {
+      ['dashMomentumRankChart', 'dashVolatilityRankChart', 'dashDrawdownRankChart', 'dashRiskScatterChart']
+        .forEach(id => Charts.setPlaceholder(id, '暫無足夠行情數據'));
+      return;
+    }
+
+    const byMomentum = [...metrics].sort((a, b) => b.momentum20 - a.momentum20).slice(0, 8);
+    Charts.clearPlaceholder('dashMomentumRankChart');
+    Charts.drawHorizontalBarChart(
+      'dashMomentumRankChart',
+      byMomentum.map(m => m.code),
+      byMomentum.map(m => m.momentum20),
+      '20日動量 (%)',
+    );
+
+    const byVol = [...metrics].sort((a, b) => b.volatility - a.volatility).slice(0, 8);
+    Charts.clearPlaceholder('dashVolatilityRankChart');
+    Charts.drawHorizontalBarChart(
+      'dashVolatilityRankChart',
+      byVol.map(m => m.code),
+      byVol.map(m => m.volatility),
+      '年化波動率 (%)',
+    );
+
+    const byDd = [...metrics].sort((a, b) => a.maxDrawdown - b.maxDrawdown).slice(0, 8);
+    Charts.clearPlaceholder('dashDrawdownRankChart');
+    Charts.drawHorizontalBarChart(
+      'dashDrawdownRankChart',
+      byDd.map(m => m.code),
+      byDd.map(m => m.maxDrawdown),
+      '最大回撤 (%)',
+    );
+
+    this._renderRiskScatter(metrics);
+  },
+
+  _renderRiskScatter(metrics) {
+    const canvas = document.getElementById('dashRiskScatterChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    Charts.clearPlaceholder('dashRiskScatterChart');
+    const old = Chart.getChart(canvas);
+    if (old) old.destroy();
+    const colors = Charts.getThemeColors();
+    new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: '股票',
+          data: metrics.map(m => ({ x: m.volatility, y: m.momentum20, code: m.code })),
+          borderColor: '#38bdf8',
+          backgroundColor: metrics.map(m => m.momentum20 >= 0 ? 'rgba(34,197,94,0.72)' : 'rgba(239,68,68,0.72)'),
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+            callbacks: {
+              label: ctx => {
+                const p = ctx.raw || {};
+                return `${p.code}: 動量 ${Number(p.y || 0).toFixed(2)}%, 波動 ${Number(p.x || 0).toFixed(1)}%`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: '年化波動率 (%)', color: colors.text },
+            ticks: { color: colors.text, font: { size: 9 } },
+            grid: { color: colors.grid },
+          },
+          y: {
+            title: { display: true, text: '20日動量 (%)', color: colors.text },
+            ticks: { color: colors.text, font: { size: 9 } },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    });
+    Charts._scheduleResize(canvas);
   },
 
   /**
@@ -660,7 +899,8 @@ const Dashboard = {
     if (!d) return;
 
     const entries = Object.entries(d.rules || {});
-    document.getElementById('wlCount').textContent = entries.length + ' 只';
+    const wlEl = document.getElementById('wlCount');
+    if (wlEl) wlEl.textContent = entries.length + ' 只';
 
     if (entries.length === 0) {
       document.getElementById('watchlistTable').innerHTML =

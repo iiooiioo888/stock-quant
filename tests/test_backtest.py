@@ -146,10 +146,10 @@ class TestDualMAStrategy:
         """使用 mock 測試完整回測流程"""
         from src.core.backtest import run_backtest
 
-        # Mock 數據庫返回合成數據
+        # Mock 本地優先 K 線入口，避免單元測試觸發外部數據源。
         synthetic_df = _generate_synthetic_kline(code="TEST001", days=250, trend="up")
 
-        with patch("src.core.backtest.load_daily_kline", return_value=synthetic_df):
+        with patch("src.core.local_kline.ensure_daily_kline", return_value=(synthetic_df, "mock")):
             result = run_backtest("TEST001", strategy_name="dual_ma", cash=100000)
 
         assert "total_return_pct" in result

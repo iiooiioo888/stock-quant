@@ -34,6 +34,8 @@ if not JWT_SECRET:
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24  # Token 有效期 24 小時
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin"
 
 # HTTP Bearer 提取器（可選模式：無 token 時不報錯）
 security = HTTPBearer(auto_error=False)
@@ -170,39 +172,42 @@ async def require_admin(
 # ============================================================
 
 def ensure_default_admin():
-    """首次運行時創建默認管理員賬號"""
-    existing = get_user_by_username("admin")
-    if existing:
-        return  # 已存在，跳過
+    """確保默認管理員賬號存在，並維持預設 admin/admin 可登入。"""
+    default_pw = (
+        os.environ.get("SQ_DEMO_ADMIN_PASSWORD")
+        or os.environ.get("SQ_DEFAULT_ADMIN_PASSWORD")
+        or DEFAULT_ADMIN_PASSWORD
+    )
+    pw_hash = hash_password(default_pw)
+    existing = get_user_by_username(DEFAULT_ADMIN_USERNAME)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 優先使用環境變量中的固定密碼（演示/部署用）
-    default_pw = os.environ.get("SQ_DEMO_ADMIN_PASSWORD", "")
-    if not default_pw:
-        # 無固定密碼時，隨機生成
-        default_pw = secrets.token_urlsafe(12)
-
-    pw_hash = hash_password(default_pw)
-
     with get_conn() as conn:
-        conn.execute(
-            """INSERT INTO users (username, password_hash, role, settings, created_at)
-               VALUES (?, ?, 'admin', '{}', ?)""",
-            ("admin", pw_hash, now),
-        )
+        if existing:
+            conn.execute(
+                "UPDATE users SET password_hash = ?, role = 'admin' WHERE username = ?",
+                (pw_hash, DEFAULT_ADMIN_USERNAME),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO users (username, password_hash, role, settings, created_at)
+                   VALUES (?, ?, 'admin', '{}', ?)""",
+                (DEFAULT_ADMIN_USERNAME, pw_hash, now),
+            )
 
     # 將密碼寫入本地文件
     from pathlib import Path
     pw_file = Path(__file__).resolve().parent.parent.parent / "data" / ".admin_password"
     pw_file.parent.mkdir(parents=True, exist_ok=True)
-    pw_file.write_text(f"admin:{default_pw}\n")
+    pw_file.write_text(f"{DEFAULT_ADMIN_USERNAME}:{default_pw}\n")
     try:
         os.chmod(pw_file, 0o600)
     except Exception:
         pass
-    logger.warning(f"已創建默認管理員賬號 admin，密碼已寫入: {pw_file}")
-    logger.warning(f"請盡快登錄並修改密碼！")
+    action = "已更新" if existing else "已創建"
+    logger.warning(f"{action}默認管理員賬號 {DEFAULT_ADMIN_USERNAME}，密碼已寫入: {pw_file}")
+    logger.warning("默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。")
 
 
 def create_user(username: str, password: str, role: str = "user") -> User:

@@ -35,6 +35,16 @@ const Charts = {
     return chart.addSeries(Series, options);
   },
 
+  /** v4: addLineSeries；v5: addSeries(LineSeries) */
+  _addLineSeries(chart, options = {}) {
+    if (typeof chart.addLineSeries === 'function') {
+      return chart.addLineSeries(options);
+    }
+    const Series = LightweightCharts.LineSeries;
+    if (!Series) throw new Error('LightweightCharts.LineSeries 不可用');
+    return chart.addSeries(Series, options);
+  },
+
   _scheduleResize(canvas) {
     if (!canvas) return;
     const run = () => {
@@ -57,7 +67,7 @@ const Charts = {
     }
 
     if (this._lwReady()) {
-      root.querySelectorAll('[id^="idx-chart-"]').forEach(el => {
+      root.querySelectorAll('[id^="idx-chart-"], [id^="tv-chart-"]').forEach(el => {
         const chart = this._lwCharts[el.id];
         if (!chart) return;
         const w = el.clientWidth || 280;
@@ -517,6 +527,89 @@ const Charts = {
       } catch (e) { /* ignore */ }
       delete this._lwCharts[id];
     });
+  },
+
+  /**
+   * 首頁 TradingView 監控股迷你圖（Lightweight Charts 線圖）
+   */
+  drawTVSparklineChart(containerId, dates, prices, options = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return null;
+    container.innerHTML = '';
+
+    if (this._lwCharts[containerId]) {
+      this._lwCharts[containerId].remove();
+      delete this._lwCharts[containerId];
+    }
+
+    if (!dates?.length || !prices?.length || dates.length !== prices.length) {
+      container.innerHTML = '<div class="chart-placeholder">暫無走勢數據</div>';
+      return null;
+    }
+
+    if (!this._lwReady()) {
+      container.innerHTML = '<div class="chart-placeholder">圖表庫載入中…</div>';
+      return null;
+    }
+
+    const colors = this.getThemeColors();
+    const up = options.changePct == null ? prices[prices.length - 1] >= prices[0] : options.changePct >= 0;
+    const lineColor = up ? colors.upColor : colors.downColor;
+    const chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth || 260,
+      height: container.clientHeight || 150,
+      layout: {
+        background: { type: 'solid', color: colors.bg },
+        textColor: colors.text,
+      },
+      grid: {
+        vertLines: { color: 'transparent' },
+        horzLines: { color: colors.grid },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: colors.crosshair, width: 1, style: 2 },
+        horzLine: { color: colors.crosshair, width: 1, style: 2 },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.15, bottom: 0.12 },
+      },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: true,
+        secondsVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      },
+      handleScroll: { vertTouchDrag: false },
+    });
+
+    this._lwCharts[containerId] = chart;
+    const line = this._addLineSeries(chart, {
+      color: lineColor,
+      lineWidth: 2,
+      crosshairMarkerVisible: true,
+      lastValueVisible: true,
+      priceLineVisible: false,
+    });
+    line.setData(dates.map((date, i) => ({
+      time: date,
+      value: Number(prices[i]),
+    })).filter(p => Number.isFinite(p.value)));
+    chart.timeScale().fitContent();
+
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        chart.applyOptions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height || 150,
+        });
+      }
+    });
+    ro.observe(container);
+    container._resizeObserver = ro;
+    return chart;
   },
 
   /**

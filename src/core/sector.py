@@ -103,9 +103,9 @@ def _requests_session():
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     )
     retry = Retry(
-        total=3,
-        connect=3,
-        read=3,
+        total=1,
+        connect=1,
+        read=1,
         backoff_factor=1.0,
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET"]),
@@ -281,11 +281,9 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> tuple[list[dict
     connection_failed = False
     for host in _EM_HOSTS:
         url = f"https://{host}/api/qt/clist/get"
-        for attempt in range(2):
+        for attempt in range(1):
             try:
-                if attempt:
-                    time.sleep(1.2 * attempt)
-                resp = session.get(url, params=params, headers=headers, timeout=(10, 30))
+                resp = session.get(url, params=params, headers=headers, timeout=(4, 10))
                 resp.raise_for_status()
                 payload = resp.json()
                 diff = (payload.get("data") or {}).get("diff") or []
@@ -432,27 +430,7 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
     if cached is not None:
         return cached
 
-    if _sector_fetch_in_cooldown(sector_type):
-        stale = _cache_get_stale_sector_list(sector_type)
-        if stale:
-            logger.debug(f"板塊 {sector_type} 請求冷卻中，使用內存緩存 {len(stale)} 條")
-            return stale
-        snap = _load_sectors_from_snapshot(sector_type)
-        if snap:
-            return snap
-
-    sectors: list[dict] = []
-    conn_err = False
-    sectors, conn_err = _fetch_sector_list_em_http(sector_type)
-
-    # 連線被對端重置時，AKShare 底層同樣打東財，跳過以加快兜底
-    if not sectors and not conn_err:
-        sectors = _fetch_sector_list_live(sector_type)
-
-    if sectors:
-        _cache_set_sector_list(sector_type, sectors)
-        return sectors
-
+    # 首次載入先查本地資料庫：有快照或可用本地 K 線估算時，不主動打公網。
     snap = _load_sectors_from_snapshot(sector_type)
     if snap:
         logger.info(
@@ -466,6 +444,29 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
     if local:
         _cache_set_sector_list(sector_type, local)
         return local
+
+    if _sector_fetch_in_cooldown(sector_type):
+        stale = _cache_get_stale_sector_list(sector_type)
+        if stale:
+            logger.debug(f"板塊 {sector_type} 請求冷卻中，使用內存緩存 {len(stale)} 條")
+            return stale
+        return []
+
+    sectors: list[dict] = []
+    conn_err = False
+    sectors, conn_err = _fetch_sector_list_em_http(sector_type)
+
+    # 連線被對端重置時，AKShare 底層同樣打東財，跳過以加快兜底。
+    # 立即進入冷卻，避免前端輪詢在冷卻前反覆打完整多節點探測。
+    if not sectors and conn_err:
+        _sector_mark_fetch_failed(sector_type)
+
+    if not sectors and not conn_err:
+        sectors = _fetch_sector_list_live(sector_type)
+
+    if sectors:
+        _cache_set_sector_list(sector_type, sectors)
+        return sectors
 
     stale = _cache_get_stale_sector_list(sector_type)
     if stale:
