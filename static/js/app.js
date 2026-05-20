@@ -382,8 +382,8 @@ const App = {
     if (tab !== 'tasks' && typeof Tasks !== 'undefined') {
       Tasks.unload();
     }
-    if (tab !== 'scheduler' && typeof Scheduler !== 'undefined') {
-      Scheduler.unload();
+    if (tab !== 'scheduler' && typeof SchedulerTab !== 'undefined' && typeof SchedulerTab.unload === 'function') {
+      SchedulerTab.unload();
     }
 
     // Tab 切換時載入數據
@@ -400,6 +400,7 @@ const App = {
         break;
       case 'markets':
         this.loadMarkets();
+        if (typeof CryptoMarket !== 'undefined') CryptoMarket.refresh();
         break;
       case 'signals':
         if (typeof Signals !== 'undefined') Signals.load();
@@ -418,7 +419,15 @@ const App = {
         if (typeof Tasks !== 'undefined') Tasks.load();
         break;
       case 'scheduler':
-        if (typeof Scheduler !== 'undefined') Scheduler.load();
+        if (typeof SchedulerTab !== 'undefined' && typeof SchedulerTab.load === 'function') {
+          SchedulerTab.load();
+        }
+        break;
+      case 'backtest':
+        if (typeof Backtest !== 'undefined') {
+          Backtest.populateStockSelectSync?.();
+          Backtest.ensureStockOptions();
+        }
         break;
     }
   },
@@ -803,15 +812,22 @@ function runHeatmap() { Heatmap.run(); }
 function runScreener() { Screener.run(); }
 function generateReport() { App._generateReport(); }
 function setupScheduler() {
-  if (typeof Scheduler !== 'undefined') Scheduler.setupAll();
-  else App._setupScheduler();
+  if (typeof SchedulerTab !== 'undefined' && typeof SchedulerTab.setupAll === 'function') {
+    SchedulerTab.setupAll();
+  } else App._setupScheduler();
 }
 function enableScheduler() { setupScheduler(); }
 function disableScheduler() {
-  if (typeof Scheduler !== 'undefined') Scheduler.disableAll();
-  else App._disableScheduler();
+  if (typeof SchedulerTab !== 'undefined' && typeof SchedulerTab.disableAll === 'function') {
+    SchedulerTab.disableAll();
+  } else App._disableScheduler();
 }
-function listSchedulerJobs() { App.loadTab('scheduler'); }
+function listSchedulerJobs() {
+  App.loadTab('reports');
+  const el = document.getElementById('schedulerJobs');
+  if (el) el.classList.remove('h');
+  if (typeof App._listSchedulerJobs === 'function') App._listSchedulerJobs();
+}
 function testNotify() { App.testNotify(); }
 function showAddRule() { Dashboard.showAddRule(); }
 function addToWatchlist(code) { Screener.addToWatchlist(code); }
@@ -999,8 +1015,8 @@ App._generateReport = async function() {
 };
 
 App._setupScheduler = async function() {
-  if (typeof Scheduler !== 'undefined') {
-    await Scheduler.setupAll();
+  if (typeof SchedulerTab !== 'undefined' && typeof SchedulerTab.setupAll === 'function') {
+    await SchedulerTab.setupAll();
     return;
   }
   const d = await Api.setupScheduler();
@@ -1374,6 +1390,138 @@ App.checkTaskDedup = function(taskType, params) {
 App.releaseTaskDedup = function(taskType, params) {
   const key = taskType + ':' + JSON.stringify(params);
   delete App._activeTasks[key];
+};
+
+// ============================================================
+// CryptoMarket — 加密貨幣行情表格 + K 線圖
+// ============================================================
+const CryptoMarket = {
+  _data: [],
+  _selectedSymbol: null,
+  _periodDays: 30,
+
+  async refresh() {
+    const el = document.getElementById('cryptoMarketTable');
+    if (!el) return;
+    el.innerHTML = '<div class="state-loading"><span class="ld"></span> 載入中…</div>';
+    try {
+      const d = await Api.get('/api/markets/crypto/realtime');
+      this._data = d?.data || [];
+      this._renderTable();
+    } catch (e) {
+      el.innerHTML = '<div class="state-empty"><span class="state-icon">❌</span><span class="state-text">載入失敗: ' + e.message + '</span></div>';
+    }
+  },
+
+  _renderTable() {
+    const el = document.getElementById('cryptoMarketTable');
+    if (!el) return;
+    if (!this._data.length) {
+      el.innerHTML = '<div class="state-empty"><span class="state-icon">₿</span><span class="state-text">暫無加密貨幣數據</span></div>';
+      return;
+    }
+    const rows = this._data.map(c => {
+      const chg = Number(c.change_pct) || 0;
+      const cls = chg > 0 ? 'up' : (chg < 0 ? 'down' : 'flat');
+      const sign = chg > 0 ? '+' : '';
+      const price = Number(c.price) || 0;
+      const priceStr = price >= 1000
+        ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : price >= 1
+          ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+          : price.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+      const high = Number(c.high) || 0;
+      const low = Number(c.low) || 0;
+      const vol = c.quote_volume || c.volume || 0;
+      const volStr = vol >= 1e9 ? (vol / 1e9).toFixed(1) + 'B'
+        : vol >= 1e6 ? (vol / 1e6).toFixed(1) + 'M'
+        : vol >= 1e3 ? (vol / 1e3).toFixed(0) + 'K'
+        : vol.toFixed(0);
+      const icon = { BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '◆', SOLUSDT: '◎', XRPUSDT: '✕' }[c.symbol] || '●';
+      return `<tr onclick="CryptoMarket.selectSymbol('${c.symbol}')" style="cursor:pointer">
+        <td><span class="crypto-tbl-icon">${icon}</span> <strong>${c.name || c.symbol}</strong><br><span style="font-size:10px;color:var(--text-dim)">${c.symbol}</span></td>
+        <td class="r" style="font-variant-numeric:tabular-nums">$${priceStr}</td>
+        <td class="r"><span class="crypto-badge ${cls}">${sign}${chg.toFixed(2)}%</span></td>
+        <td class="r" style="font-size:12px;color:var(--text-dim)">${high > 0 ? '$' + high.toLocaleString('en-US', {maximumFractionDigits: 2}) : '-'}</td>
+        <td class="r" style="font-size:12px;color:var(--text-dim)">${low > 0 ? '$' + low.toLocaleString('en-US', {maximumFractionDigits: 2}) : '-'}</td>
+        <td class="r" style="font-size:12px">${volStr}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<table class="dash-watchlist-table"><thead><tr>
+      <th>幣種</th><th class="r">價格</th><th class="r">24h 漲跌</th><th class="r">最高</th><th class="r">最低</th><th class="r">24h 成交額</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+  },
+
+  async selectSymbol(symbol) {
+    this._selectedSymbol = symbol;
+    const panel = document.getElementById('cryptoKlinePanel');
+    const title = document.getElementById('cryptoKlineTitle');
+    if (panel) panel.classList.remove('h');
+    if (title) title.textContent = `${symbol} K 線圖`;
+    const btns = document.querySelectorAll('[data-crypto-period]');
+    btns.forEach(b => {
+      b.onclick = () => {
+        btns.forEach(x => x.classList.remove('a'));
+        b.classList.add('a');
+        this._periodDays = parseInt(b.dataset.cryptoPeriod) || 30;
+        this._loadKline();
+      };
+    });
+    await this._loadKline();
+  },
+
+  async _loadKline() {
+    if (!this._selectedSymbol) return;
+    const canvas = document.getElementById('cryptoKlineChart');
+    if (!canvas) return;
+    try {
+      const d = await Api.get(`/api/markets/crypto/kline?symbol=${this._selectedSymbol}&days=${this._periodDays}`);
+      const klines = d?.klines || [];
+      if (!klines.length) {
+        if (typeof Chart !== 'undefined') {
+          const existing = Chart.getChart(canvas);
+          if (existing) existing.destroy();
+        }
+        return;
+      }
+      const dates = klines.map(k => k.date);
+      const closes = klines.map(k => k.close);
+      if (typeof Chart === 'undefined') return;
+      const existing = Chart.getChart(canvas);
+      if (existing) existing.destroy();
+      const colors = getComputedStyle(document.documentElement);
+      const accent = colors.getPropertyValue('--accent').trim() || '#38bdf8';
+      const gridColor = colors.getPropertyValue('--border-color').trim() || 'rgba(128,128,128,.15)';
+      const textColor = colors.getPropertyValue('--text').trim() || '#e2e8f0';
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [{
+            label: this._selectedSymbol,
+            data: closes,
+            borderColor: accent,
+            backgroundColor: accent + '20',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: textColor, font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: gridColor } },
+            y: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+          },
+        },
+      });
+    } catch (e) {
+      console.warn('加密 K 線載入失敗:', e);
+    }
+  },
 };
 
 // ============================================================

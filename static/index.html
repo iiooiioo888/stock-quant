@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>stock-quant</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 
 <!-- Styles -->
 <link rel="stylesheet" href="/static/css/style.css">
@@ -158,6 +159,19 @@
         </div>
     </section>
 
+    <!-- 加密貨幣行情 -->
+    <section class="dash-section dash-section--flat">
+        <div class="dash-section-head">
+            <div class="dash-section-intro">
+                <h2 class="dash-section-title">₿ 加密貨幣行情</h2>
+                <p class="dash-section-meta">Binance 實時報價 · 24h 漲跌</p>
+            </div>
+        </div>
+        <div class="crypto-prices-grid" id="cryptoPrices">
+            <div class="crypto-loading"><span class="ld"></span> 加載中…</div>
+        </div>
+    </section>
+
     <div class="sec dash-download-sec" id="downloadSection" style="display:none">
         <h2>📥 數據下載</h2>
         <div id="downloadContent">
@@ -177,29 +191,34 @@
         <div class="dash-section-head">
             <div class="dash-section-intro">
                 <h2 class="dash-section-title">📊 核心概覽</h2>
-                <p class="dash-section-meta">市場 · 回測 · 信號 · 板塊</p>
+                <p class="dash-section-meta" id="dashCoreMeta">監控股 · 策略回測 · 實時信號 · 行業板塊</p>
             </div>
         </div>
         <div class="dash-insights-grid">
             <article class="dash-panel">
-                <h3 class="dash-panel-title">市場總覽</h3>
+                <h3 class="dash-panel-title">監控股今日漲跌</h3>
+                <p class="dash-panel-hint" id="dashSparklineHint">—</p>
                 <div class="cw cw-dash"><canvas id="dashSparklineChart"></canvas></div>
             </article>
             <article class="dash-panel">
-                <h3 class="dash-panel-title">最近回測表現</h3>
+                <h3 class="dash-panel-title">策略平均收益</h3>
+                <p class="dash-panel-hint" id="dashBacktestHint">—</p>
                 <div class="cw cw-dash"><canvas id="dashBacktestChart"></canvas></div>
             </article>
             <article class="dash-panel">
-                <h3 class="dash-panel-title">信號強度分佈</h3>
+                <h3 class="dash-panel-title">多空信號統計</h3>
+                <p class="dash-panel-hint" id="dashSignalHint">—</p>
                 <div class="cw cw-dash"><canvas id="dashSignalRadar"></canvas></div>
             </article>
             <article class="dash-panel">
-                <h3 class="dash-panel-title">板塊漲跌 Top 5</h3>
+                <h3 class="dash-panel-title">行業板塊強弱</h3>
+                <p class="dash-panel-hint" id="dashSectorHint">—</p>
                 <div class="cw cw-dash"><canvas id="dashSectorChart"></canvas></div>
             </article>
         </div>
         <article class="dash-panel dash-panel--wide">
-            <h3 class="dash-panel-title">🏆 策略勝率排行</h3>
+            <h3 class="dash-panel-title">策略夏普排行</h3>
+            <p class="dash-panel-hint" id="dashLeaderboardHint">—</p>
             <div class="cw cw-dash cw-dash-tall"><canvas id="dashLeaderboardChart"></canvas></div>
         </article>
     </section>
@@ -320,11 +339,16 @@
     <div class="sec">
         <h2>🧪 策略回測</h2>
         <div class="fr">
-            <div class="fg">
+            <div class="fg fg-stock-code">
                 <label>股票代碼</label>
-                <div class="code-picker">
-                    <select id="btCodeSelect" title="從列表選擇"><option value="">載入中…</option></select>
-                    <input id="btCode" value="600519" placeholder="或輸入 6 位代碼" maxlength="6" inputmode="numeric">
+                <div class="stock-code-picker">
+                    <div class="stock-code-toolbar">
+                        <input type="hidden" id="btCode" value="600519">
+                        <input type="text" id="btCodeManual" class="input-sm stock-code-manual" value="600519" placeholder="手動 6 位代碼" maxlength="6" inputmode="numeric" title="當前選中代碼">
+                        <input type="search" id="btCodeSearch" class="input-sm stock-code-search" placeholder="搜尋代碼 / 名稱…" autocomplete="off">
+                        <span id="btCodePickHint" class="stock-code-hint">點擊圖標選股</span>
+                    </div>
+                    <div id="btCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇股票"></div>
                 </div>
             </div>
             <div class="fg"><label>策略</label><select id="btStrategy"></select></div>
@@ -721,6 +745,7 @@
 <div id="tab-data" class="h">
     <div class="data-tabs" id="dataTabs">
         <button class="a" data-dtab="download">📥 下載入庫</button>
+        <button data-dtab="universe">📚 股票庫</button>
         <button data-dtab="sectors">🏭 板塊行情</button>
         <button data-dtab="rotation">🔄 板塊輪動</button>
         <button data-dtab="heatmap">🗺️ 全景圖</button>
@@ -758,6 +783,55 @@
             <div id="dbDownloadResult" class="mt-md"></div>
             <p class="sec-desc mt-sm">多市場（美股、指數、加密等）請到側欄 <strong>市場</strong> Tab，或儀表盤「下載數據」一鍵下載。</p>
             <button class="btn s mt-sm" type="button" onclick="App.loadTab('markets')">🌐 前往多市場下載</button>
+        </div>
+    </div>
+
+    <div id="dtab-universe" class="h mt-md">
+        <div class="sec">
+            <h2>📚 股票庫（按市值排名）</h2>
+            <p class="sec-desc">從 A 股、港股、美股實時行情拉取基本資料，按總市值排序後入庫（默認前 2 萬）。同步後可用於查詢、篩選與批量下載代碼參考。</p>
+            <div class="g data-universe-stats" id="universeStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px">
+                <div class="c"><h3>入庫數量</h3><div class="v" id="univStatTotal">-</div></div>
+                <div class="c"><h3>更新時間</h3><div class="v univ-stat-sm" id="univStatUpdated">-</div></div>
+                <div class="c"><h3>A 股</h3><div class="v" id="univStatAshare">-</div></div>
+                <div class="c"><h3>港股</h3><div class="v" id="univStatHk">-</div></div>
+                <div class="c"><h3>美股</h3><div class="v" id="univStatUs">-</div></div>
+            </div>
+            <div class="fr flex-wrap" style="align-items:flex-end;margin-bottom:12px">
+                <button class="btn" type="button" id="univSyncBtn" onclick="Data.syncStockUniverse()">⚡ 一鍵同步股票庫</button>
+                <button class="btn s" type="button" onclick="Data.loadUniverseStats()">📊 刷新統計</button>
+                <span id="univSyncHint" class="sec-desc" style="margin:0;flex:1;min-width:200px"></span>
+            </div>
+            <div id="univSyncResult" class="mb-md"></div>
+            <div class="fr flex-wrap data-universe-filters">
+                <div class="fg">
+                    <label>市場</label>
+                    <select id="univMarket" class="input-sm">
+                        <option value="all">全部</option>
+                        <option value="a_share">A 股</option>
+                        <option value="hk_stock">港股</option>
+                        <option value="us_stock">美股</option>
+                    </select>
+                </div>
+                <div class="fg" style="flex:1;min-width:160px">
+                    <label>代碼 / 名稱</label>
+                    <input id="univKeyword" class="input-sm input-wide" placeholder="000001 或 茅台">
+                </div>
+                <div class="fg">
+                    <label>每頁</label>
+                    <input id="univLimit" type="number" value="50" min="10" max="200" class="input-xs">
+                </div>
+                <button class="btn s" type="button" onclick="Data.searchUniverse(0)">🔍 查詢</button>
+                <button class="btn s" type="button" onclick="Data.fillDownloadFromUniverse()" title="將當前頁代碼填入「下載入庫」">📥 填入下載列表</button>
+            </div>
+            <div id="univTableWrap" class="mt-sm">
+                <p style="color:var(--text-dim)">點「刷新統計」或「查詢」載入列表；若為空請先執行「一鍵同步」。</p>
+            </div>
+            <div class="fr mt-sm" id="univPager" style="display:none">
+                <button class="btn s" type="button" id="univPrevBtn" onclick="Data.universePrevPage()">上一頁</button>
+                <span id="univPageInfo" class="sec-desc" style="margin:0 12px"></span>
+                <button class="btn s" type="button" id="univNextBtn" onclick="Data.universeNextPage()">下一頁</button>
+            </div>
         </div>
     </div>
 
@@ -882,6 +956,31 @@
             <div class="state-loading"><span class="ld"></span> 載入中...</div>
         </div>
     </div>
+
+    <!-- 加密貨幣行情 -->
+    <div class="sec">
+        <h2>₿ 加密貨幣行情</h2>
+        <p class="sec-desc">Binance 實時報價，點擊行查看 K 線圖</p>
+        <div class="crypto-market-toolbar">
+            <button class="btn s" onclick="CryptoMarket.refresh()">🔄 刷新</button>
+        </div>
+        <div id="cryptoMarketTable" class="dash-table-card">
+            <div class="state-loading"><span class="ld"></span> 載入中…</div>
+        </div>
+        <div id="cryptoKlinePanel" class="h" style="margin-top:16px">
+            <div class="dash-section-head">
+                <h3 class="dash-section-title" id="cryptoKlineTitle">K 線圖</h3>
+                <div class="btn-group">
+                    <button class="btn s a" data-crypto-period="7">7D</button>
+                    <button class="btn s" data-crypto-period="30">30D</button>
+                    <button class="btn s" data-crypto-period="90">90D</button>
+                    <button class="btn s" data-crypto-period="180">180D</button>
+                </div>
+            </div>
+            <div class="cw cw-dash-tall"><canvas id="cryptoKlineChart"></canvas></div>
+        </div>
+    </div>
+
     <div class="sec">
         <h2>📥 下載數據</h2>
         <p class="sec-desc">下載指定市場的歷史數據到本地數據庫</p>
@@ -953,17 +1052,6 @@
             <div class="fg">
                 <select id="taskTypeFilter">
                     <option value="">全部類型</option>
-                    <option value="backtest">📊 回測</option>
-                    <option value="backtest_advanced">📊 進階回測</option>
-                    <option value="backtest_multi">📊 多策略對比</option>
-                    <option value="optimize">⚡ 參數優化</option>
-                    <option value="portfolio">📈 組合回測</option>
-                    <option value="walkforward">🔄 Walk-Forward</option>
-                    <option value="auto_optimize">🤖 自動優化</option>
-                    <option value="heatmap">🌡️ 熱力圖</option>
-                    <option value="data_download">📥 市場數據下載</option>
-                    <option value="data_download_all">📥 全市場下載</option>
-                    <option value="data_incremental">🔄 增量更新</option>
                 </select>
             </div>
             <div class="fg">
@@ -1040,6 +1128,7 @@
 <script defer src="/static/js/analysis.js"></script>
 <script defer src="/static/js/task-common.js"></script>
 <script defer src="/static/js/tasks.js"></script>
+<script defer src="/static/js/scheduler.js"></script>
 <script defer src="/static/js/app.js"></script>
 
 </body>

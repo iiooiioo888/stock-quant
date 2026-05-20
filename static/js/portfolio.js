@@ -133,7 +133,7 @@ const Portfolio = {
       const stratTags = (v.allocations || []).slice(0, 3).map(a =>
         `<span style="display:inline-block;background:var(--accent-bg);color:var(--accent);font-size:9px;padding:1px 5px;border-radius:3px;margin-right:3px">${a.strategy}</span>`
       ).join('');
-      return `<div class="pc-item" onclick="Portfolio.runPreset('${k}')">
+      return `<div class="pc-item" onclick="Portfolio.runPreset('${k}', event)">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
           <span style="font-size:20px">${icon}</span>
           <h4 style="margin:0">${v.name}</h4>
@@ -145,18 +145,26 @@ const Portfolio = {
     }).join('');
   },
 
-  async runPreset(name) {
-    const btn = event?.target?.closest('.pc-item');
+  async runPreset(name, evt) {
+    if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
+      Utils.toast('預設組合回測需先登錄', 3000, 'warning');
+      Api.showLoginModal();
+      return;
+    }
+    const btn = evt?.target?.closest('.pc-item');
     if (btn) btn.style.opacity = '0.5';
 
     const d = await Api.runPresetPortfolio(name);
     if (btn) btn.style.opacity = '1';
 
-    if (!d || !d.success) return Utils.toast('失敗', 3000, 'error');
+    if (!d) return;
+    if (!d.success) return Utils.toast('失敗: ' + (d.detail || ''), 3000, 'error');
     try {
       const resolved = await Api.resolveTaskResponse(d);
       const r = Api.extractResult(resolved);
-      if (!r) return Utils.toast('未取得組合回測結果', 3000, 'error');
+      if (!r || (typeof r === 'object' && r.error)) {
+        return Utils.toast((r && r.error) || '未取得組合回測結果', 3000, 'error');
+      }
       this._showResult(r);
       Utils.toast(d.preset + ' 回測完成');
     } catch (e) {
@@ -246,6 +254,12 @@ const Portfolio = {
   },
 
   async run() {
+    if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
+      Utils.toast('組合回測需先登錄', 3000, 'warning');
+      Api.showLoginModal();
+      return;
+    }
+
     const method = this._currentMethod;
     const btn = document.getElementById('pfBtn');
 
@@ -332,21 +346,156 @@ const Portfolio = {
     }
 
     Utils.btnLoading(btn, false, '🚀 開始回測');
-    if (!d || !d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
+    if (!d) return;
+    if (!d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
     try {
       if (d.async && d.task_id) {
         Utils.toast('📋 組合回測已提交', 2000, 'info');
       }
       const resolved = await Api.resolveTaskResponse(d);
       const r = Api.extractResult(resolved);
-      if (!r) return Utils.toast('未取得組合回測結果', 3000, 'error');
-      this._showResult(r);
+      if (!r || (typeof r === 'object' && r.error)) {
+        return Utils.toast((r && r.error) || '未取得組合回測結果', 3000, 'error');
+      }
+      this._showResult(r, method);
     } catch (e) {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
     }
   },
 
-  _showResult(r) {
+  _setPfTableHead(cells) {
+    const tr = document.querySelector('#pfResult table thead tr');
+    if (tr) tr.innerHTML = cells.map(c => `<th>${c}</th>`).join('');
+  },
+
+  _resetPfTableHead() {
+    this._setPfTableHead(['策略', '股票', '權重', '收益率', '夏普', '回撤']);
+  },
+
+  _drawFrontierChart(r) {
+    const canvas = document.getElementById('pfChart');
+    if (!canvas || !r.points?.length) return;
+    const old = Chart.getChart(canvas);
+    if (old) old.destroy();
+    const colors = Charts.getThemeColors();
+    new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: '有效前沿',
+          data: r.points.map(p => ({ x: p.risk, y: p.return })),
+          backgroundColor: 'rgba(56,189,248,0.5)',
+          borderColor: '#38bdf8',
+          pointRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: colors.text } },
+          title: { display: true, text: '風險-收益有效前沿 (%)', color: colors.text },
+        },
+        scales: {
+          x: { title: { display: true, text: '風險 %', color: colors.text }, ticks: { color: colors.text }, grid: { color: colors.grid } },
+          y: { title: { display: true, text: '收益 %', color: colors.text }, ticks: { color: colors.text }, grid: { color: colors.grid } },
+        },
+      },
+    });
+  },
+
+  _showKellyResult(r) {
+    this._setPfTableHead(['策略', '股票', 'Kelly%', '建議倉位', '勝率', '備註']);
+    const rows = r.kelly_results || [];
+    document.getElementById('pfStats').innerHTML = `
+      <div class="c"><h3>總資金</h3><div class="v">${Utils.formatNum(r.total_capital, 0)}</div></div>
+      <div class="c"><h3>倉位上限</h3><div class="v">${((r.fraction_limit || 0) * 100).toFixed(0)}%</div></div>
+      <div class="c"><h3>子策略數</h3><div class="v">${rows.length}</div></div>
+      <div class="c"><h3>方法</h3><div class="v">Kelly</div></div>`;
+    document.getElementById('pfTable').innerHTML = rows.map(s =>
+      `<tr>
+        <td>${s.strategy || '-'}</td>
+        <td>${s.code || '-'}</td>
+        <td class="r">${s.kelly_fraction != null ? (s.kelly_fraction * 100).toFixed(1) + '%' : '-'}</td>
+        <td class="r">${s.recommended_position != null ? Utils.formatNum(s.recommended_position, 0) : '-'}</td>
+        <td class="r">${s.win_rate != null ? s.win_rate + '%' : '-'}</td>
+        <td class="r">${s.note || s.error || '-'}</td>
+      </tr>`
+    ).join('');
+    document.getElementById('pfResult').classList.remove('h');
+    document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  _showDegradationResult(r) {
+    this._setPfTableHead(['策略', '股票', '狀態', '連續跑輸天', '調整權重', '說明']);
+    const rows = r.degradation_status || [];
+    document.getElementById('pfStats').innerHTML = `
+      <div class="c"><h3>回看</h3><div class="v">${r.lookback_days || '-'} 天</div></div>
+      <div class="c"><h3>觸發閾值</h3><div class="v">${r.threshold_days || '-'} 天</div></div>
+      <div class="c"><h3>降權比例</h3><div class="v">${((r.weight_reduction || 0) * 100).toFixed(0)}%</div></div>
+      <div class="c"><h3>方法</h3><div class="v">衰減分析</div></div>`;
+    const adj = r.adjusted_weights || [];
+    document.getElementById('pfTable').innerHTML = rows.map((s, i) =>
+      `<tr>
+        <td>${s.strategy || '-'}</td>
+        <td>${s.code || '-'}</td>
+        <td class="r">${s.is_degraded ? '⚠️ 衰退' : '✅ 正常'}</td>
+        <td class="r">${s.consecutive_underperform_days ?? '-'}</td>
+        <td class="r">${adj[i] != null ? (adj[i] * 100).toFixed(0) + '%' : '-'}</td>
+        <td class="r">${s.is_degraded ? '連續跑輸基準' : '-'}</td>
+      </tr>`
+    ).join('');
+    document.getElementById('pfResult').classList.remove('h');
+    document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  _showArbitrateResult(r) {
+    this._setPfTableHead(['策略', '股票', '信號', '權重', '投票值', '-']);
+    const actionLabel = { buy: '買入', sell: '賣出', hold: '觀望' }[r.final_action] || r.final_action;
+    document.getElementById('pfStats').innerHTML = `
+      <div class="c"><h3>仲裁結果</h3><div class="v gn">${actionLabel}</div></div>
+      <div class="c"><h3>信心</h3><div class="v">${((r.confidence || 0) * 100).toFixed(1)}%</div></div>
+      <div class="c"><h3>衝突程度</h3><div class="v">${r.conflict_level || '-'}</div></div>
+      <div class="c"><h3>投票</h3><div class="v" style="font-size:12px">買 ${r.buy_score} / 賣 ${r.sell_score} / 持 ${r.hold_score}</div></div>`;
+    const votes = r.vote_details || [];
+    document.getElementById('pfTable').innerHTML = votes.map(s =>
+      `<tr>
+        <td>${s.strategy || '-'}</td>
+        <td>${s.code || '-'}</td>
+        <td class="r">${s.signal || '-'}</td>
+        <td class="r">${s.weight != null ? Utils.formatNum(s.weight, 2) : '-'}</td>
+        <td class="r">${s.vote_value != null ? Utils.formatNum(s.vote_value, 2) : '-'}</td>
+        <td class="r">-</td>
+      </tr>`
+    ).join('');
+    document.getElementById('pfResult').classList.remove('h');
+    document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  _showFrontierResult(r) {
+    this._setPfTableHead(['子策略', '-', '-', '-', '-', '-']);
+    const ms = r.max_sharpe || {};
+    const mr = r.min_risk || {};
+    document.getElementById('pfStats').innerHTML = `
+      <div class="c"><h3>前沿點數</h3><div class="v">${(r.points || []).length}</div></div>
+      <div class="c"><h3>最大夏普</h3><div class="v">${Utils.formatNum(ms.sharpe, 2)}</div></div>
+      <div class="c"><h3>最優收益</h3><div class="v gn">${ms.return != null ? ms.return + '%' : '-'}</div></div>
+      <div class="c"><h3>最小風險</h3><div class="v">${mr.risk != null ? mr.risk + '%' : '-'}</div></div>`;
+    document.getElementById('pfTable').innerHTML = (r.labels || []).map((lb, i) =>
+      `<tr><td colspan="6">${lb}</td></tr>`
+    ).join('') || '<tr><td colspan="6">見下方有效前沿圖</td></tr>';
+    this._drawFrontierChart(r);
+    document.getElementById('pfResult').classList.remove('h');
+    document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  _showResult(r, method) {
+    if (r.kelly_results) return this._showKellyResult(r);
+    if (r.degradation_status) return this._showDegradationResult(r);
+    if (r.points && (r.max_sharpe || r.min_risk)) return this._showFrontierResult(r);
+    if (r.final_action != null && r.vote_details) return this._showArbitrateResult(r);
+
+    this._resetPfTableHead();
     const pm = r.portfolio || r;
     document.getElementById('pfStats').innerHTML = `
       <div class="c"><h3>組合收益</h3><div class="v ${Utils.badgeClass(pm.total_return_pct)}">${Utils.formatPct(pm.total_return_pct)}</div></div>
@@ -393,7 +542,7 @@ const Portfolio = {
     document.getElementById('pfResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
   showResult(r) {
-    this._showResult(r);
+    this._showResult(r, this._currentMethod);
   },
 };
 

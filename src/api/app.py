@@ -590,7 +590,14 @@ async def run_preset_portfolio(preset_name: str, cash: float = None):
             rebalance_freq_days=preset.get("rebalance_freq_days", 20),
             cash=cash,
         )
+        if not result or not result.get("portfolio"):
+            raise HTTPException(
+                400,
+                "所有子策略回測失敗，請先在「數據中心」下載預設股票日線數據（演示模式啟動時會自動下載）",
+            )
         return {"success": True, "preset": preset["name"], "result": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"預設組合回測失敗: {e}")
         raise HTTPException(500, str(e))

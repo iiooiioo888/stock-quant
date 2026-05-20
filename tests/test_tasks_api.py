@@ -19,7 +19,47 @@ def auth_headers(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+ASYNC_TASK_TYPES = frozenset({
+    "backtest",
+    "backtest_advanced",
+    "backtest_multi",
+    "optimize",
+    "portfolio",
+    "walkforward",
+    "auto_optimize",
+    "stock_universe_sync",
+    "data_download",
+    "data_download_all",
+    "data_incremental",
+})
+
+
 class TestTasksAPI:
+    def test_task_types_api(self, client, auth_headers):
+        resp = client.get("/api/tasks/types", headers=auth_headers)
+        assert resp.status_code == 200
+        types = resp.json().get("types", [])
+        ids = {t["id"] for t in types}
+        assert ids == ASYNC_TASK_TYPES
+        assert "heatmap" not in ids
+        sync = next(t for t in types if t["id"] == "stock_universe_sync")
+        assert sync["label"] == "股票庫同步"
+        assert sync["tab"] == "data"
+
+    def test_stock_universe_sync_task_type_name(self, client, auth_headers):
+        from src.core.task_manager import create_task, get_tasks, update_task
+
+        task = create_task(
+            "stock_universe_sync",
+            {"max_count": 100},
+            title="pytest 股票庫",
+        )
+        update_task(task["task_id"], status="completed", progress=100)
+        listed = get_tasks(task_type="stock_universe_sync", limit=10)
+        match = next((t for t in listed if t["task_id"] == task["task_id"]), None)
+        assert match is not None
+        assert match["task_type_name"] == "股票庫同步"
+
     def test_list_tasks(self, client, auth_headers):
         resp = client.get("/api/tasks", headers=auth_headers)
         assert resp.status_code == 200

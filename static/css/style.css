@@ -1307,6 +1307,13 @@ td.r {
   gap: 14px;
 }
 
+.dash-panel-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: -4px 0 8px;
+}
+
 .dash-panel {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -2092,6 +2099,154 @@ pre.rpt {
   flex: 1;
   min-width: 96px;
   max-width: 120px;
+}
+
+/* 回測 — 按鈕式股票選擇（含 CDN Logo） */
+.fg-stock-code {
+  flex: 1 1 100%;
+  min-width: min(100%, 520px);
+  max-width: 100%;
+}
+
+.stock-code-picker {
+  width: 100%;
+}
+
+.stock-code-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.stock-code-manual {
+  width: 108px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+}
+
+.stock-code-search {
+  flex: 1;
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.stock-code-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.stock-code-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.stock-code-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.stock-code-group-btns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+  padding: 0 6px 4px;
+}
+
+.stock-code-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+  text-align: center;
+  min-height: 96px;
+}
+
+.stock-code-btn:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.stock-code-btn.a {
+  border-color: var(--accent, #38bdf8);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.12) 0%, var(--bg-secondary) 100%);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+
+.stock-code-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stock-code-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stock-code-letter {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent, #38bdf8);
+  line-height: 1;
+}
+
+.stock-code-btn-code {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stock-code-btn-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-code-grid-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.stock-code-btn.h,
+.stock-code-group.h {
+  display: none !important;
 }
 .input-medium { width: 100px; }
 .input-wide { width: 200px; }
@@ -2952,6 +3107,114 @@ tbody tr:hover {
 }
 
 /* ============================================================
+   Crypto price cards
+   ============================================================ */
+.crypto-prices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.crypto-card {
+  background: var(--bg-card, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.crypto-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.crypto-card.up::before { background: var(--up-color, #22c55e); }
+.crypto-card.down::before { background: var(--down-color, #ef4444); }
+.crypto-card.flat::before { background: var(--text-dim); }
+.crypto-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+.crypto-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.crypto-icon {
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.crypto-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crypto-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.crypto-badge.up { color: var(--up-color, #22c55e); background: rgba(34,197,94,.12); }
+.crypto-badge.down { color: var(--down-color, #ef4444); background: rgba(239,68,68,.12); }
+.crypto-badge.flat { color: var(--text-dim); background: var(--bg-secondary); }
+.crypto-price {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.crypto-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.crypto-loading,
+.crypto-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 24px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.crypto-loading .ld { margin-right: 6px; }
+.crypto-market-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.crypto-tbl-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--bg-secondary);
+  border-radius: 50%;
+  font-size: 14px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* ============================================================
    Toast animation
    ============================================================ */
 #toast {
@@ -3092,6 +3355,36 @@ tr.sched-row-on {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: 4px;
+}
+
+.data-universe-stats .univ-stat-sm {
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.data-universe-filters {
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.data-universe-filters select.input-sm {
+  min-width: 100px;
+}
+
+.univ-market-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 3px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.univ-rank {
+  color: var(--text-dim);
+  font-size: 11px;
+  min-width: 2.5em;
 }
 
 @media print {

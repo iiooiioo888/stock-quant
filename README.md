@@ -520,6 +520,24 @@ docker run -p 8000:8000 \
 
 Compose 會將 `SQ_REDIS_URL` 指向 `redis` 服務，並掛載 `./data`、`./logs`。
 
+### 股票庫（按市值前 20000）
+
+從 **A 股 + 港股 + 美股** 實時行情拉取基本資料（代碼、名稱、市值、PE/PB 等），按總市值排序後入庫 `stock_universe` 表（默認前 20000，可配置 `SQ_STOCK_UNIVERSE_MAX_COUNT`）。
+
+```bash
+# CLI 同步（需可訪問東財/AKShare）
+python main.py stock-universe sync
+python main.py stock-universe stats
+python main.py stock-universe list --market a_share --limit 20
+
+# API（同步需登錄）
+# GET  /api/stock-universe/stats
+# GET  /api/stock-universe?market=a_share&limit=50&offset=0
+# POST /api/stock-universe/sync?max_count=20000
+```
+
+說明：滬深 A 股上市約 5000+，要湊滿 20000 需依賴港股/美股數據；若外網失敗會降級為僅 A 股代碼表（無市值）。
+
 ### 測試
 
 ```bash

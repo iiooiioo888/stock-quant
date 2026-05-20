@@ -2135,6 +2135,46 @@ def cmd_scheduler(args):
         print("用法: python main.py scheduler {list|setup|run|enable|disable} [job_id]")
 
 
+def cmd_stock_universe(args):
+    from src.core.stock_universe import (
+        sync_stock_universe,
+        get_universe_stats,
+        query_stock_universe,
+    )
+
+    action = getattr(args, "universe_action", None)
+    if action == "sync":
+        cap = args.max or None
+        print(f"正在同步股票庫（上限 {cap or '配置默認'}）…")
+        result = sync_stock_universe(max_count=cap)
+        print(f"完成: 入庫 {result['saved']} 條，池內 {result['total_pool']} 條")
+        if result.get("by_market"):
+            for m, c in result["by_market"].items():
+                print(f"  {m}: {c}")
+        if result.get("note"):
+            print(f"提示: {result['note']}")
+    elif action == "stats":
+        s = get_universe_stats()
+        print(f"總數: {s.get('total', 0)}  更新: {s.get('updated_at')}")
+        for m, info in (s.get("markets") or {}).items():
+            print(f"  {m}: {info['count']}（含市值 {info['with_mv']}）")
+    elif action == "list":
+        rows, total = query_stock_universe(
+            market=None if args.market == "all" else args.market,
+            keyword=args.keyword,
+            limit=args.limit,
+        )
+        print(f"共 {total} 條，顯示前 {len(rows)} 條：")
+        for r in rows:
+            mv = r.get("total_mv") or 0
+            print(
+                f"  #{r.get('rank_mv')} {r.get('code')} {r.get('name')} "
+                f"[{r.get('market')}] 市值(億): {mv:.2f}"
+            )
+    else:
+        print("用法: python main.py stock-universe {sync|stats|list}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="stock-quant",
@@ -2450,6 +2490,22 @@ def main():
     p_user_reset.add_argument("username", help="用戶名")
     p_user_reset.add_argument("new_password", nargs="?", default=None, help="新密碼（不提供則交互輸入）")
 
+    # stock-universe（股票庫）
+    p_univ = subparsers.add_parser("stock-universe", help="股票庫（按市值前 N）")
+    univ_sub = p_univ.add_subparsers(dest="universe_action")
+    p_univ_sync = univ_sub.add_parser("sync", help="同步多市場基本資料入庫")
+    p_univ_sync.add_argument(
+        "--max",
+        type=int,
+        default=None,
+        help="入庫數量上限（默認 SQ_STOCK_UNIVERSE_MAX_COUNT=20000）",
+    )
+    univ_sub.add_parser("stats", help="查看股票庫統計")
+    p_univ_list = univ_sub.add_parser("list", help="列出股票庫")
+    p_univ_list.add_argument("--market", default="all", help="a_share/hk_stock/us_stock/all")
+    p_univ_list.add_argument("--limit", type=int, default=20)
+    p_univ_list.add_argument("--keyword", default=None)
+
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -2552,6 +2608,11 @@ def main():
             cmd_scheduler(args)
         else:
             p_sched.print_help()
+    elif args.command == "stock-universe":
+        if args.universe_action:
+            cmd_stock_universe(args)
+        else:
+            p_univ.print_help()
     else:
         parser.print_help()
 

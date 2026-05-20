@@ -215,6 +215,7 @@ const Dashboard = {
       this._loadSignalRadar(),
       this._loadSectorBars(),
       this._loadStrategyLeaderboard(),
+      this.loadCryptoPrices(),
     ]);
     if (typeof Charts !== 'undefined') {
       Charts.resizeTab('tab-dashboard');
@@ -533,6 +534,16 @@ const Dashboard = {
     return Array.isArray(raw) ? raw : [];
   },
 
+  _setPanelHint(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text || '—';
+  },
+
+  _shortStrategyName(name) {
+    const s = String(name || '');
+    return s.length > 14 ? s.slice(0, 12) + '…' : s;
+  },
+
   async _leaderboardFromBacktest(limit = 10) {
     const rows = await this._getBacktestAgg(50);
     if (!rows.length) return [];
@@ -559,114 +570,190 @@ const Dashboard = {
   },
 
   /**
-   * 市場總覽迷你圖 — 組合淨值走勢
+   * 監控股今日漲跌 — 橫向條形（按漲跌幅排序，一眼掃描）
    */
   async _loadSparklineChart() {
     const canvasId = 'dashSparklineChart';
     try {
-      const codes = await this._resolveSparklineCodes(6);
-      const d = await this._getSparklines(codes, 90);
-      if (!d || !d.sparklines) {
-        Charts.setPlaceholder(canvasId, '暫無行情數據，請在「下載入庫」同步 K 線');
+      const codes = await this._resolveSparklineCodes(8);
+      const d = await this._getSparklines(codes, 30);
+      if (!d?.sparklines) {
+        this._setPanelHint('dashSparklineHint', '暫無本地 K 線');
+        Charts.setPlaceholder(canvasId, '請在「數據中心 → 下載入庫」同步行情');
         return;
       }
 
-      const series = [];
-      for (const [code, sp] of Object.entries(d.sparklines)) {
-        const prices = sp.prices;
-        if (!prices || prices.length < 3) continue;
-        const base = Number(prices[0]);
-        if (!base || base <= 0) continue;
-        const normalized = prices.map(p => ((Number(p) / base) - 1) * 100);
-        series.push({
-          label: code,
-          data: normalized,
-          dates: sp.dates || normalized.map((_, i) => String(i)),
-        });
+      const rows = [];
+      for (const code of codes) {
+        const sp = d.sparklines[code];
+        if (!sp?.prices?.length) continue;
+        const prices = sp.prices.map(Number).filter(Number.isFinite);
+        if (prices.length < 2) continue;
+        let chg = Number(sp.change_pct);
+        if (!Number.isFinite(chg)) {
+          const base = prices[0];
+          chg = base > 0 ? (prices[prices.length - 1] / base - 1) * 100 : 0;
+        }
+        rows.push({ code, chg });
       }
-      if (series.length) {
-        Charts.clearPlaceholder(canvasId);
-        Charts.drawLineChart(canvasId, series);
-        Charts._scheduleResize?.(document.getElementById(canvasId));
-      } else {
-        Charts.setPlaceholder(canvasId, '暫無行情數據，請在「下載入庫」同步 K 線');
+
+      if (!rows.length) {
+        this._setPanelHint('dashSparklineHint', '暫無有效行情');
+        Charts.setPlaceholder(canvasId, '請在「數據中心 → 下載入庫」同步行情');
+        return;
       }
+
+      rows.sort((a, b) => b.chg - a.chg);
+      const labels = rows.map(r => r.code);
+      const data = rows.map(r => r.chg);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      const up = data.filter(v => v > 0).length;
+      this._setPanelHint('dashSparklineHint', `${rows.length} 檔 · 漲 ${up} 跌 ${rows.length - up} · 均 ${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%`);
+
+      Charts.clearPlaceholder(canvasId);
+      Charts.drawHorizontalBarChart(canvasId, labels, data, '漲跌幅 (%)');
     } catch (e) {
+      this._setPanelHint('dashSparklineHint', '載入失敗');
       Charts.setPlaceholder(canvasId, '載入失敗，請稍後重試');
     }
   },
 
   /**
-   * 最近回測表現 — 最近 5 次回測的收益率柱狀圖
+   * 策略平均收益 — 按策略聚合近 30 次回測
    */
   async _loadBacktestHistory() {
     const canvasId = 'dashBacktestChart';
     try {
-      const d = await Api.getBacktestHistory('', '', 5);
-      if (!d || !d.results || !d.results.length) {
-        Charts.setPlaceholder(canvasId, '尚無回測記錄，請先運行策略回測');
+      const rows = await this._getBacktestAgg(30);
+      if (!rows.length) {
+        this._setPanelHint('dashBacktestHint', '尚無回測');
+        Charts.setPlaceholder(canvasId, '尚無回測記錄，請到「策略回測」運行');
         return;
       }
 
-      const results = d.results.reverse();
-      const labels = results.map(r => (r.code || '').substring(0, 6) + '\n' + (r.strategy || ''));
-      const data = results.map(r => r.total_return_pct || 0);
+      const buckets = {};
+      for (const r of rows) {
+        const name = r.strategy;
+        if (!name) continue;
+        if (!buckets[name]) buckets[name] = [];
+        buckets[name].push(Number(r.total_return_pct) || 0);
+      }
+      const ranked = Object.entries(buckets)
+        .map(([name, arr]) => ({
+          name,
+          avg: arr.reduce((a, b) => a + b, 0) / arr.length,
+          n: arr.length,
+        }))
+        .sort((a, b) => b.avg - a.avg)
+        .slice(0, 8);
+
+      const best = ranked[0];
+      this._setPanelHint(
+        'dashBacktestHint',
+        best
+          ? `近 ${rows.length} 次回測 · 最佳 ${this._shortStrategyName(best.name)} ${best.avg >= 0 ? '+' : ''}${best.avg.toFixed(2)}%`
+          : `近 ${rows.length} 次回測`,
+      );
 
       Charts.clearPlaceholder(canvasId);
-      Charts.drawBarChart(canvasId, data, labels, '收益率 (%)');
+      Charts.drawHorizontalBarChart(
+        canvasId,
+        ranked.map(x => this._shortStrategyName(x.name)),
+        ranked.map(x => x.avg),
+        '平均收益率 (%)',
+        { tooltips: ranked.map(x => `樣本 ${x.n} 次`) },
+      );
     } catch (e) {
+      this._setPanelHint('dashBacktestHint', '載入失敗');
       Charts.setPlaceholder(canvasId, '載入失敗，請稍後重試');
     }
   },
 
   /**
-   * 信號強度分佈 — 雷達圖顯示 top 5 股票的多維信號強度
+   * 多空信號 — 環形圖統計 + 強度 Top 標的（取代難讀的雷達圖）
    */
   async _loadSignalRadar() {
     const canvasId = 'dashSignalRadar';
     try {
       const d = await Api.getCurrentSignals();
       if (!d) {
+        this._setPanelHint('dashSignalHint', '載入失敗');
         Charts.setPlaceholder(canvasId, '信號數據載入失敗');
         return;
       }
 
       const signals = d.signals || d.data || [];
       if (!signals.length) {
-        Charts.setPlaceholder(canvasId, '暫無實時信號（非交易時段或尚未計算）');
+        this._setPanelHint('dashSignalHint', '非交易時段');
+        Charts.setPlaceholder(canvasId, '暫無實時信號（開盤後刷新）');
         return;
       }
 
-      const top5 = [...signals]
-        .sort((a, b) => Math.abs(Number(b.strength) || 0) - Math.abs(Number(a.strength) || 0))
-        .slice(0, 5);
-      const labels = ['綜合強度', '買入占比', '賣出占比', '策略覆蓋', '觀望占比'];
+      let buy = 0;
+      let sell = 0;
+      let hold = 0;
+      const stockScores = [];
 
-      const datasets = top5.map((s, i) => {
+      for (const s of signals) {
         const items = this._signalItems(s);
-        const buyCount = items.filter(st => st.signal === 'buy').length;
-        const sellCount = items.filter(st => st.signal === 'sell').length;
-        const holdCount = items.filter(st => st.signal === 'hold').length;
-        const total = items.length || 1;
-        const strength = Math.abs(Number(s.strength ?? s.strength_score) || 0);
-        const maxStrategies = 19;
+        let b = 0;
+        let sl = 0;
+        let h = 0;
+        items.forEach(st => {
+          if (st.signal === 'buy') b++;
+          else if (st.signal === 'sell') sl++;
+          else h++;
+        });
+        buy += b;
+        sell += sl;
+        hold += h;
+        const net = b - sl;
+        const strength = Number(s.strength ?? s.strength_score) || 0;
+        stockScores.push({
+          code: s.code || s.name || '?',
+          score: net !== 0 ? net * (strength || 1) : strength * 0.3,
+          buy: b,
+          sell: sl,
+        });
+      }
 
-        return {
-          label: s.code || s.name || ('股票' + (i + 1)),
-          data: [
-            Math.min(100, strength),
-            Math.min(100, (buyCount / total) * 100),
-            Math.min(100, (sellCount / total) * 100),
-            Math.min(100, (items.length / maxStrategies) * 100),
-            Math.min(100, (holdCount / total) * 100),
-          ],
-        };
-      });
+      const top = [...stockScores]
+        .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
+        .slice(0, 6);
+
+      this._setPanelHint(
+        'dashSignalHint',
+        `${signals.length} 檔 · 買入 ${buy} · 賣出 ${sell} · 觀望 ${hold}`,
+      );
+
+      if (buy + sell + hold === 0) {
+        Charts.setPlaceholder(canvasId, '策略尚未產生買賣信號');
+        return;
+      }
 
       Charts.clearPlaceholder(canvasId);
-      Charts.drawRadarChart(canvasId, labels, datasets);
-      Charts._scheduleResize?.(document.getElementById(canvasId));
+      if (top.length >= 2 && (buy + sell) > 0) {
+        Charts.drawHorizontalBarChart(
+          canvasId,
+          top.map(t => t.code),
+          top.map(t => t.score),
+          '信號傾向（正=偏多）',
+          {
+            suffix: '',
+            formatValue: v => (v >= 0 ? '+' : '') + Number(v).toFixed(1),
+            tooltips: top.map(t => `買 ${t.buy} / 賣 ${t.sell}`),
+          },
+        );
+      } else {
+        Charts.drawDoughnutChart(
+          canvasId,
+          ['買入', '賣出', '觀望'],
+          [buy, sell, hold],
+          '策略信號分佈',
+        );
+      }
     } catch (e) {
+      this._setPanelHint('dashSignalHint', '載入失敗');
       Charts.setPlaceholder(canvasId, '信號數據載入失敗');
     }
   },
@@ -704,6 +791,52 @@ const Dashboard = {
       this._renderConceptSectorChart(d.concept_sectors);
     } catch (e) {
       if (meta) meta.textContent = '資金與板塊數據載入失敗';
+    }
+  },
+
+  /**
+   * 加密貨幣實時行情卡片
+   */
+  async loadCryptoPrices() {
+    const wrap = document.getElementById('cryptoPrices');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="crypto-loading"><span class="ld"></span> 加載中…</div>';
+    try {
+      const d = await Api.get('/api/markets/crypto/realtime');
+      const list = d?.data || [];
+      if (!list.length) {
+        wrap.innerHTML = '<div class="crypto-empty">暫無加密貨幣行情數據</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(c => {
+        const chg = Number(c.change_pct) || 0;
+        const cls = chg > 0 ? 'up' : (chg < 0 ? 'down' : 'flat');
+        const sign = chg > 0 ? '+' : '';
+        const price = Number(c.price) || 0;
+        const priceStr = price >= 1000
+          ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : price >= 1
+            ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+            : price.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+        const vol = c.quote_volume || c.volume || 0;
+        const volStr = vol >= 1e9 ? (vol / 1e9).toFixed(1) + 'B'
+          : vol >= 1e6 ? (vol / 1e6).toFixed(1) + 'M'
+          : vol >= 1e3 ? (vol / 1e3).toFixed(0) + 'K'
+          : vol.toFixed(0);
+        const icon = { BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '◆', SOLUSDT: '◎', XRPUSDT: '✕' }[c.symbol] || '●';
+        return `
+          <div class="crypto-card crypto-${cls}">
+            <div class="crypto-card-head">
+              <span class="crypto-icon">${icon}</span>
+              <span class="crypto-name">${c.name || c.symbol}</span>
+              <span class="crypto-badge ${cls}">${sign}${chg.toFixed(2)}%</span>
+            </div>
+            <div class="crypto-price">$${priceStr}</div>
+            <div class="crypto-meta">24h 量: ${volStr}</div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      wrap.innerHTML = '<div class="crypto-empty">加密貨幣行情載入失敗</div>';
     }
   },
 
@@ -834,44 +967,51 @@ const Dashboard = {
   },
 
   /**
-   * 行業板塊漲跌 — 水平條形圖
+   * 行業板塊強弱 — 漲幅前 3 + 跌幅前 3
    */
   async _loadSectorBars() {
     const canvasId = 'dashSectorChart';
     try {
-      const d = await Api.getSectors('industry', 10);
-      if (!d || !d.sectors || !d.sectors.length) {
-        Charts.setPlaceholder(canvasId, '板塊數據暫不可用（外部數據源連線失敗）');
+      const d = await Api.getSectors('industry', 30);
+      if (!d?.sectors?.length) {
+        this._setPanelHint('dashSectorHint', '數據源不可用');
+        Charts.setPlaceholder(canvasId, '板塊數據暫不可用，請稍後刷新');
         return;
       }
 
-      // 分開漲幅前5和跌幅前5，按漲跌幅排序
       const sorted = [...d.sectors].sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
-      const top5 = sorted.slice(0, 5);
-      const bottom5 = sorted.slice(-5).reverse();
-
-      // 合併顯示
-      const all = [...top5, ...bottom5];
-      // 去重
+      const top3 = sorted.slice(0, 3);
+      const bottom3 = sorted.slice(-3).reverse();
       const seen = new Set();
-      const unique = all.filter(s => {
-        if (seen.has(s.name)) return false;
+      const unique = [...top3, ...bottom3].filter(s => {
+        if (!s.name || seen.has(s.name)) return false;
         seen.add(s.name);
         return true;
-      }).slice(0, 10);
+      });
 
-      const labels = unique.map(s => s.name || '-');
-      const data = unique.map(s => s.change_pct || 0);
+      const up = sorted.filter(s => (s.change_pct || 0) > 0).length;
+      const avg = sorted.reduce((a, s) => a + (s.change_pct || 0), 0) / sorted.length;
+      this._setPanelHint(
+        'dashSectorHint',
+        `${sorted.length} 個行業 · 上漲 ${up} · 均 ${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%`,
+      );
 
       Charts.clearPlaceholder(canvasId);
-      Charts.drawHorizontalBarChart(canvasId, labels, data, '漲跌幅 (%)');
+      Charts.drawHorizontalBarChart(
+        canvasId,
+        unique.map(s => (s.name || '-').slice(0, 8)),
+        unique.map(s => s.change_pct || 0),
+        '漲跌幅 (%)',
+        { tooltips: unique.map(s => ((s.change_pct || 0) >= 0 ? '領漲' : '領跌')) },
+      );
     } catch (e) {
+      this._setPanelHint('dashSectorHint', '載入失敗');
       Charts.setPlaceholder(canvasId, '板塊數據載入失敗');
     }
   },
 
   /**
-   * 策略勝率排行 — top 10 策略的勝率和夏普
+   * 策略夏普排行 — 橫向條形（tooltip 附勝率）
    */
   async _loadStrategyLeaderboard() {
     const canvasId = 'dashLeaderboardChart';
@@ -882,78 +1022,36 @@ const Dashboard = {
         strategies = await this._leaderboardFromBacktest(10);
       }
       if (!strategies.length) {
-        Charts.setPlaceholder(canvasId, d?.hint || '排行榜暫無數據，請先運行回測或更新排行榜');
+        this._setPanelHint('dashLeaderboardHint', '暫無數據');
+        Charts.setPlaceholder(canvasId, d?.hint || '請先運行回測以生成排行');
         return;
       }
-      const labels = strategies.map(s => this._strategyLabel(s));
-      const winRates = strategies.map(s => s.win_rate_pct || 0);
-      const sharpes = strategies.map(s => s.sharpe_ratio || 0);
 
-      // 用雙軸柱狀圖：勝率 + 夏普
-      const canvas = document.getElementById(canvasId);
-      if (!canvas) return;
+      const sorted = [...strategies].sort((a, b) => (b.sharpe_ratio || 0) - (a.sharpe_ratio || 0));
+      const labels = sorted.map(s => this._shortStrategyName(this._strategyLabel(s)));
+      const sharpes = sorted.map(s => Number(s.sharpe_ratio) || 0);
+      const best = sorted[0];
+      this._setPanelHint(
+        'dashLeaderboardHint',
+        best
+          ? `Top ${sorted.length} · ${this._shortStrategyName(this._strategyLabel(best))} 夏普 ${(best.sharpe_ratio || 0).toFixed(2)}`
+          : `Top ${sorted.length}`,
+      );
+
       Charts.clearPlaceholder(canvasId);
-      const old = Chart.getChart(canvas);
-      if (old) old.destroy();
-
-      const colors = Charts.getThemeColors();
-      new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: '勝率 (%)',
-              data: winRates,
-              backgroundColor: 'rgba(56,189,248,0.6)',
-              borderColor: '#38bdf8',
-              borderWidth: 1,
-              yAxisID: 'y',
-            },
-            {
-              label: '夏普比率',
-              data: sharpes,
-              backgroundColor: 'rgba(167,139,250,0.6)',
-              borderColor: '#a78bfa',
-              borderWidth: 1,
-              yAxisID: 'y1',
-            },
-          ],
+      Charts.drawHorizontalBarChart(
+        canvasId,
+        labels,
+        sharpes,
+        '夏普比率',
+        {
+          suffix: '',
+          formatValue: v => Number(v).toFixed(2),
+          tooltips: sorted.map(s => `勝率 ${(s.win_rate_pct || 0).toFixed(1)}%`),
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: colors.text, font: { size: 10 } } },
-            tooltip: {
-              backgroundColor: colors.tooltipBg,
-              borderColor: colors.tooltipBorder,
-              borderWidth: 1,
-              titleColor: colors.tooltipText,
-              bodyColor: colors.tooltipBody,
-            },
-          },
-          scales: {
-            x: { ticks: { color: colors.text, font: { size: 9 }, maxRotation: 45 }, grid: { color: colors.grid } },
-            y: {
-              type: 'linear',
-              position: 'left',
-              ticks: { color: colors.text, font: { size: 9 }, callback: v => v + '%' },
-              grid: { color: colors.grid },
-              title: { display: true, text: '勝率', color: colors.text },
-            },
-            y1: {
-              type: 'linear',
-              position: 'right',
-              ticks: { color: colors.text, font: { size: 9 } },
-              grid: { drawOnChartArea: false },
-              title: { display: true, text: '夏普', color: colors.text },
-            },
-          },
-        },
-      });
-      Charts._scheduleResize(canvas);
+      );
     } catch (e) {
+      this._setPanelHint('dashLeaderboardHint', '載入失敗');
       Charts.setPlaceholder(canvasId, '排行榜載入失敗');
     }
   },

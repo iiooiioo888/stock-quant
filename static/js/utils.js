@@ -181,7 +181,66 @@ const Utils = {
    */
   today() {
     return new Date().toISOString().split('T')[0];
-  }
+  },
+
+  /** A 股市場前綴（滬 SH / 深 SZ） */
+  stockMarketPrefix(code) {
+    const c = String(code || '').trim().padStart(6, '0');
+    if (/^(5|6|9)/.test(c)) return 'SH';
+    return 'SZ';
+  },
+
+  /** 東財 Logo CDN（A 股） */
+  stockIconUrl(code) {
+    const c = String(code || '').trim().padStart(6, '0');
+    const m = this.stockMarketPrefix(c);
+    return `https://webquotepic.eastmoney.com/getpic/${m}${c}_70.png`;
+  },
+
+  /** 圖標載入失敗時的 CDN 備用頭像 */
+  stockIconFallbackUrl(name, code) {
+    const label = encodeURIComponent(String(name || code || '?').slice(0, 2));
+    return `https://ui-avatars.com/api/?name=${label}&size=56&background=334155&color=38bdf8&bold=true&length=2`;
+  },
+
+  /**
+   * 綁定股票圖標：先東財 CDN，失敗再 ui-avatars CDN，再顯示首字
+   */
+  bindStockIcon(img, code, name) {
+    if (!img) return;
+    const c = String(code || '').trim();
+    const n = String(name || c || '?');
+    img.alt = `${c} ${n}`;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+
+    const showLetter = () => {
+      img.style.display = 'none';
+      const wrap = img.closest('.stock-code-icon');
+      if (wrap) {
+        let letter = wrap.querySelector('.stock-code-letter');
+        if (!letter) {
+          letter = document.createElement('span');
+          letter.className = 'stock-code-letter';
+          wrap.appendChild(letter);
+        }
+        letter.textContent = (n.replace(/\s/g, '') || c || '?').charAt(0);
+      }
+    };
+
+    img.onerror = () => {
+      if (img.dataset.fallback === '1') {
+        img.onerror = null;
+        showLetter();
+        return;
+      }
+      img.dataset.fallback = '1';
+      img.src = this.stockIconFallbackUrl(n, c);
+    };
+
+    img.src = c ? this.stockIconUrl(c) : this.stockIconFallbackUrl(n, c);
+  },
 };
 
 // Make globally available

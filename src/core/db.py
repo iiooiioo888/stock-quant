@@ -286,10 +286,12 @@ def init_db():
         from src.core.capital_flow import init_capital_flow_table
         from src.core.dragon_tiger import init_dragon_tiger_table
         from src.core.fundamental import init_fundamentals_table
+        from src.core.stock_universe import init_stock_universe_table
         init_sector_table()
         init_capital_flow_table()
         init_dragon_tiger_table()
         init_fundamentals_table()
+        init_stock_universe_table()
     except Exception as e:
         logger.warning(f"擴展數據表初始化跳過: {e}")
     

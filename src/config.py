@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     backtest_commission: float = Field(default=0.001, ge=0, le=0.1)
     backtest_stamp_tax: float = Field(default=0.001, ge=0, le=0.1)
 
+    # ====== 股票庫 ======
+    stock_universe_max_count: int = Field(default=20000, ge=100, le=50000)
+
     # ====== 數據下載並行 ======
     download_max_workers: int = Field(default=3, ge=1, le=8)
     download_throttle_sec: float = Field(default=0.5, ge=0.1, le=2.0)

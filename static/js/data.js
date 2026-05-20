@@ -11,7 +11,9 @@
 
 const Data = {
   _currentTab: 'download',
-  _SUB_TABS: ['download', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
+  _SUB_TABS: ['download', 'universe', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
+  _universeOffset: 0,
+  _universeTotal: 0,
 
   init() {
     const tabs = document.getElementById('dataTabs');
@@ -52,6 +54,10 @@ const Data = {
 
   _onTabActivated(tab) {
     if (tab === 'download') this.refreshDbStats();
+    if (tab === 'universe') {
+      this.loadUniverseStats();
+      if (this._universeTotal > 0) this.searchUniverse(this._universeOffset);
+    }
     if (tab === 'capital' && typeof ProCharts !== 'undefined') {
       ProCharts.loadCapitalTabCharts();
     }
@@ -187,6 +193,176 @@ const Data = {
     } finally {
       Utils.btnLoading(btn, false, '🔄 增量更新');
     }
+  },
+
+  // ============================================================
+  // 股票庫
+  // ============================================================
+
+  _marketLabel(m) {
+    const map = { a_share: 'A股', hk_stock: '港股', us_stock: '美股' };
+    return map[m] || m || '-';
+  },
+
+  async loadUniverseStats() {
+    const d = await Api.getStockUniverseStats();
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    if (!d || d.total === 0) {
+      set('univStatTotal', '0');
+      set('univStatUpdated', '未同步');
+      set('univStatAshare', '-');
+      set('univStatHk', '-');
+      set('univStatUs', '-');
+      const hint = document.getElementById('univSyncHint');
+      if (hint) hint.textContent = '尚未同步，請點「一鍵同步股票庫」（需登錄）';
+      return;
+    }
+    set('univStatTotal', (d.total ?? 0).toLocaleString());
+    set('univStatUpdated', d.updated_at || '-');
+    const mk = d.markets || {};
+    set('univStatAshare', mk.a_share?.count ?? 0);
+    set('univStatHk', mk.hk_stock?.count ?? 0);
+    set('univStatUs', mk.us_stock?.count ?? 0);
+    const hint = document.getElementById('univSyncHint');
+    if (hint) hint.textContent = `已入庫 ${d.total} 檔，按市值排名`;
+    this._universeTotal = d.total;
+  },
+
+  async syncStockUniverse() {
+    const btn = document.getElementById('univSyncBtn');
+    const el = document.getElementById('univSyncResult');
+    if (!Api.isLoggedIn()) {
+      Utils.toast('請先登錄後再同步股票庫', 4000, 'warning');
+      Api.showLoginModal(false);
+      return;
+    }
+    Utils.btnLoading(btn, true, '同步中...');
+    if (el) el.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 已提交任務，正在拉取 A/HK/US 行情（約 1–3 分鐘）…</p>';
+    try {
+      const d = await Api.syncStockUniverse();
+      const poll = typeof App !== 'undefined' && App._downloadPollOptions
+        ? App._downloadPollOptions((task) => {
+          if (!el || typeof TaskCommon === 'undefined') return;
+          const sub = TaskCommon.formatTaskSubtitle(task) || task.message;
+          if (sub) el.innerHTML = `<p style="color:var(--text-dim)"><span class="ld"></span> ${sub}</p>`;
+        })
+        : { timeout: 600000, interval: 2500 };
+      const resolved = await Api.resolveTaskResponse(d, poll);
+      const result = Api.extractResult(resolved);
+      if (resolved?.success && result) {
+        const by = result.by_market || {};
+        const parts = Object.entries(by).map(([k, n]) => `${this._marketLabel(k)} ${n}`).join(' · ');
+        if (el) {
+          el.innerHTML = `<div class="chip on">✅ 入庫 ${result.saved} 條（池內 ${result.total_pool}）${parts ? ' — ' + parts : ''}</div>`;
+        }
+        if (result.note) {
+          if (el) el.innerHTML += `<p class="sec-desc mt-sm">${result.note}</p>`;
+        }
+        await this.loadUniverseStats();
+        this.searchUniverse(0);
+        Utils.toast('股票庫同步完成', 3500, 'success');
+      } else if (el) {
+        el.innerHTML = `<div class="chip off">❌ ${resolved?.task?.error || resolved?.message || '同步失敗'}</div>`;
+      }
+    } catch (e) {
+      if (el) el.innerHTML = `<div class="chip off">❌ ${e.message || e}</div>`;
+    } finally {
+      Utils.btnLoading(btn, false, '⚡ 一鍵同步股票庫');
+    }
+  },
+
+  async searchUniverse(offset) {
+    const wrap = document.getElementById('univTableWrap');
+    const pager = document.getElementById('univPager');
+    if (!wrap) return;
+
+    const market = document.getElementById('univMarket')?.value || 'all';
+    const keyword = document.getElementById('univKeyword')?.value?.trim() || '';
+    const limit = Math.min(200, Math.max(10, parseInt(document.getElementById('univLimit')?.value, 10) || 50));
+    this._universeOffset = Math.max(0, offset || 0);
+
+    wrap.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 查詢中...</p>';
+    const d = await Api.getStockUniverse(market, limit, this._universeOffset, keyword);
+    if (!d) {
+      this._apiFailMessage(wrap, '股票庫查詢');
+      if (pager) pager.style.display = 'none';
+      return;
+    }
+
+    this._universeTotal = d.total ?? 0;
+    const stocks = d.stocks || [];
+    if (!stocks.length) {
+      wrap.innerHTML = '<p style="color:var(--text-dim)">無匹配結果。請先同步股票庫或調整篩選條件。</p>';
+      if (pager) pager.style.display = 'none';
+      return;
+    }
+
+    wrap.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>排名</th><th>代碼</th><th>名稱</th><th>市場</th>
+        <th class="r">市值(億)</th><th class="r">漲跌幅</th><th class="r">PE</th><th class="r">PB</th><th>行業</th>
+      </tr></thead>
+      <tbody>${stocks.map(s => {
+        const chg = s.change_pct;
+        const chgCls = Utils.badgeClass(chg);
+        return `<tr>
+          <td class="univ-rank">#${s.rank_mv ?? '-'}</td>
+          <td><code>${this._escHtml(s.code)}</code></td>
+          <td>${this._escHtml(s.name || '-')}</td>
+          <td><span class="univ-market-tag">${this._escHtml(this._marketLabel(s.market))}</span></td>
+          <td class="r">${s.total_mv != null ? Number(s.total_mv).toFixed(2) : '-'}</td>
+          <td class="r"><span class="b ${chgCls}">${chg != null ? Utils.formatPct(chg) : '-'}</span></td>
+          <td class="r">${s.pe_ttm > 0 ? Number(s.pe_ttm).toFixed(2) : '-'}</td>
+          <td class="r">${s.pb > 0 ? Number(s.pb).toFixed(2) : '-'}</td>
+          <td>${this._escHtml(s.industry || '-')}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+
+    if (pager) {
+      pager.style.display = 'flex';
+      const pageInfo = document.getElementById('univPageInfo');
+      const prev = document.getElementById('univPrevBtn');
+      const next = document.getElementById('univNextBtn');
+      const from = this._universeOffset + 1;
+      const to = Math.min(this._universeOffset + limit, this._universeTotal);
+      if (pageInfo) pageInfo.textContent = `${from}-${to} / 共 ${this._universeTotal}`;
+      if (prev) prev.disabled = this._universeOffset <= 0;
+      if (next) next.disabled = this._universeOffset + limit >= this._universeTotal;
+    }
+  },
+
+  universePrevPage() {
+    const limit = parseInt(document.getElementById('univLimit')?.value, 10) || 50;
+    this.searchUniverse(Math.max(0, this._universeOffset - limit));
+  },
+
+  universeNextPage() {
+    const limit = parseInt(document.getElementById('univLimit')?.value, 10) || 50;
+    this.searchUniverse(this._universeOffset + limit);
+  },
+
+  fillDownloadFromUniverse() {
+    const wrap = document.getElementById('univTableWrap');
+    const codes = [];
+    wrap?.querySelectorAll('tbody tr code')?.forEach(el => {
+      const c = el.textContent?.trim();
+      if (c) codes.push(c);
+    });
+    if (!codes.length) {
+      Utils.toast('請先查詢股票庫列表', 3000, 'warning');
+      return;
+    }
+    const ta = document.getElementById('dbDownloadCodes');
+    if (ta) ta.value = codes.join(',');
+    const tabs = document.getElementById('dataTabs');
+    tabs?.querySelectorAll('button').forEach(b => b.classList.remove('a'));
+    const dlBtn = tabs?.querySelector('button[data-dtab="download"]');
+    if (dlBtn) dlBtn.classList.add('a');
+    this._currentTab = 'download';
+    this._applyTabVisibility();
+    this._onTabActivated('download');
+    Utils.toast(`已填入 ${codes.length} 個代碼到「下載入庫」`, 3000, 'success');
   },
 
   // ============================================================

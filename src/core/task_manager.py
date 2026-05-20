@@ -24,19 +24,110 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 
-TASK_TYPE_NAMES = {
-    "backtest": "回測",
-    "backtest_advanced": "進階回測",
-    "backtest_multi": "多策略對比",
-    "optimize": "參數優化",
-    "portfolio": "組合回測",
-    "walkforward": "Walk-Forward",
-    "auto_optimize": "自動優化",
-    "heatmap": "熱力圖分析",
-    "data_download": "市場數據下載",
-    "data_download_all": "全市場下載",
-    "data_incremental": "增量更新",
+# 單一任務類型註冊表（async=True 的會出現在任務列表與篩選器）
+TASK_REGISTRY: dict[str, dict] = {
+    "backtest": {
+        "label": "回測",
+        "icon": "📊",
+        "tab": "backtest",
+        "async": True,
+    },
+    "backtest_advanced": {
+        "label": "進階回測",
+        "icon": "📊",
+        "tab": "backtest",
+        "async": True,
+    },
+    "backtest_multi": {
+        "label": "多策略對比",
+        "icon": "📊",
+        "tab": "backtest",
+        "async": True,
+    },
+    "optimize": {
+        "label": "參數優化",
+        "icon": "⚡",
+        "tab": "optimize",
+        "async": True,
+    },
+    "portfolio": {
+        "label": "組合回測",
+        "icon": "📈",
+        "tab": "portfolio",
+        "async": True,
+    },
+    "walkforward": {
+        "label": "Walk-Forward",
+        "icon": "🔄",
+        "tab": "walkforward",
+        "async": True,
+    },
+    "auto_optimize": {
+        "label": "自動優化",
+        "icon": "🤖",
+        "tab": "optimize",
+        "async": True,
+    },
+    "stock_universe_sync": {
+        "label": "股票庫同步",
+        "icon": "📚",
+        "tab": "data",
+        "async": True,
+    },
+    "data_download": {
+        "label": "市場數據下載",
+        "icon": "📥",
+        "tab": "data",
+        "async": True,
+    },
+    "data_download_all": {
+        "label": "全市場下載",
+        "icon": "📥",
+        "tab": "data",
+        "async": True,
+    },
+    "data_incremental": {
+        "label": "增量更新",
+        "icon": "🔄",
+        "tab": "data",
+        "async": True,
+    },
+    # 同步計算，不經 create_task，僅供緩存命名參考
+    "heatmap": {
+        "label": "熱力圖分析",
+        "icon": "🌡️",
+        "tab": "heatmap",
+        "async": False,
+    },
 }
+
+TASK_TYPE_NAMES = {
+    k: v["label"] for k, v in TASK_REGISTRY.items()
+}
+
+
+def get_task_types(*, async_only: bool = True) -> list[dict]:
+    """返回任務類型清單，供 API / 前端篩選器使用。"""
+    out = []
+    for tid, meta in TASK_REGISTRY.items():
+        if async_only and not meta.get("async", True):
+            continue
+        out.append({
+            "id": tid,
+            "label": meta["label"],
+            "icon": meta.get("icon", ""),
+            "tab": meta.get("tab", "tasks"),
+        })
+    return out
+
+
+def task_type_label(task_type: str) -> str:
+    meta = TASK_REGISTRY.get(task_type)
+    if meta:
+        icon = meta.get("icon", "")
+        label = meta["label"]
+        return f"{icon} {label}".strip() if icon else label
+    return task_type
 
 _tasks: dict[str, dict] = {}
 _lock = threading.Lock()

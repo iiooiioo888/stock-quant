@@ -180,7 +180,69 @@ def _twelve_crypto_quote(symbol: str) -> dict:
 
 
 def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
-    """CoinGecko 歷史 K 線（免費，最多 365 天）"""
+    """CoinGecko 歷史 K 線（免費，使用 OHLC 端點獲取真實開高低收）"""
+    cg_id = _COINGECKO_IDS.get(symbol.upper())
+    if not cg_id:
+        return pd.DataFrame()
+
+    days = 365
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date.replace("-", ""), "%Y%m%d")
+            days = min((datetime.now() - sd).days, 365)
+        except ValueError:
+            pass
+
+    # CoinGecko OHLC 端點：返回 [timestamp, open, high, low, close]
+    # days=1→30min, 7→4h, 14→4h, 30→4h, 90→4d, 180→4d, 365→4d
+    try:
+        url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/ohlc"
+        params = {"vs_currency": "usd", "days": min(days, 365)}
+        resp = _http.get(url, params=params, timeout=30)
+        data = resp.json()
+
+        if not isinstance(data, list) or len(data) < 5:
+            # OHLC 端點失敗，回退到 market_chart（僅 close）
+            logger.debug(f"CoinGecko OHLC {symbol} 數據不足，回退 market_chart")
+            return _coingecko_history_fallback(symbol, start_date)
+
+        records = []
+        for row in data:
+            if len(row) < 5:
+                continue
+            ts, o, h, l, c = row[0], float(row[1]), float(row[2]), float(row[3]), float(row[4])
+            dt = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
+            records.append({
+                "date": dt,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": 0.0,
+                "amount": 0.0,
+            })
+
+        if not records:
+            return _coingecko_history_fallback(symbol, start_date)
+
+        df = pd.DataFrame(records)
+        df = df.drop_duplicates(subset=["date"], keep="last")
+        df = df.sort_values("date").reset_index(drop=True)
+
+        if start_date:
+            sd_str = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}" if len(start_date) == 8 else start_date
+            df = df[df["date"] >= sd_str]
+
+        logger.info(f"CoinGecko OHLC {symbol}: {len(df)} 條記錄")
+        return df
+
+    except Exception as e:
+        logger.debug(f"CoinGecko OHLC {symbol} 失敗: {e}")
+        return _coingecko_history_fallback(symbol, start_date)
+
+
+def _coingecko_history_fallback(symbol: str, start_date: str = None) -> pd.DataFrame:
+    """CoinGecko market_chart 回退（僅 close，OHLC 用 close 填充）"""
     cg_id = _COINGECKO_IDS.get(symbol.upper())
     if not cg_id:
         return pd.DataFrame()
@@ -216,7 +278,7 @@ def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
                 "low": price,
                 "close": price,
                 "volume": float(vol),
-                "amount": 0,
+                "amount": 0.0,
             })
 
         df = pd.DataFrame(records)
@@ -227,11 +289,11 @@ def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
             sd_str = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}" if len(start_date) == 8 else start_date
             df = df[df["date"] >= sd_str]
 
-        logger.info(f"CoinGecko {symbol}: {len(df)} 條記錄")
+        logger.info(f"CoinGecko market_chart {symbol}: {len(df)} 條記錄（僅 close）")
         return df
 
     except Exception as e:
-        logger.debug(f"CoinGecko history {symbol} 失敗: {e}")
+        logger.debug(f"CoinGecko market_chart {symbol} 失敗: {e}")
         return pd.DataFrame()
 
 

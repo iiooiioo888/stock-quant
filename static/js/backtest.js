@@ -6,6 +6,16 @@ const Backtest = {
   _lastResult: null,
   _running: false,
   _codesLoaded: false,
+  _loadingStocks: false,
+  _stockMap: new Map(),
+  _searchQuery: '',
+
+  _GROUP_LABELS: {
+    demo: '示範股票',
+    watchlist: '監控列表',
+    universe: '股票庫',
+    db: '本地 K 線',
+  },
 
   /** 預設示範股（與演示配置一致） */
   _DEFAULT_STOCKS: [
@@ -18,98 +28,263 @@ const Backtest = {
 
   init() {
     this._bindCodeControls();
+    this.populateStockSelectSync();
     this.loadStockOptions();
   },
 
+  /** Tab 切換時若無可選股票則重載 */
+  ensureStockOptions() {
+    const grid = document.getElementById('btCodeGrid');
+    if (!grid) return;
+    const hasStock = grid.querySelector('.stock-code-btn');
+    if (!hasStock || !this._codesLoaded) {
+      this.populateStockSelectSync();
+      this.loadStockOptions(true);
+    }
+  },
+
+  /** 同步寫入示範股（不依賴 API） */
+  populateStockSelectSync() {
+    const map = new Map();
+    const add = (code, name, group) => this._stockMapAdd(map, code, name, group);
+    this._DEFAULT_STOCKS.forEach(s => add(s.code, s.name, 'demo'));
+    this._applyStockPicker(map);
+  },
+
+  _stockMapAdd(map, code, name, group) {
+    const c = String(code || '').trim();
+    if (!c || map.has(c)) return;
+    map.set(c, { code: c, name: (name || c).trim(), group });
+  },
+
+  _withTimeout(promise, ms = 8000) {
+    return Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve(null), ms)),
+    ]);
+  },
+
   getCode() {
-    return document.getElementById('btCode')?.value?.trim() || '';
+    const hidden = document.getElementById('btCode')?.value?.trim();
+    const manual = document.getElementById('btCodeManual')?.value?.trim();
+    return hidden || manual || '';
   },
 
   setCode(code) {
     const c = String(code || '').trim();
-    const inp = document.getElementById('btCode');
-    const sel = document.getElementById('btCodeSelect');
-    if (inp) inp.value = c;
-    if (sel) {
-      const hit = c && [...sel.options].some(o => o.value === c);
-      sel.value = hit ? c : '';
+    const hidden = document.getElementById('btCode');
+    const manual = document.getElementById('btCodeManual');
+    if (hidden) hidden.value = c;
+    if (manual) manual.value = c;
+    this._highlightStockButton(c);
+    this._updatePickHint(c);
+  },
+
+  _updatePickHint(code) {
+    const hint = document.getElementById('btCodePickHint');
+    if (!hint) return;
+    if (!code) {
+      hint.textContent = '點擊圖標選股';
+      return;
     }
+    const item = this._stockMap.get(code);
+    hint.textContent = item ? `${item.code} ${item.name}` : code;
+  },
+
+  _highlightStockButton(code) {
+    const grid = document.getElementById('btCodeGrid');
+    if (!grid) return;
+    grid.querySelectorAll('.stock-code-btn').forEach(btn => {
+      btn.classList.toggle('a', btn.dataset.code === code);
+    });
   },
 
   _bindCodeControls() {
-    const sel = document.getElementById('btCodeSelect');
-    const inp = document.getElementById('btCode');
-    if (!sel || !inp || sel.dataset.bound) return;
-    sel.dataset.bound = '1';
-    sel.addEventListener('change', () => {
-      if (sel.value) this.setCode(sel.value);
+    const grid = document.getElementById('btCodeGrid');
+    const manual = document.getElementById('btCodeManual');
+    const search = document.getElementById('btCodeSearch');
+    if (!grid || grid.dataset.bound) return;
+    grid.dataset.bound = '1';
+
+    grid.addEventListener('click', e => {
+      const btn = e.target.closest('.stock-code-btn');
+      if (!btn?.dataset.code) return;
+      this.setCode(btn.dataset.code);
     });
-    inp.addEventListener('input', () => {
-      const v = inp.value.trim();
-      if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
-      else if (!v) sel.value = '';
-      else sel.value = '';
+
+    if (manual && !manual.dataset.bound) {
+      manual.dataset.bound = '1';
+      manual.addEventListener('input', () => {
+        const v = manual.value.replace(/\D/g, '').slice(0, 6);
+        manual.value = v;
+        const hidden = document.getElementById('btCode');
+        if (hidden) hidden.value = v;
+        this._highlightStockButton(v);
+        this._updatePickHint(v);
+      });
+      manual.addEventListener('change', () => this.setCode(manual.value.trim()));
+    }
+
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = '1';
+      search.addEventListener('input', () => {
+        this._searchQuery = search.value.trim().toLowerCase();
+        this._filterStockButtons();
+      });
+    }
+  },
+
+  _filterStockButtons() {
+    const q = this._searchQuery;
+    const grid = document.getElementById('btCodeGrid');
+    if (!grid) return;
+    grid.querySelectorAll('.stock-code-btn').forEach(btn => {
+      if (!q) {
+        btn.classList.remove('h');
+        return;
+      }
+      const code = (btn.dataset.code || '').toLowerCase();
+      const name = (btn.dataset.name || '').toLowerCase();
+      const hit = code.includes(q) || name.includes(q);
+      btn.classList.toggle('h', !hit);
+    });
+    grid.querySelectorAll('.stock-code-group').forEach(sec => {
+      const visible = sec.querySelector('.stock-code-btn:not(.h)');
+      sec.classList.toggle('h', !visible);
     });
   },
 
-  async loadStockOptions() {
-    const sel = document.getElementById('btCodeSelect');
-    if (!sel) return;
+  _createStockButton(item) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'stock-code-btn';
+    btn.dataset.code = item.code;
+    btn.dataset.name = item.name;
+    btn.setAttribute('role', 'option');
+    btn.title = `${item.code} ${item.name}`;
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'stock-code-icon';
+    const img = document.createElement('img');
+    img.width = 44;
+    img.height = 44;
+    if (typeof Utils !== 'undefined' && Utils.bindStockIcon) {
+      Utils.bindStockIcon(img, item.code, item.name);
+    } else {
+      img.src = '';
+      img.alt = item.name;
+    }
+    iconWrap.appendChild(img);
+
+    const codeEl = document.createElement('span');
+    codeEl.className = 'stock-code-btn-code';
+    codeEl.textContent = item.code;
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'stock-code-btn-name';
+    nameEl.textContent = item.name;
+
+    btn.append(iconWrap, codeEl, nameEl);
+    return btn;
+  },
+
+  _applyStockPicker(map) {
+    const grid = document.getElementById('btCodeGrid');
+    if (!grid) return;
+
+    this._stockMap = map;
+    const groups = { demo: [], watchlist: [], universe: [], db: [] };
+    [...map.values()]
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .forEach(item => {
+        const g = groups[item.group] ? item.group : 'db';
+        groups[g].push(item);
+      });
+
+    const keep = this.getCode();
+    grid.replaceChildren();
+
+    let total = 0;
+    Object.keys(this._GROUP_LABELS).forEach(key => {
+      const list = groups[key];
+      if (!list.length) return;
+      total += list.length;
+
+      const sec = document.createElement('div');
+      sec.className = 'stock-code-group';
+      sec.dataset.group = key;
+
+      const title = document.createElement('div');
+      title.className = 'stock-code-group-title';
+      title.textContent = `${this._GROUP_LABELS[key]}（${list.length}）`;
+
+      const row = document.createElement('div');
+      row.className = 'stock-code-group-btns';
+      list.forEach(item => row.appendChild(this._createStockButton(item)));
+
+      sec.append(title, row);
+      grid.appendChild(sec);
+    });
+
+    if (!total) {
+      grid.innerHTML = '<p class="stock-code-grid-empty">暫無可選股票，請在「數據中心」同步行情或股票庫</p>';
+    }
+
+    this._codesLoaded = total > 0;
+    this._filterStockButtons();
+    if (keep) this.setCode(keep);
+    else this._updatePickHint('');
+  },
+
+  async loadStockOptions(force = false) {
+    const grid = document.getElementById('btCodeGrid');
+    if (!grid) return;
+    if (this._loadingStocks && !force) return;
+    this._loadingStocks = true;
+    const hint = document.getElementById('btCodePickHint');
+    if (hint) hint.textContent = '載入股票列表…';
 
     const map = new Map();
-    const add = (code, name, group) => {
-      const c = String(code || '').trim();
-      if (!c || map.has(c)) return;
-      map.set(c, { code: c, name: name || c, group });
-    };
+    const add = (code, name, group) => this._stockMapAdd(map, code, name, group);
 
     this._DEFAULT_STOCKS.forEach(s => add(s.code, s.name, 'demo'));
+    this._applyStockPicker(map);
 
     try {
-      const [cfg, rules, stocks] = await Promise.all([
-        Api.getConfig(),
-        Api.getAlertRules(),
-        Api.getStocks(),
+      const silent = { silent: true };
+      const [cfg, rules, stocks, universe, names] = await Promise.all([
+        this._withTimeout(Api.get('/api/config', silent)),
+        this._withTimeout(Api.get('/api/alerts/rules', silent)),
+        this._withTimeout(Api.getStocks(300)),
+        this._withTimeout(Api.getStockUniverse('a_share', 150, 0, '')),
+        this._withTimeout(Api.get('/api/stocks/names', silent)),
       ]);
-      (cfg?.watchlist || []).forEach(code => {
-        const r = rules?.rules?.[code];
-        add(code, r?.name, 'watchlist');
-      });
-      if (rules?.rules) {
-        Object.entries(rules.rules).forEach(([code, r]) => add(code, r?.name, 'watchlist'));
+
+      const nameMap = names?.names || {};
+      const wl = cfg?.watchlist;
+      if (Array.isArray(wl)) {
+        wl.forEach(code => {
+          const r = rules?.rules?.[code];
+          add(code, r?.name || nameMap[code], 'watchlist');
+        });
       }
-      const list = stocks?.stocks || [];
-      const cap = 400;
-      if (list.length && list.length <= cap) {
-        list.forEach(s => add(s.code, s.name, 'db'));
-      } else if (list.length > cap) {
-        list.slice(0, cap).forEach(s => add(s.code, s.name, 'db'));
+      if (rules?.rules && typeof rules.rules === 'object') {
+        Object.entries(rules.rules).forEach(([code, r]) => {
+          add(code, r?.name || nameMap[code], 'watchlist');
+        });
+      }
+      (universe?.stocks || []).forEach(s => add(s.code, s.name, 'universe'));
+      (stocks?.stocks || []).forEach(s => add(s.code, s.name || nameMap[s.code], 'db'));
+      if (!universe?.stocks?.length && !stocks?.stocks?.length) {
+        Object.entries(nameMap).slice(0, 80).forEach(([code, name]) => add(code, name, 'db'));
       }
     } catch (e) {
       console.warn('載入股票列表失敗:', e);
+    } finally {
+      this._loadingStocks = false;
     }
 
-    const groups = { demo: '示範股票', watchlist: '監控列表', db: '本地數據' };
-    const byGroup = { demo: [], watchlist: [], db: [] };
-    [...map.values()].sort((a, b) => a.code.localeCompare(b.code)).forEach(item => {
-      const g = byGroup[item.group] ? item.group : 'db';
-      byGroup[g].push(item);
-    });
-
-    let html = '<option value="">— 從列表選擇 —</option>';
-    Object.keys(groups).forEach(key => {
-      if (!byGroup[key].length) return;
-      html += `<optgroup label="${groups[key]}">`;
-      html += byGroup[key].map(s =>
-        `<option value="${s.code}">${s.code} ${s.name}</option>`,
-      ).join('');
-      html += '</optgroup>';
-    });
-    sel.innerHTML = html;
-    this._codesLoaded = true;
-
-    const current = this.getCode();
-    if (current) this.setCode(current);
+    this._applyStockPicker(map);
   },
 
   async run() {

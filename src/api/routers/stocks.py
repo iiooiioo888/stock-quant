@@ -11,26 +11,125 @@ from src.api.dispatch import dispatch_async_task
 
 router = APIRouter()
 
+
+# ====== 股票庫 ======
+
+@router.get("/api/stock-universe/stats")
+async def stock_universe_stats():
+    """股票庫統計"""
+    from src.core.stock_universe import get_universe_stats
+    return get_universe_stats()
+
+
+@router.get("/api/stock-universe")
+async def stock_universe_list(
+    market: str = Query("all", description="a_share / hk_stock / us_stock / all"),
+    keyword: str = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    order_by: str = Query("rank_mv"),
+):
+    """按市值排名查詢股票庫"""
+    from src.core.stock_universe import query_stock_universe
+
+    rows, total = query_stock_universe(
+        market=market if market != "all" else None,
+        keyword=keyword,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+    )
+    return {
+        "stocks": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "order_by": order_by,
+    }
+
+
+@router.post("/api/stock-universe/sync")
+async def stock_universe_sync(
+    max_count: int = Query(None, ge=100, le=50000),
+    user=Depends(require_auth),
+):
+    """同步股票庫（異步任務，需登錄）"""
+    from src.core.task_manager import create_task
+    from src.core.stock_universe import sync_stock_universe
+
+    cap = max_count or settings.stock_universe_max_count
+    task_params = {"max_count": cap}
+    task = create_task(
+        "stock_universe_sync",
+        task_params,
+        title=f"同步股票庫（前 {cap} 市值）",
+    )
+    if task.get("is_duplicate"):
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同同步任務執行中",
+            "async": True,
+        }
+
+    task_id = task["task_id"]
+    return dispatch_async_task(
+        task_id,
+        lambda: sync_stock_universe(max_count=cap, task_id=task_id),
+    )
+
+
 # ====== 股票 ======
 
 @router.get("/api/stocks")
-async def list_stocks():
-    """獲取股票列表"""
+async def list_stocks(limit: int = Query(500, ge=1, le=2000)):
+    """獲取股票列表（下拉選單等請用小 limit，避免一次拉全庫）"""
     from src.core.api_cache import cached_response
     from src.core.db import load_all_codes
 
+    cap = min(limit, 2000)
+
     def _build():
+        from src.core.stock_universe import query_stock_universe, get_universe_stats
+
+        stats = get_universe_stats()
+        if stats.get("total", 0) > 0:
+            rows, total = query_stock_universe(market="a_share", limit=cap, offset=0)
+            stocks = [
+                {
+                    "code": r["code"],
+                    "name": r.get("name") or STOCK_NAMES.get(r["code"], r["code"]),
+                    "market": r.get("market", "a_share"),
+                    "total_mv": r.get("total_mv"),
+                    "rank_mv": r.get("rank_mv"),
+                    "data_points": 0,
+                }
+                for r in rows
+            ]
+            return {
+                "stocks": stocks,
+                "total": total,
+                "limit": cap,
+                "source": "stock_universe",
+            }
+
         codes = load_all_codes()
         stocks = []
-        for code in codes:
+        for code in codes[:cap]:
             name = STOCK_NAMES.get(code, "")
             if not name:
                 rule = settings.alert_rules.get(code, {})
                 name = rule.get("name", code)
             stocks.append({"code": code, "name": name, "data_points": 0})
-        return {"stocks": stocks, "total": len(stocks)}
+        return {
+            "stocks": stocks,
+            "total": len(codes),
+            "limit": cap,
+            "source": "daily_kline",
+        }
 
-    return cached_response("api:stocks:list", ttl=30, builder=_build)
+    return cached_response(f"api:stocks:list:{cap}", ttl=30, builder=_build)
 
 
 @router.get("/api/stocks/names")
@@ -361,6 +460,24 @@ async def get_market_realtime(market: str, symbols: str = None):
 
     else:
         raise HTTPException(400, f"不支持的實時市場: {market}")
+
+
+@router.get("/api/markets/crypto/kline")
+async def get_crypto_kline(symbol: str = "BTCUSDT", days: int = 30):
+    """獲取加密貨幣 K 線數據"""
+    from src.core.crypto import download_crypto_kline
+    from datetime import datetime, timedelta
+
+    start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    try:
+        df = download_crypto_kline(symbol=symbol, interval="1d", start_date=start)
+        if df.empty:
+            return {"symbol": symbol, "klines": [], "message": "無數據"}
+        klines = df.to_dict(orient="records")
+        return {"symbol": symbol, "klines": klines, "total": len(klines)}
+    except Exception as e:
+        logger.error(f"加密 K 線失敗 {symbol}: {e}")
+        raise HTTPException(500, str(e))
 
 
 @router.get("/api/sparkline")

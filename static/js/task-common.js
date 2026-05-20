@@ -6,6 +6,11 @@
 
 const TaskCommon = {
 
+  _typesLoaded: false,
+  _typesPromise: null,
+  /** 異步任務類型（來自 /api/tasks/types） */
+  _asyncTypes: [],
+
   TYPE_NAMES: {
     backtest: '📊 回測',
     backtest_advanced: '📊 進階回測',
@@ -14,7 +19,7 @@ const TaskCommon = {
     portfolio: '📈 組合回測',
     walkforward: '🔄 Walk-Forward',
     auto_optimize: '🤖 自動優化',
-    heatmap: '🌡️ 熱力圖分析',
+    stock_universe_sync: '📚 股票庫同步',
     data_download: '📥 市場數據下載',
     data_download_all: '📥 全市場下載',
     data_incremental: '🔄 增量更新',
@@ -43,10 +48,30 @@ const TaskCommon = {
     portfolio: 'portfolio',
     walkforward: 'walkforward',
     auto_optimize: 'optimize',
-    heatmap: 'heatmap',
+    stock_universe_sync: 'data',
     data_download: 'data',
     data_download_all: 'data',
     data_incremental: 'data',
+  },
+
+  async loadTypes() {
+    if (this._typesPromise) return this._typesPromise;
+    this._typesPromise = (async () => {
+      try {
+        const d = await Api.getTaskTypes({ silent: true });
+        const types = d?.types || [];
+        this._asyncTypes = types;
+        types.forEach(t => {
+          const label = t.icon ? `${t.icon} ${t.label}` : t.label;
+          this.TYPE_NAMES[t.id] = label;
+          if (t.tab) this.TAB_MAP[t.id] = t.tab;
+        });
+        this._typesLoaded = true;
+      } catch (e) {
+        console.warn('載入任務類型失敗:', e);
+      }
+    })();
+    return this._typesPromise;
   },
 
   QUEUE_LABELS: {
@@ -91,6 +116,17 @@ const TaskCommon = {
     }
     if (task.status === 'completed' && task.result && this.isDownloadTask(task.task_type)) {
       return this.downloadResultLine(task.result);
+    }
+    if (task.task_type === 'stock_universe_sync') {
+      if (task.status === 'running' || task.status === 'pending') {
+        if (task.status_message) return task.status_message;
+      }
+      const r = task.result;
+      if (r && task.status === 'completed') {
+        const parts = [`入庫 ${r.saved ?? 0}`];
+        if (r.total_pool != null) parts.push(`池內 ${r.total_pool}`);
+        return parts.join(' · ');
+      }
     }
     return '';
   },
@@ -207,13 +243,37 @@ const TaskCommon = {
     }
 
     if (task.task_type === 'portfolio') {
+      const pm = r.portfolio || r;
+      const ret = pm.total_return_pct ?? r.total_return_pct ?? 0;
+      const sharpe = pm.sharpe_ratio ?? r.sharpe_ratio ?? 0;
+      const dd = pm.max_drawdown_pct ?? r.max_drawdown_pct ?? 0;
+      const subs = r.sub_strategies || [];
+      const subHint = subs.length ? `<p class="sec-desc mt-sm">${subs.length} 個子策略 · 點「前往查看」看完整圖表</p>` : '';
       return `
         <h3>${typeName}結果 — ${task.title}</h3>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0">
-          <div class="c"><h3>總收益</h3><div class="v ${(r.total_return_pct || 0) >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(r.total_return_pct || 0)}</div></div>
-          <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio || 0, 4)}</div></div>
-          <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
-        </div>`;
+          <div class="c"><h3>組合收益</h3><div class="v ${ret >= 0 ? 'gn' : 'rd'}">${Utils.formatPct(ret)}</div></div>
+          <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(sharpe, 4)}</div></div>
+          <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-dd)}</div></div>
+        </div>${subHint}`;
+    }
+
+    if (task.task_type === 'stock_universe_sync') {
+      const by = r.by_market || {};
+      const marketRows = Object.entries(by).map(([k, n]) =>
+        `<tr><td>${k}</td><td class="r">${n}</td></tr>`,
+      ).join('');
+      return `
+        <h3>${typeName}結果 — ${task.title}</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:12px 0">
+          <div class="c"><h3>入庫數量</h3><div class="v gn">${r.saved ?? 0}</div></div>
+          <div class="c"><h3>池內總數</h3><div class="v">${r.total_pool ?? '-'}</div></div>
+          <div class="c"><h3>上限</h3><div class="v">${r.max_count ?? '-'}</div></div>
+        </div>
+        ${marketRows ? `<div class="table-wrap" style="margin-top:8px"><table>
+          <tr><th>市場</th><th class="r">數量</th></tr>${marketRows}
+        </table></div>` : ''}
+        ${r.note ? `<p class="sec-desc mt-sm">${r.note}</p>` : ''}`;
     }
 
     const json = JSON.stringify(r, null, 2);
@@ -478,6 +538,16 @@ const TaskCommon = {
       if (codeEl) codeEl.value = p.code || '';
       if (stratEl && p.strategy) stratEl.value = p.strategy;
       App.renderWalkForwardResult(r);
+    } else if (task.task_type === 'stock_universe_sync' && typeof Data !== 'undefined') {
+      const tabs = document.getElementById('dataTabs');
+      tabs?.querySelectorAll('button').forEach(b => b.classList.remove('a'));
+      const btn = tabs?.querySelector('button[data-dtab="universe"]');
+      if (btn) btn.classList.add('a');
+      Data._currentTab = 'universe';
+      Data._applyTabVisibility();
+      Data._onTabActivated('universe');
+      if (Data.loadUniverseStats) Data.loadUniverseStats();
+      if (Data.searchUniverse) Data.searchUniverse(0);
     } else if (tab === 'data' && typeof App !== 'undefined') {
       if (App.loadMarkets) App.loadMarkets();
       if (typeof Tasks !== 'undefined' && Tasks.viewResult) Tasks.viewResult(taskId);

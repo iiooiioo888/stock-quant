@@ -2,7 +2,8 @@
  * scheduler.js — 定時任務 Tab（APScheduler 管理）
  */
 
-const Scheduler = {
+/** 避免與瀏覽器原生 window.Scheduler API 衝突 */
+const SchedulerTab = {
   _pollTimer: null,
   _pollInterval: 15000,
   _catalog: [],
@@ -183,4 +184,4 @@ const Scheduler = {
   },
 };
 
-window.Scheduler = Scheduler;
+window.SchedulerTab = SchedulerTab;

@@ -1,6 +1,7 @@
 """
 組合回測模塊 — 多策略 + 多股票 + 資金分配 + 再平衡
 """
+import math
 import backtrader as bt
 import pandas as pd
 import numpy as np
@@ -8,6 +9,27 @@ from src.core.db import load_daily_kline
 from src.config import settings
 from src.core.backtest import STRATEGIES, prepare_data
 from src.utils.logger import logger
+
+
+def _safe_float(v, default=None):
+    """將 NaN/Inf 轉為 JSON 安全值"""
+    if v is None:
+        return default
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
+
+
+def json_safe_portfolio_result(result: dict) -> dict:
+    """組合回測結果 JSON 序列化清理（與任務中心 _to_json_safe 一致）"""
+    if not result:
+        return result
+    from src.core.task_manager import _to_json_safe
+    return _to_json_safe(result)
 
 
 def _run_strategy_on_data(
@@ -62,6 +84,8 @@ def _run_strategy_on_data(
     won = trades.get("won", {}).get("total", 0)
     win_rate = (won / total_trades * 100) if total_trades > 0 else 0
 
+    sharpe_raw = _safe_float(sharpe.get("sharperatio"))
+
     return {
         "strategy": strategy_name,
         "code": code,
@@ -70,7 +94,7 @@ def _run_strategy_on_data(
         "daily_returns": daily_returns,
         "nav": nav,
         "total_return_pct": round(total_return, 4),
-        "sharpe_ratio": sharpe.get("sharperatio"),
+        "sharpe_ratio": round(sharpe_raw, 4) if sharpe_raw is not None else None,
         "max_drawdown_pct": round(max_dd, 4),
         "total_trades": total_trades,
         "win_rate_pct": round(win_rate, 2),
@@ -278,6 +302,7 @@ def run_portfolio(
     logger.info(f"組合回測: {len(allocations)} 個子策略, 再平衡={rebalance}")
 
     sub_results = []
+    success_indices = []
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
@@ -286,6 +311,7 @@ def run_portfolio(
                 cash=cash * weights[i],
             )
             sub_results.append(r)
+            success_indices.append(i)
             logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -295,7 +321,7 @@ def run_portfolio(
         return {}
 
     common_dates, aligned_navs = _align_navs(sub_results)
-    active_weights = [weights[i] for i in range(len(sub_results))]
+    active_weights = [weights[i] for i in success_indices]
 
     rebalance_dates = None
     if rebalance == "periodic" and rebalance_freq_days:
@@ -345,7 +371,7 @@ def run_portfolio(
         f"回撤 {portfolio_metrics.get('max_drawdown_pct', 0):.2f}%"
     )
 
-    return result
+    return json_safe_portfolio_result(result)
 
 
 def calc_strategy_correlations(sub_results: list) -> dict:
@@ -382,7 +408,10 @@ def calc_strategy_correlations(sub_results: list) -> dict:
 
     matrix = []
     for row in corr_matrix:
-        matrix.append([round(float(v), 4) for v in row])
+        matrix.append([
+            round(_safe_float(v, 0.0), 4)
+            for v in row
+        ])
 
     return {"labels": labels, "matrix": matrix}
 

@@ -284,7 +284,10 @@ const Api = {
     return this.post(`/api/stocks/update?force=${force}`, codes ?? null);
   },
   async getStatus() { return this.get('/api/status'); },
-  async getStocks() { return this.get('/api/stocks'); },
+  async getStocks(limit = 300) {
+    const cap = Math.min(2000, Math.max(1, Number(limit) || 300));
+    return this.get(`/api/stocks?limit=${cap}`);
+  },
 
   async getKline(code, start, end, limit = 500) {
     let url = `/api/stocks/${code}/kline?limit=${limit}`;
@@ -412,6 +415,9 @@ const Api = {
     if (status) url += '&status=' + status;
     return this.get(url, opts);
   },
+  async getTaskTypes(opts = {}) {
+    return this.get('/api/tasks/types', opts);
+  },
   async getTaskQueue(opts = {}) { return this.get('/api/tasks/queue', opts); },
 
   async pollTask(taskId, options = {}) {
@@ -483,6 +489,16 @@ const Api = {
   },
 
   async getSignalStrength(code) { return this.get(`/api/signals/strength?code=${encodeURIComponent(code)}`); },
+  async getStockUniverseStats() { return this.get('/api/stock-universe/stats'); },
+  async getStockUniverse(market = 'all', limit = 50, offset = 0, keyword = '') {
+    let q = `market=${encodeURIComponent(market)}&limit=${limit}&offset=${offset}`;
+    if (keyword) q += `&keyword=${encodeURIComponent(keyword)}`;
+    return this.get(`/api/stock-universe?${q}`);
+  },
+  async syncStockUniverse(maxCount = null) {
+    const q = maxCount ? `?max_count=${maxCount}` : '';
+    return this.post(`/api/stock-universe/sync${q}`);
+  },
   async getSectors(type = 'industry', topN = 30) { return this.get(`/api/data/sectors?sector_type=${type}&top_n=${topN}`); },
   async getSectorStocks(name, type = 'industry') { return this.get(`/api/data/sector/${encodeURIComponent(name)}/stocks?sector_type=${type}`); },
   async getSectorRotation(days = 10) { return this.get(`/api/data/sectors/rotation?days=${days}`); },

@@ -31,6 +31,9 @@ class TestSmokeAPI:
     def test_tasks_list(self, client, auth_headers):
         assert client.get("/api/tasks", headers=auth_headers).status_code == 200
 
+    def test_stock_universe_stats(self, client):
+        assert client.get("/api/stock-universe/stats").status_code == 200
+
     def test_tasks_list_without_auth(self, client):
         """任務中心應在未登錄時可讀（本地/演示模式）"""
         resp = client.get("/api/tasks?limit=10")

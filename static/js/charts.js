@@ -792,7 +792,7 @@ const Charts = {
   /**
    * Chart.js 水平條形圖
    */
-  drawHorizontalBarChart(canvasId, labels, data, label) {
+  drawHorizontalBarChart(canvasId, labels, data, label, opts = {}) {
     if (!this._chartJsReady()) return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -800,8 +800,11 @@ const Charts = {
     if (old) old.destroy();
 
     const colors = this.getThemeColors();
+    const suffix = opts.suffix != null ? opts.suffix : '%';
+    const fmt = opts.formatValue || (v => Number(v).toFixed(2) + suffix);
     const bgColors = data.map(v => v >= 0 ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)');
     const bdColors = data.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+    const tooltips = opts.tooltips || null;
 
     new Chart(canvas.getContext('2d'), {
       type: 'bar',
@@ -818,11 +821,14 @@ const Charts = {
             borderWidth: 1,
             titleColor: colors.tooltipText,
             bodyColor: colors.tooltipBody,
+            callbacks: tooltips ? {
+              afterLabel: ctx => tooltips[ctx.dataIndex] || '',
+            } : undefined,
           },
         },
         scales: {
-          x: { ticks: { color: colors.text, font: { size: 9 }, callback: v => v.toFixed(2) + '%' }, grid: { color: colors.grid } },
-          y: { ticks: { color: colors.text, font: { size: 10 } }, grid: { display: false } },
+          x: { ticks: { color: colors.text, font: { size: 9 }, callback: v => fmt(v) }, grid: { color: colors.grid } },
+          y: { ticks: { color: colors.text, font: { size: 10 }, maxRotation: 0 }, grid: { display: false } },
         },
       },
     });

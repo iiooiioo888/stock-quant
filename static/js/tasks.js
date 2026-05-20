@@ -55,11 +55,35 @@ const Tasks = {
 
   async load() {
     this.init();
+    if (typeof TaskCommon !== 'undefined') {
+      await TaskCommon.loadTypes();
+      this._populateTypeFilter();
+    }
     if (typeof App !== 'undefined') App._pauseTaskPoll = true;
     this._pollCount = 0;
     this._expandedRows.clear();
     await this.refresh();
     this._startPolling();
+  },
+
+  _populateTypeFilter() {
+    const sel = document.getElementById('taskTypeFilter');
+    if (!sel || typeof TaskCommon === 'undefined') return;
+    const current = sel.value;
+    let html = '<option value="">全部類型</option>';
+    const types = TaskCommon._asyncTypes.length
+      ? TaskCommon._asyncTypes
+      : Object.keys(TaskCommon.TYPE_NAMES).map(id => ({
+        id,
+        label: (TaskCommon.TYPE_NAMES[id] || id).replace(/^[^\s]+\s/, ''),
+        icon: (TaskCommon.TYPE_NAMES[id] || '').split(' ')[0] || '',
+      }));
+    types.forEach(t => {
+      const text = t.icon ? `${t.icon} ${t.label}` : t.label;
+      html += `<option value="${t.id}">${text}</option>`;
+    });
+    sel.innerHTML = html;
+    if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
   },
 
   unload() {

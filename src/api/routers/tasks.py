@@ -19,6 +19,13 @@ async def get_task_queue_api():
     return get_queue_snapshot()
 
 
+@router.get("/api/tasks/types")
+async def list_task_types_api():
+    """獲取異步任務類型清單（供篩選器與顯示名稱）"""
+    from src.core.task_manager import get_task_types
+    return {"types": get_task_types(async_only=True)}
+
+
 @router.get("/api/tasks/{task_id}")
 async def get_task_api(task_id: str):
     """獲取單個任務詳情"""
