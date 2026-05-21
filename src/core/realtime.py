@@ -349,14 +349,17 @@ def fetch_realtime(codes: list[str]) -> pd.DataFrame:
             save_realtime_snapshot(df)
             return df
 
-    # 批量接口不足，逐個查詢
+    # 批量接口不足，逐個查詢（添加隨機延遲防止被識別為爬蟲）
     import random
     rows = []
     for code in codes:
         row = fetch_one_realtime(code)
         if row:
             rows.append(row)
-        time.sleep(random.uniform(0.1, 0.3))  # 隨機抖動，降低被限流風險
+        # 隨機延遲：0.1~0.3 秒基礎抖動 + ±50% 額外隨機延遲
+        base_delay = random.uniform(0.1, 0.3)
+        extra_jitter = base_delay * random.uniform(-0.5, 0.5)
+        time.sleep(max(0.05, base_delay + extra_jitter))
 
     if not rows:
         return pd.DataFrame()

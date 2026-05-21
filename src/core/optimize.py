@@ -275,11 +275,20 @@ def grid_search(
             logger.warning(f"  組合 {params} 失敗: {e}")
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    top_results = results[:top_n]
-
-    # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測
+    
+    # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測（強制篩選條件）
     try:
         top_results = _add_oos_validation(top_results, code, strategy_name)
+        # 強制要求 OOS 收益為正，否則視為過擬合而剔除
+        filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
+        if len(filtered_results) < top_n and len(filtered_results) > 0:
+            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            # 補充不足的名額（從剩餘中取最佳）
+            remaining = [r for r in top_results if r not in filtered_results]
+            needed = top_n - len(filtered_results)
+            top_results = filtered_results + remaining[:needed]
+        elif len(filtered_results) == 0:
+            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
     except Exception as e:
         logger.debug(f"OOS 驗證跳過: {e}")
 
@@ -361,14 +370,24 @@ def optuna_search(
             seen.add(key)
             unique_results.append(r)
 
-    logger.info(f"Optuna 完成: {len(unique_results)} 組唯一結果")
+    logger.info(f"Optuna 完成：{len(unique_results)} 組唯一結果")
     top_results = unique_results[:10]
 
-    # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測
+    # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測（強制篩選條件）
     try:
         top_results = _add_oos_validation(top_results, code, strategy_name)
+        # 強制要求 OOS 收益為正，否則視為過擬合而剔除
+        filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
+        if len(filtered_results) < 10 and len(filtered_results) > 0:
+            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            # 補充不足的名額（從剩餘中取最佳）
+            remaining = [r for r in top_results if r not in filtered_results]
+            needed = 10 - len(filtered_results)
+            top_results = filtered_results + remaining[:needed]
+        elif len(filtered_results) == 0:
+            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
     except Exception as e:
-        logger.debug(f"OOS 驗證跳過: {e}")
+        logger.debug(f"OOS 驗證跳過：{e}")
 
     return top_results
 
@@ -559,10 +578,19 @@ def grid_search_parallel(
     results.sort(key=lambda x: x["score"], reverse=True)
     top_results = results[:top_n]
 
-    # 樣本外驗證
+    # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測（強制篩選條件）
     try:
         top_results = _add_oos_validation(top_results, code, strategy_name)
+        # 強制要求 OOS 收益為正，否則視為過擬合而剔除
+        filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
+        if len(filtered_results) < top_n and len(filtered_results) > 0:
+            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            # 補充不足的名額（從剩餘中取最佳）
+            remaining = [r for r in top_results if r not in filtered_results]
+            needed = top_n - len(filtered_results)
+            top_results = filtered_results + remaining[:needed]
+        elif len(filtered_results) == 0:
+            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
     except Exception as e:
-        logger.debug(f"OOS 驗證跳過: {e}")
-
+        logger.debug(f"OOS 驗證跳過：{e}")
     return top_results

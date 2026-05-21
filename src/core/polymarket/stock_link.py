@@ -8,11 +8,33 @@ from typing import Optional
 
 from src.api.constants import STOCK_NAMES
 
+# 常見基金代碼映射（可扩展）
+FUND_NAMES = {
+    "003968": "中證白酒",
+    "160221": "國泰國證房地產",
+    "512480": "半導體 ETF",
+    "512660": "軍工 ETF",
+    "512880": "證券 ETF",
+    "150023": "深成指 A",
+    "150024": "深成指 B",
+    "160119": "南方中證 500ETF 聯接",
+    "160125": "南方滬深 300ETF 聯接",
+}
+
 
 def resolve_stock_name(code: str, name: Optional[str] = None) -> str:
     code = str(code or "").strip()
-    name = (name or "").strip() or STOCK_NAMES.get(code, "") or code
-    return name
+    # 優先使用傳入的名稱
+    if name and name.strip():
+        return name.strip()
+    # 檢查基金代碼
+    if code in FUND_NAMES:
+        return FUND_NAMES[code]
+    # 檢查 A 股股票名稱
+    if code in STOCK_NAMES:
+        return STOCK_NAMES[code]
+    # 默認返回代碼
+    return code
 
 
 def build_polymarket_search_queries(code: str, name: Optional[str] = None) -> list[str]:
