@@ -160,26 +160,44 @@ const SchedulerTab = {
   },
 
   async runNow(jobId) {
-    const d = await Api.runSchedulerJob(jobId);
-    if (d) {
-      Utils.toast(d.message || `已觸發 ${jobId}`, 2500, 'success');
-      setTimeout(() => this.refresh(true), 800);
+    const btn = document.querySelector(`button[data-id="${jobId}"][data-action="run"]`);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    try {
+      const d = await Api.runSchedulerJob(jobId);
+      if (d) {
+        Utils.toast(d.message || `已觸發 ${jobId}`, 2500, 'success');
+        setTimeout(() => this.refresh(true), 800);
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '▶ 立即執行'; }
     }
   },
 
   async enableJob(jobId) {
-    const d = await Api.enableSchedulerJob(jobId);
-    if (d) {
-      Utils.toast(d.message || '已啟用', 2000, 'success');
-      await this.refresh(true);
+    const btn = document.querySelector(`button[data-id="${jobId}"][data-action="enable"]`);
+    if (btn) btn.disabled = true;
+    try {
+      const d = await Api.enableSchedulerJob(jobId);
+      if (d) {
+        Utils.toast(d.message || '已啟用', 2000, 'success');
+        await this.refresh(true);
+      }
+    } finally {
+      if (btn) btn.disabled = false;
     }
   },
 
   async disableJob(jobId) {
-    const d = await Api.disableSchedulerJob(jobId);
-    if (d) {
-      Utils.toast(d.message || '已禁用', 2000, 'success');
-      await this.refresh(true);
+    const btn = document.querySelector(`button[data-id="${jobId}"][data-action="disable"]`);
+    if (btn) btn.disabled = true;
+    try {
+      const d = await Api.disableSchedulerJob(jobId);
+      if (d) {
+        Utils.toast(d.message || '已禁用', 2000, 'success');
+        await this.refresh(true);
+      }
+    } finally {
+      if (btn) btn.disabled = false;
     }
   },
 };

@@ -98,6 +98,12 @@ TASK_REGISTRY: dict[str, dict] = {
         "tab": "data",
         "async": True,
     },
+    "polymarket_sync": {
+        "label": "Polymarket 快照同步",
+        "icon": "🔮",
+        "tab": "markets",
+        "async": True,
+    },
     # 同步計算，不經 create_task，僅供緩存命名參考
     "heatmap": {
         "label": "熱力圖分析",

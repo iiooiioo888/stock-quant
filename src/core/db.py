@@ -292,6 +292,8 @@ def init_db():
         init_dragon_tiger_table()
         init_fundamentals_table()
         init_stock_universe_table()
+        from src.core.polymarket.store import init_polymarket_tables
+        init_polymarket_tables()
     except Exception as e:
         logger.warning(f"擴展數據表初始化跳過: {e}")
     
@@ -546,8 +548,20 @@ def get_backtest_history(
         d = dict(r)
         import json
         d["params"] = json.loads(d["params"]) if d.get("params") else {}
+        _attach_strategy_display_name(d)
         results.append(d)
     return results
+
+
+def _attach_strategy_display_name(row: dict) -> None:
+    """為回測記錄附加策略中文顯示名。"""
+    try:
+        from src.core.backtest import STRATEGY_NAMES
+        key = row.get("strategy") or ""
+        if key and not row.get("strategy_name"):
+            row["strategy_name"] = STRATEGY_NAMES.get(key, key)
+    except Exception:
+        pass
 
 
 def get_backtest_by_ids(ids: list[int]) -> list[dict]:
@@ -565,6 +579,7 @@ def get_backtest_by_ids(ids: list[int]) -> list[dict]:
         d = dict(r)
         import json
         d["params"] = json.loads(d["params"]) if d.get("params") else {}
+        _attach_strategy_display_name(d)
         results.append(d)
     return results
 

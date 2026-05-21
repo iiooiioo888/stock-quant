@@ -106,6 +106,32 @@ class Settings(BaseSettings):
     scheduler_incremental_hour: int = Field(default=8, ge=0, le=23)
     scheduler_incremental_minute: int = Field(default=5, ge=0, le=59)
 
+    # ====== 加密貨幣行情（Binance 等，只讀） ======
+    crypto_enabled: bool = True
+
+    # ====== Polymarket 預測市場（只讀，Gamma + CLOB） ======
+    polymarket_enabled: bool = True
+    polymarket_gamma_base: str = "https://gamma-api.polymarket.com"
+    polymarket_clob_base: str = "https://clob.polymarket.com"
+    polymarket_rate_limit_sec: float = Field(default=0.6, ge=0.1, le=5.0)
+    polymarket_cache_ttl_list: int = Field(default=60, ge=5, le=3600)
+    polymarket_cache_ttl_detail: int = Field(default=30, ge=5, le=3600)
+    polymarket_cache_ttl_orderbook: int = Field(default=10, ge=1, le=300)
+    polymarket_default_limit: int = Field(default=50, ge=1, le=200)
+    polymarket_orderbook_depth: int = Field(default=10, ge=1, le=50)
+    polymarket_watchlist_slugs: list[str] = Field(default=[])
+    polymarket_alert_enabled: bool = True
+    polymarket_alert_poll_sec: int = Field(default=300, ge=60, le=3600)
+    polymarket_alert_cooldown_sec: int = Field(default=300, ge=60, le=86400)
+    scheduler_job_polymarket_alerts: bool = True
+    polymarket_signal_thresholds: dict = Field(default={
+        "bullish_strong": 0.75,
+        "bearish_strong": 0.25,
+        "neutral_low": 0.40,
+        "neutral_high": 0.60,
+        "momentum_min_change_pct": 5.0,
+    })
+
     # ====== 緩存 ======
     cache_enabled: bool = True
     cache_backtest_ttl: int = Field(default=3600, ge=60, le=86400 * 7)

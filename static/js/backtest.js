@@ -46,6 +46,18 @@ const Backtest = {
     this.populateStockSelectSync();
     this.setCode(this.getCode() || '600519');
     this.loadStockOptions();
+    document.getElementById('btOpenDetailBtn')?.addEventListener('click', () => {
+      const c = this.getCode();
+      if (!c) {
+        if (typeof Utils !== 'undefined') Utils.toast('請先選擇股票', 2000, 'warn');
+        return;
+      }
+      if (typeof App !== 'undefined') App.openStockDetail(c);
+    });
+    document.getElementById('btSelectedStock')?.addEventListener('dblclick', () => {
+      const c = this.getCode();
+      if (c && typeof App !== 'undefined') App.openStockDetail(c);
+    });
   },
 
   /** Tab 切換時若無可選股票則重載 */
@@ -523,8 +535,10 @@ const Backtest = {
   async run() {
     const code = this.getCode();
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
-    if (this._running) return Utils.toast('回測進行中，請稍候', 2000, 'error');
+    if (this._running) return;
     this._running = true;
+    const btn = document.getElementById('btBtn');
+    Utils.btnLoading(btn, true, '回測中...');
 
     const strategy = document.getElementById('btStrategy').value;
     const sl = document.getElementById('btSL').value;
@@ -558,7 +572,7 @@ const Backtest = {
       d = await Api.runBacktest({ code, strategy, stop_loss_pct: sl, take_profit_pct: tp, benchmark: bench });
     }
 
-    if (!d || !d.success) { this._running = false; return; }
+    if (!d || !d.success) { this._running = false; Utils.btnLoading(btn, false, '🔍 開始回測'); return; }
 
     try {
       if (d.is_duplicate) {
@@ -578,6 +592,7 @@ const Backtest = {
       Utils.toast('回測失敗: ' + (e.message || e), 3000, 'error');
     } finally {
       this._running = false;
+      Utils.btnLoading(btn, false, '🔍 開始回測');
     }
   },
 
@@ -599,10 +614,10 @@ const Backtest = {
 
     // 風險指標
     document.getElementById('btRiskStats').innerHTML = `
-      <div class="c"><h3>VaR 95%</h3><div class="v rd">${Utils.formatNum(r.var_95, 4)}</div></div>
-      <div class="c"><h3>CVaR 95%</h3><div class="v rd">${Utils.formatNum(r.cvar_95, 4)}</div></div>
-      <div class="c"><h3>Sortino</h3><div class="v">${Utils.formatNum(r.sortino_ratio, 4)}</div></div>
-      <div class="c"><h3>Calmar</h3><div class="v">${Utils.formatNum(r.calmar_ratio, 4)}</div></div>
+      <div class="c"><h3>風險價值 VaR</h3><div class="v rd">${Utils.formatNum(r.var_95, 4)}</div></div>
+      <div class="c"><h3>條件風險 CVaR</h3><div class="v rd">${Utils.formatNum(r.cvar_95, 4)}</div></div>
+      <div class="c"><h3>索提諾比率</h3><div class="v">${Utils.formatNum(r.sortino_ratio, 4)}</div></div>
+      <div class="c"><h3>卡瑪比率</h3><div class="v">${Utils.formatNum(r.calmar_ratio, 4)}</div></div>
       <div class="c"><h3>年化波動率</h3><div class="v">${Utils.formatNum(r.annual_volatility, 4)}</div></div>
       <div class="c"><h3>月勝率</h3><div class="v">${Utils.formatNum(r.monthly_win_rate, 1)}%</div></div>
       <div class="c"><h3>盈虧比</h3><div class="v">${Utils.formatNum(r.profit_loss_ratio, 2)}</div></div>
@@ -613,8 +628,8 @@ const Backtest = {
     if (r.benchmark_comparison) {
       const b = r.benchmark_comparison;
       benchDiv.innerHTML = `
-        <div class="c"><h3>Alpha</h3><div class="v ${Utils.badgeClass(b.alpha)}">${Utils.formatNum(b.alpha, 4)}</div></div>
-        <div class="c"><h3>Beta</h3><div class="v">${Utils.formatNum(b.beta, 4)}</div></div>
+        <div class="c"><h3>Alpha 超額</h3><div class="v ${Utils.badgeClass(b.alpha)}">${Utils.formatNum(b.alpha, 4)}</div></div>
+        <div class="c"><h3>Beta 係數</h3><div class="v">${Utils.formatNum(b.beta, 4)}</div></div>
         <div class="c"><h3>信息比率</h3><div class="v">${Utils.formatNum(b.information_ratio, 4)}</div></div>
         <div class="c"><h3>跟蹤誤差</h3><div class="v">${Utils.formatNum(b.tracking_error, 4)}</div></div>`;
       benchDiv.parentElement.classList.remove('h');
@@ -622,23 +637,27 @@ const Backtest = {
       benchDiv.parentElement.classList.add('h');
     }
 
+    const stratZh = (typeof SignalLabels !== 'undefined')
+      ? SignalLabels.strategyName(strategy, 'short') : strategy;
+    const chartTitle = `${code} ${stratZh}`;
+
     // K 線圖
     const klineContainer = document.getElementById('btKlineContainer');
     const klineCanvas = document.getElementById('btKlineChart');
     if (klineContainer && typeof LightweightCharts !== 'undefined') {
       klineCanvas.style.display = 'none';
       klineContainer.style.display = 'block';
-      Charts.drawLWKlineChart('btKlineContainer', r.kline, r.signals, `${code} ${strategy}`);
+      Charts.drawLWKlineChart('btKlineContainer', r.kline, r.signals, chartTitle);
     } else {
       if (klineContainer) klineContainer.style.display = 'none';
       if (klineCanvas) {
         klineCanvas.style.display = 'block';
-        Charts.drawKlineChart('btKlineChart', r.kline, r.signals, `${code} ${strategy}`);
+        Charts.drawKlineChart('btKlineChart', r.kline, r.signals, chartTitle);
       }
     }
 
     // 淨值曲線
-    Charts.drawLineChart('btChart', [{ label: `${code} ${strategy}`, data: r.nav, dates: r.dates }]);
+    Charts.drawLineChart('btChart', [{ label: chartTitle, data: r.nav, dates: r.dates }]);
 
     // 月度收益熱力圖
     this._drawMonthlyHeatmap(r);
@@ -674,14 +693,16 @@ const Backtest = {
   async runMulti() {
     const code = this.getCode();
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
-    if (this._running) return Utils.toast('回測進行中，請稍候', 2000, 'error');
+    if (this._running) return;
     this._running = true;
+    const btn = document.getElementById('btMultiBtn');
+    Utils.btnLoading(btn, true, '批量回測中...');
 
     document.getElementById('btResult').classList.add('h');
     document.getElementById('btAllResult').classList.add('h');
 
     const d = await Api.runMultiBacktest(code);
-    if (!d || !d.success) { this._running = false; return; }
+    if (!d || !d.success) { this._running = false; Utils.btnLoading(btn, false, '🚀 批量對比'); return; }
 
     try {
       if (d.is_duplicate) {
@@ -700,6 +721,7 @@ const Backtest = {
       Utils.toast('多策略對比失敗: ' + (e.message || e), 3000, 'error');
     } finally {
       this._running = false;
+      Utils.btnLoading(btn, false, '🚀 批量對比');
     }
   },
 
@@ -707,9 +729,11 @@ const Backtest = {
     if (!results || !results.length) return;
     document.getElementById('btResult').classList.add('h');
     document.getElementById('btAllCount').textContent = results.length + ' 個策略';
+    const stratCell = (s) => (typeof SignalLabels !== 'undefined')
+      ? SignalLabels.strategyName(s, 'short') : s;
     document.getElementById('btAllTable').innerHTML = results.map(r =>
       `<tr>
-        <td><strong>${r.strategy}</strong></td>
+        <td><strong>${stratCell(r.strategy)}</strong></td>
         <td class="r"><span class="b ${Utils.badgeClass(r.total_return_pct)}">${Utils.formatPct(r.total_return_pct)}</span></td>
         <td class="r">${Utils.formatNum(r.sharpe_ratio, 2)}</td>
         <td class="r">${Utils.formatNum(r.sortino_ratio, 2)}</td>
@@ -721,7 +745,7 @@ const Backtest = {
       </tr>`
     ).join('');
     const series = results.filter(r => r.nav && r.nav.length > 1).map(r => ({
-      label: r.strategy,
+      label: stratCell(r.strategy),
       data: r.nav,
       dates: r.dates,
     }));

@@ -1,15 +1,97 @@
 """
-實時交易信號引擎 — 基於 19 種策略計算實時買賣信號
+實時交易信號引擎 — 基於內置策略在最後一根 K 線上的買賣信號
 """
 import sqlite3
-import backtrader as bt
-import pandas as pd
-import numpy as np
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from src.core.backtest import STRATEGIES, prepare_data, run_backtest
-from src.core.db import load_daily_kline, get_conn
+
+import backtrader as bt
+import numpy as np
+import pandas as pd
+
+from src.core.backtest import STRATEGIES, _get_prepared_df
+from src.core.db import get_conn, load_daily_kline
 from src.config import settings
 from src.utils.logger import logger
+
+_BT_LOOKBACK = 200
+_MIN_BARS = 30
+_CACHE_TTL_SEC = 300
+_snapshot_cache: dict[tuple, tuple[float, list]] = {}
+_cache_lock = threading.Lock()
+
+
+def _cache_bucket() -> str:
+    """按小時分桶，交易時段內复用快照。"""
+    return datetime.now().strftime("%Y-%m-%d %H")
+
+
+def _get_cached_snapshot(codes: list[str]) -> list[dict] | None:
+    key = (tuple(sorted(codes)), _cache_bucket())
+    with _cache_lock:
+        entry = _snapshot_cache.get(key)
+        if not entry:
+            return None
+        expires_at, payload = entry
+        if time.time() > expires_at:
+            _snapshot_cache.pop(key, None)
+            return None
+        return payload
+
+
+def _set_cached_snapshot(codes: list[str], payload: list[dict]) -> None:
+    key = (tuple(sorted(codes)), _cache_bucket())
+    with _cache_lock:
+        _snapshot_cache[key] = (time.time() + _CACHE_TTL_SEC, payload)
+
+
+def _group_signals_by_code(raw: list[dict]) -> list[dict]:
+    grouped: dict[str, list] = {}
+    for s in raw:
+        grouped.setdefault(s["code"], []).append(s)
+    return [
+        {"code": code, "signals": sigs, "strength": score_signal_strength(sigs)}
+        for code, sigs in grouped.items()
+    ]
+
+
+class _LastBarOrderCapture(bt.Analyzer):
+    """僅記錄最後一根 K 線當日成交的訂單，避免歷史成交誤判為今日信號。"""
+
+    def __init__(self):
+        self.signal_type = None
+
+    def notify_order(self, order):
+        if order.status != order.Completed:
+            return
+        try:
+            ex_dt = bt.num2date(order.executed.dt).date()
+            bar_dt = self.strategy.data.datetime.date(0)
+            if ex_dt != bar_dt:
+                return
+        except Exception:
+            return
+        self.signal_type = "buy" if order.isbuy() else "sell"
+
+
+def _run_bt_last_bar_signal(df: pd.DataFrame, strategy_cls) -> str:
+    """在給定 OHLCV 上跑策略，返回 buy/sell/hold。"""
+    if len(df) > _BT_LOOKBACK:
+        df = df.tail(_BT_LOOKBACK).copy()
+    cerebro = bt.Cerebro(stdstats=False)
+    cerebro.adddata(bt.feeds.PandasData(dataname=df))
+    cerebro.addstrategy(strategy_cls)
+    cerebro.broker.setcash(100000)
+    cerebro.broker.setcommission(commission=0.0)
+    cerebro.addanalyzer(_LastBarOrderCapture, _name="lastbar")
+    results = cerebro.run()
+    strat = results[0]
+    sig = strat.analyzers.lastbar.signal_type
+    if sig in ("buy", "sell"):
+        return sig
+    return "hold"
 
 
 class SignalEngine:
@@ -28,17 +110,34 @@ class SignalEngine:
         返回: [{"code": "600519", "strategy": "macd", "signal": "buy", "price": 1800.0, ...}, ...]
         """
         if codes is None:
-            codes = settings.watchlist
+            codes = list(settings.watchlist)
+        codes = [c for c in codes if c]
+        if not codes:
+            return []
 
-        all_signals = []
-        for code in codes:
-            try:
-                signals = self._compute_single(code)
-                all_signals.extend(signals)
-            except Exception as e:
-                logger.debug(f"信號計算失敗 {code}: {e}")
+        workers = min(
+            max(1, getattr(settings, "multi_strategy_workers", 4)),
+            len(codes),
+            8,
+        )
+        all_signals: list[dict] = []
 
-        # 持久化到數據庫
+        if len(codes) == 1 or workers <= 1:
+            for code in codes:
+                try:
+                    all_signals.extend(self._compute_single(code))
+                except Exception as e:
+                    logger.debug(f"信號計算失敗 {code}: {e}")
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(self._compute_single, c): c for c in codes}
+                for fut in as_completed(futures):
+                    code = futures[fut]
+                    try:
+                        all_signals.extend(fut.result())
+                    except Exception as e:
+                        logger.debug(f"信號計算失敗 {code}: {e}")
+
         if all_signals:
             _save_signals(all_signals)
 
@@ -46,121 +145,72 @@ class SignalEngine:
 
     def _compute_single(self, code: str) -> list[dict]:
         """對單隻股票計算所有策略的信號"""
-        df = load_daily_kline(code)
-        if df.empty or len(df) < 30:
+        try:
+            bt_df = _get_prepared_df(code)
+        except ValueError:
+            return []
+        if bt_df.empty or len(bt_df) < _MIN_BARS:
             return []
 
-        # 準備 Backtrader 數據
-        bt_df = df.copy()
-        bt_df["date"] = pd.to_datetime(bt_df["date"])
-        bt_df = bt_df.set_index("date")
-        bt_df = bt_df[["open", "high", "low", "close", "volume"]]
-        bt_df.columns = ["Open", "High", "Low", "Close", "Volume"]
+        latest_price = float(bt_df.iloc[-1]["Close"])
+        bar_date = bt_df.index[-1]
+        triggered_at = (
+            bar_date.strftime("%Y-%m-%d %H:%M:%S")
+            if hasattr(bar_date, "strftime")
+            else str(bar_date)[:19]
+        )
 
         signals = []
-        latest_price = float(df.iloc[-1]["close"])
-        triggered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         for strategy_name, strategy_cls in STRATEGIES.items():
             try:
-                signal = self._run_strategy_on_bar(
-                    bt_df, strategy_cls, strategy_name, code, latest_price, triggered_at
-                )
-                if signal:
-                    signals.append(signal)
+                signal_type = _run_bt_last_bar_signal(bt_df, strategy_cls)
+                weight = self._strategy_weights.get(strategy_name, 1.0)
+                if signal_type == "hold":
+                    strength = 0.0
+                else:
+                    base = 50.0 if signal_type == "buy" else -50.0
+                    strength = round(base * weight, 2)
+                signals.append({
+                    "code": code,
+                    "strategy": strategy_name,
+                    "signal": signal_type,
+                    "price": latest_price,
+                    "strength": strength,
+                    "params": "{}",
+                    "triggered_at": triggered_at,
+                })
             except Exception as e:
                 logger.debug(f"策略 {strategy_name} 在 {code} 上失敗: {e}")
 
         return signals
 
-    def _run_strategy_on_bar(
-        self, df: pd.DataFrame, strategy_cls, strategy_name: str,
-        code: str, price: float, triggered_at: str
-    ) -> dict | None:
-        """
-        用 Backtrader 跑策略到最後一根 K 線，判斷是否有信號。
-        為了效率，只取最後 200 根 K 線。
-        """
-        if len(df) > 200:
-            df = df.tail(200)
+    def update_weights_from_backtest(self, codes: list[str] | None = None):
+        """用 watchlist 最近回測夏普均值更新策略權重。"""
+        from src.core.db import get_backtest_history
 
-        data = bt.feeds.PandasData(dataname=df)
-        cerebro = bt.Cerebro()
-        cerebro.adddata(data)
-        cerebro.addstrategy(strategy_cls)
-        cerebro.broker.setcash(100000)
-        cerebro.broker.setcommission(commission=0.0)
-
-        # 添加信號觀察器
-        signal_result = {"type": None}
-
-        class SignalObserver(bt.Analyzer):
-            """捕獲策略在最後一根 K 線的操作"""
-            def notify_order(self, order):
-                if order.status == order.Completed:
-                    # 判斷是否是最後一根 K 線的訂單
-                    if order.isbuy():
-                        signal_result["type"] = "buy"
-                    elif order.issell():
-                        signal_result["type"] = "sell"
-
-        cerebro.addanalyzer(SignalObserver, _name="sigobs")
-        results = cerebro.run()
-        strat = results[0]
-
-        signal_type = signal_result["type"]
-        if signal_type is None:
-            # 沒有觸發交易，檢查是否持有（hold）或空倉
-            has_position = strat.position.size > 0
-            signal_type = "hold" if has_position else "hold"
-            # hold 信號也記錄（用於歷史回顧），但強度為 0
-            return {
-                "code": code,
-                "strategy": strategy_name,
-                "signal": "hold",
-                "price": price,
-                "strength": 0.0,
-                "params": "{}",
-                "triggered_at": triggered_at,
-            }
-
-        # 計算信號強度（基於策略權重）
-        weight = self._strategy_weights.get(strategy_name, 1.0)
-        base_strength = 50.0 if signal_type == "buy" else -50.0
-        strength = base_strength * weight
-
-        return {
-            "code": code,
-            "strategy": strategy_name,
-            "signal": signal_type,
-            "price": price,
-            "strength": round(strength, 2),
-            "params": "{}",
-            "triggered_at": triggered_at,
-        }
-
-    def update_weights_from_backtest(self, code: str = None):
-        """
-        用最近回測結果更新策略權重（夏普比率作為權重）。
-        如果未指定 code，用 watchlist 中第一個。
-        """
-        if code is None:
-            code = settings.watchlist[0] if settings.watchlist else None
-        if not code:
+        if codes is None:
+            codes = list(settings.watchlist)
+        codes = [c for c in codes if c][:8]
+        if not codes:
             return
 
-        from src.core.db import get_backtest_history
         for strategy_name in STRATEGIES:
-            try:
-                history = get_backtest_history(code=code, strategy=strategy_name, limit=5)
-                if history:
-                    # 用最近回測的夏普比率作為權重
-                    avg_sharpe = np.mean([h.get("sharpe_ratio", 0) or 0 for h in history])
-                    # 正規化到 [0.2, 3.0] 範圍，避免極端值
-                    weight = max(0.2, min(3.0, 1.0 + avg_sharpe))
-                    self._strategy_weights[strategy_name] = weight
-            except Exception:
-                pass
+            sharpes: list[float] = []
+            for code in codes:
+                try:
+                    history = get_backtest_history(
+                        code=code, strategy=strategy_name, limit=3,
+                    )
+                    sharpes.extend(
+                        [float(h.get("sharpe_ratio") or 0) for h in history if h]
+                    )
+                except Exception:
+                    continue
+            if sharpes:
+                avg_sharpe = float(np.mean(sharpes))
+                self._strategy_weights[strategy_name] = max(
+                    0.2, min(3.0, 1.0 + avg_sharpe),
+                )
 
     @property
     def weights(self) -> dict:
@@ -170,34 +220,25 @@ class SignalEngine:
 
 def score_signal_strength(signals: list[dict]) -> float:
     """
-    計算信號強度綜合分數。
-    當多個策略一致時，信號更強。
-    分數 = 策略信號的加權和（權重 = 最近夏普比率）。
-    範圍: -100（強烈賣出）到 +100（強烈買入）。
+    計算信號強度綜合分數（-100 ~ +100）。
+    僅用 buy/sell 計算方向與強度；hold 不稀釋一致性。
     """
     if not signals:
         return 0.0
 
-    # 統計買/賣/持有
-    buy_count = sum(1 for s in signals if s["signal"] == "buy")
-    sell_count = sum(1 for s in signals if s["signal"] == "sell")
-    hold_count = sum(1 for s in signals if s["signal"] == "hold")
+    active = [s for s in signals if s.get("signal") in ("buy", "sell")]
+    if not active:
+        return 0.0
 
-    # 加權求和
-    total_strength = sum(s.get("strength", 0) for s in signals)
+    buy_count = sum(1 for s in active if s["signal"] == "buy")
+    sell_count = len(active) - buy_count
+    total_strength = sum(float(s.get("strength") or 0) for s in active)
 
-    # 正規化到 [-100, 100]
-    max_possible = len(signals) * 50.0  # 假設每個策略最大強度 50
-    if max_possible > 0:
-        normalized = (total_strength / max_possible) * 100
-    else:
-        normalized = 0.0
+    max_possible = len(active) * 50.0
+    normalized = (total_strength / max_possible) * 100 if max_possible else 0.0
 
-    # 一致性加成：策略越一致，信號越強
-    active_count = buy_count + sell_count
-    if active_count > 0:
-        agreement = max(buy_count, sell_count) / len(signals)
-        normalized *= (0.5 + 0.5 * agreement)  # 一致性加成 50%-100%
+    agreement = max(buy_count, sell_count) / len(active)
+    normalized *= 0.5 + 0.5 * agreement
 
     return round(max(-100.0, min(100.0, normalized)), 2)
 
@@ -298,17 +339,9 @@ def _replay_historical_signals(
                 cerebro.broker.setcash(100000)
                 cerebro.broker.setcommission(commission=0.0)
 
-                signal_result = {"type": None}
-
-                class ReplayObserver(bt.Analyzer):
-                    def notify_order(self, order):
-                        if order.status == order.Completed:
-                            signal_result["type"] = "buy" if order.isbuy() else "sell"
-
-                cerebro.addanalyzer(ReplayObserver, _name="sigobs")
-                cerebro.run()
-
-                sig = signal_result["type"] or "hold"
+                cerebro.addanalyzer(_LastBarOrderCapture, _name="lastbar")
+                results = cerebro.run()
+                sig = results[0].analyzers.lastbar.signal_type or "hold"
                 all_signals.append({
                     "code": code,
                     "strategy": strat_name,
@@ -329,8 +362,9 @@ def _replay_historical_signals(
 
 
 def _save_signals(signals: list[dict]):
-    """批量保存信號到數據庫"""
-    if not signals:
+    """批量保存信號；僅持久化 buy/sell，減少 hold 刷屏。"""
+    rows = [s for s in signals if s.get("signal") in ("buy", "sell")]
+    if not rows:
         return
     try:
         with get_conn() as conn:
@@ -338,28 +372,31 @@ def _save_signals(signals: list[dict]):
                 """INSERT INTO signal_log (code, strategy, signal, price, strength, params, triggered_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 [
-                    (s["code"], s["strategy"], s["signal"],
-                     s.get("price"), s.get("strength", 0),
-                     s.get("params", "{}"), s["triggered_at"])
-                    for s in signals
-                ]
+                    (
+                        s["code"], s["strategy"], s["signal"],
+                        s.get("price"), s.get("strength", 0),
+                        s.get("params", "{}"), s["triggered_at"],
+                    )
+                    for s in rows
+                ],
             )
-        logger.debug(f"保存 {len(signals)} 條信號記錄")
+        logger.debug(f"保存 {len(rows)} 條信號記錄（buy/sell）")
     except Exception as e:
         logger.debug(f"保存信號失敗: {e}")
 
 
 def get_current_signals_for_codes(codes: list[str] = None) -> list[dict]:
-    """
-    獲取指定股票列表的最新信號（用於 API /api/signals/current）。
-    對每隻股票返回所有策略的最新信號 + 綜合強度分數。
-    """
+    """獲取最新信號快照；DB 無記錄時走引擎實時計算。"""
     if codes is None:
-        codes = settings.watchlist
+        codes = list(settings.watchlist)
+    codes = [c for c in codes if c]
 
-    result = []
+    cached = _get_cached_snapshot(codes)
+    if cached is not None:
+        return cached
+
+    by_code: dict[str, list[dict]] = {c: [] for c in codes}
     for code in codes:
-        # 從數據庫取最新信號
         sql = """SELECT * FROM signal_log
                  WHERE code = ? AND triggered_at = (
                      SELECT MAX(triggered_at) FROM signal_log WHERE code = ?
@@ -367,51 +404,47 @@ def get_current_signals_for_codes(codes: list[str] = None) -> list[dict]:
         with get_conn() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, (code, code)).fetchall()
-
         if rows:
-            signals = [dict(r) for r in rows]
-            strength = score_signal_strength(signals)
-            result.append({
-                "code": code,
-                "signals": signals,
-                "strength": strength,
-                "updated_at": signals[0]["triggered_at"] if signals else None,
-            })
-        else:
-            result.append({
-                "code": code,
-                "signals": [],
-                "strength": 0,
-                "updated_at": None,
-            })
+            by_code[code] = [dict(r) for r in rows]
 
+    missing = [c for c in codes if not by_code.get(c)]
+    if missing:
+        engine = SignalEngine()
+        engine.update_weights_from_backtest(missing)
+        for s in engine.compute_signals(missing):
+            by_code.setdefault(s["code"], []).append(s)
+
+    result = []
+    for code in codes:
+        sigs = by_code.get(code, [])
+        result.append({
+            "code": code,
+            "signals": sigs,
+            "strength": score_signal_strength(sigs),
+            "updated_at": sigs[0]["triggered_at"] if sigs else None,
+        })
+
+    _set_cached_snapshot(codes, result)
     return result
 
 
 def compute_and_push_signals(engine: SignalEngine, codes: list[str] = None) -> list[dict]:
     """
-    計算信號並返回推送數據（用於 WebSocket 推送）。
+    計算信號並返回推送數據（用於 WebSocket / API）。
     返回格式: [{"code": "600519", "signals": [...], "strength": 75.0}, ...]
     """
+    if codes is None:
+        codes = list(settings.watchlist)
+    codes = [c for c in codes if c]
+
+    cached = _get_cached_snapshot(codes)
+    if cached is not None:
+        return cached
+
+    engine.update_weights_from_backtest(codes)
     raw_signals = engine.compute_signals(codes)
-
-    # 按股票分組
-    grouped: dict[str, list] = {}
-    for s in raw_signals:
-        code = s["code"]
-        if code not in grouped:
-            grouped[code] = []
-        grouped[code].append(s)
-
-    result = []
-    for code, signals in grouped.items():
-        strength = score_signal_strength(signals)
-        result.append({
-            "code": code,
-            "signals": signals,
-            "strength": strength,
-        })
-
+    result = _group_signals_by_code(raw_signals)
+    _set_cached_snapshot(codes, result)
     return result
 
 
@@ -745,65 +778,62 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
             }
     """
     if codes is None:
-        # 嘗試獲取所有有數據的股票
         from src.core.db import load_all_codes
         try:
             codes = load_all_codes()
         except Exception:
-            codes = settings.watchlist
+            codes = list(settings.watchlist)
 
+    codes = [c for c in (codes or []) if c]
     if not codes:
         return []
 
-    # 初始化信號引擎並更新權重
     engine = SignalEngine()
-    engine.update_weights_from_backtest()
+    engine.update_weights_from_backtest(codes[:8])
     strategy_weights = engine.weights
+    accuracy_weights = _compute_accuracy_weights(codes[:8])
 
-    # 計算策略準確率權重（從最近的回測結果）
-    accuracy_weights = _compute_accuracy_weights(codes)
+    raw_signals = engine.compute_signals(codes)
+    grouped: dict[str, list[dict]] = {}
+    for s in raw_signals:
+        grouped.setdefault(s["code"], []).append(s)
 
     rankings = []
-
     for code in codes:
         try:
-            # 計算實時信號
-            raw_signals = engine.compute_signals([code])
-            if not raw_signals:
+            code_signals = grouped.get(code, [])
+            if not code_signals:
                 continue
 
-            # 計算加權綜合分數
             weighted_sum = 0.0
             weight_total = 0.0
             strategy_details = {}
 
-            for sig in raw_signals:
+            for sig in code_signals:
                 strat_name = sig.get("strategy", "")
-                strength = sig.get("strength", 0)
+                strength = float(sig.get("strength") or 0)
                 signal_type = sig.get("signal", "hold")
+                if signal_type == "hold":
+                    continue
 
-                # 組合權重 = 策略權重 × 準確率權重
-                strat_weight = strategy_weights.get(strat_name, 1.0)
-                acc_weight = accuracy_weights.get(strat_name, 1.0)
-                combined_weight = strat_weight * acc_weight
-
+                combined_weight = (
+                    strategy_weights.get(strat_name, 1.0)
+                    * accuracy_weights.get(strat_name, 1.0)
+                )
                 weighted_sum += strength * combined_weight
                 weight_total += abs(combined_weight)
-
                 strategy_details[strat_name] = {
                     "signal": signal_type,
                     "strength": round(strength, 1),
                     "weight": round(combined_weight, 3),
                 }
 
-            # 正規化到 [-100, 100]
-            if weight_total > 0:
-                composite_score = (weighted_sum / weight_total)
-            else:
-                composite_score = 0.0
-            composite_score = max(-100, min(100, composite_score))
+            composite_score = (
+                max(-100, min(100, weighted_sum / weight_total))
+                if weight_total > 0
+                else 0.0
+            )
 
-            # 判斷推薦操作
             if composite_score > 50:
                 recommendation = "強烈買入"
             elif composite_score > 20:
@@ -815,21 +845,14 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
             else:
                 recommendation = "強烈賣出"
 
-            # 獲取最新價格
-            latest_price = 0.0
-            updated_at = None
-            if raw_signals:
-                latest_price = raw_signals[0].get("price", 0)
-                updated_at = raw_signals[0].get("triggered_at")
-
             rankings.append({
                 "code": code,
                 "composite_score": round(composite_score, 1),
                 "recommendation": recommendation,
-                "signal_count": len(raw_signals),
+                "signal_count": len(code_signals),
                 "strategy_details": strategy_details,
-                "latest_price": latest_price,
-                "updated_at": updated_at,
+                "latest_price": code_signals[0].get("price", 0),
+                "updated_at": code_signals[0].get("triggered_at"),
             })
 
         except Exception as e:
@@ -847,27 +870,26 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
 
 def _compute_accuracy_weights(codes: list[str]) -> dict[str, float]:
     """
-    計算各策略的準確率權重。
-
-    通過回放最近 30 天信號，統計每個策略 1 天方向準確率。
-    準確率高的策略獲得更高權重。
-
-    返回:
-        策略名稱到權重的映射，範圍 [0.5, 2.0]
+    從回測歷史估算策略準確率權重（輕量，不跑完整信號回測）。
+    映射到 [0.5, 2.0]。
     """
-    try:
-        result = backtest_signals(codes=codes[:3], strategies=None, days=30)
-        by_strategy = result.get("by_strategy", {})
+    from src.core.db import get_backtest_history
 
-        weights = {}
-        for strat_name, stats in by_strategy.items():
-            acc = stats.get("accuracy_1d", 0.5)
-            # 將準確率映射到 [0.5, 2.0] 的權重
-            # 準確率 50% → 權重 1.0，60% → 1.4，40% → 0.6
-            weight = max(0.5, min(2.0, 1.0 + (acc - 0.5) * 4))
-            weights[strat_name] = weight
-
-        return weights
-    except Exception:
-        # 計算失敗時返回等權
-        return {name: 1.0 for name in STRATEGIES}
+    weights = {name: 1.0 for name in STRATEGIES}
+    for strat_name in STRATEGIES:
+        win_rates: list[float] = []
+        for code in codes:
+            try:
+                history = get_backtest_history(
+                    code=code, strategy=strat_name, limit=5,
+                )
+                for h in history or []:
+                    wr = h.get("win_rate_pct")
+                    if wr is not None:
+                        win_rates.append(float(wr) / 100.0)
+            except Exception:
+                continue
+        if win_rates:
+            acc = float(np.mean(win_rates))
+            weights[strat_name] = max(0.5, min(2.0, 1.0 + (acc - 0.5) * 4))
+    return weights

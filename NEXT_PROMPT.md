@@ -32,6 +32,8 @@ GitHub: https://github.com/iiooiioo888/stock-quant
 - 實時信號引擎（當前/歷史/強度評分）
 - 數據中心（板塊/資金流向/龍虎榜/基本面/分鐘K線/東方財富資金流）
 - 多市場支持（A股 + 加密貨幣 + 外匯 + 全球指數）
+- Polymarket 預測市場（只讀 Gamma/CLOB + `/api/polymarket/*` + 前端 markets Tab）
+- **全項目 MCP**（`python -m src.integrations.mcp.server`，`sq_*` 核心 + `polymarket_*` 等業務域，見 `docs/MCP.md`）
 - 本地K線管理（local_kline 本地存儲與讀取）
 - 股票池管理（stock_universe 最多 20000 只）
 - 股票基本面數據（stock_basics）
@@ -83,7 +85,10 @@ src/
 │       ├── health.py       — 健康檢查
 │       ├── indices.py      — 指數行情
 │       ├── stocks.py       — 股票列表/搜索/詳情
-│       └── tasks.py        — 異步任務管理
+│       ├── tasks.py        — 異步任務管理
+│       └── polymarket.py   — 預測市場 REST
+├── integrations/
+│   └── mcp/                — 全項目 MCP（registry + tools_core + tools_polymarket + server）
 ├── core/
 │   ├── backtest.py         — 19 策略 + SL/TP + 風險指標 + TradeObserver + 滑點/T+1/漲跌停
 │   ├── optimize.py         — 網格搜索 + Optuna + 並行
@@ -130,7 +135,8 @@ src/
 │   ├── forex.py            — 外匯行情
 │   ├── global_market.py    — 全球市場指數
 │   ├── yahoo_finance.py    — Yahoo Finance 數據源
-│   └── paper_trading.py    — 模擬交易
+│   ├── paper_trading.py    — 模擬交易
+│   └── polymarket/         — Gamma/CLOB 客戶端 + service + 快照表
 ├── models/
 │   ├── schemas.py          — Pydantic 數據模型
 │   └── user.py             — 用戶模型
@@ -158,9 +164,14 @@ static/
     ├── scheduler.js        — 定時任務
     ├── stock-picker.js     — 股票選擇器組件
     ├── tasks.js            — 任務面板（排序/展開/刪除）
-    └── task-common.js      — 任務共享模塊
+    ├── task-common.js      — 任務共享模塊
+    └── polymarket.js       — 預測市場 UI
 
-tests/                      — 27 個 test_*.py，164 個用例（pytest collect）
+docs/
+├── MCP.md                  — 全項目 MCP 說明
+└── MCP_POLYMARKET.md       — Polymarket 域 tools
+
+tests/                      — 28+ 個 test_*.py（含 test_polymarket、test_mcp）
 ├── conftest.py             — 跨平台 temp DB + TestClient fixture
 ├── test_smoke_api.py       — CI 煙霧（健康/配置/演示讀端點）
 ├── test_api.py             — 健康/狀態/回測/緩存集成
@@ -188,7 +199,9 @@ tests/                      — 27 個 test_*.py，164 個用例（pytest collec
 ├── test_sector_heatmap.py  — 板塊熱力圖
 ├── test_capital_flow_aggregate.py — 北向資金聚合
 ├── test_scheduler.py       — 定時任務註冊表
-└── test_alert_rules_auto.py — 自動預警規則
+├── test_alert_rules_auto.py — 自動預警規則
+├── test_polymarket.py      — Polymarket API/正規化
+└── test_mcp.py             — MCP 註冊與 handlers
 ```
 
 ## 已完成（第一輪 ~ 第六輪）

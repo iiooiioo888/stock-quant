@@ -92,9 +92,11 @@ async def batch_delete_tasks_api(body: BatchIdsRequest):
 
 @router.post("/api/tasks/{task_id}/retry")
 async def retry_task_api(task_id: str):
-    """重試失敗/取消的任務（基於原參數重新提交）"""
-    from src.core.task_manager import get_task_full, create_task, submit_task
+    """重試失敗/取消的任務（基於原參數重新提交並派發 worker）"""
+    from src.core.task_manager import get_task_full, create_task
+    from src.core.task_retry import RetryWorkerError, build_retry_worker
     from src.api.dispatch import dispatch_async_task
+
     original = get_task_full(task_id, include_result=False)
     if not original:
         raise HTTPException(404, "任務不存在")
@@ -103,12 +105,34 @@ async def retry_task_api(task_id: str):
     task_type = original.get("task_type")
     params = original.get("params") or {}
     title = original.get("title", "")
+    try:
+        work_fn = build_retry_worker(task_type, params, "")
+    except RetryWorkerError as e:
+        raise HTTPException(400, str(e)) from e
+
     new_task = create_task(task_type, params, title=f"[重試] {title}")
     if new_task.get("is_duplicate"):
-        return {"success": True, "task_id": new_task["task_id"], "is_duplicate": True,
-                "message": "相同任務正在執行中"}
-    return {"success": True, "task_id": new_task["task_id"],
-            "message": "已提交重試任務", "status": new_task.get("status")}
+        return {
+            "success": True,
+            "task_id": new_task["task_id"],
+            "is_duplicate": True,
+            "message": "相同任務正在執行中",
+            "async": True,
+        }
+    if new_task.get("status") == "completed" and new_task.get("result") is not None:
+        return {
+            "success": True,
+            "task_id": new_task["task_id"],
+            "async": False,
+            "from_cache": new_task.get("from_cache"),
+            "result": new_task.get("result"),
+        }
+
+    new_id = new_task["task_id"]
+    retry_work = build_retry_worker(task_type, params, new_id)
+    out = dispatch_async_task(new_id, retry_work)
+    out["message"] = "已提交重試任務"
+    return out
 
 
 @router.post("/api/tasks/cleanup")

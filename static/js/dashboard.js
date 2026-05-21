@@ -13,6 +13,8 @@ const Dashboard = {
   _backtestAggCache: null,
   _sparklineCache: {},
   _sparklineCacheTtlMs: 60000,
+  _lwRetryCount: 0,
+  _lwRetryMax: 20,
 
   async _getHealth(force = false) {
     const now = Date.now();
@@ -68,12 +70,16 @@ const Dashboard = {
   ensureCharts() {
     const ids = [
       'dashSparklineChart', 'dashBacktestChart', 'dashSignalRadar', 'dashSectorChart', 'dashLeaderboardChart',
-      'dashSectorFlowChart', 'dashSectorScatterChart', 'dashMarketFlowChart', 'dashNorthFlowChart', 'dashConceptSectorChart',
       'dashMomentumRankChart', 'dashVolatilityRankChart', 'dashDrawdownRankChart', 'dashRiskScatterChart',
     ];
     const indexGrid = document.getElementById('indexChartsGrid');
     if (indexGrid && !indexGrid.querySelector('.index-chart-card')) {
       this._loadMajorIndicesCharts();
+    }
+    const tvGrid = document.getElementById('tvWatchlistGrid');
+    if (tvGrid && tvGrid.querySelector('.index-charts-loading')) {
+      this._lwRetryCount = 0;
+      this._loadTradingViewWall();
     }
     const missing = ids.some(id => {
       const el = document.getElementById(id);
@@ -187,29 +193,46 @@ const Dashboard = {
     document.getElementById('sysStatus').textContent = '運行 ' + (d.uptime || '');
   },
 
-  async _waitChartLibs(maxMs = 8000) {
+  async _waitChartLibs(chartJsMs = 8000, lwMs = 12000) {
     const start = Date.now();
-    while (Date.now() - start < maxMs) {
-      if (typeof Chart !== 'undefined') return true;
+    while (Date.now() - start < chartJsMs) {
+      if (typeof Chart !== 'undefined') break;
       await new Promise(r => setTimeout(r, 80));
     }
-    return false;
+    if (typeof Chart === 'undefined') return false;
+    const lwStart = Date.now();
+    while (Date.now() - lwStart < lwMs) {
+      if (typeof Charts !== 'undefined' && Charts._lwReady?.()) return true;
+      await new Promise(r => setTimeout(r, 80));
+    }
+    return typeof Charts !== 'undefined' && Charts._lwReady?.();
+  },
+
+  _lwLoadFailedHtml() {
+    return '<div class="index-charts-loading">圖表庫載入失敗，請檢查網路或 CDN（lightweight-charts）</div>';
+  },
+
+  _bumpLwRetry() {
+    this._lwRetryCount += 1;
+    return this._lwRetryCount >= this._lwRetryMax;
   },
 
   /**
    * 載入儀表盤所有新增圖表
    */
   async loadDashboardCharts(force = false) {
+    if (this._chartsLoading) return;
     if (this._chartsLoaded && !force) return;
+    this._chartsLoading = true;
+    try {
     const ready = await this._waitChartLibs();
     if (!ready) {
-      setTimeout(() => this.loadDashboardCharts(force), 400);
+      setTimeout(() => { this._chartsLoading = false; this.loadDashboardCharts(force); }, 400);
       return;
     }
     await Promise.allSettled([
       this._loadMajorIndicesCharts(),
       this._loadTradingViewWall(),
-      this._loadMarketCharts(),
       this._loadSparklineChart(),
       this._loadBacktestHistory(),
       this._loadSignalRadar(),
@@ -221,6 +244,9 @@ const Dashboard = {
       Charts.resizeTab('tab-dashboard');
     }
     this._chartsLoaded = true;
+    } finally {
+      this._chartsLoading = false;
+    }
   },
 
   _indexChartId(symbol) {
@@ -288,9 +314,16 @@ const Dashboard = {
     const meta = document.getElementById('tvChartsMeta');
     if (!grid || typeof Charts === 'undefined') return;
     if (!Charts._lwReady?.()) {
+      if (this._bumpLwRetry()) {
+        grid.innerHTML = this._lwLoadFailedHtml();
+        this._renderProfessionalMetrics([]);
+        if (meta) meta.textContent = '圖表庫未載入';
+        return;
+      }
       setTimeout(() => this._loadTradingViewWall(), 400);
       return;
     }
+    this._lwRetryCount = 0;
 
     try {
       const codes = await this._resolveSparklineCodes(8);
@@ -320,7 +353,9 @@ const Dashboard = {
         const sign = m.totalReturn > 0 ? '+' : '';
         const riskCls = m.riskScore >= 0 ? 'up' : 'down';
         return `
-          <article class="tv-chart-card">
+          <article class="tv-chart-card tv-chart-card--link" role="button" tabindex="0"
+            title="查看 ${this._escapeHtml(m.code)} 個股分析"
+            onclick="App.openStockDetail('${String(m.code).replace(/'/g, "\\'")}')">
             <header class="tv-chart-header">
               <div>
                 <div class="tv-chart-code">${this._escapeHtml(m.code)}</div>
@@ -402,7 +437,7 @@ const Dashboard = {
       type: 'scatter',
       data: {
         datasets: [{
-          label: '股票',
+          label: '監控股',
           data: metrics.map(m => ({ x: m.volatility, y: m.momentum20, code: m.code })),
           borderColor: '#38bdf8',
           backgroundColor: metrics.map(m => m.momentum20 >= 0 ? 'rgba(34,197,94,0.72)' : 'rgba(239,68,68,0.72)'),
@@ -456,9 +491,14 @@ const Dashboard = {
 
     const lwReady = typeof Charts !== 'undefined' && Charts._lwReady && Charts._lwReady();
     if (!lwReady) {
+      if (this._bumpLwRetry()) {
+        grid.innerHTML = this._lwLoadFailedHtml();
+        return;
+      }
       setTimeout(() => this._loadMajorIndicesCharts(), 400);
       return;
     }
+    this._lwRetryCount = 0;
 
     try {
       const d = await Api.getIndicesCharts(90);
@@ -526,7 +566,11 @@ const Dashboard = {
   },
 
   _strategyLabel(row) {
-    return row.strategy_name || row.strategy || row.name || '-';
+    const key = row.strategy || row.name;
+    if (typeof SignalLabels !== 'undefined' && key) {
+      return row.strategy_name || SignalLabels.strategyName(key, 'short');
+    }
+    return row.strategy_name || key || '-';
   },
 
   _signalItems(stockRow) {
@@ -540,6 +584,12 @@ const Dashboard = {
   },
 
   _shortStrategyName(name) {
+    if (typeof SignalLabels !== 'undefined' && SignalLabels.STRATEGIES[name]) {
+      return SignalLabels.strategyName(name, 'chart');
+    }
+    if (typeof SignalLabels !== 'undefined') {
+      return SignalLabels.label(name);
+    }
     const s = String(name || '');
     return s.length > 14 ? s.slice(0, 12) + '…' : s;
   },
@@ -759,42 +809,6 @@ const Dashboard = {
   },
 
   /**
-   * 資金與板塊圖表（單次 API）
-   */
-  async _loadMarketCharts() {
-    const meta = document.getElementById('marketChartsMeta');
-    try {
-      const d = await Api.getDashboardMarketCharts(20);
-      if (!d) {
-        if (meta) meta.textContent = '數據暫不可用';
-        return;
-      }
-
-      const parts = [];
-      if (d.sector_flow?.length) parts.push('板塊資金');
-      if (d.market_flow?.length) parts.push('大盤');
-      if (d.north_flow?.length) parts.push('北向');
-      const srcs = d.sources ? Object.values(d.sources).filter(Boolean) : [];
-      const srcHint = srcs.length ? ` · ${[...new Set(srcs)].join('/')}` : '';
-      if (meta) {
-        meta.textContent = parts.length
-          ? `${parts.join(' · ')} · 近 ${d.days || 20} 日${srcHint}`
-          : '外部數據源連線中，請稍後刷新';
-      }
-      this._setDegradedBadge('dashSectorFlowWrap', d.sector_flow_degraded, d.sector_flow_degraded_message);
-
-      this._renderSectorFlowChart(d.sector_flow, d.sector_flow_degraded);
-      this._renderSectorScatterChart(d.sector_scatter);
-      this._renderMarketFlowChart(d.market_flow);
-      this._renderNorthFlowChart(d.north_flow);
-      this._renderSectorTreemap(d.sector_heatmap, d.sector_scatter);
-      this._renderConceptSectorChart(d.concept_sectors);
-    } catch (e) {
-      if (meta) meta.textContent = '資金與板塊數據載入失敗';
-    }
-  },
-
-  /**
    * 加密貨幣實時行情卡片
    */
   async loadCryptoPrices() {
@@ -802,7 +816,7 @@ const Dashboard = {
     if (!wrap) return;
     wrap.innerHTML = '<div class="crypto-loading"><span class="ld"></span> 加載中…</div>';
     try {
-      const d = await Api.get('/api/markets/crypto/realtime');
+      const d = await Api.get('/api/crypto/realtime');
       const list = d?.data || [];
       if (!list.length) {
         wrap.innerHTML = '<div class="crypto-empty">暫無加密貨幣行情數據</div>';
@@ -825,7 +839,7 @@ const Dashboard = {
           : vol.toFixed(0);
         const icon = { BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '◆', SOLUSDT: '◎', XRPUSDT: '✕' }[c.symbol] || '●';
         return `
-          <div class="crypto-card crypto-${cls}">
+          <div class="crypto-card crypto-${cls}" role="button" tabindex="0" onclick="App.loadTab('crypto')" title="查看完整加密行情">
             <div class="crypto-card-head">
               <span class="crypto-icon">${icon}</span>
               <span class="crypto-name">${c.name || c.symbol}</span>
@@ -838,132 +852,6 @@ const Dashboard = {
     } catch (e) {
       wrap.innerHTML = '<div class="crypto-empty">加密貨幣行情載入失敗</div>';
     }
-  },
-
-  _setDegradedBadge(wrapId, degraded, message) {
-    const wrap = document.getElementById(wrapId) || document.getElementById('marketChartsMeta')?.parentElement;
-    if (!wrap) return;
-    let badge = wrap.querySelector('.dash-degraded-badge');
-    if (!degraded) {
-      if (badge) badge.remove();
-      return;
-    }
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'dash-degraded-badge';
-      wrap.insertBefore(badge, wrap.firstChild);
-    }
-    badge.textContent = message || '資料降級：僅板塊漲跌，無主力淨額';
-  },
-
-  _renderSectorFlowChart(sectors, degraded) {
-    const id = 'dashSectorFlowChart';
-    if (!sectors?.length) {
-      Charts.setPlaceholder(id, degraded ? '板塊資金降級：僅漲跌幅' : '板塊資金流向暫不可用');
-      return;
-    }
-    const topIn = [...sectors].sort((a, b) => (b.main_net || 0) - (a.main_net || 0)).slice(0, 5);
-    const topOut = [...sectors].sort((a, b) => (a.main_net || 0) - (b.main_net || 0)).slice(0, 5);
-    const merged = [...topIn, ...topOut.filter(s => !topIn.find(x => x.name === s.name))].slice(0, 10);
-    Charts.clearPlaceholder(id);
-    Charts.drawMoneyHorizontalBar(
-      id,
-      merged.map(s => s.name),
-      merged.map(s => s.main_net || 0),
-      '主力淨流入',
-    );
-  },
-
-  _renderSectorScatterChart(sectors) {
-    const id = 'dashSectorScatterChart';
-    if (!sectors?.length) {
-      Charts.setPlaceholder(id, '漲跌×資金數據不足');
-      return;
-    }
-    const points = sectors
-      .filter(s => s.name && (s.change_pct != null || s.main_net != null))
-      .slice(0, 50)
-      .map(s => ({ name: s.name, x: s.change_pct || 0, y: s.main_net || 0 }));
-    Charts.clearPlaceholder(id);
-    Charts.drawChangeFlowScatter(id, points);
-  },
-
-  _renderMarketFlowChart(flows) {
-    const id = 'dashMarketFlowChart';
-    if (!flows?.length) {
-      Charts.setPlaceholder(id, '大盤資金流向暫不可用');
-      return;
-    }
-    Charts.clearPlaceholder(id);
-    Charts.drawFlowStackedBar(id, flows);
-  },
-
-  _renderNorthFlowChart(flows) {
-    const id = 'dashNorthFlowChart';
-    if (!flows?.length) {
-      Charts.setPlaceholder(id, '北向資金暫不可用');
-      return;
-    }
-    const sh = flows.filter(f => String(f.code || '').includes('沪'));
-    const sz = flows.filter(f => String(f.code || '').includes('深'));
-    const dates = [...new Set(flows.map(f => f.date))].sort();
-    const shMap = Object.fromEntries(sh.map(f => [f.date, (f.main_net || 0) / 1e8]));
-    const szMap = Object.fromEntries(sz.map(f => [f.date, (f.main_net || 0) / 1e8]));
-    Charts.clearPlaceholder(id);
-    Charts.drawLineChart(id, [
-      { label: '滬股通', data: dates.map(d => shMap[d] ?? null), dates },
-      { label: '深股通', data: dates.map(d => szMap[d] ?? null), dates },
-    ]);
-  },
-
-  _ensureTreemapCanvas() {
-    const wrap = document.getElementById('dashSectorTreemapWrap');
-    if (!wrap) return null;
-    let canvas = document.getElementById('dashSectorTreemap');
-    if (!canvas) {
-      wrap.innerHTML = '';
-      canvas = document.createElement('canvas');
-      canvas.id = 'dashSectorTreemap';
-      wrap.appendChild(canvas);
-    }
-    return canvas;
-  },
-
-  _mergeSectorHeatmap(primary, fallback) {
-    const map = new Map();
-    for (const s of (primary || [])) {
-      if (s?.name) map.set(s.name, { ...s });
-    }
-    for (const s of (fallback || [])) {
-      if (!s?.name || map.has(s.name)) continue;
-      map.set(s.name, { ...s });
-    }
-    return [...map.values()];
-  },
-
-  _renderSectorTreemap(sectors, fallbackSectors) {
-    const canvasId = 'dashSectorTreemap';
-    this._ensureTreemapCanvas();
-    const merged = this._mergeSectorHeatmap(sectors, fallbackSectors);
-    if (!merged.length) {
-      Charts.setPlaceholder(canvasId, '板塊熱力圖暫不可用，請檢查網路後刷新');
-      return;
-    }
-    Charts.drawSectorTreemap(canvasId, merged.slice(0, 40), 280);
-  },
-
-  _renderConceptSectorChart(sectors) {
-    const id = 'dashConceptSectorChart';
-    if (!sectors?.length) {
-      Charts.setPlaceholder(id, '概念板塊暫不可用');
-      return;
-    }
-    const sorted = [...sectors].sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
-    const top = sorted.slice(0, 5);
-    const bottom = sorted.slice(-5).reverse();
-    const unique = [...top, ...bottom].filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i).slice(0, 10);
-    Charts.clearPlaceholder(id);
-    Charts.drawHorizontalBarChart(id, unique.map(s => s.name), unique.map(s => s.change_pct || 0), '漲跌幅 (%)');
   },
 
   /**
@@ -1034,8 +922,8 @@ const Dashboard = {
       this._setPanelHint(
         'dashLeaderboardHint',
         best
-          ? `Top ${sorted.length} · ${this._shortStrategyName(this._strategyLabel(best))} 夏普 ${(best.sharpe_ratio || 0).toFixed(2)}`
-          : `Top ${sorted.length}`,
+          ? `前 ${sorted.length} · ${this._shortStrategyName(this._strategyLabel(best))} 夏普 ${(best.sharpe_ratio || 0).toFixed(2)}`
+          : `前 ${sorted.length}`,
       );
 
       Charts.clearPlaceholder(canvasId);

@@ -13,23 +13,34 @@ const Signals = {
 
   init() {
     const tabs = document.getElementById('signalsTabs');
-    if (!tabs) return;
+    if (!tabs || tabs.dataset.signalsBound) return;
+    tabs.dataset.signalsBound = '1';
     tabs.addEventListener('click', e => {
       const btn = e.target.closest('button[data-stab]');
       if (!btn) return;
       tabs.querySelectorAll('button').forEach(b => b.classList.remove('a'));
       btn.classList.add('a');
       this._currentTab = btn.dataset.stab;
-      // toggle sub-tab divs
       ['current', 'history', 'strength'].forEach(t => {
         const el = document.getElementById('stab-' + t);
         if (el) el.classList.toggle('h', t !== this._currentTab);
       });
+      this._loadActiveSubTab();
     });
   },
 
   load() {
-    // called when signals tab is shown
+    ['current', 'history', 'strength'].forEach(t => {
+      const el = document.getElementById('stab-' + t);
+      if (el) el.classList.toggle('h', t !== this._currentTab);
+    });
+    this._loadActiveSubTab();
+  },
+
+  _loadActiveSubTab() {
+    if (this._currentTab === 'current') this.loadCurrent();
+    else if (this._currentTab === 'history') this.loadHistory();
+    else if (this._currentTab === 'strength') this.loadStrength();
   },
 
   async loadCurrent() {
@@ -47,17 +58,17 @@ const Signals = {
       container.innerHTML = '<p style="color:var(--text-dim)">當前無活躍信號（可能非交易時段）</p>';
       return;
     }
+    const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
     container.innerHTML = signals.map(s => {
+      if (SL) return SL.renderStockCard(s);
       const strategies = (s.signals || s.strategies || []).map(st => {
         const cls = st.signal === 'buy' ? 'on' : st.signal === 'sell' ? 'off' : 'cfg';
-        return `<span class="chip ${cls}">${st.strategy}: ${st.signal}</span>`;
+        const stName = SL ? SL.strategyName(st.strategy, 'short') : st.strategy;
+        const sigZh = SL ? SL.getSignal(st.signal).zh : st.signal;
+        return `<span class="chip ${cls}">${stName}: ${sigZh}</span>`;
       }).join(' ');
-      return `<div style="padding:10px;margin-bottom:8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <strong>${s.code}</strong>
-          <span style="font-size:10px;color:var(--text-dim)">${s.triggered_at || ''}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text-muted);margin:4px 0">${s.name || ''} · 信號強度: <strong>${s.strength || 0}</strong></div>
+      return `<div class="sig-stock-card">
+        <strong>${s.code}</strong> · 信號強度: ${s.strength || 0}
         <div>${strategies}</div>
       </div>`;
     }).join('');
@@ -68,26 +79,52 @@ const Signals = {
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
-    const d = await Api.getSignalHistory('', '', 30);
-    if (!d || !d.success) {
-      container.innerHTML = '<p style="color:var(--text-dim)">無歷史信號</p>';
+    const rawCodes = document.getElementById('sigCodes')?.value?.trim() || '';
+    const filterCodes = rawCodes.split(',').map(s => s.trim()).filter(Boolean);
+    let signals = [];
+    if (filterCodes.length) {
+      const batches = await Promise.all(
+        filterCodes.map(c => Api.getSignalHistory(c, '', 30)),
+      );
+      for (const d of batches) {
+        if (d?.success && d.signals?.length) signals.push(...d.signals);
+      }
+      signals.sort((a, b) => String(b.triggered_at || '').localeCompare(String(a.triggered_at || '')));
+    } else {
+      const d = await Api.getSignalHistory('', '', 30);
+      if (!d || !d.success) {
+        container.innerHTML = '<p style="color:var(--text-dim)">無歷史信號</p>';
+        return;
+      }
+      signals = d.signals || [];
+    }
+    if (!signals.length && filterCodes.length) {
+      container.innerHTML = '<p style="color:var(--text-dim)">所選股票無歷史信號（僅記錄買/賣）</p>';
       return;
     }
-    const signals = d.signals || [];
     if (!signals.length) {
       container.innerHTML = '<p style="color:var(--text-dim)">無歷史信號記錄</p>';
       return;
     }
+    const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
     container.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>時間</th><th>代碼</th><th>策略</th><th>信號</th><th>價格</th><th>強度</th></tr></thead>
-      <tbody>${signals.map(s => `<tr>
+      <thead><tr><th>時間</th><th>代碼</th><th>策略</th><th>信號</th><th>說明</th><th>價格</th><th>強度</th></tr></thead>
+      <tbody>${signals.map(s => {
+        const stKey = s.strategy || '';
+        const sigKey = s.signal || 'hold';
+        const stMeta = SL ? SL.getStrategy(stKey) : { name: stKey, full: stKey };
+        const sigMeta = SL ? SL.getSignal(sigKey) : { zh: sigKey, cls: 'cfg' };
+        const hint = SL ? SL.hintFor(stKey, sigKey) : '';
+        return `<tr>
         <td style="font-size:10px">${s.triggered_at || ''}</td>
         <td>${s.code || ''}</td>
-        <td>${s.strategy || ''}</td>
-        <td><span class="chip ${s.signal === 'buy' ? 'on' : s.signal === 'sell' ? 'off' : 'cfg'}">${s.signal || '-'}</span></td>
+        <td title="${SL ? SL._esc(stMeta.desc) : ''}">${stMeta.name}<span style="display:block;font-size:10px;color:var(--text-dim)">${stMeta.full !== stMeta.name ? stMeta.full : ''}</span></td>
+        <td><span class="chip ${sigMeta.cls}">${sigMeta.zh}</span></td>
+        <td style="font-size:10px;color:var(--text-muted);max-width:200px">${hint}</td>
         <td class="r">${s.price != null ? s.price.toFixed(2) : '-'}</td>
-        <td class="r">${s.strength || '-'}</td>
-      </tr>`).join('')}</tbody>
+        <td class="r">${s.strength != null ? s.strength : '-'}</td>
+      </tr>`;
+      }).join('')}</tbody>
     </table></div>`;
 
     // 繪製信號時間線圖
@@ -189,63 +226,72 @@ const Signals = {
 
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 計算中...</p>';
 
-    // 支持多個股票（逗號分隔）
     const codes = code.split(',').map(s => s.trim()).filter(Boolean);
+    const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
+    const [cur, ...strengthRows] = await Promise.all([
+      Api.getCurrentSignals(),
+      ...codes.map(c => Api.getSignalStrength(c)),
+    ]);
+    const curByCode = Object.fromEntries((cur?.signals || []).map(x => [x.code, x]));
     let html = '';
-    for (const c of codes) {
-      const d = await Api.getSignalStrength(c);
+    codes.forEach((c, i) => {
+      let d = strengthRows[i];
       if (!d || !d.success) {
-        html += `<div style="padding:10px;color:var(--text-dim)">${c}: 獲取失敗</div>`;
-        continue;
+        html += `<div class="sig-stock-card"><p style="color:var(--text-dim)">${c}：獲取失敗</p></div>`;
+        return;
       }
-      const strength = d.strength || 0;
-      const cls = strength > 50 ? 'gn' : strength < -50 ? 'rd' : 'bl';
-      const label = strength > 50 ? '強烈看多' : strength > 20 ? '看多' : strength < -50 ? '強烈看空' : strength < -20 ? '看空' : '中性';
-      html += `<div style="padding:10px;margin-bottom:8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <strong>${c}</strong>
-          <span class="b ${cls}" style="font-size:18px">${strength}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
-          方向: <strong class="${cls}">${label}</strong> · 信號數: ${d.signals_count || 0} · ${d.updated_at || ''}
-        </div>
-      </div>`;
-    }
+      if (!d.signals?.length && curByCode[c]) {
+        const row = curByCode[c];
+        d = {
+          ...d,
+          signals: row.signals || [],
+          strength: row.strength ?? d.strength,
+          updated_at: row.updated_at || d.updated_at,
+          name: row.name,
+        };
+      }
+      if (SL) {
+        html += SL.renderStockCard({
+          code: c,
+          name: d.name,
+          strength: d.strength,
+          updated_at: d.updated_at,
+          signals: d.signals || [],
+        });
+      } else {
+        html += `<div class="sig-stock-card"><strong>${c}</strong> · ${d.strength}</div>`;
+      }
+    });
     container.innerHTML = html || '<p style="color:var(--text-dim)">無數據</p>';
 
-    // 繪製信號強度儀表盤
-    this._drawStrengthGauge(codes);
+    this._drawStrengthGauge(codes, strengthRows);
   },
 
   /**
    * 信號強度儀表盤 — 多股票強度對比雷達圖
    */
-  async _drawStrengthGauge(codes) {
-    if (!codes || codes.length < 2) return; // 至少 2 只股票才畫圖
+  async _drawStrengthGauge(codes, prefetched = []) {
+    if (!codes || codes.length < 2) return;
 
     if (!document.getElementById('sigStrengthRadar')) return;
 
-    // 獲取每只股票的信號數據
     const datasets = [];
     const labels = ['強度', '信號數', '看多程度'];
     const colors = ['#38bdf8', '#22c55e', '#f59e0b', '#ef4444', '#a78bfa'];
 
     for (let i = 0; i < Math.min(codes.length, 5); i++) {
-      const c = codes[i];
-      try {
-        const d = await Api.getSignalStrength(c);
-        if (!d || !d.success) continue;
-        const s = d.strength || 0;
-        const count = d.signals_count || 0;
-        const bullish = Math.max(0, s); // 正值表示看多
-        datasets.push({
-          label: c,
-          data: [Math.abs(s), Math.min(count, 100), bullish],
-          borderColor: colors[i % colors.length],
-          backgroundColor: colors[i % colors.length] + '20',
-          borderWidth: 1.5,
-        });
-      } catch {}
+      const d = prefetched[i];
+      if (!d || !d.success) continue;
+      const s = d.strength || 0;
+      const count = d.signals_count ?? (d.signals?.length || 0);
+      const bullish = Math.max(0, s);
+      datasets.push({
+        label: codes[i],
+        data: [Math.abs(s), Math.min(count, 100), bullish],
+        borderColor: colors[i % colors.length],
+        backgroundColor: colors[i % colors.length] + '20',
+        borderWidth: 1.5,
+      });
     }
 
     if (datasets.length >= 2) {

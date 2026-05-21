@@ -146,20 +146,21 @@ const Portfolio = {
   },
 
   async runPreset(name, evt) {
+    if (this._running) return;
     if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
       Utils.toast('預設組合回測需先登錄', 3000, 'warning');
       Api.showLoginModal();
       return;
     }
+    this._running = true;
     const btn = evt?.target?.closest('.pc-item');
     if (btn) btn.style.opacity = '0.5';
 
+    try {
     const d = await Api.runPresetPortfolio(name);
-    if (btn) btn.style.opacity = '1';
 
     if (!d) return;
     if (!d.success) return Utils.toast('失敗: ' + (d.detail || ''), 3000, 'error');
-    try {
       if (d.async && d.task_id) {
         Utils.toast('📋 預設組合回測已提交任務', 2000, 'info');
       }
@@ -172,6 +173,9 @@ const Portfolio = {
       Utils.toast(d.preset + ' 回測完成');
     } catch (e) {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      this._running = false;
+      if (btn) btn.style.opacity = '1';
     }
   },
 
@@ -257,6 +261,7 @@ const Portfolio = {
   },
 
   async run() {
+    if (this._running) return;
     if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
       Utils.toast('組合回測需先登錄', 3000, 'warning');
       Api.showLoginModal();
@@ -265,16 +270,18 @@ const Portfolio = {
 
     const method = this._currentMethod;
     const btn = document.getElementById('pfBtn');
+    this._running = true;
 
     const allocations = this._buildAllocations();
-    if (!allocations.length) return Utils.toast('請輸入股票代碼和策略', 3000, 'error');
+    if (!allocations.length) { this._running = false; return Utils.toast('請輸入股票代碼和策略', 3000, 'error'); }
 
     // 驗證代碼格式
     const codes = document.getElementById('pfCodes').value.split(',').map(s => s.trim()).filter(Boolean);
     const invalid = codes.filter(c => !Utils.isValidCode(c));
-    if (invalid.length) return Utils.toast('無效代碼: ' + invalid.join(', '), 3000, 'error');
+    if (invalid.length) { this._running = false; return Utils.toast('無效代碼: ' + invalid.join(', '), 3000, 'error'); }
 
     Utils.btnLoading(btn, true, '回測中...');
+    try {
     const cash = undefined;
     let d;
 
@@ -348,10 +355,8 @@ const Portfolio = {
         d = await Api.runPortfolio({ allocations, rebalance: 'none' });
     }
 
-    Utils.btnLoading(btn, false, '🚀 開始回測');
     if (!d) return;
     if (!d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
-    try {
       if (d.async && d.task_id) {
         Utils.toast('📋 組合回測已提交', 2000, 'info');
       }
@@ -363,6 +368,9 @@ const Portfolio = {
       this._showResult(r, method);
     } catch (e) {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      this._running = false;
+      Utils.btnLoading(btn, false, '🚀 開始回測');
     }
   },
 

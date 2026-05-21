@@ -125,7 +125,12 @@ const ProCharts = {
     if (byDd.length && document.getElementById('histDrawdownChart')) {
       Charts.drawHorizontalBarChart(
         'histDrawdownChart',
-        byDd.map(r => `${r.code}·${r.strategy}`),
+        byDd.map(r => {
+          const sk = r.strategy;
+          const name = (typeof SignalLabels !== 'undefined' && sk)
+            ? SignalLabels.strategyName(sk, 'short') : sk;
+          return `${r.code}·${name || sk}`;
+        }),
         byDd.map(r => -(r.max_drawdown_pct || 0)),
         '最大回撤 (%)',
       );
@@ -135,7 +140,7 @@ const ProCharts = {
   /** Walk-Forward — 柱狀 + 累積 OOS 曲線 */
   renderWalkForward(wins) {
     if (!wins?.length) return;
-    const labels = wins.map(w => 'W' + w.window);
+    const labels = wins.map(w => `窗口 ${w.window}`);
     const rets = wins.map(w => w.test_return_pct || 0);
     Charts.drawBarChart('wfChart', rets, labels, '樣本外收益率 (%)');
 
@@ -150,7 +155,7 @@ const ProCharts = {
       data: {
         labels,
         datasets: [{
-          label: '累積 OOS 收益 (%)',
+          label: '累積樣本外收益 (%)',
           data: cumData,
           borderColor: '#a78bfa',
           backgroundColor: 'rgba(167,139,250,0.2)',

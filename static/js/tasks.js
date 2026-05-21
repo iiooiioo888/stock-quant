@@ -143,6 +143,12 @@ const Tasks = {
     this._wsHandler = null;
   },
 
+  /** WebSocket 重連後重新綁定（由 App._connectWS onopen 呼叫） */
+  rebindWs() {
+    if (!this._bound) return;
+    this._bindWsEvents();
+  },
+
   // ── 批量操作 ──────────────────────────────────────────────
 
   _toggleSelect(taskId) {

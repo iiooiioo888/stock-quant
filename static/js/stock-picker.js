@@ -27,7 +27,7 @@ const StockPicker = {
   initAll() {
     const singles = [
       ['optCode', '選擇優化標的'],
-      ['wfCode', '選擇 Walk-Forward 標的'],
+      ['wfCode', '選擇滾動窗口驗證標的'],
       ['hmCode', '選擇熱力圖標的'],
       ['histCode', '篩選回測股票'],
       ['cfCode', '選擇資金流向標的'],
@@ -183,10 +183,13 @@ const StockPicker = {
       this._refreshActiveRows(state);
     });
 
-    state.search.addEventListener('input', () => {
-      state.query = state.search.value.trim().toLowerCase();
-      this._renderGrid(state);
-    });
+    if (!state._searchDebounce) {
+      state._searchDebounce = Utils.debounce(() => {
+        state.query = state.search.value.trim().toLowerCase();
+        this._renderGrid(state);
+      }, 300);
+    }
+    state.search.addEventListener('input', () => state._searchDebounce());
 
     state.tabs.addEventListener('click', e => {
       const btn = e.target.closest('[data-market]');
@@ -440,7 +443,13 @@ const StockPicker = {
     row.classList.toggle('a', selected.has(String(item.code).toUpperCase()));
     row.dataset.code = item.code;
     row.dataset.name = item.name || '';
-    row.title = `${item.code} ${item.name}${item.intro ? '\n' + item.intro : ''}`;
+    row.title = `${item.code} ${item.name}${item.intro ? '\n' + item.intro : ''}（雙擊打開個股分析）`;
+
+    row.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof App !== 'undefined' && App.openStockDetail) App.openStockDetail(item.code);
+    });
 
     const iconWrap = document.createElement('span');
     iconWrap.className = 'stock-code-row-icon stock-code-icon';

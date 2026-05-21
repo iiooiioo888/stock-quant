@@ -32,6 +32,9 @@ from src.api.routers.stocks import router as stocks_router
 from src.api.routers.backtest import router as backtest_router
 from src.api.routers.alerts import router as alerts_router
 from src.api.routers.data_center import router as data_center_router
+from src.api.routers.polymarket import router as polymarket_router
+from src.api.routers.crypto import router as crypto_router
+from src.api.routers.external_check import router as external_check_router
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
@@ -133,6 +136,9 @@ app.include_router(stocks_router)
 app.include_router(backtest_router)
 app.include_router(alerts_router)
 app.include_router(data_center_router)
+app.include_router(polymarket_router)
+app.include_router(crypto_router)
+app.include_router(external_check_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -296,6 +302,8 @@ AUTH_WHITELIST_PREFIX = (
     "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
     "/api/config", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources",
     "/api/markets", "/api/indices", "/api/dashboard", "/api/data/", "/api/tasks",
+    "/api/polymarket",
+    "/api/external",
     "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts",
     "/docs", "/openapi.json",
     "/redoc", "/static", "/", "/ws",
@@ -317,6 +325,7 @@ _AUTH_WRITE_PROTECTED_PREFIX = (
     "/api/portfolio",
     "/api/strategies/",
     "/api/scheduler/",
+    "/api/polymarket",
 )
 
 
@@ -1308,9 +1317,7 @@ def _fetch_current_signals():
     from src.core.signals import SignalEngine, compute_and_push_signals
 
     engine = SignalEngine()
-    engine.update_weights_from_backtest()
-    signals_data = compute_and_push_signals(engine, settings.watchlist)
-    return signals_data
+    return compute_and_push_signals(engine, list(settings.watchlist))
 
 
 @app.get("/api/signals/current")
@@ -1361,44 +1368,24 @@ async def get_signal_history(code: str = None, strategy: str = None, days: int =
 @app.get("/api/signals/strength")
 async def get_signal_strength(code: str = None):
     """獲取信號強度綜合分數"""
-    from src.core.signals import SignalEngine, score_signal_strength, compute_and_push_signals
-    from src.core.db import get_signal_logs
+    from src.core.signals import get_current_signals_for_codes, score_signal_strength
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
 
     try:
-        # 先嘗試從數據庫取最新信號
-        logs = get_signal_logs(code=code, days=1)
-        if logs:
-            # 取最新時間戳的信號
-            latest_time = logs[0]["triggered_at"]
-            latest_signals = [l for l in logs if l["triggered_at"] == latest_time]
-            strength = score_signal_strength(latest_signals)
-            return {
-                "success": True,
-                "code": code,
-                "strength": strength,
-                "signals_count": len(latest_signals),
-                "updated_at": latest_time,
-            }
-
-        # 數據庫中沒有，實時計算
-        engine = SignalEngine()
-        engine.update_weights_from_backtest()
-        raw_signals = engine.compute_signals([code])
-
-        if raw_signals:
-            strength = score_signal_strength(raw_signals)
-            return {
-                "success": True,
-                "code": code,
-                "strength": strength,
-                "signals_count": len(raw_signals),
-                "updated_at": raw_signals[0]["triggered_at"],
-            }
-
-        return {"success": True, "code": code, "strength": 0, "signals_count": 0, "updated_at": None}
+        rows = get_current_signals_for_codes([code])
+        row = rows[0] if rows else {}
+        latest_signals = row.get("signals") or []
+        strength = score_signal_strength(latest_signals)
+        return {
+            "success": True,
+            "code": code,
+            "strength": strength,
+            "signals": latest_signals,
+            "signals_count": len(latest_signals),
+            "updated_at": row.get("updated_at"),
+        }
     except Exception as e:
         logger.error(f"獲取信號強度失敗: {e}")
         raise HTTPException(500, str(e))

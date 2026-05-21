@@ -99,6 +99,7 @@ const Api = {
    * 執行登錄/註冊
    */
   async doLogin(isRegister = false) {
+    if (this._loginRunning) return;
     const username = document.getElementById('loginUsername')?.value?.trim();
     const password = document.getElementById('loginPassword')?.value;
     const errorEl = document.getElementById('loginError');
@@ -108,6 +109,9 @@ const Api = {
       return;
     }
 
+    this._loginRunning = true;
+    const loginBtn = document.querySelector('#loginModal .modal-footer .primary');
+    Utils.btnLoading(loginBtn, true, '處理中...');
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
     try {
       const resp = await fetch(API_BASE + endpoint, {
@@ -138,6 +142,10 @@ const Api = {
       if (typeof Dashboard !== 'undefined') Dashboard.load();
     } catch (e) {
       if (errorEl) { errorEl.textContent = '網絡錯誤: ' + e.message; errorEl.style.display = 'block'; }
+    } finally {
+      this._loginRunning = false;
+      const loginBtn = document.querySelector('#loginModal .modal-footer .primary');
+      Utils.btnLoading(loginBtn, false, isRegister ? '📝 註冊並登錄' : '🔑 登錄');
     }
   },
 
@@ -564,7 +572,6 @@ const Api = {
   },
 
   async getStrategies() { return this.get('/api/strategies/list'); },
-  async getStrategiesList() { return this.getStrategies(); },
 
   async getLeaderboard(sortBy = 'sharpe', limit = 50) {
     return this.get(`/api/strategies/leaderboard?sort_by=${sortBy}&limit=${limit}`);

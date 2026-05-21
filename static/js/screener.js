@@ -4,6 +4,7 @@
 
 const Screener = {
   async run() {
+    if (this._running) return;
     const filters = {};
 
     if (document.getElementById('scrMA').checked) filters.ma_bullish = true;
@@ -33,10 +34,11 @@ const Screener = {
     if (Object.keys(filters).length === 0) return Utils.toast('請至少選擇一個篩選條件');
 
     const btn = document.getElementById('scrBtn');
+    this._running = true;
     Utils.btnLoading(btn, true, '篩選中...');
 
+    try {
     const d = await Api.screenStocks(filters);
-    Utils.btnLoading(btn, false, '開始篩選');
 
     if (!d) return Utils.toast('失敗', 3000, 'error');
 
@@ -44,7 +46,7 @@ const Screener = {
     document.getElementById('scrCount').textContent = stocks.length + ' 只';
     document.getElementById('scrTable').innerHTML = stocks.map(s =>
       `<tr>
-        <td>${s.code}</td>
+        <td><a href="#" class="sd-code-link" onclick="event.preventDefault();App.openStockDetail('${s.code}')">${s.code}</a></td>
         <td>${s.name || '-'}</td>
         <td style="font-size:10px">${(s.filters_passed || s.matched || []).join(', ')}</td>
         <td><button class="btn s" style="padding:3px 8px;font-size:10px" onclick="Screener.addToWatchlist('${s.code}')">加入監控</button></td>
@@ -53,10 +55,15 @@ const Screener = {
 
     document.getElementById('scrResult').classList.remove('h');
 
-    // 繪製篩選結果圖表
     this._drawScreenerCharts(stocks, filters);
 
     Utils.toast(`篩選完成: ${stocks.length} 只匹配`);
+    } catch (e) {
+      Utils.toast('篩選失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      this._running = false;
+      Utils.btnLoading(btn, false, '開始篩選');
+    }
   },
 
   /**
@@ -115,7 +122,7 @@ const Screener = {
         if (series.length) {
           Charts.drawLineChart('scrMiniChart', series);
         }
-      });
+      }).catch(() => {});
     }
   },
 

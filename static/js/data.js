@@ -63,7 +63,14 @@ const Data = {
     }
     if (tab === 'north') this.loadNorthFlow();
     if (tab === 'dragon') this.loadDragonTiger();
-    if ((tab === 'sectors' || tab === 'heatmap') && typeof Charts !== 'undefined') {
+    if (tab === 'sectors') this.loadSectors();
+    if (tab === 'rotation') this.loadSectorRotation();
+    if (tab === 'heatmap') this.loadSectorHeatmap();
+    if (tab === 'basics') {
+      const code = (document.getElementById('basicsCode')?.value || '').trim();
+      if (code) this.loadStockBasics();
+    }
+    if ((tab === 'sectors' || tab === 'rotation' || tab === 'heatmap') && typeof Charts !== 'undefined') {
       requestAnimationFrame(() => Charts.resizeTab('tab-data'));
     }
   },
@@ -1075,7 +1082,7 @@ const Data = {
           <td class="r">${r.total_mv ? Utils.formatLargeNum(r.total_mv) + '億' : (r.market_cap ? Utils.formatLargeNum(r.market_cap) : '-')}</td>
         </tr>`).join('')}</tbody>
       </table></div>`;
-    });
+    }).catch(e => Utils.toast('基本面篩選失敗', 3000, 'error'));
   },
 
   loadStockBasics() {

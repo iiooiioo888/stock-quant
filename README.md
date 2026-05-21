@@ -457,7 +457,7 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 | A 股實時 | **Yahoo Finance** | 東財盤口、新浪、騰訊 |
 | 滬深300 基準 | **Yahoo**（`000300.SS`） | AKShare 指數 |
 | 美股/港股/指數/ETF | **Yahoo Finance** | 新浪全球、Twelve Data |
-| 加密貨幣 | Binance | CoinGecko |
+| 加密貨幣 | Binance | CoinGecko、CoinCap、Twelve Data（`/api/crypto/*` 獨立子系統） |
 | 外匯 | Frankfurter / Yahoo | 新浪 |
 
 - 板塊、資金流向、龍虎榜、基本面等仍使用 AKShare（東方財富）
@@ -481,7 +481,9 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 3. **優化** — 參數優化 + 全自動尋優
 4. **組合** — 多種組合方法 + 預設組合 + 有效前沿
 5. **任務面板** — 執行佇列、並行槽、等待/運行/完成任務、一鍵跳轉結果
-6. **對比 / 歷史 / Walk-Forward / 熱力圖 / 篩選器 / 信號 / 數據 / 報告 / 預警** 等
+6. **₿ 加密行情** — 獨立 Tab：`/api/crypto/realtime`、`/api/crypto/kline`（舊路徑 `/api/markets/crypto/*` 仍相容）
+7. **多市場 / 接口檢查** — 全球市場卡片、Polymarket 預測市場、外部源探測
+8. **對比 / 歷史 / Walk-Forward / 熱力圖 / 篩選器 / 信號 / 數據 / 報告 / 預警** 等
 
 右下角浮動任務面板可快速查看後台任務進度。
 
@@ -538,6 +540,29 @@ python main.py stock-universe list --market a_share --limit 20
 
 說明：滬深 A 股上市約 5000+，要湊滿 20000 需依賴港股/美股數據；若外網失敗會降級為僅 A 股代碼表（無市值）。
 
+### 對外接口檢查
+
+Web 側欄 **接口檢查** Tab，或 API：
+
+- `GET /api/external/check/registry` — 數據源註冊表（無外網）
+- `GET /api/external/check` — 最近一次全量探測結果
+- `POST /api/external/check/run` — 立即探測（需登錄）
+
+覆蓋東財板塊、Yahoo A 股、Binance、Frankfurter、Polymarket、Redis、Webhook 等。
+
+### MCP（全項目 Agent 接入）
+
+stock-quant 提供 **項目級** MCP Server（stdio），供 Cursor / Claude Desktop 調用本地只讀能力，Polymarket 僅為其中一個業務域。
+
+```bash
+pip install -r requirements-mcp.txt
+python -m src.integrations.mcp.server
+```
+
+- 文檔：[docs/MCP.md](docs/MCP.md)
+- 核心 tools：`sq_health`、`sq_list_strategies`、`sq_data_sources` 等
+- 預測市場：`polymarket_list_markets` 等（見 [docs/MCP_POLYMARKET.md](docs/MCP_POLYMARKET.md)）
+
 ### 測試
 
 ```bash
@@ -549,6 +574,14 @@ SQ_DEMO_MODE=true pytest tests/ -q
 ```
 
 `tests/test_smoke_api.py` 覆蓋核心 GET 端點；`tests/test_auth_write_protection.py` 驗證演示模式下寫入保護。
+
+可選瀏覽器煙霧（需本機已 `python main.py serve`）：
+
+```bash
+pip install -r requirements-dev.txt
+playwright install chromium
+pytest tests/test_ui_playwright_smoke.py -v
+```
 
 ### 生產部署必改配置
 

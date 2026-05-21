@@ -246,6 +246,56 @@ async def get_stock_overview(code: str, lookback: int = 250):
         raise HTTPException(500, str(e))
 
 
+@router.get("/api/stocks/{code}/analysis-page")
+async def get_stock_analysis_page(
+    code: str,
+    kline_days: int = Query(180, ge=30, le=500),
+    sparkline_days: int = Query(90, ge=20, le=365),
+    pm_limit: int = Query(15, ge=1, le=30),
+):
+    """個股分析頁聚合：K 線、走勢指標、Polymarket 相關市場。"""
+    from src.core.api_cache import cached_response
+    from src.core.local_kline import ensure_daily_kline, normalize_kline_code
+    from src.core.market_fetch import build_sparkline_item, df_to_kline_records
+    from src.core.polymarket.stock_link import resolve_stock_name, search_polymarket_for_stock
+    from src.core.result_cache import get_data_version
+
+    code = normalize_kline_code(code.strip())
+    name = resolve_stock_name(code)
+    cache_key = f"api:analysis-page:{code}:{kline_days}:{sparkline_days}:{pm_limit}:{get_data_version(code)}"
+
+    def _build():
+        kline: list[dict] = []
+        kline_source = ""
+        try:
+            df, kline_source = ensure_daily_kline(code, min_bars=10)
+            if not df.empty:
+                if len(df) > kline_days:
+                    df = df.tail(kline_days)
+                kline = df_to_kline_records(df)
+        except Exception as e:
+            logger.debug(f"analysis-page kline {code}: {e}")
+
+        spark = build_sparkline_item(code, sparkline_days)
+        pm = search_polymarket_for_stock(code, name, limit_per_query=8, max_results=pm_limit)
+
+        return {
+            "success": True,
+            "code": code,
+            "name": name,
+            "kline": kline,
+            "kline_source": kline_source,
+            "sparkline": spark,
+            "polymarket": pm,
+        }
+
+    try:
+        return cached_response(cache_key, ttl=45, builder=_build)
+    except Exception as e:
+        logger.error(f"個股分析頁失敗 {code}: {e}")
+        raise HTTPException(500, str(e))
+
+
 @router.get("/api/strategies/params")
 async def get_all_strategy_params_api():
     """全部策略默認參數與優化網格"""
@@ -470,10 +520,13 @@ async def download_all_markets():
 async def get_market_realtime(market: str, symbols: str = None):
     """獲取指定市場的實時行情"""
     if market == "crypto":
-        from src.core.crypto import get_crypto_multi_realtime
-        sym_list = symbols.split(",") if symbols else settings.crypto_watchlist
-        data = get_crypto_multi_realtime(sym_list)
-        return {"market": "crypto", "data": data}
+        from src.core.crypto.service import CryptoDisabledError, get_crypto_service
+        try:
+            sym_list = symbols.split(",") if symbols else None
+            data = get_crypto_service().get_realtime(sym_list)
+            return {"market": "crypto", "data": data}
+        except CryptoDisabledError as e:
+            raise HTTPException(503, str(e))
 
     elif market == "forex":
         from src.core.forex import get_forex_multi_realtime
@@ -496,18 +549,13 @@ async def get_market_realtime(market: str, symbols: str = None):
 
 
 @router.get("/api/markets/crypto/kline")
-async def get_crypto_kline(symbol: str = "BTCUSDT", days: int = 30):
-    """獲取加密貨幣 K 線數據"""
-    from src.core.crypto import download_crypto_kline
-    from datetime import datetime, timedelta
-
-    start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+async def get_crypto_kline_compat(symbol: str = "BTCUSDT", days: int = 30):
+    """獲取加密貨幣 K 線數據（相容路由，委派 CryptoService）"""
+    from src.core.crypto.service import CryptoDisabledError, get_crypto_service
     try:
-        df = download_crypto_kline(symbol=symbol, interval="1d", start_date=start)
-        if df.empty:
-            return {"symbol": symbol, "klines": [], "message": "無數據"}
-        klines = df.to_dict(orient="records")
-        return {"symbol": symbol, "klines": klines, "total": len(klines)}
+        return get_crypto_service().get_kline(symbol=symbol, days=days)
+    except CryptoDisabledError as e:
+        raise HTTPException(503, str(e))
     except Exception as e:
         logger.error(f"加密 K 線失敗 {symbol}: {e}")
         raise HTTPException(500, str(e))

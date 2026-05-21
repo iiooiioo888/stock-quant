@@ -22,6 +22,19 @@ const Analysis = {
     this.loadStockOptions();
   },
 
+  /** 進入深度分析 Tab：補全股票列表並自動跑一次交易分析 */
+  onTabShow() {
+    this._bindCodeControls();
+    if (!this._universeList?.length) this.loadStockOptions();
+    const code = this.getCode() || '600519';
+    if (!this.getCode()) this.setCode(code);
+    const stats = document.getElementById('anStats');
+    if (stats && !stats.innerHTML.trim()) {
+      stats.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 分析中…</p>';
+    }
+    this.tradeAnalysis();
+  },
+
   getCode() {
     return document.getElementById('anCode')?.value?.trim() || '';
   },
@@ -72,10 +85,16 @@ const Analysis = {
       this._renderStockPicker();
     });
 
-    document.getElementById('anCodeGrid')?.addEventListener('click', e => {
+    const anGrid = document.getElementById('anCodeGrid');
+    anGrid?.addEventListener('click', e => {
       const row = e.target.closest('[data-code]');
       if (!row) return;
       this.setCode(row.dataset.code, row.dataset.name || '');
+    });
+    anGrid?.addEventListener('dblclick', e => {
+      const row = e.target.closest('[data-code]');
+      if (!row?.dataset.code || typeof App === 'undefined') return;
+      App.openStockDetail(row.dataset.code);
     });
   },
 
@@ -264,9 +283,10 @@ const Analysis = {
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    const btn = document.getElementById('anTradeBtn');
     document.getElementById('anResult')?.classList.add('h');
-    Utils.toast('正在回測並分析交易...', 2000, 'info');
-
+    Utils.btnLoading(btn, true, '分析中...');
+    try {
     const d = await Api.runTradeAnalysis({ code, strategy });
     if (!d?.success) return;
 
@@ -285,7 +305,7 @@ const Analysis = {
       <div class="c"><h3>最長連勝</h3><div class="v gn">${streak.max_win_streak || 0}</div></div>
       <div class="c"><h3>最長連虧</h3><div class="v rd">${streak.max_loss_streak || 0}</div></div>
       <div class="c"><h3>恢復因子</h3><div class="v">${Utils.formatNum(a.recovery_factor || 0, 2)}</div></div>`
-      
+
 
     const dist = a.distribution || {};
     if (dist.bins?.length && dist.counts?.length) {
@@ -298,6 +318,11 @@ const Analysis = {
 
     this._showSection('dist');
     Utils.toast('交易分析完成', 2000, 'success');
+    } catch (e) {
+      Utils.toast('交易分析失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      Utils.btnLoading(btn, false, '📊 交易分析');
+    }
   },
 
   async monteCarlo() {
@@ -305,9 +330,10 @@ const Analysis = {
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    const btn = document.getElementById('anMcBtn');
     document.getElementById('anResult')?.classList.add('h');
-    Utils.toast('蒙特卡羅模擬中...', 2000, 'info');
-
+    Utils.btnLoading(btn, true, '模擬中...');
+    try {
     const d = await Api.runMonteCarlo({ code, strategy, n_simulations: 1000, days: 252 });
     if (!d?.success) return;
 
@@ -323,7 +349,7 @@ const Analysis = {
       <div class="c"><h3>均值</h3><div class="v">${Utils.formatPct(((p.mean || 1) - 1) * 100)}</div></div>
       <div class="c"><h3>盈利概率</h3><div class="v ${probProfit >= 50 ? 'gn' : 'rd'}">${probProfit.toFixed(1)}%</div></div>
       <div class="c"><h3>大回撤概率</h3><div class="v rd">${((mc.prob_large_drawdown || 0) * 100).toFixed(1)}%</div></div>`
-      
+
 
     const curves = mc.simulated_curves || {};
     const pathSeries = Object.entries(curves).map(([label, data]) => ({
@@ -338,6 +364,11 @@ const Analysis = {
 
     this._showSection('mc');
     Utils.toast('蒙特卡羅模擬完成', 2000, 'success');
+    } catch (e) {
+      Utils.toast('蒙特卡羅模擬失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      Utils.btnLoading(btn, false, '🎲 蒙特卡羅');
+    }
   },
 
   async rollingMetrics() {
@@ -345,9 +376,10 @@ const Analysis = {
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    const btn = document.getElementById('anRollingBtn');
     document.getElementById('anResult')?.classList.add('h');
-    Utils.toast('計算滾動指標中...', 2000, 'info');
-
+    Utils.btnLoading(btn, true, '計算中...');
+    try {
     const d = await Api.runRollingMetrics({ code, strategy, window: 60 });
     if (!d?.success) return;
 
@@ -375,6 +407,11 @@ const Analysis = {
 
     this._showSection('rolling');
     Utils.toast('滾動指標計算完成', 2000, 'success');
+    } catch (e) {
+      Utils.toast('滾動指標計算失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      Utils.btnLoading(btn, false, '📉 滾動指標');
+    }
   },
 };
 

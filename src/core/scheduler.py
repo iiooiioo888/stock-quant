@@ -415,6 +415,44 @@ def disable_leaderboard_refresh():
 
 
 # ============================================================
+# Polymarket 概率預警
+# ============================================================
+
+def enable_polymarket_alerts():
+    """啟用 Polymarket 概率預警輪詢（間隔 SQ_POLYMARKET_ALERT_POLL_SEC）。"""
+    from src.config import settings
+
+    if not settings.polymarket_enabled or not settings.polymarket_alert_enabled:
+        logger.info("跳過 Polymarket 預警：功能或預警開關已關閉")
+        return
+
+    scheduler = _get_scheduler()
+    _remove_job_safe("polymarket_alerts")
+
+    def _job():
+        from src.core.polymarket.alerts import run_polymarket_alert_cycle
+        result = run_polymarket_alert_cycle()
+        if result.get("triggered"):
+            logger.info(f"Polymarket 預警觸發 {result['triggered']} 條")
+
+    interval = settings.polymarket_alert_poll_sec
+    scheduler.add_job(
+        _job,
+        "interval",
+        seconds=interval,
+        id="polymarket_alerts",
+        replace_existing=True,
+        name="Polymarket 概率預警",
+    )
+    logger.info(f"已啟用 Polymarket 概率預警 (每 {interval}s)")
+
+
+def disable_polymarket_alerts():
+    _remove_job_safe("polymarket_alerts")
+    logger.info("已禁用 Polymarket 概率預警")
+
+
+# ============================================================
 # 任務註冊表與統一管理
 # ============================================================
 
@@ -455,6 +493,12 @@ JOB_CATALOG = [
         "schedule": "每週日 17:00",
         "description": "全策略回測並更新排行榜",
     },
+    {
+        "id": "polymarket_alerts",
+        "name": "Polymarket 概率預警",
+        "schedule": "間隔輪詢（SQ_POLYMARKET_ALERT_POLL_SEC）",
+        "description": "依 yes 機率閾值與變動幅度觸發預警通知",
+    },
 ]
 
 _ENABLE_BY_ID = {
@@ -464,6 +508,7 @@ _ENABLE_BY_ID = {
     "degradation_check": enable_degradation_check,
     "correlation_monitor": enable_correlation_monitor,
     "leaderboard_refresh": enable_leaderboard_refresh,
+    "polymarket_alerts": enable_polymarket_alerts,
 }
 
 _DISABLE_BY_ID = {
@@ -473,6 +518,7 @@ _DISABLE_BY_ID = {
     "degradation_check": disable_degradation_check,
     "correlation_monitor": disable_correlation_monitor,
     "leaderboard_refresh": disable_leaderboard_refresh,
+    "polymarket_alerts": disable_polymarket_alerts,
 }
 
 
@@ -560,6 +606,11 @@ def setup_from_settings():
         enable_leaderboard_refresh()
     else:
         disable_leaderboard_refresh()
+
+    if getattr(settings, "scheduler_job_polymarket_alerts", False):
+        enable_polymarket_alerts()
+    else:
+        disable_polymarket_alerts()
 
     jobs = list_jobs()
     logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")

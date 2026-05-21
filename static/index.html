@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 
 <!-- Styles -->
-<link rel="stylesheet" href="/static/css/style.css?v=stockpicker-20260520b">
+<link rel="stylesheet" href="/static/css/style.css?v=stock-pages-20260521">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 </head>
 <body>
@@ -78,12 +78,17 @@
         <button data-tab="signals"><span class="nav-icon">📡</span><span class="nav-label">實時信號</span><span class="nav-dot" id="navDotSignals"></span></button>
         <button data-tab="data"><span class="nav-icon">🗄️</span><span class="nav-label">數據中心</span></button>
         <button data-tab="analysis"><span class="nav-icon">🔬</span><span class="nav-label">深度分析</span></button>
+        <button data-tab="stock-detail"><span class="nav-icon">📈</span><span class="nav-label">股票詳情</span></button>
+        <button data-tab="polymarket"><span class="nav-icon">🔮</span><span class="nav-label">預測市場</span></button>
 
         <div class="nav-section">系統</div>
         <button data-tab="tasks"><span class="nav-icon">📋</span><span class="nav-label">任務面板</span><span class="nav-badge" id="navBadgeTasks"></span></button>
         <button data-tab="reports"><span class="nav-icon">📄</span><span class="nav-label">策略報告</span></button>
+        <button data-tab="scheduler"><span class="nav-icon">⏰</span><span class="nav-label">定時任務</span></button>
         <button data-tab="alerts"><span class="nav-icon">🔔</span><span class="nav-label">預警通知</span><span class="nav-dot" id="navDotAlerts"></span></button>
         <button data-tab="markets"><span class="nav-icon">🌐</span><span class="nav-label">多市場</span></button>
+        <button data-tab="crypto"><span class="nav-icon">₿</span><span class="nav-label">加密行情</span></button>
+        <button data-tab="connectivity"><span class="nav-icon">🔌</span><span class="nav-label">接口檢查</span></button>
     </div>
 
     <div class="sidebar-footer">
@@ -223,42 +228,6 @@
         </article>
     </section>
 
-    <!-- 資金與板塊 -->
-    <section class="dash-section dash-market-sec">
-        <div class="dash-section-head">
-            <div class="dash-section-intro">
-                <h2 class="dash-section-title">💰 資金與板塊</h2>
-                <p class="dash-section-meta" id="marketChartsMeta">板塊資金 · 大盤流向 · 北向資金</p>
-            </div>
-        </div>
-        <div class="dash-market-grid">
-            <article class="dash-panel dash-chart-card">
-                <h3 class="dash-chart-title">板塊主力淨流入 Top 10</h3>
-                <div class="cw cw-market"><canvas id="dashSectorFlowChart"></canvas></div>
-            </article>
-            <article class="dash-panel dash-chart-card">
-                <h3 class="dash-chart-title">漲跌幅 × 資金流向</h3>
-                <div class="cw cw-market"><canvas id="dashSectorScatterChart"></canvas></div>
-            </article>
-            <article class="dash-panel dash-chart-card">
-                <h3 class="dash-chart-title">大盤資金流向</h3>
-                <div class="cw cw-market"><canvas id="dashMarketFlowChart"></canvas></div>
-            </article>
-            <article class="dash-panel dash-chart-card">
-                <h3 class="dash-chart-title">北向資金</h3>
-                <div class="cw cw-market"><canvas id="dashNorthFlowChart"></canvas></div>
-            </article>
-            <article class="dash-panel dash-chart-card dash-span-2">
-                <h3 class="dash-chart-title">板塊熱力圖</h3>
-                <div class="cw cw-treemap" id="dashSectorTreemapWrap"><canvas id="dashSectorTreemap"></canvas></div>
-            </article>
-            <article class="dash-panel dash-chart-card">
-                <h3 class="dash-chart-title">概念板塊漲跌</h3>
-                <div class="cw cw-market"><canvas id="dashConceptSectorChart"></canvas></div>
-            </article>
-        </div>
-    </section>
-
     <!-- 全球指數 -->
     <section class="dash-section index-charts-sec">
         <div class="dash-section-head">
@@ -358,6 +327,7 @@
                             <span class="bt-selected-name" id="btSelectedName">貴州茅台</span>
                         </div>
                     </div>
+                    <button class="btn s" type="button" id="btOpenDetailBtn" title="打開該股獨立詳情頁">📈 個股詳情</button>
                     <input type="text" id="btCodeManual" class="input-sm bt-code-manual" value="600519" placeholder="6 位代碼" maxlength="6" inputmode="numeric">
                     <input type="search" id="btCodeSearch" class="input-sm bt-code-search" placeholder="搜尋市值 TOP 20000…" autocomplete="off">
                 </div>
@@ -761,16 +731,22 @@
         <button data-stab="strength">💪 強度評分</button>
     </div>
     <div id="stab-current" class="mt-md">
-        <div class="sec"><h2>實時交易信號</h2><button class="btn mb-md" onclick="Signals.loadCurrent()">🔄 刷新</button><div id="currentSignals"><div class="state-empty"><span class="state-icon">📡</span><span class="state-text">點擊上方按鈕載入信號</span></div></div></div>
+        <div class="sec"><h2>實時交易信號</h2><button class="btn mb-md" onclick="Signals.loadCurrent()">🔄 刷新</button><div id="currentSignals"><div class="state-empty"><span class="state-icon">📡</span><span class="state-text">切換到此頁將自動載入；策略名稱與買賣說明為中文</span></div></div></div>
     </div>
     <div id="stab-history" class="h mt-md">
         <div class="sec"><h2>歷史信號記錄</h2><button class="btn mb-md" onclick="Signals.loadHistory()">📜 載入</button><div id="historySignals"></div></div>
         <div class="sec"><h2>📊 信號時間線</h2><div class="cw"><canvas id="signalsTimelineChart"></canvas></div></div>
     </div>
     <div id="stab-strength" class="h mt-md">
-        <div class="sec"><h2>信號強度評分</h2><div class="fr"><div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div><button class="btn" onclick="Signals.loadStrength()">💪 評分</button></div>
+        <div class="sec">
+            <h2>信號強度評分</h2>
+            <div class="fr">
+                <div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div>
+                <button class="btn" onclick="Signals.loadStrength()">💪 評分</button>
+            </div>
+            <div id="strengthSignals"></div>
+        </div>
         <div class="sec"><h2>強度雷達對比</h2><div class="cw"><canvas id="sigStrengthRadar"></canvas></div></div>
-        <div id="strengthSignals"></div></div>
     </div>
 </div>
 
@@ -971,9 +947,9 @@
             <div class="bt-params-grid bt-analysis-grid">
                 <div class="fg bt-fg-strategy"><label>策略</label><select id="anStrategy" title="分析策略" aria-label="分析策略"></select></div>
                 <div class="btn-group bt-analysis-actions">
-                    <button class="btn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
-                    <button class="btn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
-                    <button class="btn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
+                    <button class="btn" id="anTradeBtn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
+                    <button class="btn" id="anMcBtn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
+                    <button class="btn" id="anRollingBtn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
                 </div>
             </div>
         </section>
@@ -986,6 +962,37 @@
     </div>
 </div>
 
+<!-- ====== 定時任務（APScheduler） ====== -->
+<div id="tab-scheduler" class="h">
+    <div class="sec">
+        <h2>⏰ 定時任務</h2>
+        <p class="sec-desc">APScheduler 背景排程（Asia/Shanghai）。定時增量更新等作業<strong>不經</strong>下方「任務面板」佇列，僅在此管理。</p>
+        <div class="btn-group" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button class="btn" type="button" id="schedSetupBtn" onclick="SchedulerTab.setupAll()">⏰ 註冊默認任務</button>
+            <button class="btn s" type="button" onclick="SchedulerTab.disableAll()">禁用全部</button>
+            <button class="btn s" type="button" onclick="App.loadTab('reports')">📄 策略報告</button>
+        </div>
+        <div id="schedLoading" class="sched-loading" style="display:none"><span class="ld"></span> 載入中…</div>
+        <div class="g" id="schedStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
+        <div class="sec" style="margin-top:8px">
+            <h3 style="font-size:14px;margin-bottom:8px">已註冊任務</h3>
+            <div id="schedActiveList" class="sched-active-list"></div>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>任務目錄</h2>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>任務</th><th>排程</th><th>說明</th><th>狀態</th><th>下次執行</th><th>操作</th>
+                </tr></thead>
+                <tbody id="schedTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:24px">載入中…</td></tr></tbody>
+            </table>
+        </div>
+        <p class="sched-foot-hint">啟動時可設 <code>SQ_SCHEDULER_AUTO_REGISTER=true</code> 自動註冊默認任務。</p>
+    </div>
+</div>
+
 <!-- ====== 報告 ====== -->
 <div id="tab-reports" class="h">
     <div class="sec">
@@ -995,11 +1002,40 @@
             <button class="btn" onclick="generateReport()" id="rptBtn">📊 生成報告</button>
             <button class="btn s" onclick="enableScheduler()">⏰ 啟用每日自動 (15:30)</button>
             <button class="btn s" onclick="disableScheduler()">禁用自動</button>
-            <button class="btn s" onclick="listSchedulerJobs()">📋 查看任務</button>
+            <button class="btn s" onclick="listSchedulerJobs()">📋 定時任務管理</button>
         </div>
     </div>
     <div id="rptResult" class="h"><div class="sec"><h2>策略表現概覽</h2><div class="cw"><canvas id="rptPerfChart"></canvas></div></div><div class="sec"><h2>報告內容</h2><pre class="rpt" id="rptContent"></pre></div></div>
     <div id="schedulerJobs" class="h"><div class="sec"><h2>調度任務</h2><div id="jobsList"></div></div></div>
+</div>
+
+<!-- ====== 對外接口檢查 ====== -->
+<div id="tab-connectivity" class="h">
+    <div class="sec">
+        <h2>🔌 對外接口檢查</h2>
+        <p class="sec-desc">探測東財、Yahoo、Binance、Polymarket、Redis 等外部依賴的連通性與延遲。全量檢測需登錄。</p>
+        <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button class="btn" type="button" id="extRunBtn">▶ 立即檢測</button>
+            <button class="btn s" type="button" id="extRegistryBtn">📋 僅看註冊表</button>
+            <span class="sec-desc" id="extSummaryMeta"></span>
+        </div>
+        <div class="g" id="extSummaryCards" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
+    </div>
+    <div class="sec">
+        <h2>探測結果</h2>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>狀態</th><th>名稱</th><th>類別</th><th>延遲</th><th>說明</th><th>端點</th>
+                </tr></thead>
+                <tbody id="extProbeTable"><tr><td colspan="6"><span class="ld"></span> 載入註冊表…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>數據源註冊表</h2>
+        <div id="extRegistryBox" class="sec-desc"></div>
+    </div>
 </div>
 
 <!-- ====== 預警 ====== -->
@@ -1013,21 +1049,142 @@
     <div class="sec"><h2>預警歷史</h2><div id="alertList"><div class="state-loading"><span class="ld"></span> 載入中...</div></div></div>
 </div>
 
-<!-- ====== 市場 ====== -->
-<div id="tab-markets" class="h">
-    <div class="sec">
-        <h2>🌐 多市場支持</h2>
-        <div id="marketCards" class="g" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
-            <div class="state-loading"><span class="ld"></span> 載入中...</div>
+<!-- ====== 個股分析（每支股票獨立頁 #/stock/代碼） ====== -->
+<div id="tab-stock-detail" class="h stock-detail-page">
+    <div id="sdIndexView" class="sd-index-view">
+        <section class="sd-index-head">
+            <h2 class="dash-section-title">📈 股票詳情索引</h2>
+            <p class="sec-desc">每支股票都有獨立詳情頁（TradingView K 線 + Polymarket）。點擊卡片進入，網址可收藏分享，例如 <code>#/stock/600519</code></p>
+            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-top:10px">
+                <input type="search" id="sdIndexSearch" class="input-sm" placeholder="搜尋代碼或名稱…" style="min-width:200px">
+                <button class="btn s" type="button" id="sdIndexReload">🔄 刷新列表</button>
+            </div>
+        </section>
+        <div id="sdStockGrid" class="sd-stock-grid">
+            <div class="state-loading"><span class="ld"></span> 載入股票列表…</div>
         </div>
     </div>
 
-    <!-- 加密貨幣行情 -->
+    <div id="sdDetailView" class="sd-detail-view h">
+    <div class="sd-detail-toolbar">
+        <button type="button" class="btn s" id="sdBackToList">← 返回股票列表</button>
+        <button type="button" class="btn s" id="sdCopyLinkBtn" title="複製當前個股頁連結">🔗 複製連結</button>
+        <span class="sd-url-hint" id="sdUrlHint"></span>
+    </div>
+    <section class="sd-hero">
+        <div class="sd-hero-main">
+            <div class="stock-code-icon sd-hero-icon">
+                <img id="sdIcon" width="56" height="56" alt="">
+                <span class="stock-code-letter" id="sdIconLetter">股</span>
+            </div>
+            <div>
+                <h2 class="sd-hero-title"><span id="sdName">—</span> <span id="sdCode" class="sd-code-tag"></span></h2>
+                <p class="sd-hero-meta" id="sdMeta">輸入代碼或從股票選擇器進入</p>
+            </div>
+        </div>
+        <div class="sd-hero-actions fr" style="flex-wrap:wrap;gap:8px">
+            <div class="fg"><label>代碼</label><input id="sdCodeInput" class="input-sm" placeholder="600519" maxlength="12"></div>
+            <button class="btn" type="button" id="sdGoBtn">載入</button>
+            <button class="btn s" type="button" id="sdBacktestBtn">回測</button>
+            <button class="btn s" type="button" id="sdAnalysisBtn">深度分析</button>
+            <button class="btn s" type="button" id="sdPmTabBtn">預測市場</button>
+        </div>
+    </section>
+
+    <section class="dash-section">
+        <div class="dash-section-head">
+            <h2 class="dash-section-title">📊 TradingView 專業行情</h2>
+            <p class="dash-section-meta">Lightweight Charts · K 線 / 走勢 · 本地數據庫</p>
+        </div>
+        <article class="sd-tv-main-card">
+            <div id="sdMainKline" class="sd-tv-kline-cw"></div>
+        </article>
+        <div id="sdMetrics" class="sd-metrics-grid"></div>
+    </section>
+
+    <section class="dash-section">
+        <div class="dash-section-head">
+            <h2 class="dash-section-title">🔮 相關預測市場（Polymarket）</h2>
+            <p class="dash-section-meta" id="sdPmHint">依股票名稱與代碼自動搜尋</p>
+        </div>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>問題</th><th>Yes</th><th>No</th><th>成交量</th><th>流動性</th><th>結束</th><th></th>
+                </tr></thead>
+                <tbody id="sdPmMarketTable"><tr><td colspan="7" class="muted">載入個股後顯示…</td></tr></tbody>
+            </table>
+        </div>
+        <div id="sdPmDetailPanel" class="h mt-sm sd-pm-detail">
+            <h3 id="sdPmDetailTitle" class="dash-section-title">市場詳情</h3>
+            <p id="sdPmDetailMeta" class="sec-desc"></p>
+            <div class="g" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div><h4>訂單簿（Yes token）</h4><div id="sdPmOrderbook"></div></div>
+                <div><h4>價格歷史</h4><div class="cw" style="height:220px"><canvas id="sdPmPriceChart"></canvas></div></div>
+            </div>
+        </div>
+    </section>
+    </div>
+</div>
+
+<!-- ====== 預測市場 Polymarket ====== -->
+<div id="tab-polymarket" class="h">
+    <div class="sec" id="pmSection">
+        <h2>🔮 預測市場（Polymarket）</h2>
+        <p class="sec-desc">只讀數據 + <strong>概率驅動預警/策略信號</strong>。個股頁面會自動顯示相關市場；此處可全局搜尋。MCP 見 docs/MCP_POLYMARKET.md。</p>
+        <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <div class="fg"><label>搜尋</label><input id="pmSearchQ" placeholder="關鍵字…" class="input-wide"></div>
+            <button class="btn s" type="button" id="pmSearchBtn">🔍 搜尋</button>
+            <div class="fg"><label>標籤</label>
+                <select id="pmTagFilter"><option value="">全部標籤</option></select>
+            </div>
+            <button class="btn s" type="button" id="pmReloadBtn">🔄 刷新</button>
+        </div>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>問題</th><th>Yes</th><th>No</th><th>成交量</th><th>流動性</th><th>結束</th><th></th>
+                </tr></thead>
+                <tbody id="pmMarketTable"><tr><td colspan="7"><span class="ld"></span> 載入中…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 class="dash-section-title">📡 概率策略信號</h3>
+            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <button class="btn s" type="button" id="pmSignalsBtn">刷新信號</button>
+            </div>
+            <div id="pmSignalsBox" class="sec-desc">點擊刷新載入…</div>
+        </div>
+        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 class="dash-section-title">🔔 概率預警規則</h3>
+            <p class="sec-desc">選中市場後可一鍵添加；定時任務每 5 分鐘評估（可配置 SQ_POLYMARKET_ALERT_POLL_SEC）。</p>
+            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <div class="fg"><label>Yes ≥</label><input id="pmRuleYesAbove" type="number" step="0.01" min="0" max="1" placeholder="0.75" style="width:72px"></div>
+                <div class="fg"><label>Yes ≤</label><input id="pmRuleYesBelow" type="number" step="0.01" min="0" max="1" placeholder="0.25" style="width:72px"></div>
+                <div class="fg"><label>變動%</label><input id="pmRuleChangePct" type="number" step="1" min="1" placeholder="10" style="width:64px"></div>
+                <button class="btn s" type="button" id="pmAddRuleBtn">➕ 為選中市場添加</button>
+                <button class="btn s" type="button" id="pmEvalAlertsBtn">▶ 立即評估</button>
+            </div>
+            <div id="pmRulesBox" class="sec-desc"></div>
+        </div>
+        <div id="pmDetailPanel" class="h mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 id="pmDetailTitle" class="dash-section-title">市場詳情</h3>
+            <p id="pmDetailMeta" class="sec-desc"></p>
+            <div class="g" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div><h4>訂單簿（Yes token）</h4><div id="pmOrderbook"></div></div>
+                <div><h4>價格歷史</h4><div class="cw" style="height:220px"><canvas id="pmPriceChart"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 加密行情 ====== -->
+<div id="tab-crypto" class="h">
     <div class="sec">
         <h2>₿ 加密貨幣行情</h2>
-        <p class="sec-desc">Binance 實時報價，點擊行查看 K 線圖</p>
+        <p class="sec-desc">Binance 實時報價（多源降級），點擊行查看 K 線圖 · API <code>/api/crypto/*</code></p>
         <div class="crypto-market-toolbar">
-            <button class="btn s" onclick="CryptoMarket.refresh()">🔄 刷新</button>
+            <button class="btn s" type="button" id="cryptoRefreshBtn">🔄 刷新</button>
         </div>
         <div id="cryptoMarketTable" class="dash-table-card">
             <div class="state-loading"><span class="ld"></span> 載入中…</div>
@@ -1043,6 +1200,16 @@
                 </div>
             </div>
             <div class="cw cw-dash-tall"><canvas id="cryptoKlineChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 市場 ====== -->
+<div id="tab-markets" class="h">
+    <div class="sec">
+        <h2>🌐 多市場支持</h2>
+        <div id="marketCards" class="g" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+            <div class="state-loading"><span class="ld"></span> 載入中...</div>
         </div>
     </div>
 
@@ -1186,25 +1353,31 @@
 <!-- ============================================================
      JavaScript Modules（defer：不阻塞首屏渲染）
      ============================================================ -->
+<script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script defer src="/static/js/utils.js?v=stockpicker-20260520b"></script>
 <script defer src="/static/js/api.js"></script>
 <script defer src="/static/js/stock-picker.js?v=stockpicker-20260520c"></script>
-<script defer src="/static/js/charts.js"></script>
-<script defer src="/static/js/chart-pro.js"></script>
-<script defer src="/static/js/dashboard.js?v=stockpicker-20260520b"></script>
-<script defer src="/static/js/backtest.js"></script>
-<script defer src="/static/js/optimize.js"></script>
+<script defer src="/static/js/charts.js?v=chart-zh-20260521b"></script>
+<script defer src="/static/js/chart-pro.js?v=chart-zh-20260521b"></script>
+<script defer src="/static/js/dashboard.js?v=stock-detail-20260521"></script>
+<script defer src="/static/js/backtest.js?v=stock-pages-20260521"></script>
+<script defer src="/static/js/optimize.js?v=chart-zh-20260521b"></script>
 <script defer src="/static/js/portfolio.js"></script>
-<script defer src="/static/js/signals.js"></script>
+<script defer src="/static/js/signal-labels.js?v=stock-pages-20260521"></script>
+<script defer src="/static/js/signals.js?v=signals-opt-20260521"></script>
 <script defer src="/static/js/screener.js"></script>
 <script defer src="/static/js/heatmap.js"></script>
 <script defer src="/static/js/data.js?v=dragon-20260520"></script>
 <script defer src="/static/js/analysis.js"></script>
-<script defer src="/static/js/task-common.js?v=20260520pf"></script>
+<script defer src="/static/js/task-common.js?v=chart-zh-20260521b"></script>
 <script defer src="/static/js/tasks.js"></script>
 <script defer src="/static/js/scheduler.js"></script>
-<script defer src="/static/js/app.js?v=stockpicker-20260520b"></script>
+<script defer src="/static/js/polymarket.js?v=pm-split-20260521"></script>
+<script defer src="/static/js/stock-detail.js?v=stock-pages-20260521"></script>
+<script defer src="/static/js/crypto.js?v=crypto-20260521"></script>
+<script defer src="/static/js/connectivity.js?v=ext-check-20260521"></script>
+<script defer src="/static/js/app.js?v=stock-pages-20260521"></script>
 
 </body>
 </html>

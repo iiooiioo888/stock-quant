@@ -1952,7 +1952,7 @@ STRATEGY_NAMES = {
     "rsi": "RSI相對強弱策略",
     "grid": "網格交易策略",
     "turtle": "海龜趨勢跟蹤策略",
-    "dual_thrust": "DualThrust日內突破策略",
+    "dual_thrust": "雙軌日內突破策略",
     "momentum": "動量ROC策略",
     "mean_reversion": "均值回歸Z-score策略",
     "volume_price": "量價齊升策略",

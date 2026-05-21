@@ -32,6 +32,7 @@ ASYNC_TASK_TYPES = frozenset({
     "data_download",
     "data_download_all",
     "data_incremental",
+    "polymarket_sync",
 })
 
 
@@ -102,3 +103,51 @@ class TestTasksAPI:
 
         resp = client.delete(f"/api/tasks/{task_id}", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_retry_failed_task_dispatches_worker(self, client, auth_headers, monkeypatch):
+        import time
+        from src.core.task_manager import create_task, get_task, update_task
+
+        ran = []
+
+        def _fake_worker():
+            ran.append(1)
+            return {"retry_ok": True}
+
+        monkeypatch.setattr(
+            "src.core.task_retry.build_retry_worker",
+            lambda task_type, params, task_id: _fake_worker,
+        )
+
+        task = create_task(
+            "backtest",
+            {"code": "000001", "strategy": "dual_ma"},
+            title="pytest retry source",
+        )
+        task_id = task["task_id"]
+        update_task(task_id, status="failed", error="pytest")
+
+        resp = client.post(f"/api/tasks/{task_id}/retry", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("success") is True
+        new_id = body["task_id"]
+        assert new_id != task_id
+
+        for _ in range(80):
+            t = get_task(new_id)
+            if t and t.get("status") == "completed":
+                break
+            time.sleep(0.05)
+        assert ran, "retry worker should have run"
+        assert get_task(new_id).get("result", {}).get("retry_ok") is True
+
+    def test_retry_unsupported_type_returns_400(self, client, auth_headers):
+        from src.core.task_manager import create_task, update_task
+
+        task = create_task("heatmap", {"code": "000001"}, title="sync only")
+        task_id = task["task_id"]
+        update_task(task_id, status="failed", error="pytest")
+
+        resp = client.post(f"/api/tasks/{task_id}/retry", headers=auth_headers)
+        assert resp.status_code == 400

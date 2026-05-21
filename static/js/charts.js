@@ -4,6 +4,20 @@
 
 const CHART_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#ef4444', '#a78bfa', '#ec4899', '#06b6d4', '#84cc16'];
 
+function _chartLabel(text) {
+  if (typeof SignalLabels !== 'undefined' && SignalLabels.label) {
+    return SignalLabels.label(text);
+  }
+  return text;
+}
+
+function _chartSeries(series) {
+  return (series || []).map(s => ({
+    ...s,
+    label: _chartLabel(s.label),
+  }));
+}
+
 const Charts = {
   _lwCharts: {},
 
@@ -153,7 +167,7 @@ const Charts = {
     });
 
     const colors = this.getThemeColors();
-    const datasets = series.map((s, i) => ({
+    const datasets = _chartSeries(series).map((s, i) => ({
       label: s.label,
       data: s.data,
       borderColor: CHART_COLORS[i % CHART_COLORS.length],
@@ -389,7 +403,7 @@ const Charts = {
           position: s.type === 'buy' ? 'belowBar' : 'aboveBar',
           color: s.type === 'buy' ? '#22c55e' : '#ef4444',
           shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown',
-          text: s.type === 'buy' ? 'B' : 'S',
+          text: s.type === 'buy' ? '買' : '賣',
         }))
         .sort((a, b) => a.time.localeCompare(b.time));
 
@@ -708,7 +722,7 @@ const Charts = {
     if (old) old.destroy();
 
     const colors = this.getThemeColors();
-    const ds = datasets.map((s, i) => ({
+    const ds = _chartSeries(datasets).map((s, i) => ({
       label: s.label,
       data: s.data,
       borderColor: CHART_COLORS[i % CHART_COLORS.length],
@@ -808,7 +822,7 @@ const Charts = {
 
     new Chart(canvas.getContext('2d'), {
       type: 'bar',
-      data: { labels, datasets: [{ label, data, borderColor: bdColors, backgroundColor: bgColors, borderWidth: 1 }] },
+      data: { labels, datasets: [{ label: _chartLabel(label), data, borderColor: bdColors, backgroundColor: bgColors, borderWidth: 1 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -852,7 +866,7 @@ const Charts = {
     });
 
     const colors = this.getThemeColors();
-    const datasets = series.map((s, i) => {
+    const datasets = _chartSeries(series).map((s, i) => {
       const color = s.color || CHART_COLORS[i % CHART_COLORS.length];
       return {
         label: s.label,
@@ -1162,7 +1176,7 @@ const Charts = {
             grid: { color: colors.grid },
           },
           y: {
-            title: { display: true, text: '主力淨流入 (亿)', color: colors.text, font: { size: 10 } },
+            title: { display: true, text: '主力淨流入 (億)', color: colors.text, font: { size: 10 } },
             ticks: { color: colors.text, font: { size: 9 } },
             grid: { color: colors.grid },
           },
@@ -1187,10 +1201,10 @@ const Charts = {
     const toYi = v => (Number(v) || 0) / 1e8;
     const keys = [
       { key: 'main_net', label: '主力', color: '#38bdf8' },
-      { key: 'super_net', label: '超大单', color: '#a78bfa' },
-      { key: 'big_net', label: '大单', color: '#22c55e' },
-      { key: 'mid_net', label: '中单', color: '#f59e0b' },
-      { key: 'small_net', label: '小单', color: '#94a3b8' },
+      { key: 'super_net', label: '超大單', color: '#a78bfa' },
+      { key: 'big_net', label: '大單', color: '#22c55e' },
+      { key: 'mid_net', label: '中單', color: '#f59e0b' },
+      { key: 'small_net', label: '小單', color: '#94a3b8' },
     ];
 
     new Chart(canvas.getContext('2d'), {

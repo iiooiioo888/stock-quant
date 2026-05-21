@@ -32,8 +32,13 @@ const App = {
       this._initQuickStats(),
     ]).catch(() => {});
 
-    // 載入默認 Tab
-    this.loadTab('dashboard');
+    // 載入默認 Tab（支援 #/stock/代碼 或 #/stocks 深連結）
+    if (typeof StockDetail !== 'undefined') {
+      StockDetail.initRouter();
+      if (!StockDetail.routeFromHash()) this.loadTab('dashboard');
+    } else {
+      this.loadTab('dashboard');
+    }
 
     // 初始化子模塊
     if (typeof Signals !== 'undefined') Signals.init();
@@ -46,6 +51,23 @@ const App = {
 
   quickAction(tab) {
     this.loadTab(tab);
+  },
+
+  /** 打開該股獨立詳情頁（#/stock/代碼，可收藏分享） */
+  openStockDetail(code) {
+    const c = String(code || '').trim();
+    if (!c) {
+      if (typeof StockDetail !== 'undefined') {
+        StockDetail.initRouter();
+        this.loadTab('stock-detail');
+        StockDetail.showIndex();
+      } else {
+        this.loadTab('stock-detail');
+      }
+      return;
+    }
+    if (typeof StockDetail !== 'undefined') StockDetail.open(c);
+    else this.loadTab('stock-detail');
   },
 
   dismissTip() {
@@ -104,10 +126,10 @@ const App = {
     const tips = [
       '夏普比率 (Sharpe Ratio) 表示每承受一單位風險能獲得多少超額收益，大於 1 算不錯，大於 2 算優秀。',
       '最大回撤 (Max Drawdown) 是從最高點到最低點的跌幅，越小越好，代表策略的穩定性。',
-      'Sortino 比率只考慮下行風險，比夏普比率更關注「虧損」而非「波動」。',
-      'Calmar 比率 = 年化收益 / 最大回撤，數值越大表示風險調整後的收益越好。',
+      '索提諾比率只考慮下行風險，比夏普比率更關注「虧損」而非「波動」。',
+      '卡瑪比率 = 年化收益 / 最大回撤，數值越大表示風險調整後的收益越好。',
       'Win Rate (勝率) 不是越高越好，關鍵是盈虧比 — 即使勝率只有 40%，盈虧比夠高也能盈利。',
-      'Walk-Forward 分析能幫你檢測策略是否過擬合 — 如果樣本外表現遠差於樣本內，就要小心了。',
+      '滾動窗口驗證能幫你檢測策略是否過擬合 — 如果樣本外表現遠差於樣本內，就要小心了。',
       '蒙特卡羅模擬通過隨機重組交易順序，幫你評估策略在不同市場環境下的表現範圍。',
     ];
 
@@ -118,7 +140,7 @@ const App = {
 
   async _initStrategies() {
     try {
-      const d = await Api.getStrategiesList();
+      const d = await Api.getStrategies();
       if (!d) return;
 
       const all = [...(d.builtin || []), ...(d.user || [])];
@@ -204,14 +226,16 @@ const App = {
 
     // Search data
     const searchData = [
-      { icon: '📊', code: '000001', name: '平安銀行', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000001'); } },
-      { icon: '📊', code: '600519', name: '貴州茅台', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('600519'); } },
-      { icon: '📊', code: '000858', name: '五糧液', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000858'); } },
-      { icon: '📊', code: '601318', name: '中國平安', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('601318'); } },
-      { icon: '📊', code: '000333', name: '美的集團', type: 'A股', action: () => { this.loadTab('backtest'); if (typeof Backtest !== 'undefined') Backtest.setCode('000333'); } },
+      { icon: '📊', code: '000001', name: '平安銀行', type: 'A股', action: () => this.openStockDetail('000001') },
+      { icon: '📊', code: '600519', name: '貴州茅台', type: 'A股', action: () => this.openStockDetail('600519') },
+      { icon: '📊', code: '000858', name: '五糧液', type: 'A股', action: () => this.openStockDetail('000858') },
+      { icon: '📊', code: '601318', name: '中國平安', type: 'A股', action: () => this.openStockDetail('601318') },
+      { icon: '📊', code: '000333', name: '美的集團', type: 'A股', action: () => this.openStockDetail('000333') },
+      { icon: '🔮', code: '', name: '預測市場', type: '功能', action: () => this.loadTab('polymarket') },
+      { icon: '📈', code: '', name: '股票詳情索引', type: '功能', action: () => this.openStockDetail('') },
       { icon: '🧪', code: '', name: '策略回測', type: '功能', action: () => this.loadTab('backtest') },
       { icon: '⚡', code: '', name: '參數優化', type: '功能', action: () => this.loadTab('optimize') },
-      { icon: '🔄', code: '', name: 'Walk-Forward', type: '功能', action: () => this.loadTab('walkforward') },
+      { icon: '🔄', code: '', name: '滾動窗口驗證', type: '功能', action: () => this.loadTab('walkforward') },
       { icon: '🌡️', code: '', name: '熱力圖', type: '功能', action: () => this.loadTab('heatmap') },
       { icon: '💼', code: '', name: '組合回測', type: '功能', action: () => this.loadTab('portfolio') },
       { icon: '⚖️', code: '', name: '多股對比', type: '功能', action: () => this.loadTab('compare') },
@@ -223,6 +247,7 @@ const App = {
       { icon: '⏰', code: '', name: '定時任務', type: '功能', action: () => this.loadTab('scheduler') },
       { icon: '🔔', code: '', name: '預警通知', type: '功能', action: () => this.loadTab('alerts') },
       { icon: '🌐', code: '', name: '多市場', type: '功能', action: () => this.loadTab('markets') },
+      { icon: '🔌', code: '', name: '接口檢查', type: '功能', action: () => this.loadTab('connectivity') },
       { icon: '📋', code: '', name: '任務面板', type: '功能', action: () => this.loadTab('tasks') },
       { icon: '📥', code: '', name: '下載全市場數據', type: '操作', action: () => this.downloadAllFromDashboard() },
     ];
@@ -351,6 +376,9 @@ const App = {
   },
 
   loadTab(tab) {
+    // 同一 Tab 不重複加載（避免無謂的 cleanup + reload）
+    if (this._currentTab === tab) return;
+
     // 隱藏所有 tab 內容
     document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('h'));
 
@@ -403,9 +431,21 @@ const App = {
         this.loadAlerts();
         this.loadNotifyChannels();
         break;
+      case 'crypto':
+        if (typeof CryptoUI !== 'undefined') CryptoUI.load();
+        break;
       case 'markets':
         this.loadMarkets();
-        if (typeof CryptoMarket !== 'undefined') CryptoMarket.refresh();
+        this.loadMarketRealtime();
+        break;
+      case 'polymarket':
+        if (typeof PolymarketUI !== 'undefined') PolymarketUI.load();
+        break;
+      case 'stock-detail':
+        if (typeof StockDetail !== 'undefined') StockDetail.onTabActivated();
+        break;
+      case 'connectivity':
+        if (typeof ConnectivityPage !== 'undefined') ConnectivityPage.load();
         break;
       case 'signals':
         if (typeof Signals !== 'undefined') Signals.load();
@@ -417,8 +457,27 @@ const App = {
         if (typeof Heatmap !== 'undefined') Heatmap.initTab();
         break;
       case 'compare':
+        this._onCompareTab();
+        break;
+      case 'history':
+        this._onHistoryTab();
+        break;
+      case 'walkforward':
+        this._onWalkforwardTab();
+        break;
+      case 'optimize':
+        this._onOptimizeTab();
         break;
       case 'analysis':
+        if (typeof Analysis !== 'undefined' && typeof Analysis.onTabShow === 'function') {
+          Analysis.onTabShow();
+        }
+        break;
+      case 'screener':
+        this._onScreenerTab();
+        break;
+      case 'reports':
+        this._onReportsTab();
         break;
       case 'tasks':
         if (typeof Tasks !== 'undefined') Tasks.load();
@@ -450,7 +509,8 @@ const App = {
     } catch (e) { /* ignore */ }
     this._connectWS();
 
-    setInterval(() => {
+    if (this._wsPingTimer) clearInterval(this._wsPingTimer);
+    this._wsPingTimer = setInterval(() => {
       if (this._ws && this._ws.readyState === 1) {
         this._ws.send('ping');
       }
@@ -483,6 +543,9 @@ const App = {
     this._ws.onopen = () => {
       this._setWsStatus(true, '已連接');
       this._wsRetry = 0;
+      if (typeof Tasks !== 'undefined' && typeof Tasks.rebindWs === 'function') {
+        Tasks.rebindWs();
+      }
     };
 
     this._ws.onclose = () => {
@@ -852,10 +915,7 @@ function disableScheduler() {
   } else App._disableScheduler();
 }
 function listSchedulerJobs() {
-  App.loadTab('reports');
-  const el = document.getElementById('schedulerJobs');
-  if (el) el.classList.remove('h');
-  if (typeof App._listSchedulerJobs === 'function') App._listSchedulerJobs();
+  App.loadTab('scheduler');
 }
 function testNotify() { App.testNotify(); }
 function showAddRule() { Dashboard.showAddRule(); }
@@ -863,6 +923,76 @@ function addToWatchlist(code) { Screener.addToWatchlist(code); }
 function downloadMarket() { App.downloadMarket(); }
 function downloadAllMarkets() { App.downloadAllMarkets(); }
 function loadMarketRealtime() { App.loadMarketRealtime(); }
+
+// ============================================================
+// Tab 進入即載入（無需手動點刷新）
+// ============================================================
+
+App._onCompareTab = function() {
+  const result = document.getElementById('cmpResult');
+  if (result && !result.dataset.cmpHasResult) {
+    result.classList.add('h');
+  }
+};
+
+App._onHistoryTab = function() {
+  const tbody = document.getElementById('histTable');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-dim)"><span class="ld"></span> 載入中…</td></tr>';
+  }
+  this._loadHistory();
+};
+
+App._onWalkforwardTab = function() {
+  const tbody = document.getElementById('wfTable');
+  if (tbody && !tbody.querySelector('tr')) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">填寫參數後點「滾動窗口驗證」；結果將顯示於此</td></tr>';
+  }
+  const stats = document.getElementById('wfStats');
+  if (stats && !stats.innerHTML.trim()) {
+    stats.innerHTML = '<div class="c"><h3>提示</h3><div class="v" style="font-size:12px;color:var(--text-dim)">選擇股票與策略後執行滾動窗口分析</div></div>';
+  }
+};
+
+App._onOptimizeTab = function() {
+  if (!document.getElementById('optStrategy')?.options?.length || document.getElementById('optStrategy').options.length <= 1) {
+    this._initStrategies();
+  }
+};
+
+App._onScreenerTab = function() {
+  const box = document.getElementById('scrResult');
+  if (box) box.classList.remove('h');
+  const tbody = document.getElementById('scrTable');
+  if (tbody && !tbody.querySelector('tr')) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim)">勾選條件後點「開始篩選」</td></tr>';
+  }
+};
+
+App._onReportsTab = async function() {
+  const pre = document.getElementById('rptContent');
+  const box = document.getElementById('rptResult');
+  if (!pre || !box) return;
+  if (!pre.textContent.trim()) {
+    pre.textContent = '載入系統概覽…';
+    box.classList.remove('h');
+    const h = await Api.getHealth();
+    if (h) {
+      pre.textContent = [
+        `系統概覽 · ${new Date().toLocaleString()}`,
+        `版本: ${h.version || '-'}`,
+        `本地標的: ${h.total_stocks ?? 0}`,
+        `K 線: ${(h.total_klines ?? 0).toLocaleString()} 條`,
+        `預警記錄: ${h.total_alerts ?? 0}`,
+        `庫大小: ${h.db_size_mb ?? 0} MB`,
+        '',
+        '點「生成報告」可產出完整策略日報。',
+      ].join('\n');
+    } else {
+      pre.textContent = '無法取得系統狀態。點「生成報告」重試。';
+    }
+  }
+};
 
 // ============================================================
 // Compare, History, WalkForward, Reports (shared)
@@ -887,14 +1017,21 @@ App._runCompare = async function() {
   const series = [];
   for (const [code, v] of Object.entries(comp)) {
     if (v?.relative_return?.length) {
-      series.push({ label: code, data: v.relative_return, dates: v.dates });
+      const relLabel = (typeof SignalLabels !== 'undefined')
+        ? `${code} ${SignalLabels.strategyName(code, 'short')}`
+        : code;
+      series.push({ label: relLabel, data: v.relative_return, dates: v.dates });
     }
   }
 
   if (series.length) {
     if (typeof ProCharts !== 'undefined') ProCharts.renderCompare(series);
     else Charts.drawLineChart('cmpChart', series);
-    document.getElementById('cmpResult').classList.remove('h');
+    const cmpResult = document.getElementById('cmpResult');
+    if (cmpResult) {
+      cmpResult.classList.remove('h');
+      cmpResult.dataset.cmpHasResult = '1';
+    }
     if (d.missing?.length) {
       Utils.toast(`已載入 ${series.length} 只；無本地數據: ${d.missing.join(', ')}`, 5000, 'warning');
     }
@@ -938,8 +1075,8 @@ App.renderWalkForwardResult = function(r) {
   if (!r) return;
   document.getElementById('wfStats').innerHTML = `
     <div class="c"><h3>窗口數</h3><div class="v bl">${r.n_windows}</div></div>
-    <div class="c"><h3>平均 OOS 收益</h3><div class="v ${Utils.badgeClass(r.avg_oos_return_pct)}">${Utils.formatPct(r.avg_oos_return_pct)}</div></div>
-    <div class="c"><h3>平均 OOS 夏普</h3><div class="v">${Utils.formatNum(r.avg_oos_sharpe, 4)}</div></div>
+    <div class="c"><h3>平均樣本外收益</h3><div class="v ${Utils.badgeClass(r.avg_oos_return_pct)}">${Utils.formatPct(r.avg_oos_return_pct)}</div></div>
+    <div class="c"><h3>平均樣本外夏普</h3><div class="v">${Utils.formatNum(r.avg_oos_sharpe, 4)}</div></div>
     <div class="c"><h3>穩定性</h3><div class="v">${Utils.formatNum(r.stability_score, 4)}</div></div>
     <div class="c"><h3>過擬合比</h3><div class="v rd">${Utils.formatNum(r.overfit_ratio, 4)}</div></div>
     <div class="c"><h3>正收益窗口</h3><div class="v gn">${r.positive_windows}/${r.total_windows}</div></div>`;
@@ -961,12 +1098,12 @@ App.renderWalkForwardResult = function(r) {
   if (typeof ProCharts !== 'undefined') ProCharts.renderWalkForward(wins);
   else {
     const oosReturns = wins.map(w => w.test_return_pct);
-    const oosLabels = wins.map(w => 'W' + w.window);
+    const oosLabels = wins.map(w => '窗口 ' + w.window);
     Charts.drawBarChart('wfChart', oosReturns, oosLabels, '樣本外收益率 (%)');
   }
 
   document.getElementById('wfResult').classList.remove('h');
-  Utils.toast('Walk-Forward 分析完成', 3000, 'success');
+  Utils.toast('滾動窗口驗證完成', 3000, 'success');
 };
 
 App._runWalkForward = async function() {
@@ -992,7 +1129,7 @@ App._runWalkForward = async function() {
     if (d.is_duplicate) {
       Utils.toast('⏳ ' + (d.message || '相同分析執行中，等待完成...'), 3000, 'warning');
     } else if (d.async && d.task_id) {
-      Utils.toast('📋 Walk-Forward 已提交', 2000, 'info');
+      Utils.toast('📋 滾動窗口驗證已提交', 2000, 'info');
     }
     const resolved = await Api.resolveTaskResponse(d);
     const r = resolved?.result || resolved?.task?.result;
@@ -1002,7 +1139,7 @@ App._runWalkForward = async function() {
     }
     App.renderWalkForwardResult(r);
   } catch (e) {
-    Utils.toast('Walk-Forward 失敗: ' + (e.message || e), 3000, 'error');
+    Utils.toast('滾動窗口驗證失敗: ' + (e.message || e), 3000, 'error');
   }
 };
 
@@ -1061,7 +1198,10 @@ App._disableScheduler = async function() {
 
 App._listSchedulerJobs = async function() {
   if (!document.getElementById('jobsList')) {
-    App.loadTab('scheduler');
+    if (typeof SchedulerTab !== 'undefined') {
+      App.loadTab('scheduler');
+      return;
+    }
     return;
   }
   const d = await Api.getSchedulerCatalog();
@@ -1161,12 +1301,15 @@ App._initTaskPanel = function() {
   const hdrRight = document.querySelector('.hdr-right');
   if (hdrRight) hdrRight.insertBefore(indicator, hdrRight.firstChild);
 
-  // WS 實時更新浮動面板
+  // WS 實時更新浮動面板（帶去抖，避免與輪詢重複觸發）
   App._taskWsHandler = (event) => {
     try {
       const data = JSON.parse(event.data);
       if (!data || !data.type || !data.type.startsWith('task_')) return;
-      // 任務狀態變更 → 刷新浮動面板
+      // 去抖：如果 2 秒內已觸發過輪詢，跳過
+      const now = Date.now();
+      if (App._lastTaskPollAt && (now - App._lastTaskPollAt) < 2000) return;
+      App._lastTaskPollAt = now;
       App._pollTasks();
     } catch (_) {}
   };
@@ -1188,6 +1331,7 @@ App._pollTasks = async function() {
   const panelOpen = panel && panel.style.display !== 'none';
   const onTasksTab = App._currentTab === 'tasks';
   if (!panelOpen && !onTasksTab) return;
+  App._lastTaskPollAt = Date.now();
   try {
     const q = await Api.getTaskQueue({ silent: true });
     if (!q || q._rateLimited) return;
@@ -1323,7 +1467,7 @@ App._viewTaskResult = async function(taskId) {
         <div class="c"><h3>勝率</h3><div class="v">${Utils.formatNum(r.win_rate_pct, 1)}%</div></div>
         <div class="c"><h3>交易次數</h3><div class="v">${r.total_trades}</div></div>
         <div class="c"><h3>年化收益</h3><div class="v">${Utils.formatPct(r.annual_return_pct)}</div></div>
-        <div class="c"><h3>Sortino</h3><div class="v">${Utils.formatNum(r.sortino_ratio, 4)}</div></div>
+        <div class="c"><h3>索提諾比率</h3><div class="v">${Utils.formatNum(r.sortino_ratio, 4)}</div></div>
         <div class="c"><h3>最終市值</h3><div class="v">¥${(r.final_value || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</div></div>
       </div>
       <div style="margin-top:8px">
@@ -1435,138 +1579,6 @@ App.checkTaskDedup = function(taskType, params) {
 App.releaseTaskDedup = function(taskType, params) {
   const key = taskType + ':' + JSON.stringify(params);
   delete App._activeTasks[key];
-};
-
-// ============================================================
-// CryptoMarket — 加密貨幣行情表格 + K 線圖
-// ============================================================
-const CryptoMarket = {
-  _data: [],
-  _selectedSymbol: null,
-  _periodDays: 30,
-
-  async refresh() {
-    const el = document.getElementById('cryptoMarketTable');
-    if (!el) return;
-    el.innerHTML = '<div class="state-loading"><span class="ld"></span> 載入中…</div>';
-    try {
-      const d = await Api.get('/api/markets/crypto/realtime');
-      this._data = d?.data || [];
-      this._renderTable();
-    } catch (e) {
-      el.innerHTML = '<div class="state-empty"><span class="state-icon">❌</span><span class="state-text">載入失敗: ' + e.message + '</span></div>';
-    }
-  },
-
-  _renderTable() {
-    const el = document.getElementById('cryptoMarketTable');
-    if (!el) return;
-    if (!this._data.length) {
-      el.innerHTML = '<div class="state-empty"><span class="state-icon">₿</span><span class="state-text">暫無加密貨幣數據</span></div>';
-      return;
-    }
-    const rows = this._data.map(c => {
-      const chg = Number(c.change_pct) || 0;
-      const cls = chg > 0 ? 'up' : (chg < 0 ? 'down' : 'flat');
-      const sign = chg > 0 ? '+' : '';
-      const price = Number(c.price) || 0;
-      const priceStr = price >= 1000
-        ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : price >= 1
-          ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-          : price.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
-      const high = Number(c.high) || 0;
-      const low = Number(c.low) || 0;
-      const vol = c.quote_volume || c.volume || 0;
-      const volStr = vol >= 1e9 ? (vol / 1e9).toFixed(1) + 'B'
-        : vol >= 1e6 ? (vol / 1e6).toFixed(1) + 'M'
-        : vol >= 1e3 ? (vol / 1e3).toFixed(0) + 'K'
-        : vol.toFixed(0);
-      const icon = { BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '◆', SOLUSDT: '◎', XRPUSDT: '✕' }[c.symbol] || '●';
-      return `<tr onclick="CryptoMarket.selectSymbol('${c.symbol}')" style="cursor:pointer">
-        <td><span class="crypto-tbl-icon">${icon}</span> <strong>${c.name || c.symbol}</strong><br><span style="font-size:10px;color:var(--text-dim)">${c.symbol}</span></td>
-        <td class="r" style="font-variant-numeric:tabular-nums">$${priceStr}</td>
-        <td class="r"><span class="crypto-badge ${cls}">${sign}${chg.toFixed(2)}%</span></td>
-        <td class="r" style="font-size:12px;color:var(--text-dim)">${high > 0 ? '$' + high.toLocaleString('en-US', {maximumFractionDigits: 2}) : '-'}</td>
-        <td class="r" style="font-size:12px;color:var(--text-dim)">${low > 0 ? '$' + low.toLocaleString('en-US', {maximumFractionDigits: 2}) : '-'}</td>
-        <td class="r" style="font-size:12px">${volStr}</td>
-      </tr>`;
-    }).join('');
-    el.innerHTML = `<table class="dash-watchlist-table"><thead><tr>
-      <th>幣種</th><th class="r">價格</th><th class="r">24h 漲跌</th><th class="r">最高</th><th class="r">最低</th><th class="r">24h 成交額</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
-  },
-
-  async selectSymbol(symbol) {
-    this._selectedSymbol = symbol;
-    const panel = document.getElementById('cryptoKlinePanel');
-    const title = document.getElementById('cryptoKlineTitle');
-    if (panel) panel.classList.remove('h');
-    if (title) title.textContent = `${symbol} K 線圖`;
-    const btns = document.querySelectorAll('[data-crypto-period]');
-    btns.forEach(b => {
-      b.onclick = () => {
-        btns.forEach(x => x.classList.remove('a'));
-        b.classList.add('a');
-        this._periodDays = parseInt(b.dataset.cryptoPeriod) || 30;
-        this._loadKline();
-      };
-    });
-    await this._loadKline();
-  },
-
-  async _loadKline() {
-    if (!this._selectedSymbol) return;
-    const canvas = document.getElementById('cryptoKlineChart');
-    if (!canvas) return;
-    try {
-      const d = await Api.get(`/api/markets/crypto/kline?symbol=${this._selectedSymbol}&days=${this._periodDays}`);
-      const klines = d?.klines || [];
-      if (!klines.length) {
-        if (typeof Chart !== 'undefined') {
-          const existing = Chart.getChart(canvas);
-          if (existing) existing.destroy();
-        }
-        return;
-      }
-      const dates = klines.map(k => k.date);
-      const closes = klines.map(k => k.close);
-      if (typeof Chart === 'undefined') return;
-      const existing = Chart.getChart(canvas);
-      if (existing) existing.destroy();
-      const colors = getComputedStyle(document.documentElement);
-      const accent = colors.getPropertyValue('--accent').trim() || '#38bdf8';
-      const gridColor = colors.getPropertyValue('--border-color').trim() || 'rgba(128,128,128,.15)';
-      const textColor = colors.getPropertyValue('--text').trim() || '#e2e8f0';
-      new Chart(canvas, {
-        type: 'line',
-        data: {
-          labels: dates,
-          datasets: [{
-            label: this._selectedSymbol,
-            data: closes,
-            borderColor: accent,
-            backgroundColor: accent + '20',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            borderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: textColor, font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: gridColor } },
-            y: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
-          },
-        },
-      });
-    } catch (e) {
-      console.warn('加密 K 線載入失敗:', e);
-    }
-  },
 };
 
 // ============================================================

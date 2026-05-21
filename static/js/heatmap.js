@@ -155,6 +155,7 @@ const Heatmap = {
   },
 
   async run() {
+    if (this._running) return;
     const code = (this.$el('hmCode')?.value || '').trim();
     const strategy = (this.$el('hmStrategy')?.value || '').trim();
     const grid = parseInt(this.$el('hmGrid')?.value, 10) || 8;
@@ -171,11 +172,11 @@ const Heatmap = {
       return Utils.toast('請選擇兩個不同的參數軸', 3000, 'warning');
     }
 
+    this._running = true;
     Utils.btnLoading(btn, true, '計算中...');
 
+    try {
     const d = await Api.runHeatmap({ code, strategy, paramX, paramY, grid });
-
-    Utils.btnLoading(btn, false, '生成熱力圖');
 
     if (!d || !d.success) return;
     if (d.from_cache) Utils.toast('⚡ 使用緩存結果', 2000, 'info');
@@ -195,6 +196,12 @@ const Heatmap = {
 
     Charts.drawHeatmap('hmCanvas', r);
     this.$el('hmResult')?.classList.remove('h');
+    } catch (e) {
+      Utils.toast('熱力圖生成失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      this._running = false;
+      Utils.btnLoading(btn, false, '生成熱力圖');
+    }
   },
 };
 

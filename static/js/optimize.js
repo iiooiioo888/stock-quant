@@ -19,20 +19,21 @@ const Optimize = {
   },
 
   async run() {
+    if (this._running) return;
     const code = document.getElementById('optCode').value.trim();
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
     const strategy = document.getElementById('optStrategy').value;
     const method = this._method;
     const objective = this._objective;
     const btn = document.getElementById('optBtn');
+    this._running = true;
 
     Utils.btnLoading(btn, true, '優化中...');
+    try {
     const d = await Api.runOptimize({ code, strategy, method, objective, n_trials: 50 });
-    Utils.btnLoading(btn, false, '🔍 開始優化');
 
     if (!d || !d.success) return;
 
-    try {
       if (d.is_duplicate) {
         Utils.toast('⏳ ' + (d.message || '相同優化執行中，等待完成...'), 3000, 'warning');
       } else if (d.async && d.task_id) {
@@ -47,6 +48,9 @@ const Optimize = {
       this.renderResults(results, strategy);
     } catch (e) {
       Utils.toast('優化失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      this._running = false;
+      Utils.btnLoading(btn, false, '🔍 開始優化');
     }
   },
 
@@ -126,7 +130,13 @@ const Optimize = {
 
     // Top 10 收益率 vs 夏普 vs 回撤 對比圖
     const top = resultList.slice(0, 10);
-    const labels = top.map((r, i) => r.strategy || `#${i + 1}`);
+    const labels = top.map((r, i) => {
+      const sk = r.strategy;
+      if (sk && typeof SignalLabels !== 'undefined') {
+        return SignalLabels.strategyName(sk, 'chart');
+      }
+      return sk || `第 ${i + 1} 組`;
+    });
 
     chartSec.innerHTML = `
       <h2>📊 優化結果對比</h2>
@@ -256,12 +266,11 @@ const Optimize = {
     const btn = document.getElementById('autoOptBtn');
     Utils.btnLoading(btn, true, '全自動優化中...');
 
+    try {
     const d = await Api.runAutoOptimize({ method: 'optuna', n_trials: 30, objective: 'sharpe' });
-    Utils.btnLoading(btn, false, '⚡ 全自動優化');
 
     if (!d || !d.success) return Utils.toast('失敗', 3000, 'error');
 
-    try {
       if (d.is_duplicate) {
         Utils.toast('⏳ ' + (d.message || '全自動優化正在執行中，等待完成...'), 3000, 'warning');
       } else if (d.task_id) {
@@ -279,6 +288,8 @@ const Optimize = {
       Utils.toast('全自動優化完成', 3000, 'success');
     } catch (e) {
       Utils.toast('自動優化失敗: ' + (e.message || e), 3000, 'error');
+    } finally {
+      Utils.btnLoading(btn, false, '⚡ 全自動優化');
     }
   },
 };
