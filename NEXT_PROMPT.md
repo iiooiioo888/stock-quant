@@ -6,13 +6,15 @@ GitHub: https://github.com/iiooiioo888/stock-quant
 
 ## 當前狀態（v6.0 — 多市場 + 異步任務 + 全面測試後）
 
-生產級 A 股量化系統，FastAPI + SQLite + Backtrader，151 個 API 端點，82 個測試全通過。
+生產級 A 股量化系統，FastAPI + SQLite + Backtrader，**約 170 個 API 端點**，**164 個 pytest 用例全通過**（27 個 `test_*.py`，含參數化展開）。
+
+> 統計方式：`pytest tests/ --collect-only`；路由數為 `src/api/` 下 `@app` / `@router` 裝飾器計數（2026-05 實測）。
 
 **核心功能（30+ 個模塊）：**
 - 19 種策略回測 + 止損/止盈/移動止損 + 滑點/T+1/漲跌停
 - 參數優化（網格搜索 + Optuna + 多進程並行 + 計算預算分配）
 - 組合回測（多策略多股票 + 相關性矩陣 + 有效前沿）
-- 11+ 種組合方法（等權/風險平價/MVO/波動率目標/最大分散化/反相關/狀態切換/動態權重/Kelly/衰退檢測/信號仲裁）
+- 20 個組合 API（`/api/portfolio/*`：風險平價/MVO/BL/HRP/CVaR/動態再平衡/板塊限倉/動量疊加/自適應狀態等）+ `portfolio.py` 內 18+ 種算法函數
 - Walk-Forward 滾動窗口分析（過擬合檢測）
 - 全自動參數尋優（跨股票共識推薦）
 - 策略熱力圖（參數敏感性 Canvas 渲染）
@@ -64,10 +66,12 @@ GitHub: https://github.com/iiooiioo888/stock-quant
 src/
 ├── config.py               — pydantic-settings 配置（SQ_ 前綴 + 字段校驗）
 ├── api/
-│   ├── app.py              — FastAPI 主應用 + lifespan + WebSocket + 限流
+│   ├── app.py              — FastAPI 主應用 + lifespan + 大部分路由 + 限流
 │   ├── constants.py        — 股票名稱常量
 │   ├── demo.py             — 演示數據填充
-│   ├── dispatch.py         — 任務調度
+│   ├── dispatch.py         — 異步任務 dispatch_async_task
+│   ├── portfolio_dispatch.py — 組合回測異步調度
+│   ├── dashboard_fallback.py — 儀表盤降級數據
 │   ├── state.py            — 全局狀態
 │   ├── ws.py               — WebSocket 路由 + 實時推送
 │   └── routers/
@@ -83,7 +87,7 @@ src/
 ├── core/
 │   ├── backtest.py         — 19 策略 + SL/TP + 風險指標 + TradeObserver + 滑點/T+1/漲跌停
 │   ├── optimize.py         — 網格搜索 + Optuna + 並行
-│   ├── portfolio.py        — 11+ 種組合方法 + 相關性 + 有效前沿
+│   ├── portfolio.py        — 18+ 種組合算法 + 相關性 + 有效前沿
 │   ├── walkforward.py      — Walk-Forward 分析
 │   ├── auto_optimize.py    — 全自動參數尋優
 │   ├── heatmap.py          — 參數敏感性熱力圖
@@ -152,33 +156,38 @@ static/
     ├── chart-pro.js        — 進階圖表（Lightweight Charts）
     ├── analysis.js         — 分析
     ├── scheduler.js        — 定時任務
+    ├── stock-picker.js     — 股票選擇器組件
     ├── tasks.js            — 任務面板（排序/展開/刪除）
     └── task-common.js      — 任務共享模塊
 
-tests/                      — 27 個測試文件，82 個測試全通過
-├── conftest.py             — 跨平台 temp DB + session-scoped fixture
-├── test_smoke_api.py       — 冒煙測試
-├── test_auth_*.py          — 認證流程/寫保護/默認管理員
-├── test_backtest.py        — 回測核心
-├── test_backtest_pagination.py — 回測分頁
-├── test_strategies.py      — 19 策略逐一測試
-├── test_portfolio.py       — 組合指標
-├── test_portfolio_methods.py — 組合方法
+tests/                      — 27 個 test_*.py，164 個用例（pytest collect）
+├── conftest.py             — 跨平台 temp DB + TestClient fixture
+├── test_smoke_api.py       — CI 煙霧（健康/配置/演示讀端點）
+├── test_api.py             — 健康/狀態/回測/緩存集成
+├── test_auth_flow.py       — 註冊登入與寫保護
+├── test_auth_write_protection.py — 演示模式寫入需 Token
+├── test_auth_default_admin.py    — 默認管理員
+├── test_backtest.py        — 回測核心與風險指標
+├── test_backtest_pagination.py   — 回測歷史 limit/offset
+├── test_strategies.py      — 19 策略 + 風控管線/數據質量
+├── test_portfolio.py       — 組合 NAV/相關性/指標
+├── test_portfolio_methods.py     — 11 種核心組合函數存在性
 ├── test_signals.py         — 信號引擎
 ├── test_screener.py        — 篩選器
-├── test_tasks_api.py       — 任務 API
-├── test_tasks_rate_limit.py — 任務限流
-├── test_data_rate_limit.py — 數據限流
-├── test_dashboard_market.py — 儀表盤
-├── test_data_center_api.py — 數據中心
-├── test_market_fetch.py    — 行情抓取
-├── test_download_parallel.py — 並行下載
+├── test_tasks_api.py       — 任務 CRUD/隊列
+├── test_tasks_rate_limit.py      — 任務輪詢不限流
+├── test_data_rate_limit.py       — 數據中心 GET 演示不限流
+├── test_dashboard_market.py        — 儀表盤圖表
+├── test_data_center_api.py       — 數據中心 API
+├── test_market_fetch.py    — 行情/指數圖表
+├── test_download_parallel.py     — 並行下載
 ├── test_local_kline.py     — 本地K線
-├── test_stock_universe.py  — 股票池
+├── test_stock_universe.py  — 股票池 API/同步
 ├── test_eastmoney_flow.py  — 東財資金流
-├── test_sector_*.py        — 板塊數據
-├── test_capital_flow_aggregate.py — 資金流聚合
-├── test_scheduler.py       — 定時任務
+├── test_sector_fetch_fallback.py — 板塊抓取降級
+├── test_sector_heatmap.py  — 板塊熱力圖
+├── test_capital_flow_aggregate.py — 北向資金聚合
+├── test_scheduler.py       — 定時任務註冊表
 └── test_alert_rules_auto.py — 自動預警規則
 ```
 
@@ -210,7 +219,7 @@ tests/                      — 27 個測試文件，82 個測試全通過
 19. 數據中心（板塊行情/資金流向/北向資金/龍虎榜/基本面/分鐘K線）
 20. 用戶系統（JWT 認證/獨立 watchlist/預警規則/回測歷史）
 21. 策略開發框架（自定義策略上傳/策略模板/排行榜/測試）
-22. 前端重構（暗色/亮色主題 + 13 Tab + 進階組合 UI + 信號 Tab）
+22. 前端重構（暗色/亮色主題 + 當時 13 Tab + 進階組合 UI + 信號 Tab；現已擴至 16 Tab）
 
 ### ✅ 第四輪（v4.0 — 策略擴展 + 中文命名）
 23. 策略中文命名（STRATEGY_NAMES 映射，19 種策略均有中文顯示名）
@@ -252,7 +261,7 @@ tests/                      — 27 個測試文件，82 個測試全通過
 55. Yahoo Finance 數據源（yahoo_finance）
 56. WebSocket 連接上限 50 + 批量清理死連接
 57. SQLite WAL 模式 + busy_timeout + thread-local 連接
-58. 測試補全到 82 個（27 個測試文件，覆蓋認證/回測/組合/信號/篩選/任務/限流/數據中心等）
+58. 測試補全至 164 用例（27 個 test 文件：含 test_api/test_smoke_api/test_sector_heatmap 等）
 59. 跨平台測試修復（tempfile.gettempdir 替代 /tmp）
 60. 前端任務面板重寫（排序/展開詳情/刪除/載入指示器/空狀態引導）
 61. 前端過擬合風險警告（OOS 對比圖紅綠標註）
@@ -271,29 +280,30 @@ tests/                      — 27 個測試文件，82 個測試全通過
 
 ## 待優化（第七輪）
 
+> 下列項目中，標 **〔已有〕** 表示代碼庫已部分落地，第七輪應改為「深化/補齊」而非從零開始。
+
 ### 🔥 高優（建議優先做）
 
-#### 1. 異步化改造（部分完成，繼續深化）
-- 回測/優化接口支持異步模式（已支持 task_manager，可優化提交→輪詢體驗）
-- `download_stocks` API 改為使用 download_tasks 後台任務
-- `download_all_markets` 異步並發下載（asyncio.gather + 信號量控制）
+#### 1. 異步化改造（大部分已有，繼續深化）
+- 〔已有〕回測/優化/組合多數重計算走 `task_manager` + `dispatch_async_task`
+- 〔已有〕`POST /api/stocks/download`、`POST /api/download-all` 已提交後台任務（`download_tasks`）
+- 前端任務中心：提交後自動輪詢、錯誤重試提示、長任務進度條
+- `download_all_markets` 內部並發度調優（`asyncio.gather` + 信號量，避免 AKShare 限流）
 
-#### 2. 數據庫優化
-- 添加索引（daily_klines.code+date, backtest_results.code+strategy, signal_logs.code+triggered_at）
-- 列表 API 分頁（/api/stocks, /api/backtest/history, /api/alerts 加 limit+offset）
-- 定期清理舊數據的策略（保留最近 N 年）
+#### 2. 數據庫與列表 API（部分已有）
+- 〔已有〕`db.py` 索引：`daily_kline(code,date)`、`backtest_results(code)`、`signal_log(code,triggered_at)` 等
+- 待補：複合索引 `backtest_results(code, strategy)`；`user_alert_rules` / 大表清理策略
+- 〔已有〕`/api/backtest/history`（limit+offset）、`/api/stock-universe`（limit+offset）
+- 待補：`/api/alerts` 增加 `offset` + `total`；`/api/stocks` 列表支持分頁游標（目前僅 limit）
+- 定期清理舊數據（保留最近 N 年，可配置 `SQ_DATA_RETENTION_YEARS`）
 
-#### 3. 測試繼續補全
-- 現有 27 個測試文件 → 目標覆蓋更多邊界場景：
-  - test_crypto.py（加密貨幣）
-  - test_forex.py（外匯）
-  - test_global_market.py（全球指數）
-  - test_paper_trading.py（模擬交易）
-  - test_risk_pipeline.py（風控管線）
-  - test_compute_budget.py（計算預算）
-  - test_data_sources.py（多數據源降級）
-  - test_download_tasks.py（下載任務管理）
-- API 集成測試（httpx.AsyncClient 測試 FastAPI 端點完整流程）
+#### 3. 測試繼續補全（基線 164 用例，27 文件）
+- 以下模塊尚無專項測試文件（`test_strategies.py` 已含部分 risk_pipeline / data_quality）：
+  - `test_crypto.py`、`test_forex.py`、`test_global_market.py`
+  - `test_paper_trading.py`、`test_compute_budget.py`、`test_data_sources.py`
+  - `test_download_tasks.py`（任務狀態機/去重/取消）
+- 擴展 `test_portfolio_methods.py`：覆蓋 BL/HRP/CVaR/sector-limit 等新 API 對應函數
+- 可選：`httpx.AsyncClient` 長流程集成測試（與現有 `TestClient` 並存）
 
 ### 🟡 中優
 
@@ -323,13 +333,14 @@ tests/                      — 27 個測試文件，82 個測試全通過
 - 錯誤率統計 + 異常告警
 
 #### 8. 部署優化
-- GitHub Actions CI/CD（測試 → 構建 → 部署）
+- 〔已有〕`.github/workflows/ci.yml`：Python 3.11/3.12 矩陣測試 + Docker 構建
+- 待補：部署階段（Render/自托管）、鏡像推送、環境變量密鑰管理
 - Docker 多階段構建優化（減小鏡像體積）
 - 數據庫遷移到 PostgreSQL（可選，適用於多用戶場景）
 - Nginx SSL 配置完善（Let's Encrypt 自動續期）
 
 ## 技術約束
-- Python 3.12，依賴見 requirements.txt
+- Python 3.11+（CI 矩陣含 3.11/3.12；Docker 基礎鏡像 3.12），依賴見 `requirements.txt`
 - SQLite 為主數據庫（WAL 模式，單機部署足夠）
 - AKShare 免費接口，有頻率限制（每次請求間隔 ≥0.5s，建議加隨機抖動）
 - Backtrader 回測引擎

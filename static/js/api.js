@@ -595,6 +595,10 @@ const Api = {
   async getTaskFull(taskId) {
     return this.get(`/api/tasks/${encodeURIComponent(taskId)}/full`, { silent: true });
   },
+  async retryTask(taskId) { return this.post(`/api/tasks/${taskId}/retry`); },
+  async batchCancelTasks(taskIds) { return this.post('/api/tasks/batch/cancel', { task_ids: taskIds }); },
+  async batchDeleteTasks(taskIds) { return this.post('/api/tasks/batch/delete', { task_ids: taskIds }); },
+  async getTaskStats() { return this.get('/api/tasks/stats'); },
 };
 
 window.Api = Api;

@@ -94,6 +94,10 @@ async def lifespan(app: FastAPI):
 
     # 啟動 WebSocket 後台推送
     import asyncio
+    from src.api.ws import set_event_loop, sync_broadcast
+    from src.core.task_manager import register_ws_broadcaster
+    set_event_loop(asyncio.get_running_loop())
+    register_ws_broadcaster(sync_broadcast)
     _ws_task = asyncio.create_task(ws_realtime_push())
 
     yield

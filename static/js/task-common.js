@@ -206,6 +206,26 @@ const TaskCommon = {
     return Math.floor(sec / 3600) + '時' + Math.floor((sec % 3600) / 60) + '分';
   },
 
+  formatEta(sec) {
+    if (sec == null || sec <= 0) return '';
+    if (sec < 60) return `≈ ${Math.ceil(sec)}秒`;
+    if (sec < 3600) return `≈ ${Math.floor(sec / 60)}分${Math.round(sec % 60)}秒`;
+    return `≈ ${Math.floor(sec / 3600)}時${Math.floor((sec % 3600) / 60)}分`;
+  },
+
+  renderTimeInfo(task) {
+    if (!task) return '';
+    const parts = [];
+    if (task.elapsed_sec > 0) {
+      parts.push(`⏱ ${this.formatElapsed(Math.round(task.elapsed_sec))}`);
+    }
+    if (task.eta_sec > 0 && task.status === 'running') {
+      parts.push(`⏳ 剩餘 ${this.formatEta(task.eta_sec)}`);
+    }
+    if (!parts.length) return '';
+    return `<div class="task-time-info">${parts.join(' · ')}</div>`;
+  },
+
   renderResultModal(task) {
     if (!task || !task.result) return '<p style="color:var(--text-dim)">尚無結果</p>';
 
@@ -500,8 +520,10 @@ const TaskCommon = {
     const statusIcon = this.STATUS_ICONS[task.status] || '❓';
     const canNav = task.status === 'completed' && task.has_result;
     const canCancel = task.status === 'running' || task.status === 'pending';
+    const canRetry = task.status === 'failed' || task.status === 'cancelled';
     const progressLabel = task.status === 'running' ? `${task.progress || 0}%` : (task.status === 'pending' ? '等待中' : '');
     const dlSub = this.formatTaskSubtitle(task);
+    const timeInfo = this.renderTimeInfo(task);
 
     let actions = '';
     if (canNav) {
@@ -510,11 +532,14 @@ const TaskCommon = {
         actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.viewResult('${task.task_id}')">查看詳情</button>`;
       }
     }
-    if (canCancel && typeof Tasks !== 'undefined') {
+    if (canCancel) {
       actions += `<button class="btn danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.cancelTask('${task.task_id}')">取消</button>`;
     }
+    if (canRetry && typeof Tasks !== 'undefined') {
+      actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.retryTask('${task.task_id}')">重試</button>`;
+    }
 
-    return `<div class="task-queue-card${highlight}" data-role="${role}">
+    return `<div class="task-queue-card${highlight}" data-role="${role}" data-task-id="${task.task_id}">
       <div class="task-queue-head">
         <span>${meta.icon} ${meta.title}</span>
         <span style="font-size:11px;color:var(--text-dim)">${statusIcon} ${progressLabel}</span>
@@ -523,6 +548,7 @@ const TaskCommon = {
         <div style="font-weight:600;font-size:13px">${task.title || typeName}</div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:4px">${typeName}</div>
         ${dlSub ? `<div style="font-size:11px;color:#38bdf8;margin-top:6px">${dlSub}</div>` : ''}
+        ${timeInfo}
         ${task.status === 'running' || task.status === 'pending' ? this._progressBar(task.progress, task.status) : ''}
         ${task.error ? `<div style="font-size:10px;color:#ef4444;margin-top:4px">${String(task.error).substring(0, 80)}</div>` : ''}
         ${actions ? `<div class="task-queue-actions">${actions}</div>` : ''}

@@ -3693,6 +3693,40 @@ tbody tr:hover {
   margin-top: 10px;
 }
 
+/* ====== Task Status Badges ====== */
+.badge-pending { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+.badge-queue   { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+.badge-running { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.badge-completed { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.badge-failed  { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.badge-cancelled { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+
+/* ====== Task Table Enhancements ====== */
+.task-table-actions .btn.outline { font-size: 11px; padding: 3px 8px; }
+
+.task-panel { transition: opacity 0.2s ease; }
+.task-panel:hover { box-shadow: 0 8px 40px rgba(0,0,0,0.4); }
+
+/* 任務狀態變更時閃爍提示 */
+@keyframes taskUpdateFlash {
+  0% { background-color: rgba(56, 189, 248, 0.08); }
+  50% { background-color: rgba(56, 189, 248, 0.18); }
+  100% { background-color: transparent; }
+}
+.task-update-flash {
+  animation: taskUpdateFlash 1.5s ease-out;
+}
+
+/* 批量操作欄動畫 */
+@keyframes batchBarSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#taskBatchBar[style*="display: flex"],
+#taskBatchBar[style*="display:flex"] {
+  animation: batchBarSlideIn 0.2s ease-out;
+}
+
 /* ====== 定時任務 Tab ====== */
 .sched-loading {
   display: flex;

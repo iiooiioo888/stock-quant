@@ -1,6 +1,8 @@
 """WebSocket 實時推送"""
+import asyncio
 import json
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -45,6 +47,25 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+# ── 同步廣播（供線程池中的任務管理器調用） ──────────────────────
+_loop: asyncio.AbstractEventLoop = None
+
+
+def set_event_loop(loop: asyncio.AbstractEventLoop):
+    """在 lifespan 啟動時設置事件循環引用。"""
+    global _loop
+    _loop = loop
+
+
+def sync_broadcast(data: dict):
+    """同步版廣播，安全地從任意線程調用。"""
+    if _loop is None or not manager.active:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(manager.broadcast(data), _loop)
+    except Exception as e:
+        logger.debug(f"同步廣播失敗: {e}")
 
 
 def _is_trading_time() -> bool:

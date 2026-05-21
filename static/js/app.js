@@ -509,6 +509,8 @@ const App = {
         const d = JSON.parse(e.data);
         if (d.type === 'quotes') this._updateRealtimeQuotes(d.data);
         if (d.type === 'signals') this._updateRealtimeSignals(d.data);
+        // 任務面板 WS 實時更新
+        if (App._taskWsHandler) App._taskWsHandler(e);
       } catch {}
     };
   },
@@ -1158,6 +1160,16 @@ App._initTaskPanel = function() {
   indicator.innerHTML = '⏳ <span id="taskIndicatorCount">0</span>';
   const hdrRight = document.querySelector('.hdr-right');
   if (hdrRight) hdrRight.insertBefore(indicator, hdrRight.firstChild);
+
+  // WS 實時更新浮動面板
+  App._taskWsHandler = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (!data || !data.type || !data.type.startsWith('task_')) return;
+      // 任務狀態變更 → 刷新浮動面板
+      App._pollTasks();
+    } catch (_) {}
+  };
 
   App._taskPollTimer = setInterval(() => App._pollTasks(), 8000);
 };

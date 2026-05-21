@@ -144,6 +144,40 @@ _executor: Optional[ThreadPoolExecutor] = None
 _executor_lock = threading.Lock()
 _progress_throttle: dict[str, tuple] = {}  # task_id -> (last_ts, last_saved_progress)
 
+# ── WebSocket 任務推送 ──────────────────────────────────────────
+_ws_broadcast: Optional[Callable] = None
+
+
+def register_ws_broadcaster(broadcast_fn: Callable):
+    """註冊 WebSocket 廣播函數，任務狀態變更時自動推送。"""
+    global _ws_broadcast
+    _ws_broadcast = broadcast_fn
+
+
+def _notify_task_update(task_id: str, event: str = "task_update"):
+    """通過 WebSocket 推送任務狀態更新（非阻塞）。"""
+    if _ws_broadcast is None:
+        return
+    try:
+        task = _tasks.get(task_id)
+        if not task:
+            return
+        payload = _to_json_safe({
+            "type": event,
+            "task_id": task_id,
+            "task_type": task.get("task_type"),
+            "title": task.get("title"),
+            "status": task.get("status"),
+            "progress": task.get("progress", 0),
+            "error": task.get("error"),
+            "elapsed_sec": _calc_elapsed(task),
+            "created_at": task.get("created_at"),
+            "completed_at": task.get("completed_at"),
+        })
+        _ws_broadcast(payload)
+    except Exception as e:
+        logger.debug(f"WS 任務推送失敗: {e}")
+
 
 def _resolve_max_workers() -> int:
     try:
@@ -193,6 +227,45 @@ def _to_json_safe(obj):
         return _sanitize_floats(raw)
     except Exception:
         return obj
+
+
+def _parse_dt(dt_str: str) -> Optional[float]:
+    """將 'YYYY-MM-DD HH:MM:SS' 解析為 timestamp，失敗返回 None。"""
+    if not dt_str:
+        return None
+    try:
+        return datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").timestamp()
+    except Exception:
+        return None
+
+
+def _calc_elapsed(task: dict) -> float:
+    """計算任務已運行秒數。"""
+    started = _parse_dt(task.get("started_at"))
+    if not started:
+        return 0.0
+    if task.get("status") in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
+        ended = _parse_dt(task.get("completed_at")) or time.time()
+        return round(ended - started, 1)
+    return round(time.time() - started, 1)
+
+
+def _calc_eta(task: dict) -> Optional[float]:
+    """根據進度速率預估剩餘秒數，返回 None 表示無法預估。"""
+    progress = task.get("progress", 0)
+    if progress < 5 or progress >= 100:
+        return None
+    started = _parse_dt(task.get("started_at"))
+    if not started:
+        return None
+    elapsed = time.time() - started
+    if elapsed < 3:
+        return None
+    rate = progress / elapsed  # 每秒進度
+    if rate <= 0:
+        return None
+    remaining = (100 - progress) / rate
+    return round(remaining, 0)
 
 
 def _resolve_progress_interval() -> float:
@@ -362,7 +435,8 @@ def _mark_running(task_id: str) -> bool:
         task["progress"] = max(task.get("progress", 0), 1)
         task["last_accessed"] = time.time()
         _save_task_to_db(task, force=True)
-        return True
+    _notify_task_update(task_id, "task_started")
+    return True
 
 
 def _on_task_finished(task_id: str):
@@ -500,7 +574,15 @@ def update_task(task_id: str, status: str = None, progress: int = None,
         if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
             _evict_old_tasks_inner()
 
-        return task
+    # WebSocket 推送（鎖外執行，避免死鎖）
+    if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
+        _notify_task_update(task_id, f"task_{status}")
+    elif status == STATUS_RUNNING:
+        _notify_task_update(task_id, "task_started")
+    elif progress is not None and progress >= 0:
+        _notify_task_update(task_id, "task_progress")
+
+    return task
 
 
 def get_task(task_id: str) -> Optional[dict]:
@@ -600,6 +682,7 @@ def cancel_task(task_id: str) -> bool:
             _dispatched.discard(task_id)
             _save_task_to_db(task, force=True)
             logger.info(f"任務取消(pending): {task_id}")
+            _notify_task_update(task_id, "task_cancelled")
             return True
         logger.info(f"任務取消請求(running): {task_id}")
         return True
@@ -727,6 +810,8 @@ def is_task_running(task_type: str, params: dict) -> bool:
 def _task_summary(task: dict) -> dict:
     meta = task.get("meta") or {}
     dl = meta.get("download") or {}
+    elapsed = _calc_elapsed(task)
+    eta = _calc_eta(task)
     summary = {
         "task_id": task["task_id"],
         "task_type": task["task_type"],
@@ -738,6 +823,8 @@ def _task_summary(task: dict) -> dict:
         "created_at": task.get("created_at", ""),
         "started_at": task.get("started_at"),
         "completed_at": task.get("completed_at"),
+        "elapsed_sec": elapsed,
+        "eta_sec": eta,
         "has_result": task.get("result") is not None,
         "status_message": meta.get("message", ""),
         "download": dl if dl else None,

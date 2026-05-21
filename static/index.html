@@ -1147,16 +1147,26 @@
     <!-- 任務列表 -->
     <div class="sec">
         <h2>📋 任務列表 <span class="ct" id="taskListCount"></span></h2>
+
+        <!-- 批量操作欄 -->
+        <div id="taskBatchBar" class="task-batch-bar">
+            <span>已選 <span class="count" id="taskBatchCount">0</span> 個任務</span>
+            <span class="flex-spacer"></span>
+            <button class="btn s" style="font-size:12px" onclick="Tasks.batchCancel()">批量取消</button>
+            <button class="btn s" style="font-size:12px" onclick="Tasks.batchDelete()">批量刪除</button>
+        </div>
+
         <div class="table-wrap">
             <table>
                 <thead id="taskTableHead">
                     <tr>
+                        <th style="width:32px;text-align:center"><input type="checkbox" id="taskSelectAll" onclick="Tasks._toggleSelectAll()" style="cursor:pointer"></th>
                         <th data-sort="status">狀態</th>
                         <th data-sort="task_type">類型</th>
                         <th data-sort="title">任務名稱</th>
                         <th data-sort="progress">進度</th>
+                        <th>耗時</th>
                         <th data-sort="created_at">創建時間</th>
-                        <th data-sort="completed_at">完成時間</th>
                         <th>操作</th>
                     </tr>
                 </thead>
