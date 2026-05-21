@@ -1594,21 +1594,41 @@ td.r {
 
 .sd-stock-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 12px;
 }
 
 a.sd-stock-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
+  display: block;
+  padding: 12px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   text-decoration: none;
   color: inherit;
   transition: all var(--transition-base);
+}
+
+.sd-stock-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sd-stock-card-top .stock-code-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.sd-stock-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 a.sd-stock-card:hover {
@@ -1649,11 +1669,6 @@ a.sd-stock-card:hover {
 .sig-stock-head--link:hover .sig-stock-code { color: var(--accent); }
 
 .sd-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 20px;
   padding: 20px 24px;
   background: var(--bg-secondary);
@@ -1661,13 +1676,42 @@ a.sd-stock-card:hover {
   border-radius: var(--radius-xl);
 }
 
-.sd-hero-main {
+.sd-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.sd-hero-identity {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  flex: 1 1 280px;
 }
 
-.sd-hero-icon { width: 56px; height: 56px; }
+.sd-hero-titles { min-width: 0; }
+
+.sd-hero-icon { width: 72px; height: 72px; flex-shrink: 0; }
+
+/* 個股頁 Logo：統一方形（略圓角） */
+.stock-detail-page .sd-icon-square.stock-code-icon,
+.stock-detail-page .sd-stock-context .stock-code-icon {
+  border-radius: 12px;
+}
+
+.stock-detail-page .sd-icon-square.stock-code-icon img {
+  object-fit: contain;
+  background: var(--bg-primary);
+}
+
+.sd-stock-card-top .stock-code-icon img {
+  object-fit: contain;
+  background: var(--bg-primary);
+}
 
 .sd-hero-title {
   margin: 0 0 4px;
@@ -1684,9 +1728,117 @@ a.sd-stock-card:hover {
 }
 
 .sd-hero-meta {
-  margin: 0;
+  margin: 0 0 8px;
   font-size: 12px;
   color: var(--text-dim);
+}
+
+.sd-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sd-hero-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+}
+
+.sd-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sd-profile-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 960px) {
+  .sd-profile-panel { grid-template-columns: 1fr; }
+}
+
+.sd-profile-block {
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.sd-profile-heading {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sd-profile-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sd-profile-head-row .sd-profile-heading { margin: 0; }
+
+.sd-finance-asof { font-size: 11px; }
+
+.sd-intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.sd-finance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 1200px) {
+  .sd-profile-block--finance .sd-finance-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.sd-finance-item {
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.sd-finance-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sd-finance-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .sd-tv-main-card {
@@ -1729,6 +1881,78 @@ a.sd-stock-card:hover {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+}
+
+/* 個股子導航 + 內嵌回測面板 */
+.sd-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+
+.sd-subnav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sd-subnav-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sd-subnav-btn.a {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.sd-stock-context {
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-secondary) 100%);
+}
+
+.sd-stock-context-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sd-stock-context-text strong { font-size: 15px; margin-right: 6px; }
+
+.sd-stock-context-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.sd-panel.h { display: none !important; }
+
+.sd-panels-mount .sd-embedded-tab {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.stock-detail-page .sd-embedded-tab .bt-stock-section {
+  display: none !important;
 }
 
 .sd-pm-detail {
@@ -2301,7 +2525,7 @@ pre.rpt {
   height: 48px;
   position: relative;
   z-index: 1;
-  border-radius: 50%;
+  border-radius: 10px;
 }
 
 .bt-selected-icon .stock-code-letter {
@@ -2312,7 +2536,7 @@ pre.rpt {
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  border-radius: 50%;
+  border-radius: 10px;
   background: var(--bg-tertiary);
 }
 
@@ -2612,12 +2836,19 @@ pre.rpt {
 .stock-code-row-icon {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
 }
 
-.stock-code-row-icon img { width: 100%; height: 100%; object-fit: cover; }
+.stock-code-row-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 2px;
+  box-sizing: border-box;
+}
 .stock-code-row-icon .stock-code-letter { font-size: 12px; }
 
 .stock-code-group-title {
@@ -2662,27 +2893,44 @@ pre.rpt {
   box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
-.stock-code-icon {
+.stock-code-icon,
+.stock-icon-square {
+  position: relative;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: 10px;
   overflow: hidden;
-  background: var(--bg-tertiary);
+  background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .bt-selected-icon.stock-code-icon { width: 48px; height: 48px; }
-.stock-code-row-icon.stock-code-icon { width: 30px; height: 30px; border-radius: 50%; }
+.stock-code-row-icon.stock-code-icon { width: 30px; height: 30px; }
 
 .stock-code-icon img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  padding: 3px;
+  box-sizing: border-box;
   display: block;
+  background: var(--bg-primary);
+}
+
+.stock-iconfont-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  pointer-events: none;
 }
 
 .stock-code-letter {
@@ -3371,15 +3619,45 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 
 .crypto-icon {
-  font-size: 16px;
-  width: 30px;
-  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary);
-  border-radius: 50%;
   flex-shrink: 0;
+}
+
+.crypto-coin-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.crypto-coin-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 4px;
+  box-sizing: border-box;
+  display: block;
+}
+
+.crypto-coin-letter {
+  display: none;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--bg-tertiary);
 }
 
 .crypto-name {
@@ -3620,4 +3898,183 @@ tr.sched-row-on { background: var(--bg-hover); }
   .sidebar, .hdr, #toast, .modal { display: none !important; }
   .main { padding: 0; overflow: visible; }
   .app { display: block; }
+}
+
+/* ============================================================
+   UI Modern — Brand, icons, stock logos (2026-05)
+   ============================================================ */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.brand-mark {
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.auth-pill {
+  font-size: 11px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.auth-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-toggle .ti,
+.theme-toggle .ti,
+.search-icon .ti {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.sidebar button .nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 0;
+  opacity: 0.72;
+}
+
+.sidebar button .nav-icon .ti {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.sidebar button.a .nav-icon,
+.sidebar button:hover .nav-icon {
+  opacity: 1;
+}
+
+.hq-icon.ti {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.qa-icon.ti {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.qa-card--accent .qa-icon.ti {
+  color: var(--btn-primary-color);
+}
+
+.dash-hero {
+  border: 1px solid var(--border-subtle);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+}
+
+.dash-section-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.col-logo {
+  width: 44px;
+  padding-left: 12px !important;
+}
+
+.dash-watchlist-table .wl-logo {
+  width: 44px;
+  padding: 8px 4px 8px 12px !important;
+  vertical-align: middle;
+}
+
+.dash-watchlist-table .wl-code {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.search-result-item .sr-logo {
+  flex-shrink: 0;
+}
+
+.search-result-item .sr-icon-func {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-result-item .sr-icon-func .ti {
+  font-size: 16px;
+}
+
+.sig-stock-head .sig-stock-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sig-stock-head .sig-stock-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scr-logo-cell {
+  width: 40px;
+  padding: 6px 4px !important;
+  vertical-align: middle;
+}
+
+.stock-code-icon img[data-stock-code] {
+  background: var(--bg-primary);
+}
+
+.stock-code-letter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--bg-tertiary);
+  pointer-events: none;
+}
+
+.crypto-card-head .crypto-icon .crypto-coin-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.empty-state .empty-icon .ti {
+  font-size: 28px;
+  color: var(--text-dim);
 }

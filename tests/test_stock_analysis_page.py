@@ -10,6 +10,8 @@ class TestStockAnalysisPage:
         assert data.get("success") is True
         assert data.get("code")
         assert "name" in data
+        assert "profile" in data
+        assert isinstance(data["profile"], dict)
         assert "sparkline" in data
         assert "polymarket" in data
         pm = data["polymarket"]

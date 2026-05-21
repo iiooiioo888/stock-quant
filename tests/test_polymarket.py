@@ -10,7 +10,11 @@ from src.core.polymarket.normalize import (
     normalize_orderbook,
     normalize_price_point,
 )
-from src.core.polymarket.service import PolymarketService, PolymarketDisabledError
+from src.core.polymarket.service import (
+    PolymarketService,
+    PolymarketDisabledError,
+    _market_is_displayable,
+)
 
 
 SAMPLE_MARKET = {
@@ -36,7 +40,34 @@ class TestNormalize:
         assert m["slug"] == "will-btc-hit-100k"
         assert abs(m["yes_price"] - 0.65) < 0.01
         assert abs(m["no_price"] - 0.35) < 0.01
+        assert m["price_source"] == "outcome_prices"
         assert m["token_ids"] == ["token_yes", "token_no"]
+
+    def test_normalize_market_orderbook_fallback(self):
+        raw = {
+            "id": "99",
+            "question": "Test?",
+            "bestBid": "0.48",
+            "bestAsk": "0.52",
+            "lastTradePrice": 0,
+            "volume24hr": 1000,
+        }
+        m = normalize_market(raw)
+        assert m["price_source"] == "orderbook"
+        assert abs(m["yes_price"] - 0.5) < 0.01
+
+    def test_normalize_stale_crypto_slot(self):
+        raw = {
+            "id": "1",
+            "question": "ETH Up or Down - December 19",
+            "bestBid": 0,
+            "bestAsk": 1,
+            "lastTradePrice": 0,
+            "volume24hr": 0,
+        }
+        m = normalize_market(raw)
+        assert m["price_source"] == "none"
+        assert m["yes_price"] == 0.0
 
     def test_normalize_orderbook_spread(self):
         raw = {
@@ -63,6 +94,17 @@ class TestPolymarketService:
                 out = svc.list_markets(limit=10, use_cache=False)
         assert out["total"] == 1
         assert out["markets"][0]["question"] == "Will BTC hit 100k?"
+
+    def test_market_is_displayable_filters_stale(self):
+        stale = normalize_market({
+            "id": "1",
+            "question": "ETH Up or Down",
+            "bestBid": 0,
+            "bestAsk": 1,
+            "volume24hr": 0,
+        })
+        assert not _market_is_displayable(stale)
+        assert _market_is_displayable(normalize_market(SAMPLE_MARKET))
 
     def test_disabled_raises(self, monkeypatch):
         from src.config import settings

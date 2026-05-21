@@ -200,20 +200,138 @@ const Utils = {
 
   /** A 股市場前綴（滬 SH / 深 SZ） */
   stockMarketPrefix(code) {
-    const c = String(code || '').trim().padStart(6, '0');
+    const c = String(code || '').trim().padStart(6, '0').slice(-6);
     if (/^(5|6|9)/.test(c)) return 'SH';
     return 'SZ';
+  },
+
+  /** 推斷市場（5 位數為港股，6 位為 A 股，字母為美股） */
+  inferStockMarket(code, market = '') {
+    const m = String(market || '').trim().toLowerCase();
+    if (m.includes('hk')) return 'hk_stock';
+    if (m.includes('us')) return 'us_stock';
+    if (m === 'sh' || m === 'sz' || m === 'a_share' || m === 'a') return 'a_share';
+    if (m) return m;
+
+    const raw = String(code || '').trim().toUpperCase();
+    if (/^\d{5}$/.test(raw)) return 'hk_stock';
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 6 || /^\d{6}$/.test(raw)) return 'a_share';
+    if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(raw) && !/^\d+$/.test(raw)) return 'us_stock';
+    return 'a_share';
+  },
+
+  /** 是否從伺服器載入已快取的 Logo（預設開啟；設 sq_remote_stock_icons=0 僅顯示本地 SVG） */
+  stockLogoRemoteEnabled() {
+    return localStorage.getItem('sq_remote_stock_icons') !== '0';
+  },
+
+  _iconfontConfig: undefined,
+  _iconfontScriptLoaded: false,
+  _logoQueue: [],
+  _logoActive: 0,
+  _logoMaxConcurrent: 4,
+  _logoMissKeys: new Set(),
+  _logoPendingKeys: new Set(),
+
+  /** 載入 [iconfont.cn](https://www.iconfont.cn/) 專案設定與 Symbol JS */
+  async loadIconfontConfig() {
+    if (this._iconfontConfig !== undefined) return this._iconfontConfig;
+    try {
+      const r = await fetch('/api/iconfont/config', { credentials: 'same-origin' });
+      this._iconfontConfig = r.ok ? await r.json() : { enabled: false };
+    } catch {
+      this._iconfontConfig = { enabled: false };
+    }
+    if (this._iconfontConfig?.enabled && this._iconfontConfig.symbol_js_url) {
+      this._injectIconfontSymbolJs(this._iconfontConfig.symbol_js_url);
+    }
+    return this._iconfontConfig;
+  },
+
+  _injectIconfontSymbolJs(url) {
+    if (this._iconfontScriptLoaded || !url) return;
+    let src = String(url).trim();
+    if (src.startsWith('//')) src = `https:${src}`;
+    const existing = document.querySelector(`script[data-sq-iconfont="${src}"]`);
+    if (existing) {
+      this._iconfontScriptLoaded = true;
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.dataset.sqIconfont = src;
+    s.onload = () => document.dispatchEvent(new Event('sq-iconfont-ready'));
+    s.onerror = () => document.dispatchEvent(new Event('sq-iconfont-ready'));
+    document.head.appendChild(s);
+    this._iconfontScriptLoaded = true;
+  },
+
+  stockIconfontSymbolId(code, name = '') {
+    const cfg = this._iconfontConfig;
+    if (!cfg?.enabled || !cfg.stock_icons) return '';
+    const c = String(code || '').trim().toUpperCase();
+    const map = cfg.stock_icons;
+    if (c && map[c]) return map[c];
+    const c6 = c.replace(/\D/g, '').padStart(6, '0').slice(-6);
+    if (/^\d{6}$/.test(c6) && map[c6]) return map[c6];
+    const n = String(name || '').trim();
+    if (n && map[n]) return map[n];
+    return '';
+  },
+
+  stockIconfontUseHtml(code, name = '', size = 28) {
+    const sym = this.stockIconfontSymbolId(code, name);
+    if (!sym) return '';
+    const px = Math.max(20, Number(size) || 28);
+    return `<svg class="stock-iconfont-use" width="${px}" height="${px}" aria-hidden="true">
+      <use href="#${this._escAttr(sym)}" xlink:href="#${this._escAttr(sym)}"></use>
+    </svg>`;
+  },
+
+  /** TradingView symbol slug，用於 s3-symbol-logo CDN */
+  stockTradingViewLogoId(code, market = '') {
+    const raw = String(code || '').trim().toUpperCase();
+    if (!raw) return '';
+    const mkt = this.inferStockMarket(code, market);
+
+    const crypto = raw.replace(/USDT$|USD$|-/g, '');
+    if (/^(BTC|ETH|BNB|SOL|XRP|DOGE|ADA|AVAX|DOT|MATIC|LINK|UNI|LTC|BCH|ATOM|FIL|APT|ARB|OP|PEPE|SHIB)$/.test(crypto)) {
+      return `crypto-${crypto.toLowerCase()}`;
+    }
+
+    if (mkt === 'hk_stock') {
+      const hk = raw.replace(/^0+/, '') || raw;
+      return `hkex-${hk}`;
+    }
+    if (mkt === 'us_stock') {
+      return `nasdaq-${raw.toLowerCase()}`;
+    }
+    if (mkt === 'a_share') {
+      const c6 = raw.replace(/\D/g, '').padStart(6, '0').slice(-6);
+      if (/^\d{6}$/.test(c6)) {
+        const ex = /^(5|6|9)/.test(c6) ? 'sse' : 'szse';
+        return `${ex}-${c6}`;
+      }
+    }
+    return '';
   },
 
   /** 將股票代碼轉成常見 Logo 服務可識別的 symbol */
   stockLogoSymbol(code, market = '') {
     const c = String(code || '').trim().toUpperCase();
-    const m = String(market || '').trim();
     if (!c) return '';
-    if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(c)) return c;
-    if (/^\d{5}$/.test(c)) return `${c.replace(/^0(?=\d{4}$)/, '')}.HK`;
-    if (/^\d{6}$/.test(c)) return `${c}.${this.stockMarketPrefix(c) === 'SH' ? 'SS' : 'SZ'}`;
-    if (m === 'hk_stock') return `${c.replace(/^0+(?=\d)/, '')}.HK`;
+    const mkt = this.inferStockMarket(code, market);
+    if (mkt === 'hk_stock') {
+      const hk = c.replace(/^0+/, '') || c;
+      return `${hk}.HK`;
+    }
+    if (mkt === 'us_stock') return c;
+    if (mkt === 'a_share') {
+      const c6 = c.replace(/\D/g, '').padStart(6, '0').slice(-6);
+      return `${c6}.${this.stockMarketPrefix(c6) === 'SH' ? 'SS' : 'SZ'}`;
+    }
     return c;
   },
 
@@ -248,6 +366,7 @@ const Utils = {
       '00005': 'hsbc.com',
       '01299': 'aia.com',
       '00388': 'hkexgroup.com',
+      '00992': 'lenovo.com',
       '600519': 'moutaichina.com',
       '000001': 'bank.pingan.com',
       '000858': 'wuliangye.com.cn',
@@ -258,23 +377,197 @@ const Utils = {
     return map[c] || '';
   },
 
-  /**
-   * 外部 Logo 候選來源（不再使用東財）。
-   * FMP image-stock 對美股較完整，部分港股/A股使用 .HK/.SS/.SZ symbol。
-   * 網域 favicon 作為第二層補強，失敗時仍回落本地 SVG。
-   */
-  stockLogoUrls(code, name = '', market = '') {
-    const symbol = this.stockLogoSymbol(code, market);
-    const domain = this.stockLogoDomain(code, name);
-    const urls = [];
-    if (symbol) {
-      urls.push(`https://financialmodelingprep.com/image-stock/${encodeURIComponent(symbol)}.png`);
+  _logoCacheKey(code, market = '') {
+    return `${String(code || '').trim().toUpperCase()}|${this.inferStockMarket(code, market)}`;
+  },
+
+  /** 伺服器 Logo API（僅讀 data/stock_logos/ 快取） */
+  stockLogoUrl(code, name = '', market = '') {
+    const mkt = this.inferStockMarket(code, market);
+    const c = String(code || '').trim();
+    if (!c) return '';
+    const qParts = [];
+    if (mkt) qParts.push(`market=${encodeURIComponent(mkt)}`);
+    if (name) qParts.push(`name=${encodeURIComponent(name)}`);
+    const q = qParts.length ? `?${qParts.join('&')}` : '';
+    return `/api/stock-logo/${encodeURIComponent(c)}${q}`;
+  },
+
+  _drainLogoQueue() {
+    while (this._logoActive < this._logoMaxConcurrent && this._logoQueue.length) {
+      const job = this._logoQueue.shift();
+      this._logoActive += 1;
+      Promise.resolve(this._loadServerLogo(job))
+        .finally(() => {
+          this._logoActive -= 1;
+          this._drainLogoQueue();
+        });
     }
-    if (domain) {
-      urls.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`);
-      urls.push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`);
+  },
+
+  _enqueueServerLogo(img, code, name, market) {
+    this._logoQueue.push({ img, code, name, market });
+    this._drainLogoQueue();
+  },
+
+  async _loadServerLogo({ img, code, name, market }) {
+    const key = this._logoCacheKey(code, market);
+    if (this._logoMissKeys.has(key) || this._logoPendingKeys.has(key)) return;
+    const url = this.stockLogoUrl(code, name, market);
+    if (!url) return;
+
+    this._logoPendingKeys.add(key);
+    try {
+      const letter = img.closest('.stock-code-icon')?.querySelector('.stock-code-letter');
+      let ok = false;
+      try {
+        const res = await fetch(
+          `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`,
+          { credentials: 'same-origin', cache: 'no-store' },
+        );
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size >= 80) {
+            const prev = img.dataset.objectUrl;
+            if (prev) URL.revokeObjectURL(prev);
+            const objUrl = URL.createObjectURL(blob);
+            img.dataset.objectUrl = objUrl;
+            img.src = objUrl;
+            ok = true;
+          }
+        }
+      } catch {
+        ok = false;
+      }
+
+      if (ok) {
+        img.style.display = '';
+        if (letter) letter.style.display = 'none';
+        return;
+      }
+
+      this._logoMissKeys.add(key);
+      setTimeout(() => this._logoMissKeys.delete(key), 45000);
+      if (letter) letter.style.display = '';
+      this._scheduleLogoRetries(img, code, name, market, key);
+    } finally {
+      this._logoPendingKeys.delete(key);
     }
-    return [...new Set(urls)];
+  },
+
+  /** 背景下載完成後自動再試（股票詳情牆大量卡片） */
+  _scheduleLogoRetries(img, code, name, market, key) {
+    [6000, 15000, 30000].forEach(ms => {
+      setTimeout(() => {
+        if (!img?.isConnected) return;
+        if (!this._logoMissKeys.has(key)) return;
+        this._logoMissKeys.delete(key);
+        img.dataset.logoBound = '0';
+        this._enqueueServerLogo(img, code, name, market);
+      }, ms);
+    });
+  },
+
+  _escAttr(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  },
+
+  _CRYPTO_SLUGS: {
+    BTC: 'btc', ETH: 'eth', BNB: 'bnb', SOL: 'sol', XRP: 'xrp',
+    DOGE: 'doge', ADA: 'ada', AVAX: 'avax', DOT: 'dot', MATIC: 'matic',
+    LINK: 'link', LTC: 'ltc', BCH: 'bch', ATOM: 'atom', TRX: 'trx',
+    USDT: 'usdt', USDC: 'usdc',
+  },
+
+  /** 是否為加密貨幣代碼（勿走股票 Logo API） */
+  isCryptoSymbol(symbol) {
+    const base = String(symbol || '').trim().toUpperCase().replace(/USDT$|USD$|PERP$/i, '');
+    return Boolean(base && this._CRYPTO_SLUGS[base]);
+  },
+
+  /** 加密貨幣專用圖標（不依賴股票 Logo 管線） */
+  cryptoIconHtml(symbol, size = 32) {
+    const raw = String(symbol || '').trim().toUpperCase();
+    const base = raw.replace(/USDT$|USD$|PERP$/i, '') || raw;
+    const slug = this._CRYPTO_SLUGS[base] || base.toLowerCase();
+    const px = Math.max(24, Number(size) || 32);
+    const url = `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/${slug}.svg`;
+    const letter = base.slice(0, 1) || '?';
+    return `<span class="crypto-coin-icon" style="width:${px}px;height:${px}px" data-crypto-icon="1">
+      <img src="${url}" width="${px}" height="${px}" alt="${this._escAttr(base)}"
+        loading="lazy" decoding="async" referrerpolicy="no-referrer"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <span class="crypto-coin-letter">${letter}</span>
+    </span>`;
+  },
+
+  /** 產生帶 Logo 容器的 HTML（渲染後請呼叫 hydrateStockIcons） */
+  stockIconHtml(code, name = '', size = 28, market = '') {
+    if (this.isCryptoSymbol(code)) return this.cryptoIconHtml(code, size);
+    const px = Math.max(20, Number(size) || 28);
+    const letter = (String(name || code || '?').trim() || '?').slice(0, 1);
+    const symHtml = this.stockIconfontUseHtml(code, name, px);
+    const symLayer = symHtml
+      ? `<span class="stock-iconfont-layer" hidden>${symHtml}</span>`
+      : '';
+    return `<span class="stock-code-icon stock-icon-square stock-code-row-icon" style="width:${px}px;height:${px}px">
+      ${symLayer}
+      <img width="${px}" height="${px}" alt=""
+        data-stock-code="${this._escAttr(code)}"
+        data-stock-name="${this._escAttr(name)}"
+        data-stock-market="${this._escAttr(market)}">
+      <span class="stock-code-letter">${letter}</span>
+    </span>`;
+  },
+
+  /** 批次綁定容器內所有股票 Logo */
+  hydrateStockIcons(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('.stock-code-icon img').forEach(img => {
+      if (img.closest('[data-crypto-icon]')) return;
+      const code = img.dataset.stockCode || img.getAttribute('data-stock-code') || '';
+      if (!code) return;
+      const mkt = img.dataset.stockMarket || this.inferStockMarket(code, '');
+      this.bindStockIcon(img, code, img.dataset.stockName || '', mkt);
+    });
+  },
+
+  /** 列表懶加載 Logo（索引頁大量卡片時避免同時請求過多） */
+  observeStockIcons(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const imgs = [...scope.querySelectorAll('.stock-code-icon img[data-stock-code]')]
+      .filter(img => !img.closest('[data-crypto-icon]'));
+    if (!imgs.length) return;
+
+    const bindOne = (img) => {
+      if (img.dataset.logoBound === '1') return;
+      img.dataset.logoBound = '1';
+      const code = img.dataset.stockCode || '';
+      if (!code) return;
+      const mkt = img.dataset.stockMarket || this.inferStockMarket(code, '');
+      this.bindStockIcon(img, code, img.dataset.stockName || '', mkt);
+    };
+
+    if (!('IntersectionObserver' in window)) {
+      imgs.forEach(bindOne);
+      return;
+    }
+
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        io.unobserve(entry.target);
+        bindOne(entry.target);
+      });
+    }, { rootMargin: '100px', threshold: 0.01 });
+
+    imgs.forEach(img => {
+      if (img.dataset.logoBound === '1') return;
+      io.observe(img);
+    });
   },
 
   /** 本地 SVG 圖標：不依賴任何外部 CDN，確保股票永遠有對應圖標 */
@@ -313,65 +606,55 @@ const Utils = {
   },
 
   /**
-   * 綁定股票圖標：先使用本地 SVG，外部 Logo 只作可選增強。
-   * 若想嘗試 FMP / favicon 外部 Logo，可在控制台執行：
-   * localStorage.setItem('sq_remote_stock_icons', '1')
+   * 綁定股票圖標：先顯示本地 SVG，再向伺服器請求已快取的 Logo。
+   * 關閉伺服器 Logo：localStorage.setItem('sq_remote_stock_icons', '0')
    */
   bindStockIcon(img, code, name, market = '') {
     if (!img) return;
+    if (img.closest('[data-crypto-icon]') || this.isCryptoSymbol(code)) return;
     const c = String(code || '').trim();
     const n = String(name || c || '?');
+    const mkt = this.inferStockMarket(c, market);
     img.alt = `${c} ${n}`;
     img.loading = 'lazy';
     img.decoding = 'async';
     img.referrerPolicy = 'no-referrer';
 
+    const wrap = img.closest('.stock-code-icon');
+    const letter = wrap?.querySelector('.stock-code-letter');
+    const symLayer = wrap?.querySelector('.stock-iconfont-layer');
+
+    const showIconfontSymbol = () => {
+      if (!symLayer) return false;
+      const use = symLayer.querySelector('use');
+      if (!use) return false;
+      const href = use.getAttribute('href') || use.getAttribute('xlink:href') || '';
+      const id = href.replace(/^#/, '');
+      if (!id || !document.getElementById(id)) return false;
+      symLayer.hidden = false;
+      img.style.display = 'none';
+      if (letter) letter.style.display = 'none';
+      return true;
+    };
+
     const localUrl = this.stockIconLocalUrl(c, n, Math.max(img.width || 56, img.height || 56, 56));
     img.onerror = null;
     img.src = localUrl;
+    img.style.display = '';
+    img.style.objectFit = 'contain';
+    if (letter) letter.style.display = '';
+    if (wrap) wrap.classList.add('stock-icon-square');
 
-    const wrap = img.closest('.stock-code-icon');
-    const letter = wrap?.querySelector('.stock-code-letter');
-    if (letter) letter.style.display = 'none';
+    if (showIconfontSymbol()) return;
+    if (symLayer && this._iconfontConfig?.symbol_js_url) {
+      const trySym = () => { if (showIconfontSymbol()) return; };
+      document.addEventListener('sq-iconfont-ready', trySym, { once: true });
+      setTimeout(trySym, 600);
+      setTimeout(trySym, 2000);
+    }
 
-    const allowRemote = localStorage.getItem('sq_remote_stock_icons') === '1';
-    if (!allowRemote) return;
-
-    const urls = this.stockLogoUrls(c, n, market);
-    if (!urls.length) return;
-
-    let idx = 0;
-    const tryNext = () => {
-      if (idx >= urls.length) return;
-      const remote = new Image();
-      let done = false;
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true;
-        tryNext();
-      }, 2500);
-      remote.referrerPolicy = 'no-referrer';
-      remote.decoding = 'async';
-      remote.onload = () => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        // 一些服務會回傳極小/透明佔位圖，尺寸太小就不要覆蓋本地 SVG。
-        if (remote.naturalWidth >= 16 && remote.naturalHeight >= 16) {
-          img.src = remote.src;
-        } else {
-          tryNext();
-        }
-      };
-      remote.onerror = () => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        tryNext();
-      };
-      remote.src = urls[idx++];
-    };
-    tryNext();
+    if (!this.stockLogoRemoteEnabled()) return;
+    this._enqueueServerLogo(img, c, n, mkt);
   },
 
   /** 套用本地 SVG 到任意元素背景，供非 img 場景使用 */

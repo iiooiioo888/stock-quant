@@ -17,6 +17,40 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _extract_yes_no_prices(raw: dict) -> tuple[float, float, str]:
+    """
+    從 Gamma 市場記錄提取 Yes/No 機率。
+
+    優先 outcomePrices；其次 lastTradePrice；再其次 bestBid/bestAsk 中間價。
+    過期且無成交（bid=0, ask≈1, 無 outcomePrices）視為無效報價。
+    """
+    prices = _parse_json_list(raw.get("outcomePrices") or raw.get("outcome_prices"))
+    if len(prices) >= 2:
+        yes_price = _safe_float(prices[0])
+        no_price = _safe_float(prices[1])
+        if yes_price > 0 or no_price > 0:
+            return yes_price, no_price, "outcome_prices"
+    elif len(prices) == 1:
+        yes_price = _safe_float(prices[0])
+        return yes_price, max(0.0, 1.0 - yes_price), "outcome_prices"
+
+    ltp = _safe_float(raw.get("lastTradePrice"))
+    bb = _safe_float(raw.get("bestBid"))
+    ba = _safe_float(raw.get("bestAsk"))
+
+    if ltp > 0:
+        return ltp, max(0.0, 1.0 - ltp), "last_trade"
+
+    if bb > 0 and ba > 0 and ba >= bb:
+        mid = (bb + ba) / 2.0
+        return mid, max(0.0, 1.0 - mid), "orderbook"
+
+    if bb == 0 and ba >= 0.99 and ltp == 0:
+        return 0.0, 0.0, "none"
+
+    return 0.0, 0.0, "none"
+
+
 def _parse_json_list(raw: Any) -> list:
     """解析 API 中常見的 JSON 字符串列表（如 outcomes、clobTokenIds）。"""
     if raw is None:
@@ -40,17 +74,11 @@ def normalize_market(raw: dict) -> dict:
     volume, liquidity, active, closed, end_date, outcomes, token_ids, image, source
     """
     outcomes = _parse_json_list(raw.get("outcomes"))
-    prices = _parse_json_list(raw.get("outcomePrices") or raw.get("outcome_prices"))
     token_ids = _parse_json_list(raw.get("clobTokenIds") or raw.get("clob_token_ids"))
-
-    yes_price = 0.0
-    no_price = 0.0
-    if len(prices) >= 2:
-        yes_price = _safe_float(prices[0])
-        no_price = _safe_float(prices[1])
-    elif len(prices) == 1:
-        yes_price = _safe_float(prices[0])
-        no_price = max(0.0, 1.0 - yes_price)
+    yes_price, no_price, price_source = _extract_yes_no_prices(raw)
+    vol24 = _safe_float(
+        raw.get("volume24hr") or raw.get("volume24hrClob") or raw.get("volume_24hr"),
+    )
 
     return {
         "market_id": str(raw.get("id") or raw.get("conditionId") or raw.get("condition_id") or ""),
@@ -59,7 +87,9 @@ def normalize_market(raw: dict) -> dict:
         "condition_id": raw.get("conditionId") or raw.get("condition_id") or "",
         "yes_price": round(yes_price, 4),
         "no_price": round(no_price, 4),
+        "price_source": price_source,
         "volume": _safe_float(raw.get("volume") or raw.get("volumeNum")),
+        "volume24hr": vol24,
         "liquidity": _safe_float(raw.get("liquidity") or raw.get("liquidityNum")),
         "active": bool(raw.get("active", True)),
         "closed": bool(raw.get("closed", False)),
@@ -94,6 +124,36 @@ def normalize_tag(raw: dict) -> dict:
         "tag_id": str(raw.get("id") or raw.get("slug") or ""),
         "label": raw.get("label") or raw.get("name") or "",
         "slug": raw.get("slug") or "",
+    }
+
+
+def empty_orderbook(token_id: str, depth: int = 10, reason: str = "no_book") -> dict:
+    """CLOB 無訂單簿時的降級結構（避免 500）。"""
+    return {
+        "token_id": token_id,
+        "bids": [],
+        "asks": [],
+        "best_bid": 0.0,
+        "best_ask": 0.0,
+        "spread": 0.0,
+        "mid": 0.0,
+        "depth": depth,
+        "source": "clob",
+        "available": False,
+        "reason": reason,
+    }
+
+
+def empty_price_history(token_id: str, interval: str = "1d", reason: str = "no_history") -> dict:
+    """CLOB 無價格歷史時的降級結構。"""
+    return {
+        "token_id": token_id,
+        "interval": interval,
+        "points": [],
+        "total": 0,
+        "source": "clob",
+        "available": False,
+        "reason": reason,
     }
 
 
@@ -136,6 +196,7 @@ def normalize_orderbook(raw: dict, token_id: str, depth: int = 10) -> dict:
         "mid": mid,
         "depth": depth,
         "source": "clob",
+        "available": bool(bids or asks),
     }
 
 

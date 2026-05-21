@@ -16,10 +16,26 @@ from src.utils.logger import logger
 MAX_RETRIES = 3
 RETRY_DELAY = 1.5
 
+# 客戶端錯誤（無效 token、無訂單簿）不計入熔斷
+_CLIENT_ERROR_STATUSES = frozenset({400, 404, 422})
+
 _HEADERS = {
     "User-Agent": "stock-quant/1.0 (polymarket-readonly)",
     "Accept": "application/json",
 }
+
+
+class PolymarketHttpError(RuntimeError):
+    """Polymarket HTTP 錯誤（含 status_code）。"""
+
+    def __init__(self, status_code: int, path: str, message: str):
+        self.status_code = status_code
+        self.path = path
+        super().__init__(message)
+
+
+class PolymarketNotFoundError(PolymarketHttpError):
+    """資源不存在或該 token 無活躍訂單簿（CLOB 常回 404）。"""
 
 
 class _BasePolymarketClient:
@@ -70,10 +86,26 @@ class _BasePolymarketClient:
                 if resp.status_code == 429:
                     time.sleep(RETRY_DELAY * (attempt + 1))
                     continue
+                if resp.status_code in _CLIENT_ERROR_STATUSES:
+                    # API 可達，僅該 token/參數無數據 — 不觸發熔斷
+                    ds.record_success()
+                    detail = ""
+                    try:
+                        body = resp.json()
+                        if isinstance(body, dict):
+                            detail = str(body.get("error") or body.get("message") or "")
+                    except Exception:
+                        detail = (resp.text or "")[:200]
+                    msg = detail or f"HTTP {resp.status_code}"
+                    if resp.status_code == 404:
+                        raise PolymarketNotFoundError(404, path, msg)
+                    raise PolymarketHttpError(resp.status_code, path, msg)
                 resp.raise_for_status()
                 data = resp.json()
                 ds.record_success()
                 return data
+            except (PolymarketNotFoundError, PolymarketHttpError):
+                raise
             except Exception as e:
                 last_err = e
                 ds.record_failure()
@@ -101,7 +133,8 @@ class GammaClient(_BasePolymarketClient):
         active: bool = True,
         closed: bool = False,
         tag: str = None,
-        order: str = "volume",
+        order: str = "volume24hr",
+        ascending: bool = False,
     ) -> list:
         """GET /markets — 市場列表。"""
         params = {
@@ -110,6 +143,7 @@ class GammaClient(_BasePolymarketClient):
             "active": str(active).lower(),
             "closed": str(closed).lower(),
             "order": order,
+            "ascending": str(ascending).lower(),
         }
         if tag:
             params["tag_slug"] = tag

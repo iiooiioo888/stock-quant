@@ -101,7 +101,7 @@ const PolymarketUI = {
     tbody.innerHTML = '<tr><td colspan="7"><span class="ld"></span> 載入中…</td></tr>';
     const tag = this._el('tagFilter')?.value || '';
     const limit = 30;
-    let url = `/api/polymarket/markets?limit=${limit}&order=volume`;
+    let url = `/api/polymarket/markets?limit=${limit}&order=volume24hr&ascending=false`;
     if (tag) url += `&tag=${encodeURIComponent(tag)}`;
     try {
       const d = await Api.get(url);
@@ -149,9 +149,10 @@ const PolymarketUI = {
       return;
     }
     tbody.innerHTML = this._markets.map((m, i) => {
-      const yesPct = (m.yes_price * 100).toFixed(1);
-      const noPct = (m.no_price * 100).toFixed(1);
-      const vol = this._fmtNum(m.volume);
+      const hasPrice = m.price_source && m.price_source !== 'none';
+      const yesPct = hasPrice ? (m.yes_price * 100).toFixed(1) : '—';
+      const noPct = hasPrice ? (m.no_price * 100).toFixed(1) : '—';
+      const vol = this._fmtNum(m.volume24hr || m.volume);
       const liq = this._fmtNum(m.liquidity);
       const end = (m.end_date || '').slice(0, 10);
       const q = (m.question || '').slice(0, 80);
@@ -206,6 +207,13 @@ const PolymarketUI = {
   renderOrderbook(ob) {
     const el = this._el('orderbook');
     if (!el) return;
+    if (ob && ob.available === false) {
+      const hint = ob.reason === 'no_book'
+        ? '此市場暫無活躍訂單簿（可能已結算或關閉）'
+        : '暫時無法載入訂單簿';
+      el.innerHTML = `<p class="muted">${hint}</p>`;
+      return;
+    }
     const bids = (ob.bids || []).slice(0, 8);
     const asks = (ob.asks || []).slice(0, 8);
     el.innerHTML = `

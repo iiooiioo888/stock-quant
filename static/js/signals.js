@@ -76,6 +76,9 @@ const Signals = {
         <div>${strategies}</div>
       </div>`;
       }).join('');
+      if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
+        Utils.hydrateStockIcons(container);
+      }
     } finally {
       if (this._loadingKey === 'current') this._loadingKey = null;
     }
@@ -278,6 +281,9 @@ const Signals = {
       }
     });
     container.innerHTML = html || '<p style="color:var(--text-dim)">無數據</p>';
+    if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
+      Utils.hydrateStockIcons(container);
+    }
 
     this._drawStrengthGauge(codes, strengthRows);
     } finally {

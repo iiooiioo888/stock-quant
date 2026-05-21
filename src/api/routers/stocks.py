@@ -2,6 +2,7 @@
 import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
+from fastapi.responses import Response
 from src.config import settings
 from src.core.auth import require_auth, require_admin
 from src.core.db import get_conn
@@ -109,6 +110,100 @@ async def stock_universe_enrich_intros(
     return dispatch_async_task(
         task_id,
         lambda: enrich_universe_intros(limit=cap, task_id=task_id),
+    )
+
+
+# ====== 股票 Logo（下載至 data/stock_logos/，API 僅讀本地） ======
+
+def _stock_logo_response(code: str, market: str = "", name: str = "") -> Response:
+    from src.core.stock_logo import read_cached_logo, schedule_logo_fetch
+
+    c = str(code).strip()
+    if not c:
+        raise HTTPException(400, "code required")
+    hit = read_cached_logo(c, market)
+    if not hit:
+        schedule_logo_fetch(c, market, name=name)
+        raise HTTPException(
+            404,
+            "logo not cached yet",
+            headers={"Retry-After": "30", "X-Logo-Status": "pending"},
+        )
+    body, media_type = hit
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=604800", "X-Logo-Status": "hit"},
+    )
+
+
+@router.get("/api/iconfont/config")
+async def get_iconfont_config():
+    """iconfont.cn 前端載入設定（Symbol JS、代碼映射）。"""
+    from src.core.iconfont_assets import public_config
+
+    return public_config()
+
+
+@router.get("/api/stock-logo/{code}")
+async def get_stock_logo(
+    code: str,
+    market: str = Query("", description="a_share / hk_stock / us_stock"),
+    name: str = Query("", description="公司名稱，用於 iconfont 名稱映射"),
+):
+    """回傳已快取 Logo；未命中時背景下載，避免列表大量並發拖垮服務。"""
+    return _stock_logo_response(code, market, name)
+
+
+@router.post("/api/stock-logos/sync")
+async def sync_stock_logos(
+    _user=Depends(require_admin),
+    market: str = Query("all", description="a_share / hk_stock / us_stock / all"),
+    limit: int = Query(2000, ge=1, le=20000),
+    skip_existing: bool = Query(True),
+):
+    """批次將股票 Logo 下載至伺服器（管理員）。"""
+    from src.core.db import load_all_codes, load_all_codes_by_market
+    from src.core.stock_logo import sync_logos_batch
+    from src.core.stock_universe import query_stock_universe
+
+    codes: list[str] = []
+    code_markets: dict[str, str] = {}
+    m = (market or "all").strip().lower()
+    if m in ("all", ""):
+        try:
+            rows, _ = query_stock_universe(limit=limit, offset=0)
+            for r in rows:
+                c = r.get("code")
+                if not c:
+                    continue
+                codes.append(c)
+                code_markets[c] = r.get("market") or ""
+        except Exception:
+            codes = []
+        if not codes:
+            codes = load_all_codes()[:limit]
+    else:
+        codes = load_all_codes_by_market(m)[:limit]
+        if not codes:
+            try:
+                rows, _ = query_stock_universe(market=m, limit=limit, offset=0)
+                for r in rows:
+                    c = r.get("code")
+                    if not c:
+                        continue
+                    codes.append(c)
+                    code_markets[c] = r.get("market") or m
+            except Exception:
+                codes = []
+        else:
+            code_markets = {c: m for c in codes}
+
+    return sync_logos_batch(
+        codes,
+        market=m if m not in ("all", "") else "",
+        code_markets=code_markets or None,
+        skip_existing=skip_existing,
     )
 
 
@@ -259,9 +354,11 @@ async def get_stock_analysis_page(
     from src.core.market_fetch import build_sparkline_item, df_to_kline_records
     from src.core.polymarket.stock_link import resolve_stock_name, search_polymarket_for_stock
     from src.core.result_cache import get_data_version
+    from src.core.stock_basics import load_stock_financials, load_stock_profile
 
     code = normalize_kline_code(code.strip())
-    name = resolve_stock_name(code)
+    profile = load_stock_profile(code)
+    name = profile.get("name") or resolve_stock_name(code)
     cache_key = f"api:analysis-page:{code}:{kline_days}:{sparkline_days}:{pm_limit}:{get_data_version(code)}"
 
     def _build():
@@ -279,10 +376,15 @@ async def get_stock_analysis_page(
         spark = build_sparkline_item(code, sparkline_days)
         pm = search_polymarket_for_stock(code, name, limit_per_query=8, max_results=pm_limit)
 
+        financials = load_stock_financials(code)
+
         return {
             "success": True,
             "code": code,
             "name": name,
+            "market": profile.get("market") or "",
+            "profile": profile,
+            "financials": financials,
             "kline": kline,
             "kline_source": kline_source,
             "sparkline": spark,

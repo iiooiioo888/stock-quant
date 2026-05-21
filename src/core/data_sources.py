@@ -39,8 +39,9 @@ class DataSource:
         return True
 
     def record_success(self):
-        """記錄成功"""
+        """記錄成功（含可達但 404 等客戶端錯誤），並解除熔斷"""
         self._fail_count = 0
+        self._circuit_open_until = 0.0
 
     def record_failure(self):
         """記錄失敗，連續 5 次熔斷 5 分鐘"""

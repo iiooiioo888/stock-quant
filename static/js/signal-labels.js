@@ -355,11 +355,17 @@ const SignalLabels = {
     const openAttr = code
       ? ` role="button" tabindex="0" class="sig-stock-head sig-stock-head--link" onclick="App.openStockDetail('${String(code).replace(/'/g, "\\'")}')" title="打開 ${this._esc(code)} 獨立詳情頁"`
       : '';
-    return `<div class="sig-stock-card">
+    const logo = code && typeof Utils !== 'undefined' && Utils.stockIconHtml
+      ? Utils.stockIconHtml(code, name, 36)
+      : '';
+    return `<div class="sig-stock-card" data-stock-code="${this._esc(code)}">
       <div${openAttr}>
-        <div>
-          <strong class="sig-stock-code">${this._esc(code)}</strong>
-          ${name ? `<span class="sig-stock-name">${this._esc(name)}</span>` : ''}
+        <div class="sig-stock-identity">
+          ${logo}
+          <div class="sig-stock-titles">
+            <strong class="sig-stock-code">${this._esc(code)}</strong>
+            ${name ? `<span class="sig-stock-name">${this._esc(name)}</span>` : ''}
+          </div>
         </div>
         <span class="b ${strengthMeta.cls} sig-strength-val">${strengthMeta.value.toFixed(2)}</span>
       </div>

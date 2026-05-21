@@ -28,12 +28,18 @@ async def api_polymarket_markets(
     offset: int = Query(0, ge=0),
     active: bool = True,
     tag: str = None,
-    order: str = "volume",
+    order: str = "volume24hr",
+    ascending: bool = False,
 ):
-    """市場列表：成交量/流動性排序，可選標籤篩選。"""
+    """市場列表：預設按 24h 成交量降序，可選標籤篩選。"""
     try:
         return _svc().list_markets(
-            limit=limit, offset=offset, active=active, tag=tag, order=order,
+            limit=limit,
+            offset=offset,
+            active=active,
+            tag=tag,
+            order=order,
+            ascending=ascending,
         )
     except PolymarketDisabledError as e:
         _handle_disabled(e)
@@ -106,6 +112,10 @@ async def api_polymarket_price_history(
         _handle_disabled(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        if "不可用" in str(e) or "熔斷" in str(e):
+            raise HTTPException(503, str(e))
+        raise HTTPException(502, str(e))
 
 
 @router.get("/api/polymarket/orderbook")
@@ -119,6 +129,10 @@ async def api_polymarket_orderbook(
         _handle_disabled(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        if "不可用" in str(e) or "熔斷" in str(e):
+            raise HTTPException(503, str(e))
+        raise HTTPException(502, str(e))
 
 
 @router.get("/api/polymarket/snapshots")

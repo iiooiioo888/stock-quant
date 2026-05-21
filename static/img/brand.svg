@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="Stock Quant">
+  <rect width="32" height="32" rx="8" fill="#63b3ed"/>
+  <path d="M7 21.5L13.2 14.2L17.4 17.8L25 9.5" stroke="#09090b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="25" cy="9.5" r="2" fill="#09090b"/>
+</svg>

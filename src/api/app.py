@@ -259,6 +259,8 @@ _RATE_LIMIT_SKIP_PREFIX = (
     "/api/health",
     "/api/status",
     "/api/tasks",
+    "/api/stock-logo/",
+    "/api/iconfont/",
     "/static",
     "/ws",
 )
@@ -300,7 +302,7 @@ async def rate_limit_middleware(request: Request, call_next):
 # 不需要認證的路徑前綴（白名單）
 AUTH_WHITELIST_PREFIX = (
     "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
-    "/api/config", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources",
+    "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources",
     "/api/markets", "/api/indices", "/api/dashboard", "/api/data/", "/api/tasks",
     "/api/polymarket",
     "/api/external",
@@ -2249,6 +2251,22 @@ async def disable_data_quality_api():
 # ====== 靜態文件（前端） ======
 
 static_dir = Path(__file__).parent.parent.parent / "static"
+
+
+@app.get("/static/iconfont/stocks/{filename}", include_in_schema=False)
+async def compat_iconfont_stock_svg_mount(
+    filename: str,
+    market: str = Query(""),
+    name: str = Query(""),
+):
+    """優先於 StaticFiles：舊版 /static/iconfont/stocks/{code}.svg 改走 Logo 快取。"""
+    from src.api.routers.stocks import _stock_logo_response
+
+    if not str(filename or "").lower().endswith(".svg"):
+        raise HTTPException(404, "not found")
+    return _stock_logo_response(filename[:-4], market, name)
+
+
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     logger.info(f"📁 靜態文件目錄: {static_dir}")

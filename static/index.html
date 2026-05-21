@@ -11,9 +11,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- Styles -->
-<link rel="stylesheet" href="/static/css/style.css?v=modern-redesign-20260524">
+<!-- Styles & Icons -->
+<link rel="stylesheet" href="/static/css/style.css?v=logo-square-20260522">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/static/iconfont/iconfont.css?v=iconfont-20260521">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://at.alicdn.com" crossorigin>
 </head>
 <body>
 
@@ -22,29 +25,32 @@
      ============================================================ -->
 <div class="hdr">
     <div class="hdr-left">
-        <button class="sidebar-toggle" id="sidebarToggle" title="收合側邊欄">☰</button>
-        <h1>📈 stock-quant</h1>
+        <button type="button" class="sidebar-toggle" id="sidebarToggle" title="收合側邊欄" aria-label="收合側邊欄"><i class="ti ti-layout-sidebar"></i></button>
+        <a class="brand" href="#" onclick="event.preventDefault();App.loadTab('dashboard')" title="返回儀表盤">
+            <img class="brand-mark" src="/static/img/brand.svg" width="28" height="28" alt="">
+            <span class="brand-text">Stock Quant</span>
+        </a>
     </div>
 
     <div class="hdr-center">
         <div class="global-search">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="globalSearch" placeholder="搜索股票代碼 / 策略名稱..." autocomplete="off">
+            <span class="search-icon"><i class="ti ti-search"></i></span>
+            <input type="text" id="globalSearch" placeholder="搜索股票代碼 / 功能…" autocomplete="off">
             <kbd class="search-kbd">/</kbd>
             <div class="search-results" id="searchResults"></div>
         </div>
     </div>
 
     <div class="hdr-right">
-        <div id="authStatus" onclick="Api.isLoggedIn() ? Api.logout() : Api.showLoginModal()" style="font-size:11px;cursor:pointer;padding:4px 8px;border-radius:4px;background:var(--bg-primary);border:1px solid var(--border-color)"></div>
+        <div id="authStatus" class="auth-pill" onclick="Api.isLoggedIn() ? Api.logout() : Api.showLoginModal()" role="button" tabindex="0"></div>
         <div class="hdr-quick-stats" id="hdrQuickStats">
             <span class="hq-item" title="監控股票數">
-                <span class="hq-icon">📊</span>
+                <i class="ti ti-chart-line hq-icon" aria-hidden="true"></i>
                 <span class="hq-val" id="hqStocks">-</span>
             </span>
             <span class="hq-divider"></span>
             <span class="hq-item" title="今日預警">
-                <span class="hq-icon">🔔</span>
+                <i class="ti ti-bell hq-icon" aria-hidden="true"></i>
                 <span class="hq-val" id="hqAlerts">-</span>
             </span>
         </div>
@@ -52,7 +58,7 @@
             <span class="ws-dot off" id="wsDot"></span>
             <span id="sysStatus">載入中...</span>
         </div>
-        <button class="theme-toggle" id="themeToggle" title="切換主題">☀️</button>
+        <button type="button" class="theme-toggle" id="themeToggle" title="切換主題" aria-label="切換主題"><i class="ti ti-sun"></i></button>
     </div>
 </div>
 
@@ -65,35 +71,28 @@
 <div class="sidebar" id="sidebar">
     <div class="sidebar-nav">
         <div class="nav-section">概覽</div>
-        <button class="a" data-tab="dashboard"><span class="nav-icon">📊</span><span class="nav-label">儀表盤</span><span class="nav-badge" id="navBadgeDashboard"></span></button>
-
-        <div class="nav-section">回測</div>
-        <button data-tab="backtest"><span class="nav-icon">🧪</span><span class="nav-label">策略回測</span></button>
-        <button data-tab="optimize"><span class="nav-icon">⚡</span><span class="nav-label">參數優化</span></button>
-        <button data-tab="walkforward"><span class="nav-icon">🔄</span><span class="nav-label">Walk-Forward</span></button>
-        <button data-tab="heatmap"><span class="nav-icon">🌡️</span><span class="nav-label">熱力圖</span></button>
-        <button data-tab="history"><span class="nav-icon">📜</span><span class="nav-label">回測歷史</span></button>
+        <button class="a" data-tab="dashboard"><span class="nav-icon"><i class="ti ti-layout-dashboard"></i></span><span class="nav-label">儀表盤</span><span class="nav-badge" id="navBadgeDashboard"></span></button>
 
         <div class="nav-section">組合</div>
-        <button data-tab="portfolio"><span class="nav-icon">💼</span><span class="nav-label">組合回測</span></button>
-        <button data-tab="compare"><span class="nav-icon">⚖️</span><span class="nav-label">多股對比</span></button>
+        <button data-tab="portfolio"><span class="nav-icon"><i class="ti ti-briefcase"></i></span><span class="nav-label">組合回測</span></button>
+        <button data-tab="compare"><span class="nav-icon"><i class="ti ti-scale"></i></span><span class="nav-label">多股對比</span></button>
 
         <div class="nav-section">分析</div>
-        <button data-tab="screener"><span class="nav-icon">🔍</span><span class="nav-label">股票篩選</span></button>
-        <button data-tab="signals"><span class="nav-icon">📡</span><span class="nav-label">實時信號</span><span class="nav-dot" id="navDotSignals"></span></button>
-        <button data-tab="data"><span class="nav-icon">🗄️</span><span class="nav-label">數據中心</span></button>
-        <button data-tab="analysis"><span class="nav-icon">🔬</span><span class="nav-label">深度分析</span></button>
-        <button data-tab="stock-detail"><span class="nav-icon">📈</span><span class="nav-label">股票詳情</span></button>
-        <button data-tab="polymarket"><span class="nav-icon">🔮</span><span class="nav-label">預測市場</span></button>
+        <button data-tab="screener"><span class="nav-icon"><i class="ti ti-filter"></i></span><span class="nav-label">股票篩選</span></button>
+        <button data-tab="signals"><span class="nav-icon"><i class="ti ti-antenna-bars-5"></i></span><span class="nav-label">實時信號</span><span class="nav-dot" id="navDotSignals"></span></button>
+        <button data-tab="data"><span class="nav-icon"><i class="ti ti-database"></i></span><span class="nav-label">數據中心</span></button>
+        <button data-tab="analysis"><span class="nav-icon"><i class="ti ti-microscope"></i></span><span class="nav-label">深度分析</span></button>
+        <button data-tab="stock-detail"><span class="nav-icon"><i class="ti ti-chart-candle"></i></span><span class="nav-label">股票詳情</span></button>
+        <button data-tab="polymarket"><span class="nav-icon"><i class="ti ti-crystal-ball"></i></span><span class="nav-label">預測市場</span></button>
 
         <div class="nav-section">系統</div>
-        <button data-tab="tasks"><span class="nav-icon">📋</span><span class="nav-label">任務面板</span><span class="nav-badge" id="navBadgeTasks"></span></button>
-        <button data-tab="reports"><span class="nav-icon">📄</span><span class="nav-label">策略報告</span></button>
-        <button data-tab="scheduler"><span class="nav-icon">⏰</span><span class="nav-label">定時任務</span></button>
-        <button data-tab="alerts"><span class="nav-icon">🔔</span><span class="nav-label">預警通知</span><span class="nav-dot" id="navDotAlerts"></span></button>
-        <button data-tab="markets"><span class="nav-icon">🌐</span><span class="nav-label">多市場</span></button>
-        <button data-tab="crypto"><span class="nav-icon">₿</span><span class="nav-label">加密行情</span></button>
-        <button data-tab="connectivity"><span class="nav-icon">🔌</span><span class="nav-label">接口檢查</span></button>
+        <button data-tab="tasks"><span class="nav-icon"><i class="ti ti-list-check"></i></span><span class="nav-label">任務面板</span><span class="nav-badge" id="navBadgeTasks"></span></button>
+        <button data-tab="reports"><span class="nav-icon"><i class="ti ti-file-analytics"></i></span><span class="nav-label">策略報告</span></button>
+        <button data-tab="scheduler"><span class="nav-icon"><i class="ti ti-clock"></i></span><span class="nav-label">定時任務</span></button>
+        <button data-tab="alerts"><span class="nav-icon"><i class="ti ti-bell-ringing"></i></span><span class="nav-label">預警通知</span><span class="nav-dot" id="navDotAlerts"></span></button>
+        <button data-tab="markets"><span class="nav-icon"><i class="ti ti-world"></i></span><span class="nav-label">多市場</span></button>
+        <button data-tab="crypto"><span class="nav-icon"><i class="ti ti-currency-bitcoin"></i></span><span class="nav-label">加密行情</span></button>
+        <button data-tab="connectivity"><span class="nav-icon"><i class="ti ti-plug"></i></span><span class="nav-label">接口檢查</span></button>
     </div>
 
     <div class="sidebar-footer">
@@ -116,7 +115,7 @@
         <div class="dash-hero-top">
             <div class="dash-hero-text">
                 <p class="dash-hero-eyebrow">量化交易工作台</p>
-                <h2 class="dash-hero-title" id="greetingText">歡迎回來 👋</h2>
+                <h2 class="dash-hero-title" id="greetingText">歡迎回來</h2>
                 <p class="dash-hero-sub welcome-sub" id="greetingSubtext">今天也要元氣滿滿地分析市場！</p>
             </div>
             <div class="dash-hero-badge" id="marketStatus">
@@ -137,32 +136,32 @@
         </div>
         <div class="quick-actions dash-quick-grid" id="quickActions">
             <button type="button" class="qa-card" onclick="App.quickAction('backtest')">
-                <span class="qa-icon-wrap"><span class="qa-icon">🧪</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-flask qa-icon"></i></span>
                 <span class="qa-label">策略回測</span>
                 <span class="qa-desc">測試交易策略</span>
             </button>
             <button type="button" class="qa-card" onclick="App.quickAction('signals')">
-                <span class="qa-icon-wrap"><span class="qa-icon">📡</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-antenna-bars-5 qa-icon"></i></span>
                 <span class="qa-label">今日信號</span>
                 <span class="qa-desc">買賣信號速覽</span>
             </button>
             <button type="button" class="qa-card" onclick="App.quickAction('screener')">
-                <span class="qa-icon-wrap"><span class="qa-icon">🔍</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-filter qa-icon"></i></span>
                 <span class="qa-label">選股篩選</span>
                 <span class="qa-desc">條件選股</span>
             </button>
             <button type="button" class="qa-card" onclick="App.quickAction('portfolio')">
-                <span class="qa-icon-wrap"><span class="qa-icon">💼</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-briefcase qa-icon"></i></span>
                 <span class="qa-label">組合分析</span>
                 <span class="qa-desc">多策略組合</span>
             </button>
             <button type="button" class="qa-card qa-card--accent" onclick="App.downloadAllFromDashboard()" id="qaDownload">
-                <span class="qa-icon-wrap"><span class="qa-icon">📥</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-download qa-icon"></i></span>
                 <span class="qa-label">下載數據</span>
                 <span class="qa-desc">全市場入庫</span>
             </button>
             <button type="button" class="qa-card" onclick="App.quickAction('markets')">
-                <span class="qa-icon-wrap"><span class="qa-icon">🌐</span></span>
+                <span class="qa-icon-wrap"><i class="ti ti-world qa-icon"></i></span>
                 <span class="qa-label">多市場</span>
                 <span class="qa-desc">美股 · 港股 · 加密</span>
             </button>
@@ -173,7 +172,7 @@
     <section class="dash-section dash-section--flat">
         <div class="dash-section-head">
             <div class="dash-section-intro">
-                <h2 class="dash-section-title">₿ 加密貨幣行情</h2>
+                <h2 class="dash-section-title">加密貨幣行情</h2>
                 <p class="dash-section-meta">Binance 實時報價 · 24h 漲跌</p>
             </div>
         </div>
@@ -200,7 +199,7 @@
     <section class="dash-section">
         <div class="dash-section-head">
             <div class="dash-section-intro">
-                <h2 class="dash-section-title">📊 核心概覽</h2>
+                <h2 class="dash-section-title">核心概覽</h2>
                 <p class="dash-section-meta" id="dashCoreMeta">監控股 · 策略回測 · 實時信號 · 行業板塊</p>
             </div>
         </div>
@@ -237,7 +236,7 @@
     <section class="dash-section index-charts-sec">
         <div class="dash-section-head">
             <div class="dash-section-intro">
-                <h2 class="dash-section-title">🌍 全球主要指數</h2>
+                <h2 class="dash-section-title">全球主要指數</h2>
                 <p class="dash-section-meta" id="indexChartsMeta">專業 K 線 · 載入中…</p>
             </div>
         </div>
@@ -250,7 +249,7 @@
     <section class="dash-section tv-market-sec">
         <div class="dash-section-head">
             <div class="dash-section-intro">
-                <h2 class="dash-section-title">📺 專業行情牆</h2>
+                <h2 class="dash-section-title">專業行情牆</h2>
                 <p class="dash-section-meta" id="tvChartsMeta">監控股 · 動量 · 波動 · 回撤</p>
             </div>
         </div>
@@ -281,14 +280,14 @@
     <section class="dash-section dash-watchlist-sec">
         <div class="dash-section-head dash-section-head--row">
             <div class="dash-section-intro">
-                <h2 class="dash-section-title">📋 監控列表</h2>
+                <h2 class="dash-section-title">監控列表</h2>
                 <p class="dash-section-meta">價格突破 / 跌破預警</p>
             </div>
             <span class="dash-wl-badge" id="wlCount">0 只</span>
         </div>
         <div class="dash-table-card table-wrap">
             <table class="dash-watchlist-table">
-                <thead><tr><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
+                <thead><tr><th class="col-logo"></th><th>代碼</th><th>名稱</th><th>突破價</th><th>跌破價</th><th>漲跌幅</th><th>走勢</th><th>操作</th></tr></thead>
                 <tbody id="watchlistTable"></tbody>
             </table>
         </div>
@@ -723,7 +722,7 @@
     </div>
     <div id="scrResult" class="h">
         <div class="sec"><h2>篩選結果 <span class="ct" id="scrCount"></span></h2>
-            <div class="table-wrap table-wrap-scroll"><table><thead><tr><th>代碼</th><th>名稱</th><th>匹配條件</th><th>操作</th></tr></thead><tbody id="scrTable"></tbody></table></div>
+            <div class="table-wrap table-wrap-scroll"><table><thead><tr><th class="col-logo"></th><th>代碼</th><th>名稱</th><th>匹配條件</th><th>操作</th></tr></thead><tbody id="scrTable"></tbody></table></div>
         </div>
     </div>
 </div>
@@ -1058,8 +1057,8 @@
 <div id="tab-stock-detail" class="h stock-detail-page">
     <div id="sdIndexView" class="sd-index-view">
         <section class="sd-index-head">
-            <h2 class="dash-section-title">📈 股票詳情索引</h2>
-            <p class="sec-desc">每支股票都有獨立詳情頁（TradingView K 線 + Polymarket）。點擊卡片進入，網址可收藏分享，例如 <code>#/stock/600519</code></p>
+            <h2 class="dash-section-title">股票詳情索引</h2>
+            <p class="sec-desc">每支股票獨立頁：行情、Polymarket、策略回測、參數優化、Walk-Forward、熱力圖與回測歷史。例如 <code>#/stock/600519</code></p>
             <div class="fr" style="flex-wrap:wrap;gap:8px;margin-top:10px">
                 <input type="search" id="sdIndexSearch" class="input-sm" placeholder="搜尋代碼或名稱…" style="min-width:200px">
                 <button class="btn s" type="button" id="sdIndexReload">🔄 刷新列表</button>
@@ -1077,28 +1076,66 @@
         <span class="sd-url-hint" id="sdUrlHint"></span>
     </div>
     <section class="sd-hero">
-        <div class="sd-hero-main">
-            <div class="stock-code-icon sd-hero-icon">
-                <img id="sdIcon" width="56" height="56" alt="">
-                <span class="stock-code-letter" id="sdIconLetter">股</span>
+        <div class="sd-hero-top">
+            <div class="sd-hero-identity">
+                <div class="stock-code-icon sd-hero-icon sd-icon-square">
+                    <img id="sdIcon" width="72" height="72" alt="">
+                    <span class="stock-code-letter" id="sdIconLetter">股</span>
+                </div>
+                <div class="sd-hero-titles">
+                    <h2 class="sd-hero-title"><span id="sdName">—</span> <span id="sdCode" class="sd-code-tag"></span></h2>
+                    <p class="sd-hero-meta" id="sdMeta">輸入代碼或從股票選擇器進入</p>
+                    <div class="sd-hero-tags" id="sdHeroTags"></div>
+                </div>
             </div>
-            <div>
-                <h2 class="sd-hero-title"><span id="sdName">—</span> <span id="sdCode" class="sd-code-tag"></span></h2>
-                <p class="sd-hero-meta" id="sdMeta">輸入代碼或從股票選擇器進入</p>
+            <div class="sd-hero-actions">
+                <div class="fg"><label>代碼</label><input id="sdCodeInput" class="input-sm" placeholder="600519" maxlength="12"></div>
+                <button class="btn" type="button" id="sdGoBtn">載入</button>
+                <button class="btn s" type="button" id="sdAnalysisBtn">深度分析</button>
+                <button class="btn s" type="button" id="sdPmTabBtn">預測市場</button>
             </div>
         </div>
-        <div class="sd-hero-actions fr" style="flex-wrap:wrap;gap:8px">
-            <div class="fg"><label>代碼</label><input id="sdCodeInput" class="input-sm" placeholder="600519" maxlength="12"></div>
-            <button class="btn" type="button" id="sdGoBtn">載入</button>
-            <button class="btn s" type="button" id="sdBacktestBtn">回測</button>
-            <button class="btn s" type="button" id="sdAnalysisBtn">深度分析</button>
-            <button class="btn s" type="button" id="sdPmTabBtn">預測市場</button>
+        <div class="sd-profile-panel">
+            <div class="sd-profile-block">
+                <h3 class="sd-profile-heading">公司簡介</h3>
+                <p class="sd-intro" id="sdIntro">載入個股後顯示簡介…</p>
+            </div>
+            <div class="sd-profile-block sd-profile-block--finance">
+                <div class="sd-profile-head-row">
+                    <h3 class="sd-profile-heading">財務數據</h3>
+                    <span class="sd-finance-asof muted" id="sdFinanceAsof"></span>
+                </div>
+                <div class="sd-finance-grid" id="sdFinanceGrid">
+                    <p class="muted">載入中…</p>
+                </div>
+            </div>
         </div>
     </section>
 
+    <div id="sdStockContext" class="sd-stock-context h">
+        <div class="sd-stock-context-inner">
+            <span id="sdContextIcon"></span>
+            <div class="sd-stock-context-text">
+                <strong id="sdContextCode">—</strong>
+                <span id="sdContextName"></span>
+                <span class="sd-stock-context-hint">以下回測功能均針對當前標的</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="sd-subnav" id="sdSubnav" aria-label="個股功能">
+        <button type="button" class="sd-subnav-btn a" data-sd-tab="overview"><i class="ti ti-chart-line"></i>概覽</button>
+        <button type="button" class="sd-subnav-btn" data-sd-tab="backtest"><i class="ti ti-flask"></i>策略回測</button>
+        <button type="button" class="sd-subnav-btn" data-sd-tab="optimize"><i class="ti ti-bolt"></i>參數優化</button>
+        <button type="button" class="sd-subnav-btn" data-sd-tab="walkforward"><i class="ti ti-refresh"></i>Walk-Forward</button>
+        <button type="button" class="sd-subnav-btn" data-sd-tab="heatmap"><i class="ti ti-temperature"></i>熱力圖</button>
+        <button type="button" class="sd-subnav-btn" data-sd-tab="history"><i class="ti ti-history"></i>回測歷史</button>
+    </nav>
+
+    <div id="sd-panel-overview" class="sd-panel">
     <section class="dash-section">
         <div class="dash-section-head">
-            <h2 class="dash-section-title">📊 TradingView 專業行情</h2>
+            <h2 class="dash-section-title">TradingView 專業行情</h2>
             <p class="dash-section-meta">Lightweight Charts · K 線 / 走勢 · 本地數據庫</p>
         </div>
         <article class="sd-tv-main-card">
@@ -1109,7 +1146,7 @@
 
     <section class="dash-section">
         <div class="dash-section-head">
-            <h2 class="dash-section-title">🔮 相關預測市場（Polymarket）</h2>
+            <h2 class="dash-section-title">相關預測市場（Polymarket）</h2>
             <p class="dash-section-meta" id="sdPmHint">依股票名稱與代碼自動搜尋</p>
         </div>
         <div class="table-wrap table-wrap-scroll">
@@ -1129,6 +1166,9 @@
             </div>
         </div>
     </section>
+    </div><!-- /sd-panel-overview -->
+
+    <div id="sdPanelsMount" class="sd-panels-mount"></div>
     </div>
 </div>
 
@@ -1360,29 +1400,29 @@
      ============================================================ -->
 <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script defer src="/static/js/utils.js?v=stockpicker-20260520b"></script>
+<script defer src="/static/js/utils.js?v=logo-square-20260522"></script>
 <script defer src="/static/js/api.js?v=ui-fix-20260521"></script>
 <script defer src="/static/js/stock-picker.js?v=stockpicker-20260520c"></script>
 <script defer src="/static/js/charts.js?v=ui-fix-20260521"></script>
 <script defer src="/static/js/chart-pro.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/dashboard.js?v=ui-fix-20260521"></script>
+<script defer src="/static/js/dashboard.js?v=logo-square-20260522"></script>
 <script defer src="/static/js/backtest.js?v=stock-pages-20260521"></script>
 <script defer src="/static/js/optimize.js?v=ui-fix-20260521"></script>
 <script defer src="/static/js/portfolio.js"></script>
-<script defer src="/static/js/signal-labels.js?v=stock-pages-20260521"></script>
+<script defer src="/static/js/signal-labels.js?v=logo-cdn-20260521"></script>
 <script defer src="/static/js/signals.js?v=signals-opt-20260521"></script>
-<script defer src="/static/js/screener.js"></script>
+<script defer src="/static/js/screener.js?v=logo-cdn-20260521"></script>
 <script defer src="/static/js/heatmap.js"></script>
 <script defer src="/static/js/data.js?v=ui-fix-20260521"></script>
 <script defer src="/static/js/analysis.js?v=ui-fix-20260521"></script>
 <script defer src="/static/js/task-common.js?v=chart-zh-20260521b"></script>
 <script defer src="/static/js/tasks.js"></script>
 <script defer src="/static/js/scheduler.js"></script>
-<script defer src="/static/js/polymarket.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/stock-detail.js?v=stock-pages-20260521"></script>
+<script defer src="/static/js/polymarket.js?v=pm-volume24hr-20260522"></script>
+<script defer src="/static/js/stock-detail.js?v=sd-profile-20260522"></script>
 <script defer src="/static/js/crypto.js?v=crypto-20260521"></script>
 <script defer src="/static/js/connectivity.js?v=ext-check-20260521"></script>
-<script defer src="/static/js/app.js?v=ui-fix-20260521"></script>
+<script defer src="/static/js/app.js?v=stock-bt-20260522"></script>
 
 </body>
 </html>

@@ -8,6 +8,8 @@ const App = {
   _wsMaxRetry: 15,
   _wsAuthRequired: false,
   _currentTab: 'dashboard',
+  _routerReady: false,
+  _tabIds: null,
 
   /**
    * 初始化應用
@@ -32,12 +34,11 @@ const App = {
       this._initQuickStats(),
     ]).catch(() => {});
 
-    // 載入默認 Tab（支援 #/stock/代碼 或 #/stocks 深連結）
-    if (typeof StockDetail !== 'undefined') {
-      StockDetail.initRouter();
-      if (!StockDetail.routeFromHash()) this.loadTab('dashboard');
-    } else {
-      this.loadTab('dashboard');
+    // 路由：#/stock/代碼、#/stocks、#/dashboard 等各 Tab 深連結
+    this.initRouter();
+    if (typeof StockDetail !== 'undefined') StockDetail.initRouter();
+    if (!this.routeFromHash(true)) {
+      this.loadTab('dashboard', { syncHash: true });
     }
 
     // 初始化子模塊
@@ -51,6 +52,30 @@ const App = {
 
   quickAction(tab) {
     this.loadTab(tab);
+  },
+
+  /** 舊版回測 Tab → 個股詳情子功能（#/stock/代碼/子Tab） */
+  _STOCK_TOOL_TABS: ['backtest', 'optimize', 'walkforward', 'heatmap', 'history'],
+
+  openStockTool(subTab, code) {
+    const sub = this._STOCK_TOOL_TABS.includes(subTab) ? subTab : 'backtest';
+    const c = String(code || '').trim();
+    if (typeof StockDetail === 'undefined') {
+      this.loadTab('stock-detail');
+      return;
+    }
+    StockDetail.initRouter();
+    if (c) {
+      StockDetail._pendingSubTab = sub;
+      StockDetail.open(c);
+      return;
+    }
+    this.loadTab('stock-detail');
+    StockDetail._pendingSubTab = sub;
+    StockDetail.showIndex();
+    if (typeof Utils !== 'undefined') {
+      Utils.toast('請先從股票詳情選擇標的', 2800, 'info');
+    }
   },
 
   /** 打開該股獨立詳情頁（#/stock/代碼，可收藏分享） */
@@ -226,30 +251,30 @@ const App = {
 
     // Search data
     const searchData = [
-      { icon: '📊', code: '000001', name: '平安銀行', type: 'A股', action: () => this.openStockDetail('000001') },
-      { icon: '📊', code: '600519', name: '貴州茅台', type: 'A股', action: () => this.openStockDetail('600519') },
-      { icon: '📊', code: '000858', name: '五糧液', type: 'A股', action: () => this.openStockDetail('000858') },
-      { icon: '📊', code: '601318', name: '中國平安', type: 'A股', action: () => this.openStockDetail('601318') },
-      { icon: '📊', code: '000333', name: '美的集團', type: 'A股', action: () => this.openStockDetail('000333') },
-      { icon: '🔮', code: '', name: '預測市場', type: '功能', action: () => this.loadTab('polymarket') },
-      { icon: '📈', code: '', name: '股票詳情索引', type: '功能', action: () => this.openStockDetail('') },
-      { icon: '🧪', code: '', name: '策略回測', type: '功能', action: () => this.loadTab('backtest') },
-      { icon: '⚡', code: '', name: '參數優化', type: '功能', action: () => this.loadTab('optimize') },
-      { icon: '🔄', code: '', name: '滾動窗口驗證', type: '功能', action: () => this.loadTab('walkforward') },
-      { icon: '🌡️', code: '', name: '熱力圖', type: '功能', action: () => this.loadTab('heatmap') },
-      { icon: '💼', code: '', name: '組合回測', type: '功能', action: () => this.loadTab('portfolio') },
-      { icon: '⚖️', code: '', name: '多股對比', type: '功能', action: () => this.loadTab('compare') },
-      { icon: '🔍', code: '', name: '股票篩選', type: '功能', action: () => this.loadTab('screener') },
-      { icon: '📡', code: '', name: '實時信號', type: '功能', action: () => this.loadTab('signals') },
-      { icon: '🗄️', code: '', name: '數據中心', type: '功能', action: () => this.loadTab('data') },
-      { icon: '🔬', code: '', name: '深度分析', type: '功能', action: () => this.loadTab('analysis') },
-      { icon: '📋', code: '', name: '策略報告', type: '功能', action: () => this.loadTab('reports') },
-      { icon: '⏰', code: '', name: '定時任務', type: '功能', action: () => this.loadTab('scheduler') },
-      { icon: '🔔', code: '', name: '預警通知', type: '功能', action: () => this.loadTab('alerts') },
-      { icon: '🌐', code: '', name: '多市場', type: '功能', action: () => this.loadTab('markets') },
-      { icon: '🔌', code: '', name: '接口檢查', type: '功能', action: () => this.loadTab('connectivity') },
-      { icon: '📋', code: '', name: '任務面板', type: '功能', action: () => this.loadTab('tasks') },
-      { icon: '📥', code: '', name: '下載全市場數據', type: '操作', action: () => this.downloadAllFromDashboard() },
+      { ti: 'ti-chart-candle', code: '000001', name: '平安銀行', type: 'A股', action: () => this.openStockDetail('000001') },
+      { ti: 'ti-chart-candle', code: '600519', name: '貴州茅台', type: 'A股', action: () => this.openStockDetail('600519') },
+      { ti: 'ti-chart-candle', code: '000858', name: '五糧液', type: 'A股', action: () => this.openStockDetail('000858') },
+      { ti: 'ti-chart-candle', code: '601318', name: '中國平安', type: 'A股', action: () => this.openStockDetail('601318') },
+      { ti: 'ti-chart-candle', code: '000333', name: '美的集團', type: 'A股', action: () => this.openStockDetail('000333') },
+      { ti: 'ti-crystal-ball', code: '', name: '預測市場', type: '功能', action: () => this.loadTab('polymarket') },
+      { ti: 'ti-chart-line', code: '', name: '股票詳情索引', type: '功能', action: () => this.openStockDetail('') },
+      { ti: 'ti-flask', code: '', name: '策略回測', type: '功能', action: () => this.openStockTool('backtest') },
+      { ti: 'ti-bolt', code: '', name: '參數優化', type: '功能', action: () => this.openStockTool('optimize') },
+      { ti: 'ti-refresh', code: '', name: 'Walk-Forward', type: '功能', action: () => this.openStockTool('walkforward') },
+      { ti: 'ti-temperature', code: '', name: '熱力圖', type: '功能', action: () => this.openStockTool('heatmap') },
+      { ti: 'ti-briefcase', code: '', name: '組合回測', type: '功能', action: () => this.loadTab('portfolio') },
+      { ti: 'ti-scale', code: '', name: '多股對比', type: '功能', action: () => this.loadTab('compare') },
+      { ti: 'ti-filter', code: '', name: '股票篩選', type: '功能', action: () => this.loadTab('screener') },
+      { ti: 'ti-antenna-bars-5', code: '', name: '實時信號', type: '功能', action: () => this.loadTab('signals') },
+      { ti: 'ti-database', code: '', name: '數據中心', type: '功能', action: () => this.loadTab('data') },
+      { ti: 'ti-microscope', code: '', name: '深度分析', type: '功能', action: () => this.loadTab('analysis') },
+      { ti: 'ti-file-analytics', code: '', name: '策略報告', type: '功能', action: () => this.loadTab('reports') },
+      { ti: 'ti-clock', code: '', name: '定時任務', type: '功能', action: () => this.loadTab('scheduler') },
+      { ti: 'ti-bell-ringing', code: '', name: '預警通知', type: '功能', action: () => this.loadTab('alerts') },
+      { ti: 'ti-world', code: '', name: '多市場', type: '功能', action: () => this.loadTab('markets') },
+      { ti: 'ti-plug', code: '', name: '接口檢查', type: '功能', action: () => this.loadTab('connectivity') },
+      { ti: 'ti-list-check', code: '', name: '任務面板', type: '功能', action: () => this.loadTab('tasks') },
+      { ti: 'ti-download', code: '', name: '下載全市場數據', type: '操作', action: () => this.downloadAllFromDashboard() },
     ];
 
     let debounceTimer;
@@ -266,14 +291,21 @@ const App = {
         if (matched.length === 0) {
           results.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:12px">找不到相關結果</div>';
         } else {
-          results.innerHTML = matched.map((item, i) =>
-            `<div class="search-result-item" data-idx="${i}">
-              <span class="sr-icon">${item.icon}</span>
-              <span class="sr-code">${item.code}</span>
+          results.innerHTML = matched.map((item, i) => {
+            const logo = item.code && typeof Utils !== 'undefined' && Utils.stockIconHtml
+              ? `<span class="sr-logo">${Utils.stockIconHtml(item.code, item.name, 28)}</span>`
+              : `<span class="sr-icon-func"><i class="ti ${item.ti || 'ti-apps'}" aria-hidden="true"></i></span>`;
+            return `<div class="search-result-item" data-idx="${i}">
+              ${logo}
+              <span class="sr-code">${item.code || '—'}</span>
               <span class="sr-name">${item.name}</span>
               <span class="sr-type">${item.type}</span>
-            </div>`
-          ).join('');
+            </div>`;
+          }).join('');
+
+          if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
+            Utils.hydrateStockIcons(results);
+          }
 
           results.querySelectorAll('.search-result-item').forEach((el, i) => {
             el.addEventListener('click', () => {
@@ -358,13 +390,102 @@ const App = {
     if (!btn) return;
     const isDark = !document.documentElement.hasAttribute('data-theme') ||
                    document.documentElement.getAttribute('data-theme') === 'dark';
-    btn.textContent = isDark ? '☀️' : '🌙';
+    btn.innerHTML = isDark
+      ? '<i class="ti ti-sun" aria-hidden="true"></i>'
+      : '<i class="ti ti-moon" aria-hidden="true"></i>';
     btn.title = isDark ? '切換亮色主題' : '切換暗色主題';
   },
 
   // ============================================================
-  // Tab Routing
+  // Tab Routing（#/tabId；股票詳情保留 #/stock/代碼、#/stocks）
   // ============================================================
+
+  initRouter() {
+    if (this._routerReady) return;
+    this._routerReady = true;
+    const tabs = new Set(['dashboard']);
+    document.querySelectorAll('.sidebar button[data-tab]').forEach(b => {
+      if (b.dataset.tab) tabs.add(b.dataset.tab);
+    });
+    this._tabIds = tabs;
+    const onRoute = () => this.routeFromHash(false);
+    window.addEventListener('hashchange', onRoute);
+    window.addEventListener('popstate', onRoute);
+  },
+
+  /** 是否為股票詳情專用 hash（不由 Tab hash 處理） */
+  isStockHash(raw) {
+    const r = String(
+      raw != null ? raw : (location.hash || '').replace(/^#/, '')
+    ).trim();
+    const parts = r.split('/').filter(Boolean);
+    if (parts[0] === 'stock' && parts[1]) return true;
+    if (parts[0] === 'stocks' || r === 'stock-detail' || r === 'stock') return true;
+    return false;
+  },
+
+  /** 從 hash 解析主 Tab id；股票路由返回 null */
+  tabFromHash() {
+    const raw = (location.hash || '').replace(/^#/, '').trim();
+    if (!raw) return 'dashboard';
+    if (this.isStockHash(raw)) return null;
+    const seg = raw.split('/').filter(Boolean)[0] || '';
+    if (this._tabIds && this._tabIds.has(seg)) return seg;
+    return null;
+  },
+
+  /**
+   * 依網址載入對應畫面。先處理股票詳情，再處理各 Tab。
+   * @returns {boolean} 是否已識別並處理 hash
+   */
+  routeFromHash(pushTab = true) {
+    const raw = (location.hash || '').replace(/^#/, '').trim();
+    const seg = raw.split('/').filter(Boolean)[0] || '';
+    if (this._STOCK_TOOL_TABS?.includes(seg)) {
+      const code =
+        (typeof StockDetail !== 'undefined' && StockDetail._code) ||
+        (typeof Backtest !== 'undefined' && Backtest.getCode?.()) ||
+        document.getElementById('btCode')?.value ||
+        '';
+      this.openStockTool(seg, code);
+      return true;
+    }
+    if (typeof StockDetail !== 'undefined' && StockDetail.routeFromHash(pushTab)) {
+      return true;
+    }
+    const tab = this.tabFromHash();
+    if (tab) {
+      this.loadTab(tab, { syncHash: false });
+      return true;
+    }
+    if (!raw) {
+      if (pushTab) this.loadTab('dashboard', { syncHash: true });
+      return true;
+    }
+    return false;
+  },
+
+  _setTabHash(tab) {
+    const hash = '#/' + tab;
+    if (location.hash === hash) return;
+    if (history.replaceState) {
+      history.replaceState({ appTab: tab }, '', hash);
+    } else {
+      location.hash = hash;
+    }
+  },
+
+  /** 切換 Tab 時同步網址（側欄用 replaceState，不堆疊 history） */
+  _syncHashForTab(tab) {
+    if (tab === 'stock-detail') {
+      if (typeof StockDetail === 'undefined') return;
+      const raw = (location.hash || '').replace(/^#/, '').trim();
+      if (this.isStockHash(raw)) return;
+      StockDetail._setHash('/stocks', false);
+      return;
+    }
+    this._setTabHash(tab);
+  },
 
   initTabs() {
     document.getElementById('sidebar').addEventListener('click', e => {
@@ -375,12 +496,31 @@ const App = {
     });
   },
 
-  loadTab(tab) {
-    // 同一 Tab 不重複加載（避免無謂的 cleanup + reload）
-    if (this._currentTab === tab) return;
+  loadTab(tab, options = {}) {
+    const syncHash = options.syncHash !== false;
 
-    // 隱藏所有 tab 內容
-    document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('h'));
+    // 回測相關功能已併入個股詳情子 Tab
+    if (this._STOCK_TOOL_TABS?.includes(tab)) {
+      const code =
+        (typeof Backtest !== 'undefined' && Backtest.getCode?.()) ||
+        document.getElementById('btCode')?.value ||
+        (typeof StockDetail !== 'undefined' ? StockDetail._code : '') ||
+        '';
+      this.openStockTool(tab, code);
+      return;
+    }
+
+    // 同一 Tab：仍同步網址（修復停留在 #/stock/xxx 卻顯示其他 Tab）
+    if (this._currentTab === tab) {
+      if (syncHash) this._syncHashForTab(tab);
+      return;
+    }
+
+    // 隱藏所有 tab 內容（已掛載到個股頁的面板除外）
+    document.querySelectorAll('[id^="tab-"]').forEach(el => {
+      if (el.dataset.sdMounted === '1' || el.classList.contains('sd-embedded-tab')) return;
+      el.classList.add('h');
+    });
 
     // 顯示目標 tab
     const target = document.getElementById('tab-' + tab);
@@ -396,6 +536,8 @@ const App = {
     if (navBtn) navBtn.classList.add('a');
 
     this._currentTab = tab;
+
+    if (syncHash) this._syncHashForTab(tab);
 
     // Tab 顯示後重算圖表尺寸（避免在隱藏狀態下渲染為空白）
     if (typeof Charts !== 'undefined') {
@@ -1561,9 +1703,8 @@ App._loadBacktestResult = async function(taskId) {
   if (!d || !d.task || !d.task.result) return;
 
   const r = d.task.result;
-  // 切換到回測 tab
-  if (typeof App !== 'undefined' && App.loadTab) {
-    App.loadTab('backtest');
+  if (typeof App !== 'undefined' && App.openStockTool) {
+    App.openStockTool('backtest', r.code || '');
   }
 
   // 將結果填充到 Backtest 對象
@@ -1583,6 +1724,9 @@ App._loadBacktestResult = async function(taskId) {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+  if (typeof Utils !== 'undefined' && Utils.loadIconfontConfig) {
+    Utils.loadIconfontConfig();
+  }
   App.init();
 });
 

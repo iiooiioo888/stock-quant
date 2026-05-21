@@ -837,11 +837,14 @@ const Dashboard = {
           : vol >= 1e6 ? (vol / 1e6).toFixed(1) + 'M'
           : vol >= 1e3 ? (vol / 1e3).toFixed(0) + 'K'
           : vol.toFixed(0);
-        const icon = { BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '◆', SOLUSDT: '◎', XRPUSDT: '✕' }[c.symbol] || '●';
+        const sym = c.symbol || '';
+        const logo = (typeof Utils !== 'undefined' && Utils.cryptoIconHtml)
+          ? Utils.cryptoIconHtml(sym, 32)
+          : '';
         return `
           <div class="crypto-card crypto-${cls}" role="button" tabindex="0" onclick="App.loadTab('crypto')" title="查看完整加密行情">
             <div class="crypto-card-head">
-              <span class="crypto-icon">${icon}</span>
+              <span class="crypto-icon">${logo}</span>
               <span class="crypto-name">${c.name || c.symbol}</span>
               <span class="crypto-badge ${cls}">${sign}${chg.toFixed(2)}%</span>
             </div>
@@ -958,7 +961,7 @@ const Dashboard = {
 
     if (entries.length === 0) {
       document.getElementById('watchlistTable').innerHTML =
-        '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">🎯</span><p><strong>還沒有監控規則</strong></p><p>添加規則後，系統會在價格觸及目標時提醒你</p><button class="btn" onclick="showAddRule()" style="margin-top:8px">+ 添加第一個規則</button></div></td></tr>';
+        '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon"><i class="ti ti-target"></i></span><p><strong>還沒有監控規則</strong></p><p>添加規則後，系統會在價格觸及目標時提醒你</p><button class="btn" onclick="showAddRule()" style="margin-top:8px">+ 添加第一個規則</button></div></td></tr>';
       return;
     }
 
@@ -969,12 +972,18 @@ const Dashboard = {
       if (sp && sp.sparklines) sparklines = sp.sparklines;
     } catch (e) { /* ignore */ }
 
+    const iconHtml = (code, name) =>
+      (typeof Utils !== 'undefined' && Utils.stockIconHtml)
+        ? Utils.stockIconHtml(code, name, 32)
+        : '';
+
     document.getElementById('watchlistTable').innerHTML = entries.map(([c, r]) => {
       const sp = sparklines[c] || {};
       const pct = sp.change_pct || 0;
       const cls = pct >= 0 ? 'u' : 'd';
       return `<tr>
-        <td style="font-weight:600">${c}</td>
+        <td class="wl-logo">${iconHtml(c, r.name)}</td>
+        <td class="wl-code">${c}</td>
         <td>${r.name || '-'}</td>
         <td class="r">${r.price_above || '-'}</td>
         <td class="r">${r.price_below || '-'}</td>
@@ -986,6 +995,10 @@ const Dashboard = {
         </td>
       </tr>`;
     }).join('');
+
+    if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
+      Utils.hydrateStockIcons(document.getElementById('watchlistTable'));
+    }
 
     entries.forEach(([c]) => {
       const sp = sparklines[c];

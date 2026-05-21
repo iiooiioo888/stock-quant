@@ -18,6 +18,126 @@ def _normalize_code(code: str) -> str:
     return code
 
 
+def _infer_market(code: str) -> str:
+    """依代碼推斷 stock_universe.market。"""
+    c = str(code).strip().upper()
+    if c.endswith(".HK") or (c.replace(".", "").isdigit() and len(c.replace(".", "")) <= 5):
+        return "hk_stock"
+    if c.endswith(".US") or (not c.replace(".", "").isdigit()):
+        return "us_stock"
+    return "a_share"
+
+
+_MARKET_LABELS = {
+    "a_share": "A股",
+    "hk_stock": "港股",
+    "us_stock": "美股",
+}
+
+
+def _profile_from_universe_row(row: dict, code: str) -> dict:
+    market = row.get("market") or _infer_market(code)
+    intro = (row.get("intro") or "").strip()
+    industry = (row.get("industry") or "").strip()
+    if not intro and industry:
+        intro = industry
+    return {
+        "code": code,
+        "market": market,
+        "market_label": _MARKET_LABELS.get(market, market),
+        "name": row.get("name") or "",
+        "exchange": row.get("exchange") or "",
+        "industry": industry,
+        "intro": intro,
+        "list_date": row.get("list_date") or "",
+        "price": row.get("price"),
+        "change_pct": row.get("change_pct"),
+        "total_mv": row.get("total_mv"),
+        "circulating_mv": row.get("circulating_mv"),
+        "pe_ttm": row.get("pe_ttm"),
+        "pb": row.get("pb"),
+        "universe_updated_at": row.get("updated_at"),
+    }
+
+
+def load_stock_profile(code: str) -> dict:
+    """從 stock_universe 讀取簡介、行業、交易所等。"""
+    code = _normalize_code(code)
+    markets_try: list[str] = []
+    for m in (_infer_market(code), "a_share", "hk_stock", "us_stock"):
+        if m not in markets_try:
+            markets_try.append(m)
+
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        for mkt in markets_try:
+            row = conn.execute(
+                """SELECT code, market, name, exchange, industry, intro, list_date,
+                          total_mv, circulating_mv, pe_ttm, pb, change_pct, price, updated_at
+                   FROM stock_universe WHERE code = ? AND market = ?""",
+                (code, mkt),
+            ).fetchone()
+            if row:
+                return _profile_from_universe_row(dict(row), code)
+        row = conn.execute(
+            """SELECT code, market, name, exchange, industry, intro, list_date,
+                      total_mv, circulating_mv, pe_ttm, pb, change_pct, price, updated_at
+               FROM stock_universe WHERE code = ?
+               ORDER BY CASE WHEN rank_mv IS NULL THEN 1 ELSE 0 END, rank_mv ASC LIMIT 1""",
+            (code,),
+        ).fetchone()
+        if row:
+            return _profile_from_universe_row(dict(row), code)
+
+    mkt = _infer_market(code)
+    return {
+        "code": code,
+        "market": mkt,
+        "market_label": _MARKET_LABELS.get(mkt, mkt),
+        "name": "",
+        "exchange": "",
+        "industry": "",
+        "intro": "",
+        "list_date": "",
+    }
+
+
+def load_stock_financials(code: str) -> Optional[dict]:
+    """合併 fundamentals 表與 stock_universe / 實時快照的財務欄位。"""
+    code = _normalize_code(code)
+    realtime, fundamentals = _load_aux_data(code)
+    profile = load_stock_profile(code)
+
+    fin: dict = {"code": code, "has_data": False}
+    for key in (
+        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
+        "revenue", "net_profit", "update_date",
+    ):
+        val = fundamentals.get(key) if fundamentals else None
+        if val is None and profile:
+            val = profile.get(key)
+        if val is not None:
+            fin[key] = val
+
+    if profile:
+        for key in ("pe_ttm", "pb", "total_mv", "circulating_mv"):
+            if fin.get(key) is None and profile.get(key) is not None:
+                fin[key] = profile[key]
+
+    if realtime:
+        fin["realtime_price"] = realtime.get("price")
+        fin["realtime_change_pct"] = realtime.get("change_pct")
+        fin["realtime_updated_at"] = realtime.get("updated_at")
+
+    fin["has_data"] = any(
+        fin.get(k) is not None
+        for k in fin
+        if k not in ("code", "has_data", "realtime_price", "realtime_change_pct", "realtime_updated_at")
+    )
+    return fin if fin["has_data"] else None
+
+
 def _pct_change(cur: float, prev: float) -> Optional[float]:
     if prev is None or prev == 0:
         return None

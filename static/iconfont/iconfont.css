@@ -1,0 +1,18 @@
+/**
+ * iconfont.cn 專案樣式：請從專案「下載至本地」覆蓋本檔，或於 index 載入 alicdn 連結。
+ * 使用方式：<i class="iconfont icon-xxx"></i> 或 Symbol <svg><use href="#icon-xxx"/></svg>
+ */
+.iconfont {
+  font-family: "iconfont", sans-serif !important;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stock-iconfont-use {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  display: block;
+}

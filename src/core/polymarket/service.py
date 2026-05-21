@@ -7,8 +7,16 @@ from typing import Optional
 
 from src.config import settings
 from src.core import api_cache
-from src.core.polymarket.client import ClobClient, GammaClient
+from src.core.polymarket.client import (
+    ClobClient,
+    GammaClient,
+    PolymarketHttpError,
+    PolymarketNotFoundError,
+)
 from src.core.polymarket.normalize import (
+    _safe_float,
+    empty_orderbook,
+    empty_price_history,
     normalize_event,
     normalize_market,
     normalize_orderbook,
@@ -29,6 +37,21 @@ _service_instance: Optional["PolymarketService"] = None
 
 class PolymarketDisabledError(RuntimeError):
     """功能關閉時拋出。"""
+
+
+def _market_is_displayable(m: dict) -> bool:
+    """過濾無成交、無報價的殭屍市場（Gamma order=volume 常返回此類記錄）。"""
+    if m.get("price_source") and m.get("price_source") != "none":
+        return True
+    if _safe_float(m.get("volume24hr")) > 0:
+        return True
+    if _safe_float(m.get("volume")) > 0:
+        return True
+    if _safe_float(m.get("liquidity")) > 0:
+        return True
+    y = _safe_float(m.get("yes_price"))
+    n = _safe_float(m.get("no_price"))
+    return (y + n) > 0.01
 
 
 class PolymarketService:
@@ -53,7 +76,8 @@ class PolymarketService:
         offset: int = 0,
         active: bool = True,
         tag: str = None,
-        order: str = "volume",
+        order: str = "volume24hr",
+        ascending: bool = False,
         use_cache: bool = True,
     ) -> dict:
         """
@@ -63,13 +87,20 @@ class PolymarketService:
         """
         self._ensure_enabled()
         limit = limit or settings.polymarket_default_limit
-        cache_key = f"pm:markets:{limit}:{offset}:{active}:{tag}:{order}"
+        cache_key = f"pm:markets:{limit}:{offset}:{active}:{tag}:{order}:{ascending}"
 
         def _build():
+            fetch_limit = min(max(limit * 3, limit + 30), 200)
             raw_list = self._gamma.list_markets(
-                limit=limit, offset=offset, active=active, tag=tag, order=order,
+                limit=fetch_limit,
+                offset=offset,
+                active=active,
+                tag=tag,
+                order=order,
+                ascending=ascending,
             )
             markets = [normalize_market(r) for r in raw_list if isinstance(r, dict)]
+            markets = [m for m in markets if _market_is_displayable(m)][:limit]
             return {
                 "markets": markets,
                 "total": len(markets),
@@ -161,9 +192,25 @@ class PolymarketService:
         depth = settings.polymarket_orderbook_depth
         cache_key = f"pm:book:{tid}:{depth}"
 
+        miss_key = f"pm:book:miss:{tid}"
+
         def _build():
-            raw = self._clob.get_orderbook(tid)
-            return normalize_orderbook(raw, tid, depth=depth)
+            miss = api_cache.get_cached(miss_key)
+            if miss is not None:
+                return miss
+            try:
+                raw = self._clob.get_orderbook(tid)
+                return normalize_orderbook(raw, tid, depth=depth)
+            except PolymarketNotFoundError as e:
+                logger.debug(f"Polymarket 訂單簿不可用 token={tid[:16]}…: {e}")
+                payload = empty_orderbook(tid, depth=depth, reason="no_book")
+                api_cache.set_cached(miss_key, payload, ttl=120)
+                return payload
+            except PolymarketHttpError as e:
+                logger.debug(f"Polymarket 訂單簿請求拒絕 token={tid[:16]}…: {e}")
+                payload = empty_orderbook(tid, depth=depth, reason="client_error")
+                api_cache.set_cached(miss_key, payload, ttl=60)
+                return payload
 
         return api_cache.cached_response(
             cache_key, settings.polymarket_cache_ttl_orderbook, _build,
@@ -186,11 +233,35 @@ class PolymarketService:
 
         cache_key = f"pm:hist:{tid}:{interval}:{fidelity}:{start_ts}:{end_ts}"
 
+        miss_key = f"pm:hist:miss:{tid}:{interval}:{fidelity}"
+
         def _build():
-            raw = self._clob.get_price_history(
-                tid, interval=interval, fidelity=fidelity,
-                start_ts=start_ts, end_ts=end_ts,
-            )
+            miss = api_cache.get_cached(miss_key)
+            if miss is not None:
+                return miss
+            try:
+                raw = self._clob.get_price_history(
+                    tid, interval=interval, fidelity=fidelity,
+                    start_ts=start_ts, end_ts=end_ts,
+                )
+            except PolymarketNotFoundError as e:
+                logger.debug(f"Polymarket 價格歷史不可用 token={tid[:16]}…: {e}")
+                payload = empty_price_history(tid, interval=interval, reason="no_history")
+                api_cache.set_cached(miss_key, payload, ttl=120)
+                return payload
+            except PolymarketHttpError as e:
+                logger.debug(f"Polymarket 價格歷史拒絕 token={tid[:16]}…: {e}")
+                payload = empty_price_history(tid, interval=interval, reason="client_error")
+                api_cache.set_cached(miss_key, payload, ttl=60)
+                return payload
+            except RuntimeError as e:
+                if "不可用" in str(e) or "熔斷" in str(e):
+                    raise
+                logger.debug(f"Polymarket 價格歷史失敗 token={tid[:16]}…: {e}")
+                payload = empty_price_history(tid, interval=interval, reason="upstream_error")
+                api_cache.set_cached(miss_key, payload, ttl=30)
+                return payload
+
             points = []
             for row in raw:
                 if not isinstance(row, dict):
@@ -207,6 +278,7 @@ class PolymarketService:
                 "points": points,
                 "total": len(points),
                 "source": "clob",
+                "available": bool(points),
             }
 
         return api_cache.cached_response(

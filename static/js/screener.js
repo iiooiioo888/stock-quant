@@ -44,14 +44,24 @@ const Screener = {
 
     const stocks = d.results || [];
     document.getElementById('scrCount').textContent = stocks.length + ' 只';
+    const logoCell = (s) =>
+      (typeof Utils !== 'undefined' && Utils.stockIconHtml)
+        ? `<td class="scr-logo-cell">${Utils.stockIconHtml(s.code, s.name, 28)}</td>`
+        : '<td></td>';
+
     document.getElementById('scrTable').innerHTML = stocks.map(s =>
       `<tr>
+        ${logoCell(s)}
         <td><a href="#" class="sd-code-link" onclick="event.preventDefault();App.openStockDetail('${s.code}')">${s.code}</a></td>
         <td>${s.name || '-'}</td>
         <td style="font-size:10px">${(s.filters_passed || s.matched || []).join(', ')}</td>
         <td><button class="btn s" style="padding:3px 8px;font-size:10px" onclick="Screener.addToWatchlist('${s.code}')">加入監控</button></td>
       </tr>`
-    ).join('') || '<tr><td colspan="4" style="color:var(--text-muted);text-align:center">無匹配結果</td></tr>';
+    ).join('') || '<tr><td colspan="5" style="color:var(--text-muted);text-align:center">無匹配結果</td></tr>';
+
+    if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
+      Utils.hydrateStockIcons(document.getElementById('scrTable'));
+    }
 
     document.getElementById('scrResult').classList.remove('h');
 
