@@ -279,10 +279,12 @@ const Analysis = {
   },
 
   async tradeAnalysis() {
+    if (this._analysisRunning) return Utils.toast('分析進行中，請稍候', 2500, 'warning');
     const code = document.getElementById('anCode')?.value?.trim();
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    this._analysisRunning = true;
     const btn = document.getElementById('anTradeBtn');
     document.getElementById('anResult')?.classList.add('h');
     Utils.btnLoading(btn, true, '分析中...');
@@ -321,15 +323,18 @@ const Analysis = {
     } catch (e) {
       Utils.toast('交易分析失敗: ' + (e.message || e), 3000, 'error');
     } finally {
+      this._analysisRunning = false;
       Utils.btnLoading(btn, false, '📊 交易分析');
     }
   },
 
   async monteCarlo() {
+    if (this._analysisRunning) return Utils.toast('分析進行中，請稍候', 2500, 'warning');
     const code = document.getElementById('anCode')?.value?.trim();
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    this._analysisRunning = true;
     const btn = document.getElementById('anMcBtn');
     document.getElementById('anResult')?.classList.add('h');
     Utils.btnLoading(btn, true, '模擬中...');
@@ -367,15 +372,18 @@ const Analysis = {
     } catch (e) {
       Utils.toast('蒙特卡羅模擬失敗: ' + (e.message || e), 3000, 'error');
     } finally {
+      this._analysisRunning = false;
       Utils.btnLoading(btn, false, '🎲 蒙特卡羅');
     }
   },
 
   async rollingMetrics() {
+    if (this._analysisRunning) return Utils.toast('分析進行中，請稍候', 2500, 'warning');
     const code = document.getElementById('anCode')?.value?.trim();
     const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
     if (!code) return Utils.toast('請輸入股票代碼', 3000, 'warning');
 
+    this._analysisRunning = true;
     const btn = document.getElementById('anRollingBtn');
     document.getElementById('anResult')?.classList.add('h');
     Utils.btnLoading(btn, true, '計算中...');
@@ -410,6 +418,7 @@ const Analysis = {
     } catch (e) {
       Utils.toast('滾動指標計算失敗: ' + (e.message || e), 3000, 'error');
     } finally {
+      this._analysisRunning = false;
       Utils.btnLoading(btn, false, '📉 滾動指標');
     }
   },

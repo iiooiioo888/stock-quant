@@ -435,8 +435,7 @@ const App = {
         if (typeof CryptoUI !== 'undefined') CryptoUI.load();
         break;
       case 'markets':
-        this.loadMarkets();
-        this.loadMarketRealtime();
+        Promise.all([this.loadMarkets(), this.loadMarketRealtime()]);
         break;
       case 'polymarket':
         if (typeof PolymarketUI !== 'undefined') PolymarketUI.load();
@@ -615,13 +614,15 @@ const App = {
     }
   },
 
-  _updateRealtimeSignals(data) {
-    // 如果在 signals tab 且是 current 子 tab，自動刷新
-    if (this._currentTab === 'signals' && typeof Signals !== 'undefined') {
-      if (Signals._currentTab === 'current') {
-        Signals.loadCurrent();
-      }
+  _updateRealtimeSignals(_data) {
+    if (this._currentTab !== 'signals' || typeof Signals === 'undefined') return;
+    if (Signals._currentTab !== 'current') return;
+    if (!this._signalsWsDebounce) {
+      this._signalsWsDebounce = Utils.debounce(() => {
+        if (typeof Signals.loadCurrent === 'function') Signals.loadCurrent();
+      }, 1800);
     }
+    this._signalsWsDebounce();
   },
 
   // ============================================================
@@ -723,6 +724,10 @@ const App = {
   },
 
   async downloadAllMarkets() {
+    if (Api._exclusive.has('download-all')) {
+      Utils.toast('全市場下載進行中，請稍候', 2500, 'warning');
+      return;
+    }
     const btn = document.getElementById('dlAllBtn');
     const progress = document.getElementById('dlAllProgress');
     const statusEl = document.getElementById('dlAllStatus');
@@ -731,6 +736,7 @@ const App = {
 
     if (!confirm('將下載所有市場的股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
 
+    return Api.runExclusive('download-all', async () => {
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ld"></span> 下載中...'; }
     if (progress) progress.style.display = 'block';
     if (statusEl) statusEl.textContent = '正在下載所有市場數據，請稍候...';
@@ -781,9 +787,14 @@ const App = {
       if (btn) { btn.disabled = false; btn.textContent = '🚀 一鍵下載全部市場'; }
       setTimeout(() => { if (progress) progress.style.display = 'none'; }, 3000);
     }
+    });
   },
 
   async downloadAllFromDashboard() {
+    if (Api._exclusive.has('download-all')) {
+      Utils.toast('全市場下載進行中，請稍候', 2500, 'warning');
+      return;
+    }
     const section = document.getElementById('downloadSection');
     const statusEl = document.getElementById('dlStatus');
     const bar = document.getElementById('dlBar');
@@ -793,11 +804,12 @@ const App = {
     if (!confirm('將下載全市場股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
 
     if (section) section.style.display = 'block';
-    if (qaBtn) qaBtn.style.opacity = '0.5';
+    if (qaBtn) { qaBtn.disabled = true; qaBtn.style.opacity = '0.6'; }
     if (statusEl) statusEl.textContent = '正在下載全市場數據，請稍候...';
     if (bar) bar.style.width = '5%';
     if (detail) detail.textContent = '連接中...';
 
+    return Api.runExclusive('download-all', async () => {
     try {
       const d = await Api.post('/api/download-all');
       const resolved = await Api.resolveTaskResponse(d, App._downloadPollOptions((task) => {
@@ -840,9 +852,10 @@ const App = {
     } catch (e) {
       if (statusEl) statusEl.textContent = '❌ 下載出錯: ' + e.message;
     } finally {
-      if (qaBtn) qaBtn.style.opacity = '1';
+      if (qaBtn) { qaBtn.disabled = false; qaBtn.style.opacity = '1'; }
       setTimeout(() => { if (section) section.style.display = 'none'; }, 8000);
     }
+    });
   },
 
   async loadMarketRealtime() {
@@ -1563,22 +1576,6 @@ App._loadBacktestResult = async function(taskId) {
       Backtest._displayResult(r);
     }
   }
-};
-
-// 全局任務去重輔助 — 用於按鈕點擊防重複
-App._activeTasks = {};
-App.checkTaskDedup = function(taskType, params) {
-  const key = taskType + ':' + JSON.stringify(params);
-  if (App._activeTasks[key]) {
-    Utils.toast('⏳ 相同任務正在執行中，請等待完成', 3000, 'warning');
-    return false;
-  }
-  App._activeTasks[key] = true;
-  return true;
-};
-App.releaseTaskDedup = function(taskType, params) {
-  const key = taskType + ':' + JSON.stringify(params);
-  delete App._activeTasks[key];
 };
 
 // ============================================================

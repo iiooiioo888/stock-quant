@@ -142,7 +142,7 @@ def task_type_label(task_type: str) -> str:
     return task_type
 
 _tasks: dict[str, dict] = {}
-_lock = threading.Lock()
+_lock = threading.RLock()
 _MAX_TASKS = 200
 _cancel_flags: dict[str, bool] = {}
 _dispatched: set[str] = set()  # 已提交線程池、尚未結束
@@ -464,7 +464,7 @@ def _drain_queue():
             and not _cancel_flags.get(t["task_id"])
         ]
         pending.sort(key=lambda t: t.get("created_at", ""))
-        in_flight = len(_dispatched) + _count_active()
+        in_flight = _count_in_flight()
 
         for t in pending:
             if in_flight >= max_workers:

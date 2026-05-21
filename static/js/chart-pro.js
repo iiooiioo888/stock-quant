@@ -35,7 +35,7 @@ const ProCharts = {
     return {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 400 },
+      animation: false,
       plugins: {
         legend: {
           labels: { color: colors.text, font: { size: 11 }, usePointStyle: true, padding: 14 },

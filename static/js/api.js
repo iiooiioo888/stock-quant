@@ -9,6 +9,8 @@ const Api = {
   _loggingIn: false,
   _getCache: new Map(),
   _inflight: new Map(),
+  _exclusive: new Map(),
+  _debouncedGetTimers: new Map(),
   /** GET 緩存 TTL（毫秒） */
   _cacheTtl: {
     '/api/health': 3000,
@@ -82,7 +84,7 @@ const Api = {
       <div class="actions">
         <button class="btn s" onclick="Utils.closeModal()">取消</button>
         <button class="btn s" style="font-size:11px" onclick="${switchAction}">${switchText}</button>
-        <button class="btn" onclick="Api.doLogin(${isRegister})">${btnText}</button>
+        <button class="btn" id="loginSubmitBtn" onclick="Api.doLogin(${isRegister})">${btnText}</button>
       </div>
     `);
 
@@ -110,7 +112,7 @@ const Api = {
     }
 
     this._loginRunning = true;
-    const loginBtn = document.querySelector('#loginModal .modal-footer .primary');
+    const loginBtn = document.getElementById('loginSubmitBtn');
     Utils.btnLoading(loginBtn, true, '處理中...');
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
     try {
@@ -144,8 +146,8 @@ const Api = {
       if (errorEl) { errorEl.textContent = '網絡錯誤: ' + e.message; errorEl.style.display = 'block'; }
     } finally {
       this._loginRunning = false;
-      const loginBtn = document.querySelector('#loginModal .modal-footer .primary');
-      Utils.btnLoading(loginBtn, false, isRegister ? '📝 註冊並登錄' : '🔑 登錄');
+      const loginBtn = document.getElementById('loginSubmitBtn');
+      Utils.btnLoading(loginBtn, false, isRegister ? '註冊' : '登錄');
     }
   },
 
@@ -247,6 +249,31 @@ const Api = {
     for (const key of this._getCache.keys()) {
       if (key.startsWith(prefix)) this._getCache.delete(key);
     }
+  },
+
+  /**
+   * 同 key 僅允許一個進行中 Promise（長任務防重複提交）
+   */
+  async runExclusive(key, fn) {
+    if (this._exclusive.has(key)) return this._exclusive.get(key);
+    const p = Promise.resolve().then(fn).finally(() => this._exclusive.delete(key));
+    this._exclusive.set(key, p);
+    return p;
+  },
+
+  /**
+   * 去抖 GET（WS/輪詢觸發時合併請求）
+   */
+  debouncedGet(path, delayMs = 1500, opts = {}) {
+    const prev = this._debouncedGetTimers.get(path);
+    if (prev) clearTimeout(prev.timer);
+    return new Promise((resolve) => {
+      const timer = setTimeout(async () => {
+        this._debouncedGetTimers.delete(path);
+        resolve(await this.get(path, opts));
+      }, delayMs);
+      this._debouncedGetTimers.set(path, { timer });
+    });
   },
 
   /**

@@ -135,6 +135,21 @@ const Utils = {
   },
 
   /**
+   * 按 key 互斥執行異步操作（防雙擊、合併進行中請求）
+   */
+  async withActionLock(key, fn, { btn, loadingText } = {}) {
+    if (!this._actionLocks) this._actionLocks = new Map();
+    if (this._actionLocks.has(key)) return this._actionLocks.get(key);
+    if (btn) this.btnLoading(btn, true, loadingText || '處理中...');
+    const p = Promise.resolve().then(fn).finally(() => {
+      this._actionLocks.delete(key);
+      if (btn) this.btnLoading(btn, false);
+    });
+    this._actionLocks.set(key, p);
+    return p;
+  },
+
+  /**
    * 驗證股票代碼格式
    */
   isValidCode(code) {

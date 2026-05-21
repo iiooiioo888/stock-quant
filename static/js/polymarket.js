@@ -114,12 +114,16 @@ const PolymarketUI = {
 
   /** 關鍵字搜尋 */
   async search() {
+    if (this._searching) return;
     const q = this._el('searchQ')?.value?.trim();
     const tbody = this._el('table');
+    const btn = this._el('searchBtn');
     if (!q) {
       this.loadMarkets();
       return;
     }
+    this._searching = true;
+    if (btn) btn.disabled = true;
     tbody.innerHTML = '<tr><td colspan="7"><span class="ld"></span> 搜尋中…</td></tr>';
     try {
       const d = await Api.get(`/api/polymarket/search?q=${encodeURIComponent(q)}&limit=25`);
@@ -130,6 +134,9 @@ const PolymarketUI = {
       this.renderTable();
     } catch (e) {
       tbody.innerHTML = `<tr><td colspan="7" class="err">搜尋失敗: ${e.message || e}</td></tr>`;
+    } finally {
+      this._searching = false;
+      if (btn) btn.disabled = false;
     }
   },
 

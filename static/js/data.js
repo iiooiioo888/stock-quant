@@ -11,6 +11,7 @@
 
 const Data = {
   _currentTab: 'download',
+  _tabRequestId: 0,
   _SUB_TABS: ['download', 'universe', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
   _universeOffset: 0,
   _universeTotal: 0,
@@ -52,7 +53,12 @@ const Data = {
     return `Data.showSectorDetail('${esc}')`;
   },
 
+  _tabStale(reqId) {
+    return reqId != null && reqId !== this._tabRequestId;
+  },
+
   _onTabActivated(tab) {
+    const reqId = ++this._tabRequestId;
     if (tab === 'download') this.refreshDbStats();
     if (tab === 'universe') {
       this.loadUniverseStats();
@@ -61,11 +67,11 @@ const Data = {
     if (tab === 'capital' && typeof ProCharts !== 'undefined') {
       ProCharts.loadCapitalTabCharts();
     }
-    if (tab === 'north') this.loadNorthFlow();
-    if (tab === 'dragon') this.loadDragonTiger();
-    if (tab === 'sectors') this.loadSectors();
-    if (tab === 'rotation') this.loadSectorRotation();
-    if (tab === 'heatmap') this.loadSectorHeatmap();
+    if (tab === 'north') this.loadNorthFlow(reqId);
+    if (tab === 'dragon') this.loadDragonTiger(reqId);
+    if (tab === 'sectors') this.loadSectors(reqId);
+    if (tab === 'rotation') this.loadSectorRotation(reqId);
+    if (tab === 'heatmap') this.loadSectorHeatmap(reqId);
     if (tab === 'basics') {
       const code = (document.getElementById('basicsCode')?.value || '').trim();
       if (code) this.loadStockBasics();
@@ -428,12 +434,13 @@ const Data = {
   // 板塊行情（增強版）
   // ============================================================
 
-  async loadSectors() {
+  async loadSectors(reqId = null) {
     const container = document.getElementById('sectorData');
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getSectors('industry', 30);
+    if (this._tabStale(reqId)) return;
     if (!d) {
       this._apiFailMessage(container, '板塊行情載入');
       return;
@@ -495,13 +502,14 @@ const Data = {
   // 板塊輪動分析
   // ============================================================
 
-  async loadSectorRotation() {
+  async loadSectorRotation(reqId = null) {
     const container = document.getElementById('rotationData');
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 分析中...</p>';
 
     const days = parseInt(document.getElementById('rotationDays')?.value) || 10;
     const d = await Api.getSectorRotation(days);
+    if (this._tabStale(reqId)) return;
     if (!d) {
       this._apiFailMessage(container, '板塊輪動分析');
       return;
@@ -567,12 +575,13 @@ const Data = {
   // 板塊全景熱力圖
   // ============================================================
 
-  async loadSectorHeatmap() {
+  async loadSectorHeatmap(reqId = null) {
     const container = document.getElementById('heatmapData');
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getSectorHeatmap('industry');
+    if (this._tabStale(reqId)) return;
     if (!d) {
       this._apiFailMessage(container, '板塊熱力圖載入');
       return;
@@ -967,12 +976,13 @@ const Data = {
     if (typeof ProCharts !== 'undefined') ProCharts.renderStockCapitalFlow(d.flows);
   },
 
-  async loadNorthFlow() {
+  async loadNorthFlow(reqId = null) {
     const container = document.getElementById('northFlowData');
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getNorthFlow(30);
+    if (this._tabStale(reqId)) return;
     if (!d) {
       this._apiFailMessage(container, '北向資金載入');
       return;
@@ -994,12 +1004,13 @@ const Data = {
     if (typeof ProCharts !== 'undefined') ProCharts.renderNorthFlow(daily);
   },
 
-  async loadDragonTiger() {
+  async loadDragonTiger(reqId = null) {
     const container = document.getElementById('dragonTigerData');
     if (!container) return;
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
     const d = await Api.getDragonTiger();
+    if (this._tabStale(reqId)) return;
     if (!d) {
       this._apiFailMessage(container, '龍虎榜載入');
       return;

@@ -10,6 +10,7 @@
 
 const Signals = {
   _currentTab: 'current',
+  _loadingKey: null,
 
   init() {
     const tabs = document.getElementById('signalsTabs');
@@ -46,39 +47,48 @@ const Signals = {
   async loadCurrent() {
     const container = document.getElementById('currentSignals');
     if (!container) return;
+    if (this._loadingKey === 'current') return;
+    this._loadingKey = 'current';
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
-    const d = await Api.getCurrentSignals();
-    if (!d || !d.success) {
-      container.innerHTML = '<p style="color:var(--text-dim)">暫無信號</p>';
-      return;
-    }
-    const signals = d.signals || [];
-    if (!signals.length) {
-      container.innerHTML = '<p style="color:var(--text-dim)">當前無活躍信號（可能非交易時段）</p>';
-      return;
-    }
-    const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
-    container.innerHTML = signals.map(s => {
-      if (SL) return SL.renderStockCard(s);
-      const strategies = (s.signals || s.strategies || []).map(st => {
-        const cls = st.signal === 'buy' ? 'on' : st.signal === 'sell' ? 'off' : 'cfg';
-        const stName = SL ? SL.strategyName(st.strategy, 'short') : st.strategy;
-        const sigZh = SL ? SL.getSignal(st.signal).zh : st.signal;
-        return `<span class="chip ${cls}">${stName}: ${sigZh}</span>`;
-      }).join(' ');
-      return `<div class="sig-stock-card">
+    try {
+      const d = await Api.getCurrentSignals();
+      if (!d || !d.success) {
+        container.innerHTML = '<p style="color:var(--text-dim)">暫無信號</p>';
+        return;
+      }
+      const signals = d.signals || [];
+      if (!signals.length) {
+        container.innerHTML = '<p style="color:var(--text-dim)">當前無活躍信號（可能非交易時段）</p>';
+        return;
+      }
+      const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
+      container.innerHTML = signals.map(s => {
+        if (SL) return SL.renderStockCard(s);
+        const strategies = (s.signals || s.strategies || []).map(st => {
+          const cls = st.signal === 'buy' ? 'on' : st.signal === 'sell' ? 'off' : 'cfg';
+          const stName = SL ? SL.strategyName(st.strategy, 'short') : st.strategy;
+          const sigZh = SL ? SL.getSignal(st.signal).zh : st.signal;
+          return `<span class="chip ${cls}">${stName}: ${sigZh}</span>`;
+        }).join(' ');
+        return `<div class="sig-stock-card">
         <strong>${s.code}</strong> · 信號強度: ${s.strength || 0}
         <div>${strategies}</div>
       </div>`;
-    }).join('');
+      }).join('');
+    } finally {
+      if (this._loadingKey === 'current') this._loadingKey = null;
+    }
   },
 
   async loadHistory() {
     const container = document.getElementById('historySignals');
     if (!container) return;
+    if (this._loadingKey === 'history') return;
+    this._loadingKey = 'history';
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
 
+    try {
     const rawCodes = document.getElementById('sigCodes')?.value?.trim() || '';
     const filterCodes = rawCodes.split(',').map(s => s.trim()).filter(Boolean);
     let signals = [];
@@ -127,8 +137,10 @@ const Signals = {
       }).join('')}</tbody>
     </table></div>`;
 
-    // 繪製信號時間線圖
     this._drawSignalTimeline(signals);
+    } finally {
+      if (this._loadingKey === 'history') this._loadingKey = null;
+    }
   },
 
   /**
@@ -223,9 +235,12 @@ const Signals = {
     if (!container) return;
     const code = document.getElementById('sigCodes')?.value?.trim();
     if (!code) return Utils.toast('請輸入股票代碼');
+    if (this._loadingKey === 'strength') return;
+    this._loadingKey = 'strength';
 
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 計算中...</p>';
 
+    try {
     const codes = code.split(',').map(s => s.trim()).filter(Boolean);
     const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
     const [cur, ...strengthRows] = await Promise.all([
@@ -265,6 +280,9 @@ const Signals = {
     container.innerHTML = html || '<p style="color:var(--text-dim)">無數據</p>';
 
     this._drawStrengthGauge(codes, strengthRows);
+    } finally {
+      if (this._loadingKey === 'strength') this._loadingKey = null;
+    }
   },
 
   /**

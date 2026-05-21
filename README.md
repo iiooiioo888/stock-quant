@@ -430,9 +430,10 @@ cp .env.example .env
 | `SQ_CACHE_OPTIMIZE_TTL` | 優化緩存秒數 | `7200` |
 | `SQ_REDIS_ENABLED` | 使用 Redis（否則僅 LRU） | `false`（本地）/ `true`（Compose） |
 | `SQ_REDIS_URL` | Redis 連接串 | — |
-| `SQ_TASK_MAX_WORKERS` | 並行任務槽（`0`=自動） | `0` |
-| `SQ_OPTIMIZE_ALL_PARALLEL` | 全策略優化是否並行 | `false` |
-| `SQ_TASK_PARALLEL_GRID` | 網格搜索是否並行 | `true` |
+| `SQ_TASK_MAX_WORKERS` | **同時運行**的 API 異步任務槽（`0`=自動） | `0` |
+| `SQ_MULTI_STRATEGY_WORKERS` | 單任務內多策略/對比線程數 | `4` |
+| `SQ_OPTIMIZE_ALL_PARALLEL` | 全策略優化是否跨策略並行 | `false` |
+| `SQ_TASK_PARALLEL_GRID` | 單任務內網格搜索是否並行 | `true` |
 | `SQ_JWT_SECRET` | JWT 密鑰（生產必設） | 自動生成 |
 | `SQ_CORS_ORIGINS` | 允許的前端來源 | localhost |
 | `SQ_REDIS_PASSWORD` | Redis 密碼（Compose） | 見 `.env.example` |

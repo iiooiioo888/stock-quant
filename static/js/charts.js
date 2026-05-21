@@ -18,10 +18,21 @@ function _chartSeries(series) {
   }));
 }
 
+function _applyChartJsStableDefaults() {
+  if (typeof Chart === 'undefined' || Chart._sqStableDefaults) return;
+  Chart.defaults.animation = false;
+  Chart.defaults.animations = Chart.defaults.animations || {};
+  if (Chart.defaults.animations.colors) Chart.defaults.animations.colors.duration = 0;
+  if (Chart.defaults.animations.numbers) Chart.defaults.animations.numbers.duration = 0;
+  Chart._sqStableDefaults = true;
+}
+
 const Charts = {
   _lwCharts: {},
+  _lwFitOnResize: new Set(),
 
   _chartJsReady() {
+    _applyChartJsStableDefaults();
     return typeof Chart !== 'undefined';
   },
 
@@ -87,7 +98,9 @@ const Charts = {
         const w = el.clientWidth || 280;
         const h = el.clientHeight || 200;
         chart.applyOptions({ width: w, height: h });
-        try { chart.timeScale().fitContent(); } catch (e) { /* ignore */ }
+        if (this._lwFitOnResize.has(el.id)) {
+          try { chart.timeScale().fitContent(); } catch (e) { /* ignore */ }
+        }
       });
     }
 
@@ -408,11 +421,16 @@ const Charts = {
         .sort((a, b) => a.time.localeCompare(b.time));
 
       if (markers.length) {
-        candleSeries.setMarkers(markers);
+        try {
+          if (typeof candleSeries.setMarkers === 'function') {
+            candleSeries.setMarkers(markers);
+          } else if (typeof LightweightCharts.createSeriesMarkers === 'function') {
+            LightweightCharts.createSeriesMarkers(candleSeries, markers);
+          }
+        } catch (e) { /* v4/v5 API 差異 */ }
       }
     }
 
-    // 自動縮放
     chart.timeScale().fitContent();
 
     // 響應式調整

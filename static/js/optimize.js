@@ -263,7 +263,9 @@ const Optimize = {
   },
 
   async runAuto() {
+    if (this._running) return;
     const btn = document.getElementById('autoOptBtn');
+    this._running = true;
     Utils.btnLoading(btn, true, '全自動優化中...');
 
     try {
@@ -289,6 +291,7 @@ const Optimize = {
     } catch (e) {
       Utils.toast('自動優化失敗: ' + (e.message || e), 3000, 'error');
     } finally {
+      this._running = false;
       Utils.btnLoading(btn, false, '⚡ 全自動優化');
     }
   },
