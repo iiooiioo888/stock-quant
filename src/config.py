@@ -339,6 +339,17 @@ class Settings(BaseSettings):
                 logger.warning(
                     "SQ_JWT_SECRET 未設置，將使用自動生成密鑰；生產環境建議顯式配置。"
                 )
+            # CORS 警告：非 localhost 部署時提醒用戶
+            non_localhost_origins = [
+                o for o in self.cors_origin_list()
+                if o and 'localhost' not in o.lower() and '127.0.0.1' not in o
+            ]
+            if non_localhost_origins:
+                logger.warning(
+                    f"⚠️  CORS 配置警告：檢測到非 localhost 來源 {non_localhost_origins}。"
+                    " 若部署在公網，請確保 CORS 配置正確，避免跨域攻擊風險。"
+                    " 建議設置 SQ_CORS_ORIGINS 為具體前端域名，例如：https://yourdomain.com"
+                )
             return
 
         if self.is_public_demo_deployment():

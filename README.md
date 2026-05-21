@@ -609,10 +609,25 @@ export SQ_WS_AUTH_REQUIRED=true
 python main.py serve
 ```
 
-### Render 冷啟動說明
+### Render 冷啟動說明與保活方案
 
 Render 免費版在 15 分鐘無請求後會休眠，首次訪問需等待約 30 秒冷啟動。
 
-**解決方案：**
-- 使用 [UptimeRobot](https://uptimerobot.com/) 每 5 分鐘 ping `/api/health` 保持活躍
-- 或在 README 中說明「僅適合回測演示，實時盯盤建議自建服務器」
+**推薦保活方案（UptimeRobot）：**
+
+1. 註冊 [UptimeRobot](https://uptimerobot.com/) 免費賬戶
+2. 添加新的 HTTP Monitor：
+   - **Friendly Name**: `stock-quant keepalive`
+   - **URL to monitor**: `https://stock-quant.onrender.com/api/health`
+   - **Monitoring Interval**: 5 minutes (免費版最短間隔)
+3. 保存後系統會每 5 分鐘自動發送請求，防止服務休眠
+
+**注意事項：**
+- UptimeRobot 免費版提供 50 個 monitors，足夠使用
+- 此方法僅適合回測演示，實時盯盤建議使用付費服務或自建服務器
+- 生產環境建議使用 Docker Compose 部署到 VPS 或本地服務器
+
+**替代方案：**
+- GitHub Actions 定時任務（每 10 分鐘 curl 一次）
+- 手機快捷指令/自動化定時訪問
+- 購買 Render 付費計劃（$7/月起，無冷啟動）
