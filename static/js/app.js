@@ -48,6 +48,11 @@ const App = {
     if (typeof StockPicker !== 'undefined') StockPicker.initAll();
     if (typeof Analysis !== 'undefined') Analysis.init();
     if (typeof Backtest !== 'undefined') Backtest.init();
+
+    // 全局快捷鍵
+    this._initKeyboardShortcuts();
+    // 快捷卡片滑鼠追蹤光效
+    this._initQuickCardHover();
   },
 
   quickAction(tab) {
@@ -397,6 +402,159 @@ const App = {
   },
 
   // ============================================================
+  // Keyboard Shortcuts
+  // ============================================================
+
+  _initKeyboardShortcuts() {
+    document.addEventListener('keydown', e => {
+      // 忽略輸入框、PDF 查看器、彈窗中的按鍵
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (active?.isContentEditable) return;
+      if (active?.closest('.bpdf, .modal, #modalRoot, .shortcuts-modal, [role="dialog"]')) return;
+
+      // Ctrl/Cmd + K → 聚焦搜索
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('globalSearch')?.focus();
+        return;
+      }
+
+      // ? → 顯示快捷鍵幫助
+      if (e.key === '?') {
+        e.preventDefault();
+        this._showShortcutsModal();
+        return;
+      }
+
+      // Escape → 關閉彈窗
+      if (e.key === 'Escape') {
+        const modal = document.querySelector('.shortcuts-modal');
+        if (modal) { modal.remove(); return; }
+      }
+
+      // 數字鍵快速切換 Tab
+      const tabMap = {
+        '1': 'dashboard',
+        '2': 'portfolio',
+        '3': 'signals',
+        '4': 'data',
+        '5': 'stock-detail',
+        '6': 'tasks',
+      };
+      if (tabMap[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        this.loadTab(tabMap[e.key]);
+        return;
+      }
+
+      // 字母快捷鍵
+      const letterMap = {
+        'b': 'backtest',
+        's': 'screener',
+        'c': 'compare',
+        'r': 'reports',
+        'a': 'alerts',
+        'm': 'markets',
+        'p': 'polymarket',
+        'x': 'crypto',
+        't': 'tasks',
+      };
+      if (letterMap[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (['backtest', 'optimize'].includes(letterMap[e.key])) {
+          this.openStockTool(letterMap[e.key]);
+        } else {
+          this.loadTab(letterMap[e.key]);
+        }
+      }
+    });
+  },
+
+  _showShortcutsModal() {
+    // 避免重複
+    if (document.querySelector('.shortcuts-modal')) return;
+
+    const shortcuts = [
+      ['/', '聚焦搜索'],
+      ['Ctrl+K', '聚焦搜索'],
+      ['?', '顯示快捷鍵'],
+      ['1-6', '切換常用 Tab'],
+      ['B', '策略回測'],
+      ['S', '股票篩選'],
+      ['C', '多股對比'],
+      ['T', '任務面板'],
+      ['M', '多市場'],
+      ['P', '預測市場'],
+      ['X', '加密行情'],
+      ['Esc', '關閉彈窗'],
+    ];
+
+    const rows = shortcuts.map(([key, desc]) =>
+      `<div class="shortcut-row"><span>${desc}</span><span class="kbd-hint">${key}</span></div>`
+    ).join('');
+
+    const el = document.createElement('div');
+    el.className = 'shortcuts-modal';
+    el.innerHTML = `<div class="shortcuts-modal-content">
+      <h3><i class="ti ti-keyboard"></i> 鍵盤快捷鍵</h3>
+      <div class="shortcuts-grid">${rows}</div>
+    </div>`;
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+    document.body.appendChild(el);
+  },
+
+  // ============================================================
+  // KPI Counter Animation
+  // ============================================================
+
+  /**
+   * 將數字以動態計數方式顯示
+   * @param {HTMLElement} el - 目標元素
+   * @param {number} endVal - 目標數值
+   * @param {object} opts - { duration, decimals, prefix, suffix }
+   */
+  animateCounter(el, endVal, opts = {}) {
+    if (!el) return;
+    const duration = opts.duration || 800;
+    const decimals = opts.decimals ?? 0;
+    const prefix = opts.prefix || '';
+    const suffix = opts.suffix || '';
+    const startVal = parseFloat(el.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+    const startTime = performance.now();
+
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOut(progress);
+      const current = startVal + (endVal - startVal) * eased;
+      el.textContent = prefix + current.toFixed(decimals) + suffix;
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  },
+
+  // ============================================================
+  // Quick Card Hover Effect
+  // ============================================================
+
+  _initQuickCardHover() {
+    document.querySelectorAll('.qa-card').forEach(card => {
+      card.addEventListener('mousemove', e => {
+        const rect = card.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(0);
+        const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(0);
+        card.style.setProperty('--mouse-x', x + '%');
+        card.style.setProperty('--mouse-y', y + '%');
+      });
+    });
+  },
+
+  // ============================================================
   // Tab Routing（#/tabId；股票詳情保留 #/stock/代碼、#/stocks）
   // ============================================================
 
@@ -514,6 +672,17 @@ const App = {
     if (this._currentTab === tab) {
       if (syncHash) this._syncHashForTab(tab);
       return;
+    }
+
+    // 隱藏當前 tab（帶淡出動畫）
+    const currentTarget = document.getElementById('tab-' + this._currentTab);
+    if (currentTarget && !currentTarget.classList.contains('h')) {
+      currentTarget.style.opacity = '0';
+      currentTarget.style.transform = 'translateY(-4px)';
+      currentTarget.style.transition = 'opacity 0.12s ease-in, transform 0.12s ease-in';
+      setTimeout(() => {
+        currentTarget.style.transition = '';
+      }, 130);
     }
 
     // 隱藏所有 tab 內容（已掛載到個股頁的面板除外）

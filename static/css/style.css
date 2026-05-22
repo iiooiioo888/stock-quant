@@ -4078,3 +4078,302 @@ tr.sched-row-on { background: var(--bg-hover); }
   font-size: 28px;
   color: var(--text-dim);
 }
+
+/* ============================================================
+   Performance & UI Enhancements (2026-05-22)
+   ============================================================ */
+
+/* ── Tab Page Transition ─────────────────────────────────── */
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.main > [id^="tab-"]:not(.h) {
+  animation: tabFadeIn 0.25s ease-out both;
+}
+
+/* ── KPI Counter Animation ───────────────────────────────── */
+@keyframes kpiCountUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-kpi {
+  opacity: 0;
+  animation: kpiSlideIn 0.4s ease-out forwards;
+}
+
+.dash-kpi:nth-child(1) { animation-delay: 0.05s; }
+.dash-kpi:nth-child(2) { animation-delay: 0.10s; }
+.dash-kpi:nth-child(3) { animation-delay: 0.15s; }
+.dash-kpi:nth-child(4) { animation-delay: 0.20s; }
+.dash-kpi:nth-child(5) { animation-delay: 0.25s; }
+.dash-kpi:nth-child(6) { animation-delay: 0.30s; }
+
+@keyframes kpiSlideIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dash-kpi-num {
+  transition: color 0.3s ease;
+}
+
+/* ── Sidebar Enhancements ────────────────────────────────── */
+.sidebar button {
+  transition: all var(--transition-fast), padding-left var(--transition-base);
+}
+
+.sidebar button.a {
+  border-left-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent), -2px 0 8px var(--accent-dim);
+  animation: sidebarActiveIn 0.2s ease-out;
+}
+
+@keyframes sidebarActiveIn {
+  from { opacity: 0.7; transform: translateX(-2px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar.collapsed button.a {
+  box-shadow: none;
+}
+
+.sidebar button:active {
+  transform: scale(0.98);
+}
+
+/* ── Section Entrance Animations ─────────────────────────── */
+@keyframes sectionFadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-section {
+  animation: sectionFadeIn 0.4s ease-out both;
+}
+
+.dash-section:nth-child(1) { animation-delay: 0.1s; }
+.dash-section:nth-child(2) { animation-delay: 0.2s; }
+.dash-section:nth-child(3) { animation-delay: 0.3s; }
+.dash-section:nth-child(4) { animation-delay: 0.4s; }
+.dash-section:nth-child(5) { animation-delay: 0.5s; }
+.dash-section:nth-child(6) { animation-delay: 0.6s; }
+
+/* ── Quick Action Cards Polish ───────────────────────────── */
+.qa-card {
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.qa-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(99,179,237,0.08) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+  pointer-events: none;
+}
+
+.qa-card:hover::after {
+  opacity: 1;
+}
+
+/* ── Keyboard Shortcut Toast ─────────────────────────────── */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* ── Keyboard Shortcuts Modal ────────────────────────────── */
+.shortcuts-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--modal-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.shortcuts-modal-content {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 28px 32px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideIn 0.25s ease-out;
+}
+
+.shortcuts-modal-content h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.shortcut-row .kbd-hint {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* ── Enhanced Empty States ───────────────────────────────── */
+.state-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  text-align: center;
+}
+
+.state-empty .state-icon {
+  font-size: 40px;
+  opacity: 0.5;
+  animation: emptyBounce 2s ease-in-out infinite;
+}
+
+@keyframes emptyBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.state-empty .state-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 280px;
+}
+
+.state-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* ── Dashboard Panel Entrance ────────────────────────────── */
+.dash-panel {
+  animation: panelSlideIn 0.35s ease-out both;
+}
+
+.dash-panel:nth-child(1) { animation-delay: 0.15s; }
+.dash-panel:nth-child(2) { animation-delay: 0.20s; }
+.dash-panel:nth-child(3) { animation-delay: 0.25s; }
+.dash-panel:nth-child(4) { animation-delay: 0.30s; }
+
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Data Center Sub-tab Transitions ─────────────────────── */
+.data-tabs button {
+  transition: all var(--transition-base);
+}
+
+.data-tabs button.a {
+  animation: tabPulseIn 0.2s ease-out;
+}
+
+@keyframes tabPulseIn {
+  0%   { transform: scale(0.95); }
+  50%  { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Data sub-tab content fade-in */
+[id^="dtab-"]:not(.h) {
+  animation: tabContentFadeIn 0.25s ease-out;
+}
+
+/* Signals sub-tab content fade-in */
+[id^="stab-"]:not(.h) {
+  animation: tabContentFadeIn 0.25s ease-out;
+}
+
+@keyframes tabContentFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Smooth Scroll Behavior ──────────────────────────────── */
+.main {
+  scroll-behavior: smooth;
+}
+
+/* ── Focus Visible for Accessibility ─────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Loading Skeleton Enhancement ────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-elevated) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Reduced Motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .main > [id^="tab-"]:not(.h) { animation: none; }
+  .dash-kpi { animation: none; opacity: 1; }
+  .dash-section { animation: none; }
+  .dash-panel { animation: none; }
+}

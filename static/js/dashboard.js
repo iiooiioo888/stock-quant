@@ -161,7 +161,7 @@ const Dashboard = {
         <span class="dash-kpi-icon" aria-hidden="true">📊</span>
         <div class="dash-kpi-body">
           <span class="dash-kpi-label">監控股票</span>
-          <span class="dash-kpi-value bl"><span class="dash-kpi-num">${d.total_stocks || 0}</span></span>
+          <span class="dash-kpi-value bl"><span class="dash-kpi-num" data-target="${d.total_stocks || 0}">0</span></span>
           <span class="dash-kpi-hint stat-hint">正在追蹤</span>
         </div>
       </div>
@@ -169,7 +169,7 @@ const Dashboard = {
         <span class="dash-kpi-icon" aria-hidden="true">📁</span>
         <div class="dash-kpi-body">
           <span class="dash-kpi-label">數據條數</span>
-          <span class="dash-kpi-value"><span class="dash-kpi-num">${(d.total_klines || 0).toLocaleString()}</span></span>
+          <span class="dash-kpi-value"><span class="dash-kpi-num" data-target="${d.total_klines || 0}" data-format="locale">0</span></span>
           <span class="dash-kpi-hint stat-hint">歷史 K 線</span>
         </div>
       </div>
@@ -177,7 +177,7 @@ const Dashboard = {
         <span class="dash-kpi-icon" aria-hidden="true">🔔</span>
         <div class="dash-kpi-body">
           <span class="dash-kpi-label">累計預警</span>
-          <span class="dash-kpi-value rd"><span class="dash-kpi-num">${d.total_alerts || 0}</span></span>
+          <span class="dash-kpi-value rd"><span class="dash-kpi-num" data-target="${d.total_alerts || 0}">0</span></span>
           <span class="dash-kpi-hint stat-hint">已觸發</span>
         </div>
       </div>
@@ -185,10 +185,26 @@ const Dashboard = {
         <span class="dash-kpi-icon" aria-hidden="true">💾</span>
         <div class="dash-kpi-body">
           <span class="dash-kpi-label">數據庫</span>
-          <span class="dash-kpi-value"><span class="dash-kpi-num">${d.db_size_mb || 0}</span><span class="dash-kpi-unit">MB</span></span>
+          <span class="dash-kpi-value"><span class="dash-kpi-num" data-target="${d.db_size_mb || 0}" data-decimals="1">0</span><span class="dash-kpi-unit">MB</span></span>
           <span class="dash-kpi-hint stat-hint">存儲佔用</span>
         </div>
       </div>`;
+
+    // KPI 動態計數動畫
+    document.querySelectorAll('#statsGrid .dash-kpi-num[data-target]').forEach((el, i) => {
+      const target = parseFloat(el.dataset.target) || 0;
+      const decimals = parseInt(el.dataset.decimals) || 0;
+      setTimeout(() => {
+        if (typeof App !== 'undefined' && App.animateCounter) {
+          App.animateCounter(el, target, {
+            duration: 700,
+            decimals: decimals,
+          });
+        } else {
+          el.textContent = el.dataset.format === 'locale' ? target.toLocaleString() : target;
+        }
+      }, i * 100);
+    });
 
     document.getElementById('sysStatus').textContent = '運行 ' + (d.uptime || '');
   },

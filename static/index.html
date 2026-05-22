@@ -12,11 +12,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <!-- Styles & Icons -->
-<link rel="stylesheet" href="/static/css/style.css?v=logo-square-20260522">
+<link rel="stylesheet" href="/static/css/style.css?v=perf-opt-20260522">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/iconfont/iconfont.css?v=iconfont-20260521">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://at.alicdn.com" crossorigin>
+
+<!-- Preload critical JS -->
+<link rel="preload" href="/static/js/utils.js?v=perf-opt-20260522" as="script">
+<link rel="preload" href="/static/js/api.js?v=perf-opt-20260522" as="script">
+<link rel="preload" href="/static/js/dashboard.js?v=perf-opt-20260522" as="script">
+<link rel="preload" href="/static/js/app.js?v=perf-opt-20260522" as="script">
+
+<!-- Prefetch secondary modules (after critical path) -->
+<link rel="prefetch" href="/static/js/charts.js">
+<link rel="prefetch" href="/static/js/chart-pro.js">
+<link rel="prefetch" href="/static/js/stock-picker.js">
 </head>
 <body>
 
@@ -1396,33 +1407,59 @@
 <div id="modalRoot"></div>
 
 <!-- ============================================================
-     JavaScript Modules（defer：不阻塞首屏渲染）
+     JavaScript Modules
+     Critical: defer（不阻塞首屏渲染，按順序執行）
+     Secondary: 空閒時預加載（requestIdleCallback）
      ============================================================ -->
 <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script defer src="/static/js/utils.js?v=logo-square-20260522"></script>
-<script defer src="/static/js/api.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/stock-picker.js?v=stockpicker-20260520c"></script>
-<script defer src="/static/js/charts.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/chart-pro.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/dashboard.js?v=logo-square-20260522"></script>
-<script defer src="/static/js/backtest.js?v=stock-pages-20260521"></script>
-<script defer src="/static/js/optimize.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/portfolio.js"></script>
-<script defer src="/static/js/signal-labels.js?v=logo-cdn-20260521"></script>
-<script defer src="/static/js/signals.js?v=signals-opt-20260521"></script>
-<script defer src="/static/js/screener.js?v=logo-cdn-20260521"></script>
-<script defer src="/static/js/heatmap.js"></script>
-<script defer src="/static/js/data.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/analysis.js?v=ui-fix-20260521"></script>
-<script defer src="/static/js/task-common.js?v=chart-zh-20260521b"></script>
-<script defer src="/static/js/tasks.js"></script>
-<script defer src="/static/js/scheduler.js"></script>
-<script defer src="/static/js/polymarket.js?v=pm-volume24hr-20260522"></script>
-<script defer src="/static/js/stock-detail.js?v=sd-profile-20260522"></script>
-<script defer src="/static/js/crypto.js?v=crypto-20260521"></script>
-<script defer src="/static/js/connectivity.js?v=ext-check-20260521"></script>
-<script defer src="/static/js/app.js?v=stock-bt-20260522"></script>
+<script defer src="/static/js/utils.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/api.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/charts.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/chart-pro.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/signal-labels.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/task-common.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/dashboard.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/app.js?v=perf-opt-20260522"></script>
+
+<!-- Secondary modules：空閒時預加載 -->
+<script>
+(function() {
+  var modules = [
+    '/static/js/stock-picker.js?v=stockpicker-20260522',
+    '/static/js/backtest.js?v=perf-opt-20260522',
+    '/static/js/optimize.js?v=perf-opt-20260522',
+    '/static/js/portfolio.js?v=perf-opt-20260522',
+    '/static/js/signals.js?v=perf-opt-20260522',
+    '/static/js/screener.js?v=perf-opt-20260522',
+    '/static/js/heatmap.js?v=perf-opt-20260522',
+    '/static/js/data.js?v=perf-opt-20260522',
+    '/static/js/analysis.js?v=perf-opt-20260522',
+    '/static/js/tasks.js?v=perf-opt-20260522',
+    '/static/js/scheduler.js?v=perf-opt-20260522',
+    '/static/js/polymarket.js?v=perf-opt-20260522',
+    '/static/js/stock-detail.js?v=perf-opt-20260522',
+    '/static/js/crypto.js?v=perf-opt-20260522',
+    '/static/js/connectivity.js?v=perf-opt-20260522'
+  ];
+  function loadModule(src) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.defer = true;
+    document.body.appendChild(s);
+  }
+  function loadAll() {
+    modules.forEach(function(src, i) {
+      setTimeout(function() { loadModule(src); }, i * 40);
+    });
+  }
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(loadAll, { timeout: 1500 });
+  } else {
+    setTimeout(loadAll, 100);
+  }
+})();
+</script>
 
 </body>
 </html>
