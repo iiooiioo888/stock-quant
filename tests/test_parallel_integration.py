@@ -340,3 +340,172 @@ class TestCacheTaskInteraction:
 
         for t in tasks[5:]:
             assert cache.get(f"result:{t['task_id']}") is not None
+
+
+# ── Pipeline Step 提交 ──────────────────────────────────────────
+
+class TestPipelineStepSubmission:
+    """管道步驟提交端到端。"""
+
+    def test_pipeline_full_flow(self):
+        """完整管道：創建 → 提交步驟 → 等待完成。"""
+        p = tm.create_pipeline([
+            {"task_type": "download", "params": {"code": "000001"}, "title": "下載"},
+            {"task_type": "backtest", "params": {"code": "000001"}, "title": "回測"},
+        ], title="端到端管道")
+        pid = p["pipeline_id"]
+        pipe = tm.get_pipeline(pid)
+        assert pipe is not None
+        assert len(pipe["task_ids"]) >= 1  # 預建第一步
+
+        # 提交第一步
+        tid1 = tm.submit_pipeline_step(pid, 0, lambda: {"step": 1})
+        assert tid1 is not None
+        time.sleep(0.5)
+
+        # 提交第二步
+        tid2 = tm.submit_pipeline_step(pid, 1, lambda: {"step": 2})
+        assert tid2 is not None
+
+    def test_concurrent_pipeline_creation(self):
+        """併發創建管道。"""
+        errors = []
+        pids = []
+        lock = threading.Lock()
+
+        def _create(i):
+            try:
+                p = tm.create_pipeline([
+                    {"task_type": "test", "params": {"i": i}, "title": f"步驟{i}"},
+                ], title=f"管道 {i}")
+                with lock:
+                    pids.append(p["pipeline_id"])
+            except Exception as e:
+                errors.append(e)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+            futs = [pool.submit(_create, i) for i in range(20)]
+            for f in concurrent.futures.as_completed(futs):
+                f.result(timeout=10)
+
+        assert len(errors) == 0
+        assert len(set(pids)) == 20
+
+
+# ── DB Migration 冪等 ───────────────────────────────────────────
+
+class TestDBMigrationIdempotent:
+    """遷移冪等性。"""
+
+    def test_run_migrations_twice(self):
+        """重複運行遷移不報錯。"""
+        from src.core.database import run_migrations
+        v1 = run_migrations()
+        v2 = run_migrations()
+        assert v2 >= v1
+
+    def test_schema_version_consistent(self):
+        """版本號一致。"""
+        from src.core.database import get_schema_version, CURRENT_SCHEMA_VERSION
+        version = get_schema_version()
+        assert version >= 0
+        assert isinstance(version, int)
+
+
+# ── 大規模併發回測提交 ──────────────────────────────────────────
+
+class TestMassiveConcurrentBacktests:
+    """大規模併發 API 回測提交。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_30_concurrent_submissions(self):
+        """30 個併發回測提交。"""
+        client = TestClient(app)
+        results = []
+
+        def _submit(i):
+            resp = client.post(f"/api/backtest?code={i:06d}&strategy=dual_ma")
+            results.append(resp.status_code)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as pool:
+            futs = [pool.submit(_submit, i) for i in range(30)]
+            for f in concurrent.futures.as_completed(futs):
+                f.result()
+
+        server_errors = sum(1 for s in results if s >= 500)
+        assert server_errors == 0, f"{server_errors} 個 5xx 錯誤"
+
+    def test_mixed_operations_under_load(self):
+        """混合操作壓力測試：GET + POST 交替。"""
+        client = TestClient(app)
+        results = []
+        endpoints = [
+            ("GET", "/api/tasks"),
+            ("GET", "/api/tasks/stats"),
+            ("GET", "/api/health"),
+            ("POST", "/api/backtest?code=000001&strategy=dual_ma"),
+        ]
+
+        def _req(method, ep):
+            if method == "GET":
+                r = client.get(ep)
+            else:
+                r = client.post(ep)
+            results.append((method, ep, r.status_code))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+            futs = [pool.submit(_req, m, e) for m, e in endpoints * 15]
+            for f in concurrent.futures.as_completed(futs):
+                f.result()
+
+        server_errors = sum(1 for _, _, s in results if s >= 500)
+        assert server_errors == 0, f"{server_errors} 個 5xx 錯誤"
+
+
+# ── 任務提交+完成+緩存端到端 ────────────────────────────────────
+
+class TestEndToEndTaskCache:
+    """任務→完成→緩存 完整鏈路。"""
+
+    def test_submit_complete_cache_read(self):
+        """提交任務 → 完成 → 結果寫緩存 → 讀緩存。"""
+        from src.core.cache import LRUCache
+        cache = LRUCache(max_size=100)
+
+        r = tm.create_task("backtest", {"code": "000999"}, title="E2E 測試")
+        tid = r["task_id"]
+        tm.update_task(tid, status="running")
+
+        # 模擬工作完成
+        result = {"total_return_pct": 15.3, "sharpe": 1.2}
+        tm.update_task(tid, status="completed", progress=100, result=result)
+        cache.set(f"bt_result:{tid}", result)
+
+        # 讀取驗證
+        task = tm.get_task(tid)
+        assert task["status"] == "completed"
+        cached = cache.get(f"bt_result:{tid}")
+        assert cached == result
+
+    def test_task_stats_reflect_lifecycle(self):
+        """統計反映任務生命週期。"""
+        initial = tm.get_task_stats()
+        created = []
+        for i in range(10):
+            r = tm.create_task("backtest", {"code": f"{900000 + i}"})
+            created.append(r["task_id"])
+
+        mid = tm.get_task_stats()
+        assert mid["total"] >= initial["total"] + 10
+
+        for tid in created[:5]:
+            tm.update_task(tid, status="completed", result={})
+        for tid in created[5:]:
+            tm.update_task(tid, status="failed", error="test")
+
+        final = tm.get_task_stats()
+        assert final["completed"] >= initial["completed"] + 5
+        assert final["failed"] >= initial["failed"] + 5

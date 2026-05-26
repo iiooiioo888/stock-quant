@@ -280,3 +280,96 @@ class TestDrawdownCircuitBreaker:
     def test_single_nav(self):
         result = drawdown_circuit_breaker([100], ["2024-01-01"], max_dd=20.0)
         assert result.get("total_triggers", 0) == 0
+
+    def test_multiple_drops(self):
+        """多次觸發熔斷。"""
+        nav = [100] * 20 + [75] * 20 + [100] * 20 + [70] * 20
+        dates = [f"2024-01-{i+1:02d}" for i in range(80)]
+        result = drawdown_circuit_breaker(nav, dates, max_dd=20.0)
+        assert result["total_triggers"] >= 1
+
+    def test_custom_threshold(self):
+        """自定義熔斷閾值。"""
+        nav = [100] * 50 + [92] * 50  # -8% drop
+        dates = [f"2024-01-{i+1:02d}" for i in range(100)]
+        # max_dd=5% 會觸發
+        result = drawdown_circuit_breaker(nav, dates, max_dd=5.0)
+        assert result["total_triggers"] >= 1
+        # max_dd=10% 不觸發
+        result2 = drawdown_circuit_breaker(nav, dates, max_dd=10.0)
+        assert result2["total_triggers"] == 0
+
+
+# ── DrawdownProtector 併發 ──────────────────────────────────────
+
+class TestDrawdownProtectorConcurrency:
+    """回撤保護器併發安全。"""
+
+    def test_concurrent_updates(self):
+        """多線程同時 update 不崩潰。"""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        protector = DrawdownProtector(max_drawdown_pct=20.0, warning_pct=10.0)
+        protector.update(1000000)  # set peak
+        errors = []
+
+        def _update(val):
+            try:
+                return protector.update(val)
+            except Exception as e:
+                errors.append(e)
+                return None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futs = [pool.submit(_update, 1000000 - i * 10000) for i in range(20)]
+            results = [f.result(timeout=5) for f in as_completed(futs)]
+
+        assert len(errors) == 0
+        assert all(r is not None for r in results)
+
+    def test_position_multiplier_thread_safety(self):
+        """get_position_multiplier 併發調用。"""
+        import threading
+        protector = DrawdownProtector()
+        errors = []
+
+        def _get(dd):
+            try:
+                return protector.get_position_multiplier(dd)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=_get, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+        assert len(errors) == 0
+
+
+# ── RiskBudget 進階邊界 ────────────────────────────────────────
+
+class TestRiskBudgetAdvanced:
+    """風險預算進階測試。"""
+
+    def test_check_position_zero_value(self):
+        budget = RiskBudget(max_portfolio_risk=0.15, max_single_risk=0.05)
+        result = budget.check_position(0, 1000000, 0.20)
+        assert result["exceeds_limit"] is False
+
+    def test_portfolio_risk_budget_single_position(self):
+        budget = RiskBudget()
+        positions = [{"value": 100000, "vol": 0.25, "code": "000001"}]
+        result = budget.portfolio_risk_budget(positions)
+        assert result["total_value"] == 100000
+        assert result["total_risk"] > 0
+
+    def test_suggest_rebalance_all_within_limit(self):
+        budget = RiskBudget(max_portfolio_risk=0.50, max_single_risk=0.50)
+        positions = [
+            {"value": 100000, "vol": 0.10, "code": "000001"},
+            {"value": 100000, "vol": 0.10, "code": "000002"},
+        ]
+        suggestions = budget.suggest_rebalance(positions)
+        for s in suggestions:
+            assert s["action"] in ("減倉", "加倉", "保持")

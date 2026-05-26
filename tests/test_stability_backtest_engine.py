@@ -352,3 +352,214 @@ class TestRunBacktestE2E:
         from src.core.backtest import run_backtest
         result = run_backtest("000001", strategy_name="dual_ma", cash=500000)
         assert result["code"] == "000001"
+
+
+# ── T1Filter T+1 分析器 ─────────────────────────────────────────
+
+class TestT1Filter:
+    """T+1 限制分析器。"""
+
+    def _make_t1_filter(self):
+        """創建帶 T1Filter 的 Cerebro。"""
+        dates = pd.bdate_range("2024-01-01", periods=20)
+        close = [10.0 + i * 0.1 for i in range(20)]
+        df = pd.DataFrame({
+            "open": [p * 0.99 for p in close],
+            "high": [p * 1.02 for p in close],
+            "low": [p * 0.98 for p in close],
+            "close": close,
+            "volume": [1e6] * 20,
+        }, index=dates)
+        from src.core.backtest import T1Filter
+
+        cerebro = bt.Cerebro()
+        cerebro.adddata(bt.feeds.PandasData(dataname=df))
+
+        class TestStrat(bt.Strategy):
+            def __init__(self):
+                self.t1 = T1Filter()
+        cerebro.addstrategy(TestStrat)
+        results = cerebro.run()
+        return results[0].t1
+
+    def test_initial_analysis(self):
+        f = self._make_t1_filter()
+        analysis = f.get_analysis()
+        assert analysis["blocked_sells"] == 0
+        assert analysis["tracked_positions"] == 0
+
+
+# ── analyze_equity_curve ────────────────────────────────────────
+
+class TestAnalyzeEquityCurve:
+    """淨值曲線深度分析。"""
+
+    def test_normal_curve(self):
+        from src.core.backtest import analyze_equity_curve
+        nav = [100 + i * 0.5 for i in range(252)]
+        dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(252)]
+        returns = [(nav[i] / nav[i - 1]) - 1 for i in range(1, len(nav))]
+        result = analyze_equity_curve(nav, dates, returns)
+        assert "underwater_periods" in result
+        assert "recovery_periods" in result
+        assert "rolling_1y_returns" in result
+        assert "drawdown_durations" in result
+        assert "underwater_pct" in result
+        assert isinstance(result["underwater_periods"], list)
+        assert isinstance(result["rolling_1y_returns"], list)
+
+    def test_empty_curve(self):
+        from src.core.backtest import analyze_equity_curve
+        result = analyze_equity_curve([], [], [])
+        assert "underwater_periods" in result
+        assert result["max_underwater_days"] == 0
+
+    def test_v_shaped_curve(self):
+        from src.core.backtest import analyze_equity_curve
+        nav = [100] * 20 + [80] * 20 + [100] * 20
+        dates = [f"2024-01-{i+1:02d}" for i in range(60)]
+        returns = [(nav[i] / nav[i - 1]) - 1 if i > 0 else 0.0 for i in range(60)]
+        result = analyze_equity_curve(nav, dates, returns)
+        assert result["max_underwater_days"] >= 0
+
+
+# ── trade_analysis ──────────────────────────────────────────────
+
+class TestTradeAnalysis:
+    """交易分析。"""
+
+    def test_normal_trades(self):
+        from src.core.backtest import trade_analysis
+        trades = [
+            {"pnl": 500, "hold_days": 5, "return_pct": 5.0, "buy_date": "2024-01-02", "sell_date": "2024-01-07"},
+            {"pnl": -200, "hold_days": 3, "return_pct": -2.0, "buy_date": "2024-01-10", "sell_date": "2024-01-13"},
+            {"pnl": 300, "hold_days": 7, "return_pct": 3.0, "buy_date": "2024-01-15", "sell_date": "2024-01-22"},
+        ]
+        result = trade_analysis(trades)
+        assert result["total_trades"] == 3
+        assert result["profit_factor"] > 0
+        assert "streak" in result
+        assert "hold_period" in result
+        assert "expectancy" in result
+        assert result["gross_profit"] == 800
+        assert abs(result["gross_loss"]) == 200  # 可能正或負
+
+    def test_empty_trades(self):
+        from src.core.backtest import trade_analysis
+        result = trade_analysis([])
+        assert result["total_trades"] == 0
+
+    def test_all_wins(self):
+        from src.core.backtest import trade_analysis
+        trades = [
+            {"pnl": 100, "hold_days": 1, "return_pct": 1.0, "buy_date": "2024-01-01", "sell_date": "2024-01-02"},
+            {"pnl": 200, "hold_days": 2, "return_pct": 2.0, "buy_date": "2024-01-03", "sell_date": "2024-01-05"},
+        ]
+        result = trade_analysis(trades)
+        assert result["streak"]["max_win_streak"] == 2
+        assert result["streak"]["max_loss_streak"] == 0
+
+
+# ── monte_carlo_simulation ──────────────────────────────────────
+
+class TestMonteCarlo:
+    """蒙地卡羅模擬。"""
+
+    def test_basic_simulation(self):
+        from src.core.backtest import monte_carlo_simulation
+        np.random.seed(42)
+        returns = list(np.random.normal(0.001, 0.02, 252))
+        result = monte_carlo_simulation(returns, n_simulations=100, days=60)
+        assert "percentiles" in result
+        assert "prob_profit" in result
+        assert "prob_large_drawdown" in result
+        assert "simulated_curves" in result
+        assert result["n_simulations"] == 100
+        assert result["days"] == 60
+        assert 0 <= result["prob_profit"] <= 1
+
+    def test_empty_returns(self):
+        from src.core.backtest import monte_carlo_simulation
+        try:
+            result = monte_carlo_simulation([], n_simulations=10, days=10)
+            # 可能返回空結果或拋異常
+            assert isinstance(result, dict)
+        except (ValueError, IndexError):
+            pass  # 空數據拋異常合理
+
+    def test_confidence_intervals(self):
+        from src.core.backtest import monte_carlo_simulation
+        returns = [0.001] * 100
+        try:
+            result = monte_carlo_simulation(returns, n_simulations=50, days=30)
+            ci = result["confidence_intervals"]
+            assert "90pct" in ci
+            assert "50pct" in ci
+            assert ci["90pct"][0] <= ci["90pct"][1]
+        except (ValueError, ZeroDivisionError):
+            pass  # 常數收益可能觸發異常
+
+
+# ── rolling_metrics ─────────────────────────────────────────────
+
+class TestRollingMetrics:
+    """滾動指標。"""
+
+    def test_basic_rolling(self):
+        from src.core.backtest import rolling_metrics
+        np.random.seed(42)
+        returns = list(np.random.normal(0.001, 0.02, 252))
+        dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(252)]
+        result = rolling_metrics(returns, dates, window=60)
+        assert "rolling_sharpe" in result
+        assert "rolling_sortino" in result
+        assert "rolling_volatility" in result
+        assert "summary" in result
+        assert result["window"] == 60
+        assert len(result["rolling_sharpe"]) > 0
+
+    def test_short_data(self):
+        from src.core.backtest import rolling_metrics
+        returns = [0.01, -0.01, 0.005]
+        dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
+        result = rolling_metrics(returns, dates, window=5)
+        # 數據不足一個窗口，可能返回空
+        assert isinstance(result, dict)
+
+    def test_summary_fields(self):
+        from src.core.backtest import rolling_metrics
+        np.random.seed(123)
+        returns = list(np.random.normal(0.001, 0.02, 200))
+        dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(200)]
+        result = rolling_metrics(returns, dates, window=30)
+        s = result["summary"]
+        assert "sharpe_mean" in s
+        assert "sortino_mean" in s
+        assert "volatility_mean" in s
+
+
+# ── run_multi_strategy ──────────────────────────────────────────
+
+class TestRunMultiStrategy:
+    """多策略並行回測。"""
+
+    @patch("src.core.kline_timeframe.ensure_kline_for_backtest")
+    def test_multi_strategy_basic(self, mock_ensure):
+        """多策略回測至少返回部分結果。"""
+        np.random.seed(42)
+        dates = pd.bdate_range("2023-01-01", periods=200)
+        close = 10.0 + np.cumsum(np.random.randn(200) * 0.3)
+        close = np.maximum(close, 1.0)
+        df = pd.DataFrame({
+            "open": close * 0.99,
+            "high": close * 1.02,
+            "low": close * 0.98,
+            "close": close,
+            "volume": np.random.randint(100000, 1000000, 200).astype(float),
+        }, index=dates)
+        mock_ensure.return_value = (df, "synthetic", "1d")
+        from src.core.backtest import run_multi_strategy
+        results = run_multi_strategy("000001")
+        assert isinstance(results, list)
+        for r in results:
+            assert "total_return_pct" in r

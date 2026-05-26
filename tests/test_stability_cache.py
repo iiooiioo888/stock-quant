@@ -266,3 +266,123 @@ class TestCacheManager:
         big = "x" * 100000
         mgr.set("big", big)
         assert mgr.get("big") == big
+
+    def test_overwrite(self, mgr):
+        mgr.set("key", "old")
+        mgr.set("key", "new")
+        assert mgr.get("key") == "new"
+
+    def test_stats_after_operations(self, mgr):
+        mgr.set("a", 1)
+        mgr.set("b", 2)
+        stats = mgr.stats()
+        assert stats["lru_size"] >= 2
+
+
+# ── 業務緩存封裝函數 ────────────────────────────────────────────
+
+class TestBusinessCacheFunctions:
+    """K 線、實時行情、回測結果緩存。"""
+
+    def test_kline_cache(self):
+        from src.core.cache import get_cached_kline, set_cached_kline
+        data = [{"date": "2024-01-01", "close": 10.0}]
+        set_cached_kline("000001", data)
+        result = get_cached_kline("000001")
+        assert result == data
+
+    def test_kline_cache_miss(self):
+        from src.core.cache import get_cached_kline
+        assert get_cached_kline("nonexistent_code_xyz") is None
+
+    def test_realtime_cache(self):
+        from src.core.cache import get_cached_realtime, set_cached_realtime
+        data = {"price": 10.5, "change": 0.5}
+        set_cached_realtime("600519", data)
+        result = get_cached_realtime("600519")
+        assert result == data
+
+    def test_realtime_cache_miss(self):
+        from src.core.cache import get_cached_realtime
+        assert get_cached_realtime("nonexistent") is None
+
+    def test_backtest_cache(self):
+        from src.core.cache import get_cached_backtest, set_cached_backtest
+        data = {"total_return_pct": 15.3, "sharpe": 1.2}
+        set_cached_backtest("test_key_123", data)
+        result = get_cached_backtest("test_key_123")
+        assert result == data
+
+    def test_backtest_cache_miss(self):
+        from src.core.cache import get_cached_backtest
+        assert get_cached_backtest("nonexistent_key") is None
+
+    def test_kline_different_codes_isolated(self):
+        from src.core.cache import get_cached_kline, set_cached_kline
+        set_cached_kline("000001", [{"close": 10}])
+        set_cached_kline("000002", [{"close": 20}])
+        assert get_cached_kline("000001")[0]["close"] == 10
+        assert get_cached_kline("000002")[0]["close"] == 20
+
+
+# ── 大規模 Key 壓力 ─────────────────────────────────────────────
+
+class TestMassiveKeys:
+    """大規模 Key 操作。"""
+
+    def test_10000_keys_eviction(self):
+        cache = LRUCache(max_size=100)
+        for i in range(10000):
+            cache.set(f"mass_{i}", i)
+        assert cache.size() <= 100
+        # 最新的應在
+        assert cache.get("mass_9999") == 9999
+        # 最早的應被淘汰
+        assert cache.get("mass_0") is None
+
+    def test_rapid_set_get_cycle(self):
+        """快速讀寫循環。"""
+        cache = LRUCache(max_size=50)
+        for _ in range(1000):
+            cache.set("cycle", "value")
+            assert cache.get("cycle") == "value"
+
+    def test_cache_manager_1000_keys(self):
+        mgr = CacheManager()
+        for i in range(1000):
+            mgr.set(f"mgr_{i}", {"data": i})
+        # 最新的應在
+        assert mgr.get("mgr_999") == {"data": 999}
+
+
+# ── TTL 併發過期 ────────────────────────────────────────────────
+
+class TestTTLConcurrent:
+    """TTL 併發場景。"""
+
+    def test_concurrent_ttl_set(self):
+        """多線程同時設置 TTL key。"""
+        cache = LRUCache(max_size=1000)
+        errors = []
+
+        def _set(i):
+            try:
+                cache.set(f"ttl_{i}", i, ttl=2)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=_set, args=(i,)) for i in range(100)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+        assert len(errors) == 0
+
+    def test_ttl_partial_expiry(self):
+        """部分 key 過期，部分存活。"""
+        cache = LRUCache(max_size=100)
+        cache.set("short", "s", ttl=1)
+        cache.set("long", "l", ttl=10)
+        time.sleep(1.1)
+        assert cache.get("short") is None
+        assert cache.get("long") == "l"

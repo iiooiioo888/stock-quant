@@ -507,3 +507,422 @@ class TestGetTasks:
             tm.create_task("backtest", {"code": f"{500000 + i}"})
         tasks = tm.get_tasks(limit=3)
         assert len(tasks) <= 3
+
+
+# ── update_task_meta ────────────────────────────────────────────
+
+class TestUpdateTaskMeta:
+    """任務運行時展示信息更新。"""
+
+    def test_update_message(self):
+        r = tm.create_task("backtest", {"code": "000091"})
+        tid = r["task_id"]
+        tm.update_task_meta(tid, message="正在下載數據...")
+        task = tm.get_task_full(tid)
+        assert task["meta"]["message"] == "正在下載數據..."
+
+    def test_update_download_info(self):
+        r = tm.create_task("backtest", {"code": "000092"})
+        tid = r["task_id"]
+        tm.update_task_meta(tid, download={"progress": 50, "total": 100})
+        task = tm.get_task_full(tid)
+        assert task["meta"]["download"]["progress"] == 50
+
+    def test_update_extra_kwargs(self):
+        r = tm.create_task("backtest", {"code": "000093"})
+        tid = r["task_id"]
+        tm.update_task_meta(tid, custom_field="custom_value")
+        task = tm.get_task_full(tid)
+        assert task["meta"]["custom_field"] == "custom_value"
+
+    def test_update_nonexistent(self):
+        tm.update_task_meta("nonexistent", message="test")  # 不應崩潰
+
+    def test_download_merge(self):
+        r = tm.create_task("backtest", {"code": "000094"})
+        tid = r["task_id"]
+        tm.update_task_meta(tid, download={"progress": 30, "total": 100})
+        tm.update_task_meta(tid, download={"progress": 60})
+        task = tm.get_task_full(tid)
+        assert task["meta"]["download"]["progress"] == 60
+        assert task["meta"]["download"]["total"] == 100  # 保留舊字段
+
+
+# ── get_task_full / get_task_params ─────────────────────────────
+
+class TestGetTaskFullAndParams:
+    """完整任務信息與輕量參數查詢。"""
+
+    def test_get_task_full_basic(self):
+        r = tm.create_task("backtest", {"code": "000110"}, title="完整查詢")
+        tid = r["task_id"]
+        full = tm.get_task_full(tid)
+        assert full is not None
+        assert full["task_id"] == tid
+        assert full["title"] == "完整查詢"
+
+    def test_get_task_full_exclude_result(self):
+        r = tm.create_task("backtest", {"code": "000111"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_COMPLETED, result={"big": "data" * 1000})
+        full = tm.get_task_full(tid, include_result=False)
+        assert full is not None
+        assert "result" not in full
+
+    def test_get_task_full_nonexistent(self):
+        assert tm.get_task_full("nonexistent") is None
+
+    def test_get_task_params_basic(self):
+        r = tm.create_task("backtest", {"code": "000112", "strategy": "dual_ma"}, title="參數查詢")
+        tid = r["task_id"]
+        params = tm.get_task_params(tid)
+        assert params is not None
+        assert params["task_id"] == tid
+        assert params["params"]["code"] == "000112"
+
+    def test_get_task_params_nonexistent(self):
+        assert tm.get_task_params("nonexistent") is None
+
+
+# ── get_running_tasks / count_in_flight / is_task_running ──────
+
+class TestRunningAndInFlight:
+    """運行中任務查詢。"""
+
+    def test_get_running_tasks_empty(self):
+        # 先清空所有任務
+        tm.cancel_all_pending()
+        running = tm.get_running_tasks()
+        # 可能還有其他測試殘留，只檢查我們知道的
+        assert isinstance(running, list)
+
+    def test_get_running_tasks_after_update(self):
+        r = tm.create_task("backtest", {"code": "000120"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_RUNNING)
+        running = tm.get_running_tasks()
+        assert any(t["task_id"] == tid for t in running)
+
+    def test_count_in_flight(self):
+        r = tm.create_task("backtest", {"code": "000121"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_RUNNING)
+        count = tm.count_in_flight_tasks()
+        assert count >= 1
+
+    def test_count_in_flight_exclude(self):
+        r = tm.create_task("backtest", {"code": "000122"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_RUNNING)
+        count_without = tm.count_in_flight_tasks(exclude_task_id=tid)
+        count_with = tm.count_in_flight_tasks()
+        assert count_without <= count_with
+
+    def test_is_task_running_true(self):
+        r = tm.create_task("backtest", {"code": "000123"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_RUNNING)
+        assert tm.is_task_running("backtest", {"code": "000123"}) is True
+
+    def test_is_task_running_false(self):
+        r = tm.create_task("backtest", {"code": "000124"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_COMPLETED, result={})
+        assert tm.is_task_running("backtest", {"code": "000124"}) is False
+
+
+# ── recover_stale_tasks_on_startup ──────────────────────────────
+
+class TestRecoverStale:
+    """啟動自癒。"""
+
+    def test_recover_stale(self):
+        r = tm.create_task("backtest", {"code": "000130"})
+        tid = r["task_id"]
+        tm.update_task(tid, status=tm.STATUS_RUNNING)
+        # 標記為已派發
+        with tm._lock:
+            tm._dispatched.add(tid)
+        recovered = tm.recover_stale_tasks_on_startup()
+        assert recovered >= 1
+        task = tm.get_task(tid)
+        assert task["status"] == tm.STATUS_FAILED
+        assert "重啟" in task["error"]
+
+    def test_recover_no_stale(self):
+        """沒有殘留任務時返回 0。"""
+        # 確保所有 pending 任務不被誤恢復
+        recovered = tm.recover_stale_tasks_on_startup()
+        assert isinstance(recovered, int)
+
+
+# ── delete_all_completed ────────────────────────────────────────
+
+class TestDeleteAllCompleted:
+    """批量刪除已結束任務。"""
+
+    def test_delete_all_completed_basic(self):
+        for i in range(5):
+            r = tm.create_task("backtest", {"code": f"{600000 + i}"})
+            tm.update_task(r["task_id"], status=tm.STATUS_COMPLETED, result={})
+        deleted = tm.delete_all_completed()
+        assert deleted >= 5
+
+    def test_delete_all_include_failed(self):
+        r = tm.create_task("backtest", {"code": "000140"})
+        tm.update_task(r["task_id"], status=tm.STATUS_FAILED, error="test")
+        deleted = tm.delete_all_completed(include_failed=True)
+        assert deleted >= 1
+        assert tm.get_task(r["task_id"]) is None
+
+    def test_delete_all_exclude_failed(self):
+        r = tm.create_task("backtest", {"code": "000141"})
+        tm.update_task(r["task_id"], status=tm.STATUS_FAILED, error="test")
+        deleted = tm.delete_all_completed(include_failed=False, include_cancelled=False)
+        assert tm.get_task(r["task_id"]) is not None  # failed 不應被刪
+
+
+# ── submit_pipeline_step / get_pipeline ─────────────────────────
+
+class TestPipelineAdvanced:
+    """管道進階操作。"""
+
+    def test_submit_pipeline_step(self):
+        p = tm.create_pipeline([
+            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
+            {"task_type": "backtest", "params": {"code": "000001"}, "title": "步驟2"},
+        ])
+        pid = p["pipeline_id"]
+        task_id = tm.submit_pipeline_step(pid, 0, lambda: None)
+        assert task_id is not None
+
+    def test_submit_step_invalid_pipeline(self):
+        with pytest.raises(ValueError, match="管道不存在"):
+            tm.submit_pipeline_step("nonexistent", 0, lambda: None)
+
+    def test_submit_step_invalid_index(self):
+        p = tm.create_pipeline([
+            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
+        ])
+        with pytest.raises(ValueError):
+            tm.submit_pipeline_step(p["pipeline_id"], 5, lambda: None)
+
+    def test_get_pipeline(self):
+        p = tm.create_pipeline([
+            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
+        ])
+        pipe = tm.get_pipeline(p["pipeline_id"])
+        assert pipe is not None
+        assert "task_ids" in pipe
+
+    def test_get_pipeline_nonexistent(self):
+        assert tm.get_pipeline("nonexistent") is None
+
+
+# ── task_type_label / get_task_types ────────────────────────────
+
+class TestTaskTypeMeta:
+    """任務類型元數據。"""
+
+    def test_task_type_label_known(self):
+        label = tm.task_type_label("backtest")
+        assert len(label) > 0
+        assert "回測" in label or "backtest" in label.lower() or label != "backtest"
+
+    def test_task_type_label_unknown(self):
+        assert tm.task_type_label("nonexistent_type") == "nonexistent_type"
+
+    def test_get_task_types(self):
+        types = tm.get_task_types()
+        assert isinstance(types, list)
+        assert len(types) > 0
+        for t in types:
+            assert "id" in t
+            assert "label" in t
+
+    def test_get_task_types_async_only(self):
+        types = tm.get_task_types(async_only=True)
+        for t in types:
+            assert "id" in t
+
+
+# ── _to_json_safe ───────────────────────────────────────────────
+
+class TestJsonSafe:
+    """JSON 安全轉換。"""
+
+    def test_none(self):
+        assert tm._to_json_safe(None) is None
+
+    def test_normal_dict(self):
+        data = {"a": 1, "b": "hello", "c": 3.14}
+        assert tm._to_json_safe(data) == data
+
+    def test_nan_cleaned(self):
+        import math
+        data = {"val": float("nan")}
+        result = tm._to_json_safe(data)
+        assert result["val"] is None
+
+    def test_inf_cleaned(self):
+        data = {"val": float("inf")}
+        result = tm._to_json_safe(data)
+        assert result["val"] is None
+
+    def test_nested_nan(self):
+        data = {"inner": {"val": float("nan")}, "list": [1, float("inf"), 3]}
+        result = tm._to_json_safe(data)
+        assert result["inner"]["val"] is None
+        assert result["list"][1] is None
+
+    def test_numpy_types(self):
+        import numpy as np
+        data = {"int": np.int64(42), "float": np.float64(3.14)}
+        result = tm._to_json_safe(data)
+        assert result["int"] == 42
+        assert abs(result["float"] - 3.14) < 0.01
+
+    def test_datetime_serialized(self):
+        from datetime import datetime
+        data = {"ts": datetime(2024, 6, 15, 10, 30, 0)}
+        result = tm._to_json_safe(data)
+        assert "2024-06-15" in result["ts"]
+
+
+# ── _make_params_hash ───────────────────────────────────────────
+
+class TestParamsHash:
+    """參數哈希一致性。"""
+
+    def test_same_params_same_hash(self):
+        h1 = tm._make_params_hash({"a": 1, "b": 2})
+        h2 = tm._make_params_hash({"b": 2, "a": 1})
+        assert h1 == h2
+
+    def test_different_params_different_hash(self):
+        h1 = tm._make_params_hash({"a": 1})
+        h2 = tm._make_params_hash({"a": 2})
+        assert h1 != h2
+
+    def test_hash_length(self):
+        h = tm._make_params_hash({"test": True})
+        assert len(h) == 12  # MD5 截取前 12 位
+
+    def test_empty_params(self):
+        h = tm._make_params_hash({})
+        assert len(h) == 12
+
+
+# ── _calc_elapsed / _calc_eta ───────────────────────────────────
+
+class TestCalcElapsedAndETA:
+    """運行時間與 ETA 計算。"""
+
+    def test_calc_elapsed_no_start(self):
+        assert tm._calc_elapsed({"status": "pending"}) == 0.0
+
+    def test_calc_elapsed_completed(self):
+        task = {
+            "status": tm.STATUS_COMPLETED,
+            "started_at": "2024-01-01 10:00:00",
+            "completed_at": "2024-01-01 10:05:00",
+        }
+        elapsed = tm._calc_elapsed(task)
+        assert abs(elapsed - 300.0) < 1.0
+
+    def test_calc_eta_low_progress(self):
+        assert tm._calc_eta({"progress": 3, "started_at": "2024-01-01 10:00:00"}) is None
+
+    def test_calc_eta_completed(self):
+        assert tm._calc_eta({"progress": 100, "started_at": "2024-01-01 10:00:00"}) is None
+
+
+# ── get_queue_snapshot ──────────────────────────────────────────
+
+class TestQueueSnapshot:
+    """隊列快照。"""
+
+    def test_snapshot_structure(self):
+        snap = tm.get_queue_snapshot()
+        assert "current" in snap
+        assert "next" in snap
+        assert "running" in snap
+        assert "pending" in snap
+        assert "stats" in snap
+
+    def test_snapshot_with_running(self):
+        r = tm.create_task("backtest", {"code": "000150"})
+        tm.update_task(r["task_id"], status=tm.STATUS_RUNNING)
+        snap = tm.get_queue_snapshot()
+        assert len(snap["running"]) >= 1
+
+
+# ── 大規模併發 ──────────────────────────────────────────────────
+
+class TestMassiveConcurrency:
+    """100+ 併發任務。"""
+
+    def test_100_concurrent_creates(self):
+        results = []
+        lock = threading.Lock()
+
+        def _create(i):
+            r = tm.create_task("backtest", {"code": f"{700000 + i}"})
+            with lock:
+                results.append(r["task_id"])
+
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            futs = [pool.submit(_create, i) for i in range(100)]
+            for f in as_completed(futs):
+                f.result(timeout=10)
+
+        assert len(results) == 100
+        assert len(set(results)) == 100
+
+    def test_concurrent_create_update_cancel_cycle(self):
+        """完整生命週期併發：創建→更新→取消。"""
+        created = []
+        lock = threading.Lock()
+
+        def _lifecycle(i):
+            r = tm.create_task("backtest", {"code": f"{800000 + i}"})
+            tid = r["task_id"]
+            with lock:
+                created.append(tid)
+            tm.update_task(tid, progress=i % 100)
+            if i % 3 == 0:
+                tm.cancel_task(tid)
+            elif i % 3 == 1:
+                tm.update_task(tid, status=tm.STATUS_COMPLETED, result={})
+
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            futs = [pool.submit(_lifecycle, i) for i in range(60)]
+            for f in as_completed(futs):
+                f.result(timeout=10)
+
+        assert len(created) == 60
+        # 不應有任何崩潰
+        for tid in created:
+            task = tm.get_task(tid)
+            assert task is not None
+
+    def test_concurrent_log_append(self):
+        """多線程同時寫日誌。"""
+        r = tm.create_task("backtest", {"code": "000160"})
+        tid = r["task_id"]
+        errors = []
+
+        def _log(i):
+            try:
+                tm.append_task_log(tid, f"日誌行 {i}")
+            except Exception as e:
+                errors.append(e)
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            futs = [pool.submit(_log, i) for i in range(100)]
+            for f in as_completed(futs):
+                f.result(timeout=5)
+
+        assert len(errors) == 0
+        logs = tm.get_task_logs(tid, tail=200)
+        assert len(logs) >= 50  # 至少一半寫入成功

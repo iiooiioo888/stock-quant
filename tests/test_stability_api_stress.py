@@ -281,3 +281,181 @@ class TestBacktestLifecycle:
         # cancel 需要 auth，401 是正常行為
         resp2 = client.post(f"/api/tasks/{task_id}/cancel")
         assert resp2.status_code in (200, 400, 401)
+
+
+# ── 健康檢查端點 ────────────────────────────────────────────────
+
+class TestHealthEndpoints:
+    """健康檢查端點壓力。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_health_basic(self):
+        """基本健康檢查。"""
+        client = TestClient(app)
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+
+    def test_health_detailed(self):
+        """詳細健康檢查。"""
+        client = TestClient(app)
+        resp = client.get("/api/health/detailed")
+        assert resp.status_code == 200
+
+    def test_100_concurrent_health(self):
+        """100 個併發健康檢查。"""
+        client = TestClient(app)
+        results = []
+
+        def _req():
+            r = client.get("/api/health")
+            results.append(r.status_code)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+            futures = [pool.submit(_req) for _ in range(100)]
+            for f in concurrent.futures.as_completed(futures):
+                f.result()
+
+        server_errors = sum(1 for s in results if s >= 500)
+        assert server_errors == 0, f"{server_errors} 個 5xx 錯誤"
+
+
+# ── 任務端點壓力 ────────────────────────────────────────────────
+
+class TestTaskEndpoints:
+    """任務管理端點壓力。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_task_stats(self):
+        client = TestClient(app)
+        resp = client.get("/api/tasks/stats")
+        assert resp.status_code == 200
+
+    def test_task_queue(self):
+        client = TestClient(app)
+        resp = client.get("/api/tasks/queue")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "running" in data or "stats" in data
+
+    def test_task_types(self):
+        client = TestClient(app)
+        resp = client.get("/api/tasks/types")
+        assert resp.status_code == 200
+
+    def test_concurrent_task_list_and_stats(self):
+        """併發查詢任務列表和統計。"""
+        client = TestClient(app)
+        endpoints = ["/api/tasks", "/api/tasks/stats", "/api/tasks/queue"]
+        results = []
+
+        def _req(ep):
+            r = client.get(ep)
+            results.append((ep, r.status_code))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as pool:
+            futs = [pool.submit(_req, ep) for ep in endpoints * 20]
+            for f in concurrent.futures.as_completed(futs):
+                f.result()
+
+        server_errors = sum(1 for _, s in results if s >= 500)
+        assert server_errors == 0
+
+
+# ── 響應時間 ────────────────────────────────────────────────────
+
+class TestResponseTime:
+    """響應時間斷言。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_health_response_time(self):
+        """健康檢查 < 2 秒。"""
+        import time
+        client = TestClient(app)
+        start = time.time()
+        client.get("/api/health")
+        elapsed = time.time() - start
+        assert elapsed < 2.0, f"健康檢查耗時 {elapsed:.2f}s"
+
+    def test_strategy_params_response_time(self):
+        """策略參數 < 5 秒。"""
+        import time
+        client = TestClient(app)
+        start = time.time()
+        client.get("/api/strategies/params")
+        elapsed = time.time() - start
+        assert elapsed < 5.0, f"策略參數耗時 {elapsed:.2f}s"
+
+    def test_history_response_time(self):
+        """歷史查詢 < 5 秒。"""
+        import time
+        client = TestClient(app)
+        start = time.time()
+        client.get("/api/backtest/history")
+        elapsed = time.time() - start
+        assert elapsed < 5.0, f"歷史查詢耗時 {elapsed:.2f}s"
+
+
+# ── GZip 壓縮 ──────────────────────────────────────────────────
+
+class TestGZipMiddleware:
+    """GZip 中間件。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_gzip_accepted(self):
+        """Accept-Encoding: gzip 請求。"""
+        client = TestClient(app)
+        resp = client.get("/api/strategies/params", headers={"Accept-Encoding": "gzip"})
+        assert resp.status_code == 200
+
+    def test_gzip_large_response(self):
+        """大響應啟用壓縮。"""
+        client = TestClient(app)
+        resp = client.get("/api/backtest/history", headers={"Accept-Encoding": "gzip"})
+        assert resp.status_code == 200
+
+
+# ── 異常端點組合 ────────────────────────────────────────────────
+
+class TestEndpointEdgeCases:
+    """端點邊界條件。"""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setattr(settings, "debug", True)
+
+    def test_nonexistent_endpoint(self):
+        """不存在的端點返回 404。"""
+        client = TestClient(app)
+        resp = client.get("/api/nonexistent/path")
+        assert resp.status_code == 404
+
+    def test_method_not_allowed(self):
+        """錯誤的 HTTP 方法。"""
+        client = TestClient(app)
+        resp = client.delete("/api/health")
+        assert resp.status_code in (405, 404, 400)
+
+    def test_backtest_missing_params(self):
+        """缺少必要參數。"""
+        client = TestClient(app)
+        resp = client.post("/api/backtest")
+        assert resp.status_code in (400, 422, 200)
+
+    def test_empty_body_post(self):
+        """空 body POST。"""
+        client = TestClient(app)
+        resp = client.post("/api/auth/login", content="",
+                           headers={"Content-Type": "application/json"})
+        assert resp.status_code in (400, 422)
