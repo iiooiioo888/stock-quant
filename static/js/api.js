@@ -23,10 +23,33 @@ const Api = {
   },
 
   /**
+   * 解析 JWT payload（不驗簽，僅讀 exp）
+   */
+  isTokenExpired(token) {
+    if (!token) return true;
+    try {
+      const part = String(token).split('.')[1];
+      if (!part) return true;
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64));
+      if (!payload.exp) return false;
+      return payload.exp * 1000 < Date.now() - 5000;
+    } catch {
+      return true;
+    }
+  },
+
+  /**
    * 初始化：從 localStorage 載入 token
    */
   init() {
-    this._token = localStorage.getItem('sq_token');
+    const stored = localStorage.getItem('sq_token');
+    if (stored && this.isTokenExpired(stored)) {
+      localStorage.removeItem('sq_token');
+      this._token = null;
+    } else {
+      this._token = stored;
+    }
     this._updateAuthUI();
   },
 
@@ -34,6 +57,9 @@ const Api = {
    * 保存 token
    */
   setToken(token) {
+    if (token && this.isTokenExpired(token)) {
+      token = null;
+    }
     this._token = token;
     if (token) {
       localStorage.setItem('sq_token', token);
@@ -44,6 +70,10 @@ const Api = {
     try {
       window.StockQPro?.App?.reconnectWs?.();
     } catch (_) {}
+    if (typeof App !== 'undefined' && App._connectWS) {
+      App._wsRetry = 0;
+      App._connectWS();
+    }
   },
 
   /**
@@ -458,6 +488,32 @@ const Api = {
     return this.get(`/api/backtest/compare?ids=${list.join(',')}`);
   },
 
+  async getBacktestResultDetail(resultId) {
+    const id = Number(resultId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return this.get(`/api/backtest/result/${id}`);
+  },
+
+  /** 解析任務/緩存回傳的 result（兼容 JSON 字串與嵌套） */
+  normalizeBacktestResult(raw) {
+    if (raw == null) return null;
+    let r = raw;
+    if (typeof r === 'string') {
+      try {
+        r = JSON.parse(r);
+      } catch {
+        return null;
+      }
+    }
+    if (r && typeof r === 'object' && r.result != null && typeof r.result === 'object') {
+      r = r.result;
+    }
+    if (r && typeof r === 'object' && r.data && r.total_return_pct == null && r.data.total_return_pct != null) {
+      r = r.data;
+    }
+    return r && typeof r === 'object' ? r : null;
+  },
+
   /** 帶 Token 下載檔案（匯出 CSV/JSON） */
   async downloadAuthenticated(path, filename) {
     const headers = {};
@@ -706,6 +762,98 @@ const Api = {
   },
   async createTaskPipeline(body) { return this.post('/api/tasks/pipeline', body); },
   async getTaskStats() { return this.get('/api/tasks/stats'); },
+
+  getLlmConfig() {
+    try {
+      const raw = localStorage.getItem('stockq:llm_config_v1');
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return {};
+    }
+  },
+
+  setLlmConfig(partial = {}) {
+    const cur = this.getLlmConfig();
+    const next = { ...cur, ...partial };
+    if (!next.api_key) delete next.api_key;
+    localStorage.setItem('stockq:llm_config_v1', JSON.stringify(next));
+    return next;
+  },
+
+  async getLlmStatus() { return this.get('/api/llm/status'); },
+
+  async getLlmSettings() {
+    return this.get('/api/llm/settings');
+  },
+
+  async saveLlmSettings(llm) {
+    return this.put('/api/llm/settings', { llm });
+  },
+
+  async llmChat(message, history = [], llmConfig = null) {
+    const cfg = llmConfig || this.getLlmConfig();
+    const body = { message, history };
+    if (cfg && (cfg.api_key || cfg.api_base || cfg.model)) {
+      body.llm_config = cfg;
+    }
+    return this.post('/api/llm/chat', body);
+  },
+
+  async llmChatStream(message, history = [], onEvent, llmConfig = null) {
+    const cfg = llmConfig || this.getLlmConfig();
+    const headers = { 'Content-Type': 'application/json' };
+    if (this._token) headers.Authorization = `Bearer ${this._token}`;
+
+    const body = { message, history };
+    if (cfg && (cfg.api_key || cfg.api_base || cfg.model)) {
+      body.llm_config = cfg;
+    }
+
+    const resp = await fetch(`${API_BASE}/api/llm/chat/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try {
+        const j = await resp.json();
+        detail = j.detail || j.error || detail;
+      } catch (_) { /* ignore */ }
+      throw new Error(detail || `流式請求失敗 (${resp.status})`);
+    }
+
+    const reader = resp.body?.getReader();
+    if (!reader) throw new Error('瀏覽器不支援流式讀取');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const parseSseBlock = (block) => {
+      const lines = String(block || '').split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(payload);
+          if (onEvent) onEvent(ev);
+        } catch (_) { /* ignore partial */ }
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() || '';
+      chunks.forEach(parseSseBlock);
+    }
+    if (buffer.trim()) parseSseBlock(buffer);
+  },
 };
 
 window.Api = Api;

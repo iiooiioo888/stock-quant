@@ -84,9 +84,10 @@ def fundamentals_row_to_fin(row: dict) -> dict:
     code = row.get("code", "")
     fin: dict = {"code": code, "has_data": False, "source": row.get("source", "fundamentals_db")}
     for key in (
-        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
         "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-        "revenue", "net_profit", "update_date", "name",
+        "revenue", "net_profit", "revenue_yoy", "profit_yoy",
+        "update_date", "name",
     ):
         val = row.get(key)
         if val is not None and val != "":

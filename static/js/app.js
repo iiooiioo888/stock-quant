@@ -38,7 +38,9 @@ const App = {
     this.initRouter();
     if (typeof StockDetail !== 'undefined') StockDetail.initRouter();
     if (!this.routeFromHash(true)) {
-      this.loadTab('dashboard', { syncHash: true });
+      const lastTab = (typeof LocalStore !== 'undefined' && LocalStore.get('lastTab')) || 'dashboard';
+      const valid = document.getElementById('tab-' + lastTab);
+      this.loadTab(valid ? lastTab : 'dashboard', { syncHash: true });
     }
 
     // 初始化子模塊
@@ -84,8 +86,15 @@ const App = {
   },
 
   /** 打開該股獨立詳情頁（#/stock/代碼，可收藏分享） */
-  openStockDetail(code) {
+  openStockDetail(code, meta = {}) {
     const c = String(code || '').trim();
+    if (c && typeof LocalStore !== 'undefined') {
+      LocalStore.pushRecentStock({
+        code: c,
+        name: meta.name || '',
+        market: meta.market || '',
+      });
+    }
     if (!c) {
       if (typeof StockDetail !== 'undefined') {
         StockDetail.initRouter();
@@ -103,6 +112,7 @@ const App = {
   dismissTip() {
     const el = document.getElementById('tipCard');
     if (el) el.style.display = 'none';
+    if (typeof LocalStore !== 'undefined') LocalStore.set('tipDismissed', true);
     localStorage.setItem('tipDismissed', 'true');
   },
 
@@ -147,7 +157,9 @@ const App = {
   },
 
   _initTips() {
-    if (localStorage.getItem('tipDismissed') === 'true') {
+    const dismissed = (typeof LocalStore !== 'undefined' && LocalStore.get('tipDismissed'))
+      || localStorage.getItem('tipDismissed') === 'true';
+    if (dismissed) {
       const el = document.getElementById('tipCard');
       if (el) el.style.display = 'none';
       return;
@@ -222,14 +234,15 @@ const App = {
     const sidebar = document.getElementById('sidebar');
     if (!btn || !sidebar) return;
 
-    // Restore collapsed state
-    if (localStorage.getItem('sidebarCollapsed') === 'true') {
-      sidebar.classList.add('collapsed');
-    }
+    const collapsed = (typeof LocalStore !== 'undefined' && LocalStore.get('sidebarCollapsed'))
+      || localStorage.getItem('sidebarCollapsed') === 'true';
+    if (collapsed) sidebar.classList.add('collapsed');
 
     btn.addEventListener('click', () => {
       sidebar.classList.toggle('collapsed');
-      localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+      const isCollapsed = sidebar.classList.contains('collapsed');
+      localStorage.setItem('sidebarCollapsed', isCollapsed);
+      if (typeof LocalStore !== 'undefined') LocalStore.set('sidebarCollapsed', isCollapsed);
     });
   },
 
@@ -358,7 +371,9 @@ const App = {
   // ============================================================
 
   initTheme() {
-    const saved = localStorage.getItem('theme') || 'dark';
+    const saved = (typeof LocalStore !== 'undefined' && LocalStore.get('theme'))
+      || localStorage.getItem('theme')
+      || 'dark';
     if (saved === 'light') {
       document.documentElement.setAttribute('data-theme', 'light');
     }
@@ -377,9 +392,11 @@ const App = {
     if (isDark) {
       document.documentElement.setAttribute('data-theme', 'light');
       localStorage.setItem('theme', 'light');
+      if (typeof LocalStore !== 'undefined') LocalStore.set('theme', 'light');
     } else {
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('theme', 'dark');
+      if (typeof LocalStore !== 'undefined') LocalStore.set('theme', 'dark');
     }
 
     this._updateThemeIcon();
@@ -705,6 +722,7 @@ const App = {
     if (navBtn) navBtn.classList.add('a');
 
     this._currentTab = tab;
+    if (typeof LocalStore !== 'undefined') LocalStore.set('lastTab', tab);
 
     if (syncHash) this._syncHashForTab(tab);
 
@@ -837,7 +855,15 @@ const App = {
   },
 
   _connectWS() {
-    const token = localStorage.getItem('sq_token') || Api._token;
+    let token = localStorage.getItem('sq_token') || Api._token;
+    if (token && typeof Api.isTokenExpired === 'function' && Api.isTokenExpired(token)) {
+      Api.setToken(null);
+      token = null;
+      if (typeof Utils !== 'undefined') {
+        Utils.toast('登錄已過期，請重新登錄', 3500, 'warning');
+      }
+      if (typeof Api.showLoginModal === 'function') Api.showLoginModal(false);
+    }
     if (this._wsAuthRequired && !token) {
       this._setWsStatus(false, '需登錄');
       this._wsRetry = this._wsMaxRetry + 1;
@@ -848,6 +874,9 @@ const App = {
     const wsUrl = token
       ? `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`
       : `${proto}//${location.host}/ws`;
+    if (this._ws && (this._ws.readyState === WebSocket.CONNECTING || this._ws.readyState === WebSocket.OPEN)) {
+      try { this._ws.close(); } catch (_) {}
+    }
     this._ws = new WebSocket(wsUrl);
 
     this._ws.onopen = () => {
@@ -861,7 +890,19 @@ const App = {
     this._ws.onclose = () => {
       this._setWsStatus(false);
 
-      if (this._wsAuthRequired && !token) {
+      const cur = localStorage.getItem('sq_token') || Api._token;
+      if (cur && typeof Api.isTokenExpired === 'function' && Api.isTokenExpired(cur)) {
+        Api.setToken(null);
+        this._setWsStatus(false, '登錄已過期');
+        this._wsRetry = this._wsMaxRetry + 1;
+        if (typeof Utils !== 'undefined') {
+          Utils.toast('登錄已過期，請重新登錄', 3500, 'warning');
+        }
+        if (typeof Api.showLoginModal === 'function') Api.showLoginModal(false);
+        return;
+      }
+
+      if (this._wsAuthRequired && !cur) {
         this._setWsStatus(false, '需登錄');
         return;
       }
@@ -1375,11 +1416,13 @@ App._loadHistory = async function() {
   if (!d) return;
 
   const rows = d.results || [];
+  const stratLabel = (s) => (typeof SignalLabels !== 'undefined')
+    ? SignalLabels.strategyName(s, 'short') : s;
   document.getElementById('histTable').innerHTML = rows.map(r =>
-    `<tr>
+    `<tr class="hist-row" data-id="${r.id}">
       <td>${r.id}</td>
       <td>${r.code}</td>
-      <td>${r.strategy}</td>
+      <td>${stratLabel(r.strategy)}</td>
       <td class="r"><span class="b ${Utils.badgeClass(r.total_return_pct)}">${Utils.formatPct(r.total_return_pct)}</span></td>
       <td class="r">${Utils.formatNum(r.sharpe_ratio, 2)}</td>
       <td class="r">${Utils.formatNum(r.sortino_ratio, 2)}</td>
@@ -1389,8 +1432,25 @@ App._loadHistory = async function() {
       <td class="r">${Utils.formatNum(r.win_rate_pct, 1)}%</td>
       <td class="r">${r.total_trades || 0}</td>
       <td style="font-size:10px;color:var(--text-dim)">${r.created_at || ''}</td>
+      <td><button type="button" class="btn s hist-view-btn" data-id="${r.id}">查看</button></td>
     </tr>`
-  ).join('') || '<tr><td colspan="12" style="color:var(--text-muted);text-align:center">暫無回測歷史</td></tr>';
+  ).join('') || '<tr><td colspan="13" style="color:var(--text-muted);text-align:center">暫無回測歷史</td></tr>';
+
+  document.getElementById('histTable')?.querySelectorAll('.hist-view-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (typeof Backtest !== 'undefined' && Backtest.showFromHistoryId) {
+        Backtest.showFromHistoryId(id);
+      }
+    });
+  });
+  document.getElementById('histTable')?.querySelectorAll('.hist-row').forEach(row => {
+    row.addEventListener('dblclick', () => {
+      const id = row.dataset.id;
+      if (id && typeof Backtest !== 'undefined') Backtest.showFromHistoryId(id);
+    });
+  });
 
   if (typeof ProCharts !== 'undefined') ProCharts.renderHistoryAnalytics(rows);
 };
@@ -1882,8 +1942,11 @@ App._loadBacktestResult = async function(taskId) {
     // 設置股票代碼
     if (Backtest.setCode) Backtest.setCode(r.code || '');
     // 顯示結果
-    if (Backtest._displayResult) {
+    if (Backtest.showResult) {
+      Backtest.showResult(r);
+    } else if (Backtest._displayResult) {
       Backtest._displayResult(r);
+      Backtest._finishDisplay?.();
     }
   }
 };

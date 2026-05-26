@@ -620,9 +620,12 @@ const TaskCommon = {
       if (stratEl && p.strategy) stratEl.value = p.strategy;
       if (task.task_type === 'backtest_multi' && Backtest.displayMultiResults) {
         Backtest.displayMultiResults(Array.isArray(r) ? r : (r.results || []));
+      } else if (Backtest.showResult) {
+        Backtest.showResult(r);
       } else if (Backtest._displayResult) {
         Backtest._lastResult = r;
         Backtest._displayResult(r);
+        Backtest._finishDisplay?.();
       }
     } else if (tab === 'optimize' && typeof Optimize !== 'undefined') {
       const codeEl = document.getElementById('optCode');

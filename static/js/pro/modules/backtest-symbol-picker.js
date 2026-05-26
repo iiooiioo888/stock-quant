@@ -3,16 +3,7 @@
 (() => {
   const $id = (id) => document.getElementById(id);
 
-  const HOT_A_SHARE = [
-    { code: '600519', name: '貴州茅台' },
-    { code: '600036', name: '招商銀行' },
-    { code: '000001', name: '平安銀行' },
-    { code: '000858', name: '五糧液' },
-    { code: '601318', name: '中國平安' },
-    { code: '300750', name: '寧德時代' },
-    { code: '002594', name: '比亞迪' },
-    { code: '600900', name: '長江電力' },
-  ];
+  const pickData = () => window.StockQPro?.stockPickData;
 
   let namesMap = {};
   let catalogAshare = [];
@@ -68,6 +59,7 @@
     });
     if (mode === 'watch') loadWatchlist();
     if (mode === 'catalog' && !catalogAshare.length) loadCatalog();
+    if (mode === 'hot') renderHot();
   }
 
   function renderPickList(containerId, items, emptyText) {
@@ -104,35 +96,20 @@
     const el = $id('bt-pick-catalog');
     if (el) el.innerHTML = '<div class="bt-pick-empty">載入中…</div>';
     try {
-      const d = await Api.getAssetsCatalog();
-      const list = (d?.instruments || [])
-        .filter((i) => i.group === 'a_share' && i.asset_class === 'stock')
-        .map((i) => {
-          const code = normalizeCode(i.symbol);
-          return { code, name: i.name || code, symbol: i.symbol };
-        })
-        .filter((i) => isValidAshare(i.code));
-      const seen = new Set();
-      catalogAshare = list.filter((i) => {
-        if (seen.has(i.code)) return false;
-        seen.add(i.code);
-        return true;
-      });
-      if (!catalogAshare.length && Object.keys(namesMap).length) {
-        catalogAshare = Object.entries(namesMap)
-          .map(([code, name]) => ({ code: normalizeCode(code), name: name || code }))
-          .filter((i) => isValidAshare(i.code));
+      const loader = pickData()?.loadCatalogAshare;
+      catalogAshare = loader ? await loader(namesMap) : [];
+      const hint = catalogAshare.length
+        ? `共 ${catalogAshare.length} 檔 A 股，可滾動瀏覽`
+        : '資產庫暫無 A 股標的';
+      if (catalogAshare.length) {
+        const head = el?.previousElementSibling;
+        if (head?.classList?.contains('bt-pick-hint')) {
+          head.textContent = hint;
+        }
       }
       renderPickList('bt-pick-catalog', catalogAshare, '資產庫暫無 A 股標的');
     } catch (_) {
-      if (Object.keys(namesMap).length) {
-        catalogAshare = Object.entries(namesMap)
-          .map(([code, name]) => ({ code: normalizeCode(code), name: name || code }))
-          .filter((i) => isValidAshare(i.code));
-        renderPickList('bt-pick-catalog', catalogAshare, '資產庫暫無 A 股標的');
-      } else if (el) {
-        el.innerHTML = '<div class="bt-pick-empty">載入資產庫失敗</div>';
-      }
+      if (el) el.innerHTML = '<div class="bt-pick-empty">載入資產庫失敗</div>';
     }
   }
 
@@ -156,8 +133,13 @@
     renderPickList('bt-pick-watch', items, '自選列表為空，請先在「自選股」添加');
   }
 
-  function renderHot() {
-    renderPickList('bt-pick-hot', HOT_A_SHARE, '');
+  async function renderHot() {
+    const el = $id('bt-pick-hot');
+    if (el) el.innerHTML = '<div class="bt-pick-empty">載入熱門…</div>';
+    const rows = pickData()?.fetchHotAshare
+      ? await pickData().fetchHotAshare(namesMap, 48)
+      : (pickData()?.FALLBACK_HOT || []);
+    renderPickList('bt-pick-hot', rows, '暫無熱門標的');
   }
 
   async function runSearch() {
@@ -168,21 +150,10 @@
       return;
     }
     if (el) el.innerHTML = '<div class="bt-pick-empty">搜索中…</div>';
-    try {
-      const d = await Api.getStockUniverse('a_share', 30, 0, q);
-      const rows = (d?.stocks || []).map((s) => ({
-        code: normalizeCode(s.code),
-        name: s.name || namesMap[s.code] || s.code,
-        extra: s.industry || '',
-      })).filter((x) => isValidAshare(x.code));
-      renderPickList('bt-pick-search', rows, '未找到匹配標的');
-    } catch (_) {
-      const local = Object.entries(namesMap)
-        .filter(([code, name]) => code.includes(q) || String(name).includes(q))
-        .slice(0, 30)
-        .map(([code, name]) => ({ code: normalizeCode(code), name }));
-      renderPickList('bt-pick-search', local.filter((x) => isValidAshare(x.code)), '搜索失敗，請改試代碼輸入');
-    }
+    const rows = pickData()?.searchAshare
+      ? await pickData().searchAshare(q, namesMap, 80)
+      : [];
+    renderPickList('bt-pick-search', rows, '未找到匹配標的');
   }
 
   function onCodeInput() {
@@ -195,10 +166,9 @@
       return;
     }
     if (raw.length < 1) return;
-    const hits = Object.entries(namesMap)
-      .filter(([code, name]) => code.startsWith(raw) || String(name).includes(raw))
-      .slice(0, 8)
-      .map(([code, name]) => ({ code: normalizeCode(code), name }));
+    const hits = pickData()?.suggestFromNames
+      ? pickData().suggestFromNames(raw, namesMap, 20)
+      : [];
     const sug = $id('bt-code-suggest');
     if (!sug) return;
     if (!hits.length) {
@@ -256,7 +226,7 @@
   async function init() {
     bindOnce();
     await loadNames();
-    renderHot();
+    await renderHot();
     const initial = normalizeCode($id('bt-code')?.value || '600519');
     setSymbol(initial, resolveName(initial) || '貴州茅台');
   }

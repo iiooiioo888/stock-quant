@@ -238,7 +238,7 @@
         { n: '風控', d: '風控規則', p: 'risk', k: '8' },
         { n: '日誌', d: '交易紀錄', p: 'journal', k: '9' },
         { n: '歷史', d: '回測歷史', p: 'backhistory' },
-        { n: 'AI', d: 'PRO', p: 'ai' },
+        { n: 'AI 問答', d: '查詢數據、整合北向/板塊/個股', p: 'ai', k: 'A' },
         { n: '定價', d: '方案', p: 'pricing' },
         { n: '設定', d: '全局設定', p: 'settings' },
         { n: '進階（舊版）', d: 'Polymarket / 任務 / 數據中心', p: '__legacy__' },

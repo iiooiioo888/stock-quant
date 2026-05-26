@@ -7,12 +7,15 @@ MCP Tool 註冊中心 — 聚合全項目各域 tools，供 stdio Server 統一�
 3. 勿在 server.py 硬編碼單域 tools
 """
 from src.integrations.mcp.protocol import ToolSpec
+from src.integrations.mcp.tools_backtest import BACKTEST_TOOLS
 from src.integrations.mcp.tools_core import CORE_TOOLS
+from src.integrations.mcp.tools_data import DATA_TOOLS
 from src.integrations.mcp.tools_polymarket import POLYMARKET_TOOLS
 
-# 未來域：tools_backtest、tools_signals、tools_data_center 等
 ALL_TOOL_MODULES: list[list[ToolSpec]] = [
     CORE_TOOLS,
+    DATA_TOOLS,
+    BACKTEST_TOOLS,
     POLYMARKET_TOOLS,
 ]
 

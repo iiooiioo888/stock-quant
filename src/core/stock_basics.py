@@ -126,9 +126,10 @@ def load_stock_financials(
                 fundamentals = {
                     k: fresh[k]
                     for k in (
-                        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+                        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
                         "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-                        "revenue", "net_profit", "update_date", "name",
+                        "revenue", "net_profit", "revenue_yoy", "profit_yoy",
+                        "update_date", "name",
                     )
                     if fresh.get(k) is not None
                 }
@@ -137,9 +138,9 @@ def load_stock_financials(
 
     fin: dict = {"code": code, "has_data": False}
     for key in (
-        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
         "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-        "revenue", "net_profit", "update_date",
+        "revenue", "net_profit", "revenue_yoy", "profit_yoy", "update_date",
     ):
         val = fundamentals.get(key) if fundamentals else None
         if val is None and profile:
@@ -148,7 +149,7 @@ def load_stock_financials(
             fin[key] = val
 
     if profile:
-        for key in ("pe_ttm", "pb", "total_mv", "circulating_mv"):
+        for key in ("pe_ttm", "pb", "ps_ttm", "total_mv", "circulating_mv"):
             if fin.get(key) is None and profile.get(key) is not None:
                 fin[key] = profile[key]
 
@@ -186,9 +187,10 @@ def _load_aux_data(code: str) -> tuple[dict, dict]:
             (code,),
         ).fetchone()
         fund = conn.execute(
-            """SELECT code, name, update_date, pe_ttm, pb, roe, eps, bvps,
+            """SELECT code, name, update_date, pe_ttm, pb, ps_ttm, roe, eps, bvps,
                       total_mv, circulating_mv, gross_margin, net_margin,
-                      debt_ratio, dividend_yield, revenue, net_profit
+                      debt_ratio, dividend_yield, revenue, net_profit,
+                      revenue_yoy, profit_yoy
                FROM fundamentals WHERE code = ?
                ORDER BY update_date DESC LIMIT 1""",
             (code,),
@@ -200,6 +202,7 @@ def _load_aux_data(code: str) -> tuple[dict, dict]:
     fundamentals = {
         "pe_ttm": d.get("pe_ttm"),
         "pb": d.get("pb"),
+        "ps_ttm": d.get("ps_ttm"),
         "roe": d.get("roe"),
         "eps": d.get("eps"),
         "bvps": d.get("bvps"),
@@ -211,6 +214,8 @@ def _load_aux_data(code: str) -> tuple[dict, dict]:
         "dividend_yield": d.get("dividend_yield"),
         "revenue": d.get("revenue"),
         "net_profit": d.get("net_profit"),
+        "revenue_yoy": d.get("revenue_yoy"),
+        "profit_yoy": d.get("profit_yoy"),
         "update_date": d.get("update_date"),
         "name": d.get("name"),
     }

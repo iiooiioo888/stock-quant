@@ -444,15 +444,34 @@ def _make_task_id(task_type: str, params: dict) -> str:
 
 
 def _make_params_hash(params: dict) -> str:
-    params_str = json.dumps(params, sort_keys=True, ensure_ascii=False)
+    params_str = json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.md5(params_str.encode()).hexdigest()[:12]
 
 
-def create_task(task_type: str, params: dict, title: str = "") -> dict:
+def _task_data_version(params: dict) -> str:
+    """K 線最新日期等版本號；數據更新後應與舊任務結果脫鉤。"""
+    try:
+        from src.core.result_cache import get_data_version, _code_from_params
+        return get_data_version(_code_from_params(params or {}))
+    except Exception:
+        return "v0"
+
+
+def create_task(task_type: str, params: dict, title: str = "", *, force_refresh: bool = False) -> dict:
     params_hash = _make_params_hash(params)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    data_ver = _task_data_version(params)
 
     with _lock:
+        if force_refresh:
+            drop_ids = [
+                tid for tid, t in _tasks.items()
+                if t["task_type"] == task_type and t["params_hash"] == params_hash
+                and t["status"] == STATUS_COMPLETED
+            ]
+            for tid in drop_ids:
+                _tasks.pop(tid, None)
+
         for tid, t in _tasks.items():
             if t["task_type"] == task_type and t["params_hash"] == params_hash:
                 if t["status"] in ACTIVE_STATUSES or tid in _dispatched:
@@ -466,14 +485,19 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
                         "created_at": t.get("created_at", ""),
                         "progress": t.get("progress", 0),
                     }
-                if t["status"] == STATUS_COMPLETED and t.get("result") is not None:
+                if (
+                    not force_refresh
+                    and t["status"] == STATUS_COMPLETED
+                    and t.get("result") is not None
+                    and t.get("data_version") == data_ver
+                ):
                     logger.info(f"任務內存命中: {task_type} (task_id={tid})")
                     t["last_accessed"] = time.time()
                     return {
                         "task_id": tid,
                         "status": STATUS_COMPLETED,
                         "is_duplicate": False,
-                        "from_cache": t.get("from_cache", False),
+                        "from_cache": True,
                         "title": t.get("title", ""),
                         "created_at": t.get("created_at", ""),
                         "progress": 100,
@@ -483,7 +507,9 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
         # 全局結果緩存命中 → 直接建立已完成任務
         try:
             from src.core.result_cache import get_cached_compute, _code_from_params
-            cached = get_cached_compute(task_type, params, code=_code_from_params(params))
+            cached = None
+            if not force_refresh:
+                cached = get_cached_compute(task_type, params, code=_code_from_params(params))
             if cached is not None:
                 task_id = _make_task_id(task_type, params)
                 task = {
@@ -501,6 +527,7 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
                     "completed_at": now,
                     "last_accessed": time.time(),
                     "from_cache": True,
+                    "data_version": data_ver,
                 }
                 _tasks[task_id] = task
                 _save_task_to_db(task, force=True)
@@ -533,6 +560,7 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
             "started_at": None,
             "completed_at": None,
             "last_accessed": time.time(),
+            "data_version": data_ver,
         }
         _tasks[task_id] = task
         _cancel_flags.pop(task_id, None)
@@ -717,6 +745,7 @@ def update_task(task_id: str, status: str = None, progress: int = None,
             task["progress"] = progress
         if result is not None:
             task["result"] = _to_json_safe(result)
+            task["data_version"] = _task_data_version(task.get("params") or {})
         if error is not None:
             task["error"] = error
         if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):

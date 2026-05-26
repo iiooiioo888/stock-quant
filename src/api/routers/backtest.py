@@ -45,11 +45,16 @@ async def run_backtest_api(
     if strategy not in STRATEGIES:
         raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
 
+    force_refresh = False
     task_params = {
         "code": code, "strategy": strategy, "params": params, "cash": cash,
         "timeframe": timeframe,
+        "stop_loss_pct": stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+        "trailing_stop_pct": trailing_stop_pct,
+        "benchmark": benchmark,
     }
-    task = create_task("backtest", task_params, title=f"回測 {code}/{strategy}")
+    task = create_task("backtest", task_params, title=f"回測 {code}/{strategy}", force_refresh=force_refresh)
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同回測正在執行中，請等待完成", "async": True}
@@ -118,13 +123,26 @@ async def run_advanced_backtest_api(body: dict):
     if strategy not in STRATEGIES:
         raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
 
-    # 任務去重
+    force_refresh = bool(body.get("force_refresh") or body.get("force"))
+
+    # 任務去重（params 須含全部影響回測的欄位，否則會命中錯誤的舊結果）
     task_params = {
         "code": code, "strategy": strategy, "params": params, "cash": cash,
+        "commission": commission,
+        "stop_loss_pct": stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+        "trailing_stop_pct": trailing_stop_pct,
+        "benchmark": benchmark,
         "slippage_pct": slippage_pct, "enable_t1": enable_t1, "enable_limit": enable_limit,
         "timeframe": timeframe,
     }
-    task = create_task("backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}")
+    if force_refresh:
+        from src.core.result_cache import drop_cached_compute
+        drop_cached_compute("backtest_advanced", task_params, code=code)
+    task = create_task(
+        "backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}",
+        force_refresh=force_refresh,
+    )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同進階回測正在執行中，請等待完成", "async": True}
@@ -298,6 +316,42 @@ async def backtest_compare(ids: str = ""):
     id_list = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
     results = get_backtest_by_ids(id_list)
     return {"results": results, "total": len(results)}
+
+
+@router.get("/api/backtest/result/{result_id}")
+async def get_backtest_result_detail(result_id: int):
+    """按歷史 ID 取回測詳情；優先從計算緩存還原完整結果（含 K 線/淨值）。"""
+    from src.core.db import get_backtest_by_ids
+    from src.core.result_cache import get_cached_compute
+
+    rows = get_backtest_by_ids([result_id])
+    if not rows:
+        raise HTTPException(404, "回測記錄不存在")
+    row = rows[0]
+    params = row.get("params") if isinstance(row.get("params"), dict) else {}
+    code = row.get("code") or ""
+    strategy = row.get("strategy") or ""
+    cache_params = {
+        "code": code,
+        "strategy": strategy,
+        "params": params.get("params") if isinstance(params.get("params"), dict) else params,
+        "cash": params.get("cash"),
+        "timeframe": params.get("timeframe", "1d"),
+    }
+    full = None
+    for ns, p in (
+        ("backtest", cache_params),
+        ("backtest_advanced", {**cache_params, **params}),
+        ("backtest", params),
+    ):
+        hit = get_cached_compute(ns, p, code=code)
+        if hit and isinstance(hit, dict):
+            full = hit
+            break
+    if full and isinstance(full, dict):
+        merged = {**full, "id": result_id}
+        return {"success": True, "full": True, "result": merged, "summary": row}
+    return {"success": True, "full": False, "result": row, "summary": row}
 
 
 # ====== Walk-Forward ======

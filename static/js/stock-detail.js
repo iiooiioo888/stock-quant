@@ -79,6 +79,12 @@ const StockDetail = {
 
   showIndex(pushHash = true) {
     if (pushHash) this._setHash('/stocks');
+    const search = document.getElementById('sdIndexSearch');
+    if (search && typeof LocalStore !== 'undefined') {
+      const q = LocalStore.get('sdIndexSearch') || '';
+      if (q && !search.value) search.value = q;
+    }
+    this._renderRecentChips();
     document.getElementById('sdIndexView')?.classList.remove('h');
     document.getElementById('sdDetailView')?.classList.add('h');
     document.title = '股票詳情 · Stock Quant';
@@ -148,6 +154,10 @@ const StockDetail = {
         if (typeof Backtest !== 'undefined') {
           Backtest.populateStockSelectSync?.();
           Backtest.ensureStockOptions?.();
+          if (Backtest._lastResult && Backtest._displayResult) {
+            Backtest._displayResult(Backtest._lastResult);
+            Backtest._finishDisplay?.();
+          }
         }
         break;
       case 'optimize':
@@ -174,6 +184,8 @@ const StockDetail = {
     if (!this._code || this._overviewRendered) return;
     const d = this._lastDetailData;
     if (!d) return;
+    this._renderTechnical(d);
+    this._renderSignals(d);
     await this._renderTvWall(d);
     this._renderPolymarket(d);
     this._overviewRendered = true;
@@ -261,6 +273,10 @@ const StockDetail = {
           name: s.name || s.stock_name || '',
           market: s.market || 'a_share',
           rank: s.rank || i + 1,
+          price: s.price,
+          change_pct: s.change_pct,
+          total_mv: s.total_mv,
+          industry: s.industry || '',
         })).filter(s => s.code);
       }
       this._indexList = list;
@@ -299,12 +315,21 @@ const StockDetail = {
       const name = this._esc(s.name || s.code);
       const code = this._esc(s.code);
       const mkt = this._esc(s.market || '');
+      const mktLabel = { a_share: 'A股', hk_stock: '港股', us_stock: '美股' }[s.market] || '';
+      const price = s.price != null ? Number(s.price).toFixed(2) : '';
+      const chg = s.change_pct;
+      const chgCls = chg > 0 ? 'up' : (chg < 0 ? 'down' : '');
+      const chgTxt = chg != null ? `${chg > 0 ? '+' : ''}${Number(chg).toFixed(2)}%` : '';
+      const mv = s.total_mv != null ? `${Number(s.total_mv).toFixed(0)}億` : '';
+      const meta = [mktLabel, price && `¥${price}`, chgTxt && `<span class="${chgCls}">${chgTxt}</span>`, mv]
+        .filter(Boolean).join(' · ');
       return `<a href="${path}" class="sd-stock-card" data-code="${code}" data-market="${mkt}">
         <div class="sd-stock-card-top">
           ${iconHtml(s)}
           <div class="sd-stock-card-text">
             <span class="sd-stock-card-code">${code}</span>
             <span class="sd-stock-card-name">${name}</span>
+            ${meta ? `<div class="sd-stock-card-meta">${meta}</div>` : ''}
           </div>
         </div>
       </a>`;
@@ -351,8 +376,18 @@ const StockDetail = {
       if (!d?.success) throw new Error('載入失敗');
       this._name = d.name || c;
       this._lastDetailData = d;
+      if (typeof LocalStore !== 'undefined') {
+        LocalStore.pushRecentStock({
+          code: d.code,
+          name: this._name,
+          market: d.profile?.market || d.market || '',
+        });
+      }
       document.title = `${this._name} (${d.code}) · 個股詳情`;
       this._renderHeader(d);
+      this._renderTechnical(d);
+      this._renderSignals(d);
+      this._syncFavoriteBtn();
       this._syncModules(c, this._name);
       this._syncContextBar();
       const sub = this._pendingSubTab || 'overview';
@@ -377,6 +412,39 @@ const StockDetail = {
     }
   },
 
+  _sc() {
+    return typeof StockContent !== 'undefined' ? StockContent : null;
+  },
+
+  _renderRecentChips() {
+    const section = document.getElementById('sdRecentSection');
+    const host = document.getElementById('sdRecentChips');
+    if (!section || !host || typeof LocalStore === 'undefined') return;
+    const list = LocalStore.getRecentStocks(16);
+    if (!list.length) {
+      section.classList.add('h');
+      host.innerHTML = '';
+      return;
+    }
+    section.classList.remove('h');
+    host.innerHTML = list.map(s => {
+      const code = this._esc(s.code);
+      const name = this._esc(s.name || s.code);
+      const fav = LocalStore.isFavorite(s.code);
+      return `<button type="button" class="sd-recent-chip" data-code="${code}" title="${name}">
+        <span class="sd-recent-code">${code}</span>
+        <span class="sd-recent-name">${name}</span>
+        ${fav ? '<span class="sd-recent-fav" title="已收藏">★</span>' : ''}
+      </button>`;
+    }).join('');
+    host.querySelectorAll('.sd-recent-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset.code || '';
+        if (code) this.open(code);
+      });
+    });
+  },
+
   _renderHeader(d) {
     const codeEl = document.getElementById('sdCode');
     const nameEl = document.getElementById('sdName');
@@ -388,21 +456,33 @@ const StockDetail = {
     if (nameEl) nameEl.textContent = d.name || profile.name || d.code;
     if (manual) manual.value = d.code;
     const sp = d.sparkline || {};
-    const src = d.kline_source || sp.source || '';
+    const o = d.overview || {};
+    const src = d.kline_source || sp.source || o.kline_source || '';
     const parts = [`獨立頁 · ${d.code}`];
     if (profile.market_label) parts.push(profile.market_label);
     if (profile.exchange) parts.push(profile.exchange);
     if (src) parts.push(`行情 ${src}`);
+    if (o.date_from && o.date_to) parts.push(`K線 ${o.date_from}~${o.date_to}`);
     if (meta) meta.textContent = parts.join(' · ');
 
     const tagsEl = document.getElementById('sdHeroTags');
-    if (tagsEl) {
-      const tags = [];
-      if (profile.industry) tags.push(profile.industry);
-      if (profile.list_date) tags.push(`上市 ${profile.list_date}`);
-      tagsEl.innerHTML = tags.length
-        ? tags.map(t => `<span class="sd-hero-tag">${this._esc(t)}</span>`).join('')
-        : '';
+    const sc = this._sc();
+    if (sc) {
+      sc.renderTags(tagsEl, sc.buildHeroTags(profile, d.financials));
+      sc.renderIntro(document.getElementById('sdIntro'), profile);
+      sc.renderMetricGrid(
+        document.getElementById('sdFinanceGrid'),
+        sc.buildFinanceItems(d.financials, profile, d.code),
+        '暫無財務數據，請在數據中心更新基本面或同步股票庫。',
+      );
+      const fin = d.financials || {};
+      const asof = document.getElementById('sdFinanceAsof');
+      if (asof) {
+        const date = fin.update_date || profile.universe_updated_at || '';
+        asof.textContent = date ? `更新 ${date}` : '';
+      }
+    } else {
+      if (tagsEl) tagsEl.innerHTML = '';
     }
 
     if (typeof Utils !== 'undefined' && Utils.bindStockIcon) {
@@ -411,95 +491,30 @@ const StockDetail = {
       const inferMkt = Utils.inferStockMarket(d.code, mkt);
       if (img && letter) Utils.bindStockIcon(img, d.code, d.name || profile.name, inferMkt);
     }
-
-    this._renderIntro(profile);
-    this._renderFinancials(d.financials, profile);
   },
 
-  _renderIntro(profile) {
-    const el = document.getElementById('sdIntro');
-    if (!el) return;
-    const intro = (profile?.intro || '').trim();
-    const industry = (profile?.industry || '').trim();
-    if (intro && intro.length > 24) {
-      el.textContent = intro;
-      return;
+  _renderTechnical(d) {
+    const sc = this._sc();
+    const grid = document.getElementById('sdTechnicalGrid');
+    const meta = document.getElementById('sdTechnicalMeta');
+    if (!sc || !grid) return;
+    const o = d.overview || {};
+    const items = sc.buildTechnicalItems(o, o.technical);
+    sc.renderMetricGrid(grid, items, o.message || '暫無 K 線技術數據，請先下載歷史行情');
+    if (meta) {
+      meta.textContent = o.has_kline && o.lookback_days
+        ? `回看 ${o.lookback_days} 日`
+        : '';
     }
-    if (industry) {
-      el.textContent = `所屬行業：${industry}。暫無詳細簡介，可在「數據中心」執行股票庫簡介補充任務。`;
-      return;
-    }
-    el.textContent = '暫無公司簡介。可在「數據中心」同步股票庫並執行「補充簡介」任務後再查看。';
   },
 
-  _renderFinancials(fin, profile) {
-    const grid = document.getElementById('sdFinanceGrid');
-    const asof = document.getElementById('sdFinanceAsof');
-    if (!grid) return;
-
-    const items = [];
-    const f = fin || {};
-    const p = profile || {};
-
-    const push = (label, val, cls = '') => {
-      if (val == null || val === '' || (typeof val === 'number' && Number.isNaN(val))) return;
-      items.push({ label, val, cls });
-    };
-
-    push('市盈率 TTM', this._fmtNum(f.pe_ttm ?? p.pe_ttm));
-    push('市淨率 PB', this._fmtNum(f.pb ?? p.pb));
-    push('ROE', this._fmtPct(f.roe));
-    push('每股收益', this._fmtNum(f.eps, 2));
-    push('每股淨資產', this._fmtNum(f.bvps, 2));
-    push('總市值', this._fmtYi(f.total_mv ?? p.total_mv));
-    push('流通市值', this._fmtYi(f.circulating_mv ?? p.circulating_mv));
-    push('營業收入', this._fmtYi(f.revenue));
-    push('淨利潤', this._fmtYi(f.net_profit));
-    push('毛利率', this._fmtPct(f.gross_margin));
-    push('淨利率', this._fmtPct(f.net_margin));
-    push('資產負債率', this._fmtPct(f.debt_ratio));
-    push('股息率', this._fmtPct(f.dividend_yield));
-
-    if (f.realtime_price != null) {
-      const chg = f.realtime_change_pct;
-      const chgCls = chg > 0 ? 'up' : (chg < 0 ? 'down' : '');
-      const chgTxt = chg != null ? ` (${chg > 0 ? '+' : ''}${Number(chg).toFixed(2)}%)` : '';
-      push('實時價', `${this._fmtPrice(f.realtime_price, this._code)}${chgTxt}`, chgCls);
-    }
-
-    if (!items.length) {
-      grid.innerHTML = '<p class="muted">暫無財務數據，請在數據中心更新基本面或同步股票庫。</p>';
-      if (asof) asof.textContent = '';
-      return;
-    }
-
-    grid.innerHTML = items.map(it => `
-      <div class="sd-finance-item">
-        <span class="sd-finance-label">${this._esc(it.label)}</span>
-        <span class="sd-finance-val ${it.cls}">${this._esc(String(it.val))}</span>
-      </div>`).join('');
-
-    const date = f.update_date || p.universe_updated_at || '';
-    if (asof) asof.textContent = date ? `更新 ${date}` : '';
-  },
-
-  _fmtNum(v, digits = 2) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return null;
-    return n.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
-  },
-
-  _fmtPct(v) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return null;
-    const pct = Math.abs(n) <= 1 && n !== 0 ? n * 100 : n;
-    return `${pct.toFixed(2)}%`;
-  },
-
-  _fmtYi(v) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return null;
-    return `${n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })} 億`;
+  _renderSignals(d) {
+    const sc = this._sc();
+    const list = document.getElementById('sdSignalsList');
+    const meta = document.getElementById('sdSignalsMeta');
+    if (!sc || !list) return;
+    const sig = d.signals || {};
+    sc.renderSignals(list, meta, sig.signals, sig.strength, sig.updated_at);
   },
 
   async _renderTvWall(d) {
@@ -615,6 +630,24 @@ const StockDetail = {
     return typeof Charts !== 'undefined' && Charts._lwReady?.();
   },
 
+  _syncFavoriteBtn() {
+    const btn = document.getElementById('sdFavoriteBtn');
+    if (!btn || typeof LocalStore === 'undefined' || !this._code) return;
+    const on = LocalStore.isFavorite(this._code);
+    btn.textContent = on ? '★ 已收藏' : '☆ 收藏';
+    btn.classList.toggle('a', on);
+  },
+
+  _toggleFavorite() {
+    if (!this._code || typeof LocalStore === 'undefined') return;
+    const on = LocalStore.toggleFavorite(this._code);
+    this._syncFavoriteBtn();
+    this._renderRecentChips();
+    if (typeof Utils !== 'undefined') {
+      Utils.toast(on ? '已加入本機收藏' : '已取消收藏', 2000, 'success');
+    }
+  },
+
   _copyPageLink() {
     const url = `${location.origin}${location.pathname}${location.search}${this._stockPath(this._code)}`;
     if (navigator.clipboard?.writeText) {
@@ -647,8 +680,19 @@ const StockDetail = {
 
     document.getElementById('sdBackToList')?.addEventListener('click', () => this.showIndex());
     document.getElementById('sdCopyLinkBtn')?.addEventListener('click', () => this._copyPageLink());
+    document.getElementById('sdFavoriteBtn')?.addEventListener('click', () => this._toggleFavorite());
     document.getElementById('sdIndexReload')?.addEventListener('click', () => this.loadIndex());
-    document.getElementById('sdIndexSearch')?.addEventListener('input', () => this._paintIndexGrid());
+    document.getElementById('sdIndexSearch')?.addEventListener('input', e => {
+      const q = (e.target?.value || '').trim();
+      if (typeof LocalStore !== 'undefined') LocalStore.set('sdIndexSearch', q);
+      this._paintIndexGrid();
+    });
+    document.getElementById('sdClearRecent')?.addEventListener('click', () => {
+      if (typeof LocalStore === 'undefined') return;
+      LocalStore.clearRecentStocks();
+      this._renderRecentChips();
+      if (typeof Utils !== 'undefined') Utils.toast('已清除本機最近瀏覽', 2000, 'success');
+    });
 
     document.getElementById('sdGoBtn')?.addEventListener('click', () => {
       const c = document.getElementById('sdCodeInput')?.value?.trim();

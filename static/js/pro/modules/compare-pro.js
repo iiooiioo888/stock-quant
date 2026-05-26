@@ -4,29 +4,27 @@
   const $id = (id) => document.getElementById(id);
   const LS_KEY = 'sq_cmp_stocks';
   const MAX_STOCKS = 8;
-  const HOT_A_SHARE = [
-    { code: '600519', name: '貴州茅台' },
-    { code: '600036', name: '招商銀行' },
-    { code: '000001', name: '平安銀行' },
-    { code: '000858', name: '五糧液' },
-    { code: '601318', name: '中國平安' },
-    { code: '300750', name: '寧德時代' },
-    { code: '002594', name: '比亞迪' },
-    { code: '600900', name: '長江電力' },
-  ];
+  const pickData = () => window.StockQPro?.stockPickData;
 
   const STOCK_COLORS = ['#e8b830', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#fb923c', '#22d3ee', '#94a3b8'];
 
   const METRIC_LABELS = {
-    total_return_pct: '總收益 %',
+    total_return_pct: '總收益率',
     sharpe_ratio: '夏普比率',
-    sortino_ratio: 'Sortino',
-    calmar_ratio: 'Calmar',
-    max_drawdown_pct: '最大回撤 %',
-    win_rate_pct: '勝率 %',
-    annual_return_pct: '年化收益 %',
+    sortino_ratio: '索提諾比率',
+    calmar_ratio: '卡瑪比率',
+    max_drawdown_pct: '最大回撤',
+    win_rate_pct: '勝率',
+    annual_return_pct: '年化收益',
     total_trades: '交易次數',
   };
+
+  const METRIC_HIGHER_BETTER = new Set([
+    'total_return_pct', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio',
+    'win_rate_pct', 'annual_return_pct',
+  ]);
+
+  let strategyDisplayNames = {};
 
   let chart = null;
   let bound = false;
@@ -73,14 +71,24 @@
   function saveChips() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state.chips));
+      if (typeof LocalStore !== 'undefined') {
+        LocalStore.set('compareChips', state.chips);
+      }
     } catch (_) { /* ignore */ }
   }
 
   function loadChipsFromStorage() {
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      const arr = JSON.parse(raw);
+      let arr = null;
+      if (typeof LocalStore !== 'undefined') {
+        const fromStore = LocalStore.get('compareChips');
+        if (Array.isArray(fromStore) && fromStore.length) arr = fromStore;
+      }
+      if (!arr) {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) arr = JSON.parse(raw);
+      }
+      if (!arr) return;
       if (!Array.isArray(arr)) return;
       state.chips = arr
         .map((x) => ({ code: normalizeCode(x.code), name: x.name || '' }))
@@ -221,9 +229,59 @@
     return METRIC_LABELS[key] || key;
   }
 
+  function metricHigherIsBetter(key) {
+    return METRIC_HIGHER_BETTER.has(key);
+  }
+
+  function maxDrawdownFromNav(nav) {
+    if (!Array.isArray(nav) || nav.length < 2) return 0;
+    let peak = Number(nav[0]) || 1;
+    let maxDd = 0;
+    nav.forEach((raw) => {
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return;
+      if (v > peak) peak = v;
+      if (peak > 0) maxDd = Math.max(maxDd, ((peak - v) / peak) * 100);
+    });
+    return maxDd;
+  }
+
+  function normalizeStrategyRow(r) {
+    if (!r || typeof r !== 'object') return null;
+    const key = String(r.strategy || r.strategy_key || '').trim();
+    const totalReturn = Number(r.total_return_pct);
+    let maxDd = Number(r.max_drawdown_pct);
+    if (
+      Number.isFinite(totalReturn) && Number.isFinite(maxDd)
+      && maxDd > 30 && Math.abs(maxDd - totalReturn) < 1
+      && Array.isArray(r.nav) && r.nav.length > 1
+    ) {
+      maxDd = maxDrawdownFromNav(r.nav);
+    }
+    if (!Number.isFinite(maxDd)) maxDd = maxDrawdownFromNav(r.nav || []);
+    const won = Number(r.won_trades);
+    const lost = Number(r.lost_trades);
+    let winRate = Number(r.win_rate_pct);
+    const trades = Number(r.total_trades);
+    if (!Number.isFinite(winRate) && Number.isFinite(won) && Number.isFinite(lost) && (won + lost) > 0) {
+      winRate = (won / (won + lost)) * 100;
+    }
+    return {
+      ...r,
+      strategy: key,
+      strategy_name: strategyDisplayNames[key] || r.strategy_name || key,
+      total_return_pct: Number.isFinite(totalReturn) ? totalReturn : 0,
+      max_drawdown_pct: Number.isFinite(maxDd) ? maxDd : 0,
+      sharpe_ratio: Number(r.sharpe_ratio ?? 0),
+      win_rate_pct: Number.isFinite(winRate) ? winRate : 0,
+      total_trades: Number.isFinite(trades) ? trades : 0,
+    };
+  }
+
   function formatMetricValue(key, v) {
     const n = Number(v);
     if (!Number.isFinite(n)) return '--';
+    if (key === 'max_drawdown_pct') return `-${Math.abs(n).toFixed(2)}%`;
     if (String(key).includes('pct')) return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
     if (key === 'total_trades') return String(Math.round(n));
     return n.toFixed(3);
@@ -236,9 +294,12 @@
     return n >= 0 ? 'pos' : 'neg';
   }
 
-  function sortRows(rows, metric, order) {
-    const sorted = [...rows].sort((a, b) => Number(b[metric] ?? 0) - Number(a[metric] ?? 0));
-    return order === 'asc' ? sorted.reverse() : sorted;
+  function sortRows(rows, valueKey, order) {
+    const metricKey = $id('cmp-metric')?.value || 'total_return_pct';
+    const higherBetter = metricHigherIsBetter(metricKey);
+    const dir = order === 'asc' ? 1 : -1;
+    const mul = higherBetter ? dir : -dir;
+    return [...rows].sort((a, b) => mul * (Number(a[valueKey] ?? 0) - Number(b[valueKey] ?? 0)));
   }
 
   function renderStats(rows, metric) {
@@ -247,19 +308,26 @@
       if (el) el.innerHTML = '';
       return;
     }
-    const vals = rows.map((r) => Number(r[metric] ?? 0)).filter((x) => Number.isFinite(x));
+    const vals = rows.map((r) => Number(r.v ?? 0)).filter((x) => Number.isFinite(x));
     if (!vals.length) {
       el.innerHTML = '';
       return;
     }
-    const best = vals.reduce((a, b) => (b > a ? b : a), vals[0]);
-    const worst = vals.reduce((a, b) => (b < a ? b : a), vals[0]);
+    const higherBetter = metricHigherIsBetter(metric);
+    const best = higherBetter
+      ? vals.reduce((a, b) => (b > a ? b : a), vals[0])
+      : vals.reduce((a, b) => (b < a ? b : a), vals[0]);
+    const worst = higherBetter
+      ? vals.reduce((a, b) => (b < a ? b : a), vals[0])
+      : vals.reduce((a, b) => (b > a ? b : a), vals[0]);
     const avg = vals.reduce((s, x) => s + x, 0) / vals.length;
+    const bestLbl = metric === 'max_drawdown_pct' ? '回撤最小' : '最佳';
+    const worstLbl = metric === 'max_drawdown_pct' ? '回撤最大' : '最差';
     const cards = [
-      { lbl: '最佳', val: best },
-      { lbl: '最差', val: worst },
+      { lbl: bestLbl, val: best },
+      { lbl: worstLbl, val: worst },
       { lbl: '平均', val: avg },
-      { lbl: '樣本數', val: rows.length, raw: true },
+      { lbl: '策略數', val: rows.length, raw: true },
     ];
     el.innerHTML = cards.map((c) => {
       const txt = c.raw ? String(c.val) : formatMetricValue(metric, c.val);
@@ -449,13 +517,13 @@
     if (!tb) return;
     if (thead) {
       thead.innerHTML = `<tr>
-        <th class="cmp-rank">#</th>
+        <th class="cmp-rank">排名</th>
         <th>策略</th>
         <th>${metricLabel(metric)}</th>
-        <th>夏普</th>
-        <th>回撤</th>
+        <th>夏普比率</th>
+        <th>最大回撤</th>
         <th>勝率</th>
-        <th>交易</th>
+        <th>交易次數</th>
       </tr>`;
     }
     if (!rows.length) {
@@ -488,7 +556,7 @@
     const chartType = $id('cmp-chart-type')?.value || 'bar';
     const isPct = String(metric).includes('pct');
 
-    let rows = raw.map((r) => ({
+    let rows = raw.map((r) => normalizeStrategyRow(r)).filter(Boolean).map((r) => ({
       label: r.strategy_name || r.strategy || '—',
       key: r.strategy || '',
       v: Number(r[metric] ?? 0),
@@ -652,7 +720,7 @@
       const resolved = await Api.resolveTaskResponse(d, { timeoutMs: 600000 });
       const r = Api.extractResult(resolved);
       if (!Array.isArray(r)) throw new Error('未取得對比結果');
-      state.strategyResults = r;
+      state.strategyResults = r.map((x) => normalizeStrategyRow(x)).filter(Boolean);
       renderStrategies();
       window.StockQPro?.App?.toast?.(`已完成 ${r.length} 個策略對比`, 'ok');
     } catch (e) {
@@ -795,39 +863,32 @@
     }
   }
 
+  async function loadStrategyDisplayNames() {
+    try {
+      const d = await Api.get('/api/strategies/list');
+      const map = {};
+      [...(d?.builtin || []), ...(d?.user || [])].forEach((s) => {
+        if (s?.name) map[s.name] = s.display_name || s.name;
+      });
+      strategyDisplayNames = map;
+    } catch (_) {
+      strategyDisplayNames = {};
+    }
+  }
+
   async function loadCatalog() {
     const el = $id('cmp-pick-catalog');
     if (el) el.innerHTML = '<div class="bt-pick-empty">載入中…</div>';
     try {
-      const d = await Api.getAssetsCatalog();
-      const list = (d?.instruments || [])
-        .filter((i) => i.group === 'a_share' && i.asset_class === 'stock')
-        .map((i) => {
-          const code = normalizeCode(i.symbol);
-          return { code, name: i.name || code };
-        })
-        .filter((i) => isValidAshare(i.code));
-      const seen = new Set();
-      catalogAshare = list.filter((i) => {
-        if (seen.has(i.code)) return false;
-        seen.add(i.code);
-        return true;
-      });
-      if (!catalogAshare.length && Object.keys(namesMap).length) {
-        catalogAshare = Object.entries(namesMap)
-          .map(([code, name]) => ({ code: normalizeCode(code), name: name || code }))
-          .filter((i) => isValidAshare(i.code));
+      const loader = pickData()?.loadCatalogAshare;
+      catalogAshare = loader ? await loader(namesMap) : [];
+      const hint = el?.previousElementSibling?.previousElementSibling;
+      if (hint?.classList?.contains('bt-pick-hint') && catalogAshare.length) {
+        hint.textContent = `共 ${catalogAshare.length} 檔，點選加入對比`;
       }
-      renderPickList('cmp-pick-catalog', catalogAshare.slice(0, 80), '資產庫暫無 A 股');
+      renderPickList('cmp-pick-catalog', catalogAshare, '資產庫暫無 A 股');
     } catch (_) {
-      if (Object.keys(namesMap).length) {
-        catalogAshare = Object.entries(namesMap)
-          .map(([code, name]) => ({ code: normalizeCode(code), name: name || code }))
-          .filter((i) => isValidAshare(i.code));
-        renderPickList('cmp-pick-catalog', catalogAshare.slice(0, 80), '資產庫暫無 A 股');
-      } else if (el) {
-        el.innerHTML = '<div class="bt-pick-empty">載入失敗</div>';
-      }
+      if (el) el.innerHTML = '<div class="bt-pick-empty">載入失敗</div>';
     }
   }
 
@@ -843,8 +904,13 @@
     renderPickList('cmp-pick-watch', items, '自選為空');
   }
 
-  function renderHot() {
-    renderPickList('cmp-pick-hot', HOT_A_SHARE, '');
+  async function renderHot() {
+    const el = $id('cmp-pick-hot');
+    if (el) el.innerHTML = '<div class="bt-pick-empty">載入熱門…</div>';
+    const rows = pickData()?.fetchHotAshare
+      ? await pickData().fetchHotAshare(namesMap, 48)
+      : (pickData()?.FALLBACK_HOT || []);
+    renderPickList('cmp-pick-hot', rows, '暫無熱門標的');
   }
 
   async function runSearch() {
@@ -855,21 +921,10 @@
       return;
     }
     if (el) el.innerHTML = '<div class="bt-pick-empty">搜索中…</div>';
-    try {
-      const d = await Api.getStockUniverse('a_share', 30, 0, q);
-      const rows = (d?.stocks || []).map((s) => ({
-        code: normalizeCode(s.code),
-        name: s.name || namesMap[s.code] || s.code,
-        extra: s.industry || '',
-      })).filter((x) => isValidAshare(x.code));
-      renderPickList('cmp-pick-search', rows, '未找到');
-    } catch (_) {
-      const local = Object.entries(namesMap)
-        .filter(([code, name]) => code.includes(q) || String(name).includes(q))
-        .slice(0, 30)
-        .map(([code, name]) => ({ code: normalizeCode(code), name }));
-      renderPickList('cmp-pick-search', local.filter((x) => isValidAshare(x.code)), '搜索失敗');
-    }
+    const rows = pickData()?.searchAshare
+      ? await pickData().searchAshare(q, namesMap, 80)
+      : [];
+    renderPickList('cmp-pick-search', rows, '未找到');
   }
 
   function onCodeInput() {
@@ -887,10 +942,9 @@
       if (sug) sug.hidden = true;
       return;
     }
-    const hits = Object.entries(namesMap)
-      .filter(([code, name]) => code.startsWith(raw) || String(name).includes(raw))
-      .slice(0, 8)
-      .map(([code, name]) => ({ code: normalizeCode(code), name }));
+    const hits = pickData()?.suggestFromNames
+      ? pickData().suggestFromNames(raw, namesMap, 20)
+      : [];
     const sug = $id('cmp-code-suggest');
     if (!sug) return;
     if (!hits.length) {
@@ -984,9 +1038,9 @@
     } else {
       renderChips();
     }
-    await loadNames();
+    await Promise.all([loadNames(), loadStrategyDisplayNames()]);
     setMode(state.mode);
-    renderHot();
+    await renderHot();
     clearCharts();
     updateSummaryBadge();
     setTimeout(() => chart?.resize(), 80);

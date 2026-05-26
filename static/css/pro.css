@@ -24,8 +24,8 @@ html[data-quote-colors="us"]{
   --quote-up-border:rgba(52,211,153,.22);--quote-down-border:rgba(248,113,113,.22);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:13px;-webkit-font-smoothing:antialiased}
-body{font-family:var(--fs);background:var(--bg);color:var(--tx);height:100vh;overflow:hidden}
+html{font-size:15px;-webkit-font-smoothing:antialiased}
+body{font-family:var(--fs);background:var(--bg);color:var(--tx);height:100vh;overflow:hidden;line-height:1.55}
 /* 全站：可滾動但不顯示滾動條（見 .cursor/rules/ui-no-scrollbar.mdc） */
 *,*::before,*::after{scrollbar-width:none;-ms-overflow-style:none}
 *::-webkit-scrollbar{display:none;width:0;height:0}
@@ -696,9 +696,11 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .bt-suggest-item:hover{background:rgba(232,184,48,.06);color:var(--t1)}
 .bt-suggest-item:last-child{border-bottom:none}
 .bt-pick-list{
-  max-height:160px;overflow:auto;display:flex;flex-direction:column;gap:4px;margin-top:8px;
+  max-height:min(42vh,320px);overflow:auto;display:flex;flex-direction:column;gap:4px;margin-top:8px;
 }
-.bt-pick-list--chips{flex-direction:row;flex-wrap:wrap;max-height:none}
+.bt-pick-list--chips{
+  flex-direction:row;flex-wrap:wrap;max-height:min(36vh,280px);overflow:auto;
+}
 .bt-pick-item{
   display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;
   border:1px solid var(--bd);border-radius:8px;background:var(--bg0);cursor:pointer;color:var(--t2);
@@ -919,6 +921,41 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .scan-row-code{min-width:56px;color:var(--ac);font-weight:600}
 .scan-row-name{flex:1;color:var(--t2);font-family:var(--fs);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scan-row-price{font-family:var(--fd);font-weight:600;color:var(--tx)}
+
+/* ═══ AI 智能問答 ═══ */
+.ai-layout{max-width:920px;margin:0 auto}
+.ai-panel .pb{display:flex;flex-direction:column;gap:12px;min-height:420px}
+.ai-hint{font-size:.74rem;color:var(--t3);line-height:1.55;margin:0}
+.ai-hint code{font-size:.68rem;color:var(--ac)}
+.ai-messages{
+  flex:1;min-height:280px;max-height:min(52vh,480px);overflow:auto;
+  display:flex;flex-direction:column;gap:10px;padding:12px;
+  border:1px solid var(--bd);border-radius:var(--rl);background:var(--bg0);
+}
+.ai-msg{padding:10px 12px;border-radius:var(--r);font-size:.8rem;line-height:1.55}
+.ai-msg--user{background:rgba(232,184,48,.08);border:1px solid rgba(232,184,48,.2);align-self:flex-end;max-width:92%}
+.ai-msg--assistant{background:var(--bg2);border:1px solid var(--bd);align-self:flex-start;max-width:96%}
+.ai-msg--sys{color:var(--t3);font-size:.72rem;text-align:center;border:none;background:transparent}
+.ai-msg-role{font-size:.62rem;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.ai-msg-body{color:var(--t1);white-space:pre-wrap;word-break:break-word}
+.ai-msg-tools{margin-top:6px;font-size:.62rem;color:var(--t4)}
+.ai-msg--streaming .ai-msg-body::after{content:'▋';opacity:.6;animation:ai-blink 1s step-end infinite;margin-left:2px}
+@keyframes ai-blink{50%{opacity:0}}
+.ai-compose{display:flex;flex-direction:column;gap:8px}
+.ai-input{
+  width:100%;resize:vertical;min-height:72px;max-height:200px;
+  background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);
+  color:var(--tx);font-family:var(--fs);font-size:.82rem;padding:10px 12px;line-height:1.5;
+}
+.ai-compose-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ai-stream-opt{font-size:.72rem;color:var(--t3);margin-right:auto}
+.ai-tools-detail{font-size:.68rem;color:var(--t3)}
+.ai-tools-detail summary{cursor:pointer;color:var(--t2)}
+.ai-tools-list{
+  margin:8px 0 0;padding-left:18px;max-height:120px;overflow:auto;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px;
+}
+.ai-tools-list code{font-size:.64rem;color:var(--ac)}
 
 /* ═══ 多股 / 多策略對比 ═══ */
 .cmp-layout{display:grid;grid-template-columns:minmax(280px,320px) 1fr;gap:var(--gap);align-items:start}

@@ -164,6 +164,16 @@ class Settings(BaseSettings):
     # ====== WebSocket 安全 ======
     ws_auth_required: bool = False  # 本地/演示可關閉；非演示模式見 effective_ws_auth_required
 
+    # ====== LLM 智能問答（OpenAI 兼容 API） ======
+    llm_enabled: bool = True
+    llm_api_base: str = "https://api.openai.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout_sec: int = Field(default=90, ge=15, le=300)
+    llm_max_tool_rounds: int = Field(default=6, ge=1, le=12)
+    llm_max_tokens: int = Field(default=2048, ge=256, le=8192)
+    llm_temperature: float = Field(default=0.2, ge=0, le=1.5)
+
     # ====== 安全 ======
     jwt_secret: str = ""  # 留空時由 auth.py 自動生成隨機密鑰並持久化到 data/.jwt_secret
     rate_limit_per_minute: int = Field(default=120, ge=10, le=10000)

@@ -997,6 +997,21 @@ from src.core.strategies.base import StrategyWithSLTP
 for _cls in STRATEGIES.values():
     globals()[_cls.__name__] = _cls
 
+def _max_drawdown_pct_from_nav(nav: list) -> float:
+    """依淨值序列重算最大回撤（%），避免 Backtrader 在小樣本上與總收益混淆。"""
+    if not nav or len(nav) < 2:
+        return 0.0
+    peak = float(nav[0])
+    max_dd = 0.0
+    for raw in nav:
+        v = float(raw)
+        if v > peak:
+            peak = v
+        if peak > 0:
+            max_dd = max(max_dd, (peak - v) / peak * 100.0)
+    return round(max_dd, 4)
+
+
 # ============================================================
 # 回測執行
 # ============================================================
@@ -1230,7 +1245,6 @@ def run_backtest(
     time_returns = strat.analyzers.timereturn.get_analysis()
 
     total_return = (final_value - initial_value) / initial_value * 100
-    max_dd = drawdown.get("max", {}).get("drawdown", 0)
 
     total_trades = trades.get("total", {}).get("total", 0)
     won = trades.get("won", {}).get("total", 0)
@@ -1243,6 +1257,11 @@ def run_backtest(
     nav = [1.0]
     for r in daily_returns:
         nav.append(nav[-1] * (1 + r))
+
+    max_dd_bt = float(drawdown.get("max", {}).get("drawdown", 0) or 0)
+    max_dd = _max_drawdown_pct_from_nav(nav)
+    if max_dd <= 0 and max_dd_bt > 0:
+        max_dd = round(min(max_dd_bt, 100.0), 4)
 
     # 用日收益率計算夏普（更準確）
     import numpy as np
@@ -1331,6 +1350,7 @@ def run_backtest(
     result = {
         "code": code,
         "strategy": strategy_name,
+        "strategy_name": STRATEGY_NAMES.get(strategy_name, strategy_name),
         "timeframe": tf,
         "timeframe_label": tf_label,
         "bars_count": len(dates),

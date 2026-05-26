@@ -8,6 +8,8 @@ const Analysis = {
   _universeList: [],
   _activeMarket: 'all',
   _searchQuery: '',
+  _snapshotTimer: null,
+  _snapshotCode: '',
   _MARKET_LABELS: {
     all: '全部',
     a_share: 'A股',
@@ -18,7 +20,11 @@ const Analysis = {
 
   init() {
     this._bindCodeControls();
-    this.setCode(this.getCode() || '600519');
+    const saved = (typeof LocalStore !== 'undefined' && LocalStore.get('lastAnalysis')?.code) || '600519';
+    this.setCode(this.getCode() || saved);
+    const strat = typeof LocalStore !== 'undefined' ? LocalStore.get('lastAnalysis')?.strategy : null;
+    const sel = document.getElementById('anStrategy');
+    if (strat && sel && [...sel.options].some(o => o.value === strat)) sel.value = strat;
     this.loadStockOptions();
   },
 
@@ -28,6 +34,7 @@ const Analysis = {
     if (!this._universeList?.length) this.loadStockOptions();
     const code = this.getCode() || '600519';
     if (!this.getCode()) this.setCode(code);
+    else this._scheduleSnapshot(code);
     const stats = document.getElementById('anStats');
     if (stats && !stats.innerHTML.trim()) {
       stats.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 分析中…</p>';
@@ -51,6 +58,40 @@ const Analysis = {
     if (manual) manual.value = clean;
     this._updateSelectedStock(clean, stockName);
     this._refreshActiveRows(clean);
+    this._scheduleSnapshot(clean);
+    if (typeof LocalStore !== 'undefined') {
+      LocalStore.pushRecentStock({ code: clean, name: stockName, market: found?.market || '' });
+      const strategy = document.getElementById('anStrategy')?.value || 'dual_ma';
+      LocalStore.save({ lastAnalysis: { code: clean, strategy } });
+    }
+  },
+
+  _scheduleSnapshot(code) {
+    if (this._snapshotTimer) clearTimeout(this._snapshotTimer);
+    const c = String(code || '').trim();
+    if (!c) return;
+    this._snapshotTimer = setTimeout(() => this._loadSnapshot(c), 280);
+  },
+
+  async _loadSnapshot(code) {
+    const root = document.getElementById('anStockSnapshot');
+    if (!root || typeof StockContent === 'undefined' || typeof Api === 'undefined') return;
+    if (this._snapshotCode === code && root.dataset.loaded === code) return;
+    this._snapshotCode = code;
+    root.dataset.loaded = '';
+    root.innerHTML = '<p class="muted"><span class="ld"></span> 載入個股快照…</p>';
+    try {
+      const d = await Api.get(
+        `/api/stocks/${encodeURIComponent(code)}/analysis-page?kline_days=120&sparkline_days=60`,
+      );
+      if (this.getCode() !== code) return;
+      if (!d?.success) throw new Error('載入失敗');
+      StockContent.renderAnalysisSnapshot(root, d);
+      root.dataset.loaded = code;
+    } catch (e) {
+      if (this.getCode() !== code) return;
+      root.innerHTML = `<p class="err">快照載入失敗：${this._esc(e.message || e)}</p>`;
+    }
   },
 
   _refreshActiveRows(code) {

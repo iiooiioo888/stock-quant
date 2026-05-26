@@ -36,6 +36,7 @@ from src.api.routers.data_center import router as data_center_router
 from src.api.routers.polymarket import router as polymarket_router
 from src.api.routers.crypto import router as crypto_router
 from src.api.routers.external_check import router as external_check_router
+from src.api.routers.llm import router as llm_router
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
@@ -151,6 +152,7 @@ app.include_router(data_center_router)
 app.include_router(polymarket_router)
 app.include_router(crypto_router)
 app.include_router(external_check_router)
+app.include_router(llm_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -319,6 +321,7 @@ AUTH_WHITELIST_PREFIX = (
     "/api/polymarket",
     "/api/external",
     "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts", "/api/watchlist",
+    "/api/llm/status",
     "/docs", "/openapi.json",
     "/redoc", "/static", "/", "/ws",
 )

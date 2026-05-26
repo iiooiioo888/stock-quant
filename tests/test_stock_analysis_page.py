@@ -13,6 +13,11 @@ class TestStockAnalysisPage:
         assert "profile" in data
         assert isinstance(data["profile"], dict)
         assert "sparkline" in data
+        assert "overview" in data
+        assert isinstance(data["overview"], dict)
+        assert "signals" in data
+        assert isinstance(data["signals"], dict)
+        assert "signals" in data["signals"]
         assert "polymarket" in data
         pm = data["polymarket"]
         assert "queries" in pm

@@ -230,6 +230,11 @@ async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
                     "market": r.get("market", "a_share"),
                     "total_mv": r.get("total_mv"),
                     "rank_mv": r.get("rank_mv"),
+                    "price": r.get("price"),
+                    "change_pct": r.get("change_pct"),
+                    "pe_ttm": r.get("pe_ttm"),
+                    "pb": r.get("pb"),
+                    "industry": r.get("industry") or "",
                     "intro": r.get("intro") or "",
                     "data_points": 0,
                 }
@@ -354,7 +359,7 @@ async def get_stock_analysis_page(
     from src.core.market_fetch import build_sparkline_item, df_to_kline_records
     from src.core.polymarket.stock_link import resolve_stock_name, search_polymarket_for_stock
     from src.core.result_cache import get_data_version
-    from src.core.stock_basics import load_stock_financials, load_stock_profile
+    from src.core.stock_basics import build_stock_overview, load_stock_financials, load_stock_profile
 
     code = normalize_kline_code(code.strip())
     profile = load_stock_profile(code)
@@ -378,6 +383,34 @@ async def get_stock_analysis_page(
 
         financials = load_stock_financials(code)
 
+        overview_lb = min(max(kline_days, 60), 250)
+        try:
+            overview = build_stock_overview(code, lookback=overview_lb)
+        except Exception as e:
+            logger.debug(f"analysis-page overview {code}: {e}")
+            overview = {"code": code, "has_kline": False, "message": str(e)}
+
+        signals_block = {
+            "signals": [],
+            "strength": None,
+            "signals_count": 0,
+            "updated_at": None,
+        }
+        try:
+            from src.core.signals import get_current_signals_for_codes, score_signal_strength
+
+            rows = get_current_signals_for_codes([code])
+            row = rows[0] if rows else {}
+            latest = row.get("signals") or []
+            signals_block = {
+                "signals": latest[:16],
+                "strength": score_signal_strength(latest),
+                "signals_count": len(latest),
+                "updated_at": row.get("updated_at"),
+            }
+        except Exception as e:
+            logger.debug(f"analysis-page signals {code}: {e}")
+
         return {
             "success": True,
             "code": code,
@@ -385,6 +418,8 @@ async def get_stock_analysis_page(
             "market": profile.get("market") or "",
             "profile": profile,
             "financials": financials,
+            "overview": overview,
+            "signals": signals_block,
             "kline": kline,
             "kline_source": kline_source,
             "sparkline": spark,

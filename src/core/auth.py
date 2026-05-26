@@ -67,6 +67,22 @@ def create_token(user_id: int, role: str) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+def classify_token(token: str) -> str:
+    """
+    校驗 Token 狀態（不拋異常）。
+    返回: ok | expired | invalid
+    """
+    if not token or not str(token).strip():
+        return "invalid"
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return "ok"
+    except jwt.ExpiredSignatureError:
+        return "expired"
+    except jwt.InvalidTokenError:
+        return "invalid"
+
+
 def verify_token(token: str) -> Optional[dict]:
     """
     解碼並驗證 JWT Token

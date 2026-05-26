@@ -1106,9 +1106,23 @@ const Data = {
       return;
     }
     container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
-    Api.get(`/api/stocks/${encodeURIComponent(code)}/overview?lookback=${lookback}`).then(d => {
+    const lb = Math.min(Math.max(lookback, 60), 500);
+    const url = typeof StockContent !== 'undefined'
+      ? `/api/stocks/${encodeURIComponent(code)}/analysis-page?kline_days=${lb}&sparkline_days=90`
+      : `/api/stocks/${encodeURIComponent(code)}/overview?lookback=${lookback}`;
+    Api.get(url).then(d => {
       if (!d) {
         this._apiFailMessage(container, '基本數據查詢');
+        return;
+      }
+      if (typeof StockContent !== 'undefined' && d.success && d.overview) {
+        StockContent.renderBasicsPanel(
+          container,
+          d.overview,
+          d.profile,
+          d.financials,
+          code,
+        );
         return;
       }
       const o = d.overview;
@@ -1120,34 +1134,11 @@ const Data = {
         container.innerHTML = `<p style="color:var(--warn)">${o.message || '本地無日 K'}</p>`;
         return;
       }
-      const t = o.technical || {};
-      const f = o.fundamentals || {};
-      const fmt = (v, suf = '') => (v == null || v === '' ? '-' : v + suf);
-      const rows = [
-        ['代碼', o.code], ['名稱', o.name || '-'], ['數據區間', `${o.date_from} ~ ${o.date_to}`], ['K 線根數', o.bars],
-        ['收盤', fmt(t.close)], ['漲跌%', fmt(t.change_pct, '%')], ['振幅%', fmt(t.amplitude_pct, '%')],
-        ['MA5 / MA20 / MA60', `${fmt(t.ma5)} / ${fmt(t.ma20)} / ${fmt(t.ma60)}`],
-        ['偏離 MA5%', fmt(t.vs_ma5_pct, '%')], ['偏離 MA20%', fmt(t.vs_ma20_pct, '%')],
-        ['5日 / 20日 / 60日漲跌%', `${fmt(t.change_5d_pct, '%')} / ${fmt(t.change_20d_pct, '%')} / ${fmt(t.change_60d_pct, '%')}`],
-        ['量比(對20日均)', fmt(t.volume_ratio)], ['年化波動%', fmt(t.volatility_annual_pct, '%')],
-        ['區間高 / 低', `${fmt(t.high_lookback)} / ${fmt(t.low_lookback)}`],
-        ['距高點%', fmt(t.pct_from_high, '%')], ['距低點%', fmt(t.pct_from_low, '%')],
-      ];
-      let fundBlock = '';
-      if (f && Object.keys(f).length) {
-        const fundRows = [
-          ['PE(TTM)', fmt(f.pe_ttm)], ['PB', fmt(f.pb)], ['ROE%', fmt(f.roe, '%')],
-          ['EPS', fmt(f.eps)], ['每股淨資', fmt(f.bvps)],
-          ['總市值(億)', fmt(f.total_mv)], ['流通市值(億)', fmt(f.circulating_mv)],
-          ['毛利率%', fmt(f.gross_margin, '%')], ['淨利率%', fmt(f.net_margin, '%')], ['負債率%', fmt(f.debt_ratio, '%')],
-        ];
-        fundBlock = `<h3 class="mt-md">基本面</h3><div class="table-wrap"><table><tbody>${fundRows.map(([k, v]) =>
-          `<tr><td>${k}</td><td class="r">${v}</td></tr>`).join('')}</tbody></table></div>`;
+      if (typeof StockContent !== 'undefined') {
+        StockContent.renderBasicsPanel(container, o, {}, o.fundamentals, code);
+        return;
       }
-      container.innerHTML = `
-        <div class="table-wrap"><table><tbody>${rows.map(([k, v]) =>
-          `<tr><td>${k}</td><td class="r">${v}</td></tr>`).join('')}</tbody></table></div>
-        ${fundBlock}`;
+      container.innerHTML = '<p style="color:var(--warn)">請刷新頁面以載入 stock-content.js</p>';
     }).catch(err => {
       container.innerHTML = `<p style="color:var(--danger)">${err.message || '載入失敗'}</p>`;
     });

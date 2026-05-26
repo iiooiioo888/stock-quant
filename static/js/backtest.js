@@ -44,7 +44,13 @@ const Backtest = {
   init() {
     this._bindCodeControls();
     this.populateStockSelectSync();
-    this.setCode(this.getCode() || '600519');
+    const savedCode = (typeof LocalStore !== 'undefined' && LocalStore.get('lastBacktest')?.code) || '600519';
+    this.setCode(this.getCode() || savedCode);
+    const savedStrat = typeof LocalStore !== 'undefined' ? LocalStore.get('lastBacktest')?.strategy : null;
+    const btSel = document.getElementById('btStrategy');
+    if (savedStrat && btSel && [...btSel.options].some(o => o.value === savedStrat)) {
+      btSel.value = savedStrat;
+    }
     this.loadStockOptions();
     document.getElementById('btOpenDetailBtn')?.addEventListener('click', () => {
       const c = this.getCode();
@@ -106,6 +112,14 @@ const Backtest = {
     if (manual) manual.value = c;
     this._highlightStockButton(c);
     this._updatePickHint(c);
+    if (c && typeof LocalStore !== 'undefined') {
+      const item = this._stockMap?.get(c);
+      LocalStore.pushRecentStock({ code: c, name: item?.name || '', market: item?.market || '' });
+      const strategy = document.getElementById('btStrategy')?.value
+        || document.getElementById('optStrategy')?.value
+        || 'dual_ma';
+      LocalStore.save({ lastBacktest: { code: c, strategy } });
+    }
   },
 
   _updatePickHint(code) {
@@ -581,18 +595,122 @@ const Backtest = {
         Utils.toast('📋 任務已提交，執行中...', 2000, 'info');
       }
       const resolved = await Api.resolveTaskResponse(d);
-      const r = resolved?.result || resolved?.task?.result;
+      const r = Api.normalizeBacktestResult(Api.extractResult(resolved) ?? resolved?.result);
       if (!r) {
         Utils.toast('未取得回測結果', 3000, 'error');
         return;
       }
-      this._lastResult = r;
-      this._displayResult(r);
+      this.showResult(r);
     } catch (e) {
       Utils.toast('回測失敗: ' + (e.message || e), 3000, 'error');
     } finally {
       this._running = false;
       Utils.btnLoading(btn, false, '🔍 開始回測');
+    }
+  },
+
+  /** 標準化並在頁面展示回測結果（run / 任務 / 歷史共用） */
+  showResult(r) {
+    const norm = Api.normalizeBacktestResult?.(r) ?? r;
+    if (!norm) {
+      if (typeof Utils !== 'undefined') Utils.toast('回測結果格式無效', 3000, 'error');
+      return;
+    }
+    this._lastResult = norm;
+    this._displayResult(norm);
+    this._finishDisplay();
+  },
+
+  async showFromHistoryId(resultId) {
+    const id = Number(resultId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    const panel = document.getElementById('histResultPanel');
+    const hint = document.getElementById('histResultHint');
+    if (panel) panel.classList.remove('h');
+    if (hint) hint.innerHTML = '<span class="ld"></span> 載入回測詳情…';
+
+    const d = await Api.getBacktestResultDetail(id);
+    if (!d?.success) {
+      if (hint) hint.textContent = '載入失敗';
+      return;
+    }
+    const r = Api.normalizeBacktestResult(d.result);
+    if (!r) {
+      if (hint) hint.textContent = '無法解析結果';
+      return;
+    }
+    if (d.full) {
+      if (hint) hint.textContent = `已還原完整結果（緩存）· #${id}`;
+      if (typeof App !== 'undefined' && App.openStockTool) {
+        App.openStockTool('backtest', r.code || '');
+      } else if (typeof App !== 'undefined') {
+        App.loadTab('backtest');
+      }
+      if (r.strategy) {
+        const sel = document.getElementById('btStrategy');
+        if (sel) sel.value = r.strategy;
+      }
+      this.showResult(r);
+      return;
+    }
+    if (hint) {
+      hint.textContent = `摘要 #${id}（緩存已過期，完整圖表請點「重新回測」）`;
+    }
+    this._renderHistorySummary(panel?.querySelector('#histResultMount') || document.getElementById('histResultMount'), r, id);
+  },
+
+  _renderHistorySummary(mount, r, id) {
+    if (!mount) return;
+    const strat = (typeof SignalLabels !== 'undefined')
+      ? SignalLabels.strategyName(r.strategy, 'short') : (r.strategy || '');
+    mount.innerHTML = `
+      <div class="g hist-summary-grid">
+        <div class="c"><h3>股票</h3><div class="v">${r.code || '—'} ${r.strategy_name || strat}</div></div>
+        <div class="c"><h3>收益率</h3><div class="v ${Utils.badgeClass(r.total_return_pct)}">${Utils.formatPct(r.total_return_pct)}</div></div>
+        <div class="c"><h3>夏普</h3><div class="v">${Utils.formatNum(r.sharpe_ratio, 2)}</div></div>
+        <div class="c"><h3>最大回撤</h3><div class="v rd">${Utils.formatPct(-(r.max_drawdown_pct || 0))}</div></div>
+        <div class="c"><h3>勝率</h3><div class="v">${Utils.formatNum(r.win_rate_pct, 1)}%</div></div>
+        <div class="c"><h3>交易</h3><div class="v">${r.total_trades ?? '—'}</div></div>
+      </div>
+      <div class="btn-group" style="margin-top:12px">
+        <button type="button" class="btn s" data-hist-rerun="${id}">🔄 以此參數重新回測（完整圖表）</button>
+      </div>`;
+    mount.querySelector('[data-hist-rerun]')?.addEventListener('click', () => {
+      if (typeof App !== 'undefined' && App.openStockTool) {
+        App.openStockTool('backtest', r.code || '');
+      }
+      if (r.strategy) {
+        const sel = document.getElementById('btStrategy');
+        if (sel) sel.value = r.strategy;
+      }
+      this.setCode(r.code || '');
+      this.run();
+    });
+  },
+
+  _finishDisplay() {
+    const box = document.getElementById('btResult');
+    if (box) box.classList.remove('h');
+    document.getElementById('btAllResult')?.classList.add('h');
+    const anchor = document.getElementById('btResultAnchor');
+    if (anchor) {
+      requestAnimationFrame(() => {
+        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+    const resize = () => {
+      if (typeof Charts === 'undefined') return;
+      const tabBt = document.getElementById('tab-backtest');
+      if (tabBt && !tabBt.classList.contains('h')) {
+        Charts.resizeTab('tab-backtest');
+      }
+      if (typeof StockDetail !== 'undefined' && StockDetail._currentSubTab === 'backtest') {
+        Charts.resizeTab('tab-stock-detail');
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(resize));
+    if (typeof Utils !== 'undefined') {
+      Utils.toast('回測完成，結果已顯示於下方', 2500, 'success');
     }
   },
 
@@ -603,7 +721,23 @@ const Backtest = {
     const code = r.code || '';
     const strategy = r.strategy || '';
 
-    document.getElementById('btStats').innerHTML = `
+    const summaryEl = document.getElementById('btResultSummary');
+    if (summaryEl) {
+      const stratZh = (typeof SignalLabels !== 'undefined')
+        ? SignalLabels.strategyName(strategy, 'short') : strategy;
+      summaryEl.textContent = [
+        code,
+        stratZh,
+        r.total_return_pct != null ? `收益 ${Utils.formatPct(r.total_return_pct)}` : '',
+        r.sharpe_ratio != null ? `夏普 ${Utils.formatNum(r.sharpe_ratio, 2)}` : '',
+        r.total_trades != null ? `${r.total_trades} 筆交易` : '',
+      ].filter(Boolean).join(' · ');
+    }
+
+    const statsEl = document.getElementById('btStats');
+    if (!statsEl) return;
+
+    statsEl.innerHTML = `
       <div class="c"><h3>收益率</h3><div class="v ${Utils.badgeClass(r.total_return_pct)}">${Utils.formatPct(r.total_return_pct)}</div></div>
       <div class="c"><h3>年化收益</h3><div class="v ${Utils.badgeClass(r.annual_return_pct)}">${Utils.formatPct(r.annual_return_pct)}</div></div>
       <div class="c"><h3>夏普比率</h3><div class="v">${Utils.formatNum(r.sharpe_ratio, 4)}</div></div>
@@ -641,23 +775,32 @@ const Backtest = {
       ? SignalLabels.strategyName(strategy, 'short') : strategy;
     const chartTitle = `${code} ${stratZh}`;
 
-    // K 線圖
+    const hasKline = Array.isArray(r.kline) && r.kline.length >= 2;
+    const hasNav = Array.isArray(r.nav) && r.nav.length >= 2;
+
     const klineContainer = document.getElementById('btKlineContainer');
     const klineCanvas = document.getElementById('btKlineChart');
-    if (klineContainer && typeof LightweightCharts !== 'undefined') {
-      klineCanvas.style.display = 'none';
-      klineContainer.style.display = 'block';
-      Charts.drawLWKlineChart('btKlineContainer', r.kline, r.signals, chartTitle);
-    } else {
-      if (klineContainer) klineContainer.style.display = 'none';
-      if (klineCanvas) {
+    if (hasKline && typeof Charts !== 'undefined') {
+      if (klineContainer && typeof LightweightCharts !== 'undefined' && Charts.drawLWKlineChart) {
+        if (klineCanvas) klineCanvas.style.display = 'none';
+        klineContainer.style.display = 'block';
+        Charts.drawLWKlineChart('btKlineContainer', r.kline, r.signals || [], chartTitle);
+      } else if (klineCanvas) {
+        if (klineContainer) klineContainer.style.display = 'none';
         klineCanvas.style.display = 'block';
-        Charts.drawKlineChart('btKlineChart', r.kline, r.signals, chartTitle);
+        Charts.drawKlineChart('btKlineChart', r.kline, r.signals || [], chartTitle);
       }
+    } else {
+      if (klineContainer) {
+        klineContainer.style.display = 'none';
+        klineContainer.innerHTML = '<p class="muted" style="padding:16px">暫無 K 線數據（歷史摘要或請重新回測）</p>';
+      }
+      if (klineCanvas) klineCanvas.style.display = 'none';
     }
 
-    // 淨值曲線
-    Charts.drawLineChart('btChart', [{ label: chartTitle, data: r.nav, dates: r.dates }]);
+    if (hasNav && typeof Charts !== 'undefined') {
+      Charts.drawLineChart('btChart', [{ label: chartTitle, data: r.nav, dates: r.dates || [] }]);
+    }
 
     // 月度收益熱力圖
     this._drawMonthlyHeatmap(r);
@@ -687,7 +830,6 @@ const Backtest = {
       if (el) el.classList.add('h');
     });
 
-    document.getElementById('btResult').classList.remove('h');
   },
 
   async runMulti() {
@@ -716,7 +858,13 @@ const Backtest = {
         Utils.toast('未取得對比結果', 3000, 'error');
         return;
       }
-      this.displayMultiResults(Array.isArray(results) ? results : (results.results || []));
+      let arr = [];
+      if (Array.isArray(results)) {
+        arr = results.map(x => Api.normalizeBacktestResult(x)).filter(Boolean);
+      } else if (results?.results && Array.isArray(results.results)) {
+        arr = results.results.map(x => Api.normalizeBacktestResult(x)).filter(Boolean);
+      }
+      this.displayMultiResults(arr);
     } catch (e) {
       Utils.toast('多策略對比失敗: ' + (e.message || e), 3000, 'error');
     } finally {
@@ -751,6 +899,12 @@ const Backtest = {
     }));
     if (typeof Charts !== 'undefined') Charts.drawLineChart('btAllChart', series);
     document.getElementById('btAllResult').classList.remove('h');
+    const anchor = document.getElementById('btResultAnchor') || document.getElementById('btAllResult');
+    anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    requestAnimationFrame(() => {
+      if (typeof Charts !== 'undefined') Charts.resizeTab('tab-backtest');
+    });
+    if (typeof Utils !== 'undefined') Utils.toast('多策略對比完成', 2000, 'success');
   },
 
   // ============================================================

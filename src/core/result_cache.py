@@ -122,6 +122,21 @@ def set_cached_compute(
     logger.debug(f"緩存寫入: {namespace} ttl={ttl}s")
 
 
+def drop_cached_compute(
+    namespace: str,
+    params: dict,
+    code: Optional[str] = None,
+) -> bool:
+    """刪除單條計算緩存（強制重算時使用）。"""
+    if not is_cache_enabled():
+        return False
+    from src.core.cache import get_cache
+    key = make_compute_key(namespace, params, code=code)
+    get_cache().delete(key)
+    logger.info(f"緩存已刪除: {namespace} ({key[-32:]})")
+    return True
+
+
 def invalidate_compute(code: Optional[str] = None) -> int:
     """
     清除計算緩存。code 不為空時僅清除含該代碼版本前綴的項（LRU 全掃；Redis 按前綴刪除）。

@@ -385,6 +385,10 @@
         </section>
     </div>
     <div id="btResult" class="h">
+        <div id="btResultAnchor" class="bt-result-banner">
+            <h2 class="bt-result-title">📊 回測結果</h2>
+            <p class="bt-result-summary muted" id="btResultSummary"></p>
+        </div>
         <div class="g" id="btStats"></div>
         <div class="sec"><h2>風險指標</h2><div class="g" id="btRiskStats"></div></div>
         <div class="sec h"><h2>基準對比（滬深300）</h2><div class="g" id="btBenchStats"></div></div>
@@ -649,7 +653,12 @@
         <div class="chart-panel"><h3>回撤排行</h3><div class="cw"><canvas id="histDrawdownChart"></canvas></div></div>
     </div>
 <div class="sec">
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>股票</th><th>策略</th><th>收益率</th><th>夏普</th><th>Sortino</th><th>Calmar</th><th>回撤</th><th>VaR95</th><th>勝率</th><th>交易</th><th>時間</th></tr></thead><tbody id="histTable"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>股票</th><th>策略</th><th>收益率</th><th>夏普</th><th>Sortino</th><th>Calmar</th><th>回撤</th><th>VaR95</th><th>勝率</th><th>交易</th><th>時間</th><th>操作</th></tr></thead><tbody id="histTable"></tbody></table></div>
+    </div>
+    <div id="histResultPanel" class="sec h">
+        <h2>歷史記錄詳情</h2>
+        <p class="sec-desc" id="histResultHint">點擊上方列表「查看」載入該次回測</p>
+        <div id="histResultMount"></div>
     </div>
 </div>
 
@@ -927,12 +936,15 @@
 <div id="tab-analysis" class="h">
     <div class="sec bt-panel">
         <h2>🔬 深度分析工具</h2>
-        <p class="sec-desc">對回測結果進行多維度深度分析</p>
+        <p class="sec-desc">選股後可預覽與詳情頁同源的技術/基本面快照，並對回測結果做多維度分析</p>
 
-        <section class="bt-stock-section">
+        <section class="bt-stock-section an-stock-snapshot-section">
             <div class="bt-section-head">
                 <h3>① 選擇分析標的</h3>
                 <span id="anStockLoadHint" class="bt-load-hint"></span>
+            </div>
+            <div id="anStockSnapshot" class="sc-analysis-snapshot">
+                <p class="muted">選擇股票後顯示技術面與基本面快照（與詳情頁同源數據）</p>
             </div>
             <div class="stock-code-picker">
                 <input type="hidden" id="anCode" value="600519">
@@ -1069,11 +1081,16 @@
     <div id="sdIndexView" class="sd-index-view">
         <section class="sd-index-head">
             <h2 class="dash-section-title">股票詳情索引</h2>
-            <p class="sec-desc">每支股票獨立頁：行情、Polymarket、策略回測、參數優化、Walk-Forward、熱力圖與回測歷史。例如 <code>#/stock/600519</code></p>
+            <p class="sec-desc">每支股票獨立頁：公司簡介、財務與技術快照、策略信號、K 線行情、Polymarket、回測與優化。例如 <code>#/stock/600519</code></p>
             <div class="fr" style="flex-wrap:wrap;gap:8px;margin-top:10px">
                 <input type="search" id="sdIndexSearch" class="input-sm" placeholder="搜尋代碼或名稱…" style="min-width:200px">
                 <button class="btn s" type="button" id="sdIndexReload">🔄 刷新列表</button>
+                <button class="btn s" type="button" id="sdClearRecent" title="清除本機最近瀏覽">清除最近</button>
             </div>
+        </section>
+        <section id="sdRecentSection" class="sd-recent-section h">
+            <h3 class="sd-recent-title">最近瀏覽 <span class="muted" style="font-weight:400">（本機瀏覽器）</span></h3>
+            <div id="sdRecentChips" class="sd-recent-chips"></div>
         </section>
         <div id="sdStockGrid" class="sd-stock-grid">
             <div class="state-loading"><span class="ld"></span> 載入股票列表…</div>
@@ -1084,6 +1101,7 @@
     <div class="sd-detail-toolbar">
         <button type="button" class="btn s" id="sdBackToList">← 返回股票列表</button>
         <button type="button" class="btn s" id="sdCopyLinkBtn" title="複製當前個股頁連結">🔗 複製連結</button>
+        <button class="btn s" type="button" id="sdFavoriteBtn" title="加入本機收藏（僅此瀏覽器）">☆ 收藏</button>
         <span class="sd-url-hint" id="sdUrlHint"></span>
     </div>
     <section class="sd-hero">
@@ -1106,7 +1124,7 @@
                 <button class="btn s" type="button" id="sdPmTabBtn">預測市場</button>
             </div>
         </div>
-        <div class="sd-profile-panel">
+        <div class="sd-profile-panel sd-profile-panel--triple">
             <div class="sd-profile-block">
                 <h3 class="sd-profile-heading">公司簡介</h3>
                 <p class="sd-intro" id="sdIntro">載入個股後顯示簡介…</p>
@@ -1117,6 +1135,15 @@
                     <span class="sd-finance-asof muted" id="sdFinanceAsof"></span>
                 </div>
                 <div class="sd-finance-grid" id="sdFinanceGrid">
+                    <p class="muted">載入中…</p>
+                </div>
+            </div>
+            <div class="sd-profile-block sd-profile-block--technical">
+                <div class="sd-profile-head-row">
+                    <h3 class="sd-profile-heading">技術快照</h3>
+                    <span class="sd-finance-asof muted" id="sdTechnicalMeta"></span>
+                </div>
+                <div class="sd-finance-grid" id="sdTechnicalGrid">
                     <p class="muted">載入中…</p>
                 </div>
             </div>
@@ -1144,6 +1171,16 @@
     </nav>
 
     <div id="sd-panel-overview" class="sd-panel">
+    <section class="dash-section sd-signals-section">
+        <div class="dash-section-head">
+            <h2 class="dash-section-title">策略信號</h2>
+            <p class="dash-section-meta" id="sdSignalsMeta">多策略綜合信號</p>
+        </div>
+        <div class="sd-signals-wrap" id="sdSignalsList">
+            <p class="muted">載入個股後顯示…</p>
+        </div>
+    </section>
+
     <section class="dash-section">
         <div class="dash-section-head">
             <h2 class="dash-section-title">TradingView 專業行情</h2>
@@ -1417,31 +1454,33 @@
 <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script defer src="/static/js/utils.js?v=perf-opt-20260522"></script>
-<script defer src="/static/js/api.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/local-store.js?v=local-store-20260526"></script>
+<script defer src="/static/js/api.js?v=bt-result-display-20260526"></script>
 <script defer src="/static/js/charts.js?v=perf-opt-20260522"></script>
 <script defer src="/static/js/chart-pro.js?v=perf-opt-20260522"></script>
 <script defer src="/static/js/signal-labels.js?v=perf-opt-20260522"></script>
 <script defer src="/static/js/task-common.js?v=perf-opt-20260522"></script>
 <script defer src="/static/js/dashboard.js?v=perf-opt-20260522"></script>
-<script defer src="/static/js/app.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/app.js?v=local-store-20260526"></script>
 
 <!-- Secondary modules：空閒時預加載 -->
 <script>
 (function() {
   var modules = [
     '/static/js/stock-picker.js?v=stockpicker-20260522',
-    '/static/js/backtest.js?v=perf-opt-20260522',
+    '/static/js/backtest.js?v=bt-result-display-20260526',
     '/static/js/optimize.js?v=perf-opt-20260522',
     '/static/js/portfolio.js?v=perf-opt-20260522',
     '/static/js/signals.js?v=perf-opt-20260522',
     '/static/js/screener.js?v=perf-opt-20260522',
     '/static/js/heatmap.js?v=perf-opt-20260522',
-    '/static/js/data.js?v=perf-opt-20260522',
-    '/static/js/analysis.js?v=perf-opt-20260522',
+    '/static/js/stock-content.js?v=stock-unify-20260526',
+    '/static/js/data.js?v=stock-unify-20260526',
+    '/static/js/analysis.js?v=stock-unify-20260526',
     '/static/js/tasks.js?v=perf-opt-20260522',
     '/static/js/scheduler.js?v=perf-opt-20260522',
     '/static/js/polymarket.js?v=perf-opt-20260522',
-    '/static/js/stock-detail.js?v=perf-opt-20260522',
+    '/static/js/stock-detail.js?v=stock-unify-20260526',
     '/static/js/crypto.js?v=perf-opt-20260522',
     '/static/js/connectivity.js?v=perf-opt-20260522'
   ];

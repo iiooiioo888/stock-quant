@@ -126,16 +126,33 @@
   function toggleDataPanel(show) {
     const empty = $id('bt-empty');
     const panel = $id('bt-data-panel');
-    const charts = document.querySelectorAll('.bt-tabs, .bt-chart-pane, .bt-block-title');
-    if (empty) empty.hidden = !!show;
-    if (panel) panel.hidden = !show;
-    charts.forEach((el) => { if (el) el.style.display = show ? '' : 'none'; });
+    const chartUi = document.querySelectorAll('.bt-tabs, .bt-chart-pane, .bt-block-title');
+    if (empty) {
+      empty.hidden = !!show;
+      empty.style.display = show ? 'none' : '';
+    }
+    if (panel) {
+      panel.hidden = !show;
+      /* 須覆寫 HTML 內聯 display:none，否則僅移除 hidden 仍不可見 */
+      panel.style.display = show ? 'block' : 'none';
+    }
+    chartUi.forEach((el) => {
+      if (!el) return;
+      if (!show) el.style.display = 'none';
+      else if (!el.classList.contains('bt-chart-pane')) el.style.display = '';
+    });
   }
 
   function getChart(id) {
     const el = $id(id);
-    if (!el) return null;
-    if (charts[id]) return charts[id];
+    if (!el || typeof echarts === 'undefined') return null;
+    if (charts[id]) {
+      try {
+        if (typeof charts[id].isDisposed === 'function' && !charts[id].isDisposed()) return charts[id];
+      } catch (_) { /* re-init */ }
+      delete charts[id];
+    }
+    if (el.offsetWidth < 2 || el.offsetHeight < 2) return null;
     charts[id] = echarts.init(el);
     return charts[id];
   }
@@ -511,13 +528,29 @@
     requestAnimationFrame(() => resizeCharts());
   }
 
-  function renderAll(r) {
+  function normalizeResult(raw) {
+    if (typeof Api !== 'undefined' && Api.normalizeBacktestResult) {
+      return Api.normalizeBacktestResult(raw);
+    }
+    return raw && typeof raw === 'object' ? raw : null;
+  }
+
+  function renderAll(raw) {
+    const r = normalizeResult(raw);
+    if (!r) {
+      logLine('回測結果無法解析', 'er');
+      return;
+    }
     lastResult = r;
     const curve = buildEquityCurve(r);
     if (!curve.length) {
       logLine('警告：回測結果無權益曲線數據', 'er');
     }
+
+    toggleDataPanel(true);
+
     renderDataPanel(r, curve);
+    switchTab(activeTab);
     renderEquityChart(curve);
     renderDrawdownChart(curve);
     renderKlineChart(r);
@@ -528,10 +561,15 @@
       const barWord = (r.timeframe && r.timeframe !== '1d') ? '根 K 線' : '個交易日';
       meta.textContent = `${r.code || ''} · ${r.strategy || ''} · ${tf} · ${curve.length} ${barWord}`;
     }
-    switchTab(activeTab);
     requestAnimationFrame(() => {
       resizeCharts();
-      setTimeout(resizeCharts, 120);
+      setTimeout(() => {
+        renderEquityChart(curve);
+        renderDrawdownChart(curve);
+        renderKlineChart(r);
+        resizeCharts();
+      }, 80);
+      setTimeout(resizeCharts, 280);
     });
   }
 
@@ -582,6 +620,8 @@
     const enableLimit = !!$id('bt-limit')?.checked;
     const timeframe = String($id('bt-timeframe')?.value || '1d').trim() || '1d';
 
+    const forceRefresh = !!$id('bt-force')?.checked;
+
     const body = {
       code,
       strategy: backendKey,
@@ -593,6 +633,7 @@
       enable_limit: enableLimit,
       timeframe,
       benchmark: false,
+      force_refresh: forceRefresh,
     };
 
     try {
@@ -623,8 +664,15 @@
       if (bar) bar.style.width = '45%';
 
       const resolved = await Api.resolveTaskResponse(d);
-      const r = Api.extractResult(resolved);
+      if (resolved?.from_cache && !forceRefresh) {
+        logLine('使用緩存結果（參數與 K 線版本未變）', '');
+      }
+      const r = normalizeResult(Api.extractResult(resolved) ?? resolved?.result);
       if (!r) throw new Error('未取得回測結果');
+      const resultCode = String(r.code || '').replace(/\D/g, '').slice(-6);
+      if (resultCode && resultCode !== code) {
+        logLine(`警告：結果代碼 ${resultCode} 與請求 ${code} 不一致，請勾選「強制重算」`, 'er');
+      }
       if (bar) bar.style.width = '92%';
 
       renderAll(r);
@@ -763,8 +811,10 @@
 
   /** 從任務中心跳轉時展示已有回測結果 */
   function showResult(r, task) {
-    if (!r) return;
-    lastResult = r;
+    const norm = normalizeResult(r);
+    if (!norm) return;
+    lastResult = norm;
+    r = norm;
     const p = task?.params || {};
     const code = p.code || r.code;
     if (code) {

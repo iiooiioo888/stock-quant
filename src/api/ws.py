@@ -123,20 +123,38 @@ async def ws_realtime_push():
 
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = None):
-    """WebSocket 實時行情推送（生產環境強制 token 認證）"""
-    # 生產環境強制認證（不再支持可選）
-    if not token:
-        await ws.close(code=4001, reason="需要認證：請在 URL 中添加 ?token=xxx")
-        logger.warning("WebSocket 連接被拒絕：缺少 token（生產環境強制認證）")
-        return
-    
-    from src.core.auth import verify_token
-    payload = verify_token(token)
-    if not payload:
-        await ws.close(code=4001, reason="Token 無效或已過期")
-        logger.warning("WebSocket 連接被拒絕：token 無效")
-        return
-    
+    """WebSocket 實時行情推送（依 effective_ws_auth_required 決定是否強制認證）"""
+    auth_required = settings.effective_ws_auth_required
+
+    if auth_required:
+        if not token:
+            await ws.close(code=4001, reason="需要認證：請在 URL 中添加 ?token=xxx")
+            logger.warning("WebSocket 連接被拒絕：缺少 token")
+            return
+
+        from src.core.auth import classify_token, verify_token
+
+        state = classify_token(token)
+        if state == "expired":
+            await ws.close(code=4001, reason="Token 已過期，請重新登錄")
+            logger.warning("WebSocket 連接被拒絕：token 已過期")
+            return
+        if state != "ok":
+            await ws.close(code=4001, reason="Token 無效")
+            logger.warning("WebSocket 連接被拒絕：token 無效")
+            return
+
+        payload = verify_token(token)
+        if not payload:
+            await ws.close(code=4001, reason="Token 無效或已過期")
+            return
+    elif token:
+        from src.core.auth import verify_token
+        if not verify_token(token):
+            await ws.close(code=4001, reason="Token 無效或已過期")
+            logger.warning("WebSocket 連接被拒絕：提供了無效 token")
+            return
+
     await manager.connect(ws)
     try:
         while True:

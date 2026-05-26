@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/pro.css?v=stockq-pro-v21" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=llm-sse-20260526" />
   <script src="/static/vendor/echarts.min.js?v=5.5.0"></script>
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
@@ -122,7 +122,7 @@
       <span class="tp">回測歷史</span>
     </button>
     <div class="sd" aria-hidden="true"></div>
-    <button type="button" class="sb" data-p="ai" title="AI 分析">
+    <button type="button" class="sb" data-p="ai" title="AI 智能問答">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 0 6h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1 0-6h1V6a4 4 0 0 1 4-4z"/></svg>
       <span class="tp">AI</span>
       <span class="plk">PRO</span>
@@ -231,6 +231,7 @@
                 <div id="bt-pick-catalog" class="bt-pick-list"></div>
               </div>
               <div class="bt-pick-panel" data-bt-pick-panel="hot">
+                <p class="bt-pick-hint">按市值載入熱門 A 股，可滾動瀏覽</p>
                 <div id="bt-pick-hot" class="bt-pick-list bt-pick-list--chips"></div>
               </div>
               <div class="bt-pick-panel" data-bt-pick-panel="search">
@@ -279,6 +280,7 @@
                 <label><input type="checkbox" id="bt-t1" checked /> T+1</label>
                 <label><input type="checkbox" id="bt-limit" checked /> 漲跌停</label>
                 <label><input type="checkbox" id="bt-bg" /> 背景任務</label>
+                <label title="忽略內存與計算緩存，按最新 K 線重新回測"><input type="checkbox" id="bt-force" /> 強制重算</label>
               </div>
               <div class="bt-actions">
                 <button type="button" class="btn btn-ac" id="bt-run-btn">▶ 執行回測</button>
@@ -311,7 +313,7 @@
                 <p><strong>選擇標的與策略後執行回測</strong></p>
                 <p style="margin-top:6px;font-size:.68rem;color:var(--t3)">結果將展示淨值曲線、回撤、成交明細與風險指標</p>
               </div>
-              <div class="bt-data-panel" id="bt-data-panel" style="display:none">
+              <div class="bt-data-panel" id="bt-data-panel" hidden>
                 <div id="bt-verdict" class="bt-verdict"></div>
                 <div id="bt-hero" class="bt-hero-row"></div>
                 <div id="bt-funds" class="bt-funds-bar"></div>
@@ -475,6 +477,7 @@
               <button type="button" class="bt-pick-mode" data-cmp-pick="search">搜尋</button>
             </div>
             <div class="bt-pick-panel on" data-cmp-pick-panel="hot">
+              <p class="bt-pick-hint">按市值載入熱門 A 股，可滾動瀏覽</p>
               <div id="cmp-pick-hot" class="bt-pick-list bt-pick-list--chips"></div>
             </div>
             <div class="bt-pick-panel" data-cmp-pick-panel="watch">
@@ -510,11 +513,11 @@
                 <select id="cmp-metric" class="sel cmp-ctl-strat" style="min-width:130px;width:auto" aria-label="策略指標">
                   <option value="total_return_pct">總收益 %</option>
                   <option value="sharpe_ratio">夏普比率</option>
-                  <option value="sortino_ratio">Sortino</option>
-                  <option value="calmar_ratio">Calmar</option>
-                  <option value="max_drawdown_pct">最大回撤 %</option>
-                  <option value="win_rate_pct">勝率 %</option>
-                  <option value="annual_return_pct">年化收益 %</option>
+                  <option value="sortino_ratio">索提諾比率</option>
+                  <option value="calmar_ratio">卡瑪比率</option>
+                  <option value="max_drawdown_pct">最大回撤</option>
+                  <option value="win_rate_pct">勝率</option>
+                  <option value="annual_return_pct">年化收益</option>
                   <option value="total_trades">交易次數</option>
                 </select>
                 <select id="cmp-days" class="sel cmp-ctl-stock" style="min-width:100px;width:auto;display:none" aria-label="行情天數">
@@ -755,6 +758,31 @@
               </div>
             </section>
             <section class="pnl">
+              <div class="ph"><div class="pt">🤖 LLM 智能問答</div></div>
+              <div class="pb" style="display:grid;gap:10px">
+                <p style="font-size:.72rem;color:var(--t3);margin:0;line-height:1.5">
+                  支援 OpenAI 兼容 API（OpenAI、DeepSeek、通義等）。Key 存於帳號設置；亦可僅填本機（不同步服務器）。
+                </p>
+                <label class="fg-row">API Key
+                  <input type="password" id="set-llm-key" class="inp" placeholder="sk-…" autocomplete="off" />
+                </label>
+                <label class="fg-row">API Base
+                  <input type="text" id="set-llm-base" class="inp" placeholder="https://api.openai.com/v1" />
+                </label>
+                <label class="fg-row">模型
+                  <input type="text" id="set-llm-model" class="inp" placeholder="gpt-4o-mini" />
+                </label>
+                <label style="font-size:.72rem;color:var(--t2)">
+                  <input type="checkbox" id="set-llm-local-only" /> 僅保存到本機瀏覽器（不寫入帳號）
+                </label>
+                <div style="font-size:.7rem;color:var(--t3)" id="set-llm-status">狀態：--</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                  <button type="button" class="btn btn-ac" id="set-llm-save">保存 LLM 設置</button>
+                  <button type="button" class="btn s" id="set-llm-clear">清除 Key</button>
+                </div>
+              </div>
+            </section>
+            <section class="pnl">
               <div class="ph"><div class="pt">數據源狀態</div></div>
               <div class="pb" style="font-size:.72rem;color:var(--t2);line-height:1.8">
                 <div>TradingView：<span id="set-src-tv">--</span></div>
@@ -782,8 +810,31 @@
     <div class="pg" id="pg-journal">
       <div class="pnl"><div class="ph"><div class="pt">交易日誌</div></div><div class="pb"><p class="placeholder-msg">交易日誌開發中…</p></div></div>
     </div>
-    <div class="pg" id="pg-ai">
-      <div class="pnl"><div class="ph"><div class="pt">AI 分析</div><span class="badge b-pu">PRO</span></div><div class="pb"><p class="placeholder-msg">AI 解讀與信號摘要開發中…</p></div></div>
+    <div class="pg pro-page" id="pg-ai">
+      <div class="ai-layout">
+        <div class="pnl ai-panel">
+          <div class="ph">
+            <div class="pt">🤖 智能問答</div>
+            <div class="pa"><span class="badge b-ac" id="ai-status-badge">檢查中…</span></div>
+          </div>
+          <div class="pb ai-chat-wrap">
+            <p class="ai-hint" id="ai-hint">可詢問：北向資金、板塊輪動、個股基本面、策略信號、回測歷史等。回答基於本機數據工具，不會憑空編造行情。</p>
+            <div id="ai-messages" class="ai-messages" role="log" aria-live="polite"></div>
+            <div class="ai-compose">
+              <textarea id="ai-input" class="ai-input" rows="3" placeholder="例如：查 601318 基本面與北向資金近 20 日趨勢…"></textarea>
+              <div class="ai-compose-actions">
+                <label class="ai-stream-opt" title="使用 SSE 流式輸出回答"><input type="checkbox" id="ai-stream" checked /> 流式回答</label>
+                <button type="button" class="btn s" id="ai-clear-btn">清空對話</button>
+                <button type="button" class="btn btn-ac" id="ai-send-btn">發送</button>
+              </div>
+            </div>
+            <details class="ai-tools-detail" id="ai-tools-detail">
+              <summary>可用數據工具（<span id="ai-tool-count">—</span>）</summary>
+              <ul id="ai-tools-list" class="ai-tools-list"></ul>
+            </details>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="pg" id="pg-factor">
       <div class="pnl"><div class="ph"><div class="pt">因子研究</div></div><div class="pb"><p class="placeholder-msg">因子分析開發中…</p></div></div>
@@ -842,7 +893,7 @@
 
 <!-- ═══ SCRIPTS ═══ -->
 <script src="/static/js/utils.js?v=stockq-pro-v5"></script>
-<script src="/static/js/api.js?v=stockq-pro-v6"></script>
+<script src="/static/js/api.js?v=llm-audit-20260526"></script>
 <script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/user-prefs.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/app-store.js?v=stockq-pro-v5"></script>
@@ -851,15 +902,17 @@
 <script src="/static/js/pro/services/market-ticker.js?v=stockq-pro-v10"></script>
 <script src="/static/js/pro/strategy-catalog.js?v=stockq-pro-v6"></script>
 <script src="/static/js/pro/modules/dashboard-pro.js?v=stockq-pro-v8"></script>
-<script src="/static/js/pro/modules/backtest-symbol-picker.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/backtest-pro.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/compare-pro.js?v=stockq-pro-v6"></script>
+<script src="/static/js/pro/stock-pick-data.js?v=20260526"></script>
+<script src="/static/js/pro/modules/backtest-symbol-picker.js?v=stock-pick-20260526"></script>
+<script src="/static/js/pro/modules/backtest-pro.js?v=bt-cache-fix-20260526b"></script>
+<script src="/static/js/pro/modules/compare-pro.js?v=cmp-metrics-zh-20260526"></script>
 <script src="/static/js/pro/modules/watchlist-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/scanner-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/alerts-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/backhistory-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/assets-pro.js?v=stockq-pro-v7"></script>
-<script src="/static/js/pro/modules/settings-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/ai-assistant.js?v=llm-audit-20260526"></script>
+<script src="/static/js/pro/modules/settings-pro.js?v=llm-audit-20260526"></script>
 <script src="/static/js/pro/modules/tasks-pro.js?v=stockq-pro-v7"></script>
 <script src="/static/js/pro/app.js?v=stockq-pro-v9"></script>
 </body>
