@@ -21,6 +21,7 @@ const LocalStore = {
     sidebarCollapsed: false,
     tipDismissed: false,
     compareChips: [],
+    compareCustomPresets: [],
     formDrafts: {},
   },
 
@@ -49,6 +50,7 @@ const LocalStore = {
     if (!Array.isArray(next.recentStocks)) next.recentStocks = [];
     if (!Array.isArray(next.favorites)) next.favorites = [];
     if (!Array.isArray(next.compareChips)) next.compareChips = [];
+    if (!Array.isArray(next.compareCustomPresets)) next.compareCustomPresets = [];
     if (!next.formDrafts || typeof next.formDrafts !== 'object') next.formDrafts = {};
     this._cache = next;
     try {

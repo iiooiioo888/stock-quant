@@ -138,9 +138,20 @@
     return list.sort((a, b) => a.code.localeCompare(b.code));
   }
 
+  /** 多股對比快捷組合（代碼列表） */
+  const COMPARE_PRESETS = [
+    { id: 'liquor', label: '白酒龍頭', codes: ['600519', '000858', '000568', '600809'] },
+    { id: 'bank', label: '銀行板塊', codes: ['600036', '601398', '601166', '000001', '601288'] },
+    { id: 'new_energy', label: '新能源', codes: ['300750', '002594', '601012', '300014', '002460'] },
+    { id: 'tech', label: '科技成長', codes: ['688981', '002415', '300059', '002475', '000725'] },
+    { id: 'dividend', label: '高股息', codes: ['600900', '601088', '600028', '601857', '600887'] },
+    { id: 'index_core', label: '滬深核心', codes: ['600519', '601318', '600036', '300750', '000333'] },
+  ];
+
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.stockPickData = {
     FALLBACK_HOT,
+    COMPARE_PRESETS,
     normalizeCode,
     isValidAshare,
     fetchHotAshare,

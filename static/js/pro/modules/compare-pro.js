@@ -3,7 +3,9 @@
 (() => {
   const $id = (id) => document.getElementById(id);
   const LS_KEY = 'sq_cmp_stocks';
+  const LS_CUSTOM_PRESETS = 'sq_cmp_custom_presets';
   const MAX_STOCKS = 8;
+  const MAX_CUSTOM_PRESETS = 12;
   const pickData = () => window.StockQPro?.stockPickData;
 
   const STOCK_COLORS = ['#e8b830', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#fb923c', '#22d3ee', '#94a3b8'];
@@ -27,6 +29,7 @@
   let strategyDisplayNames = {};
 
   let chart = null;
+  let corrChart = null;
   let bound = false;
   let namesMap = {};
   let catalogAshare = [];
@@ -38,6 +41,10 @@
     chips: [],
     strategyResults: null,
     stockComparison: null,
+    correlation: null,
+    benchmark: null,
+    excessReturn: null,
+    indexOverlay: null,
     running: false,
   };
 
@@ -105,7 +112,7 @@
       return;
     }
     el.innerHTML = state.chips.map((c, i) => `
-      <span class="cmp-chip" data-idx="${i}">
+      <span class="cmp-chip${i === 0 && state.mode === 'stocks' ? ' cmp-chip-bench' : ''}" data-idx="${i}" title="${i === 0 && state.mode === 'stocks' ? '基準檔（雙擊其他 chip 可設為基準）' : '雙擊設為基準'}">
         <span class="cmp-chip-code">${c.code}</span>
         <span class="cmp-chip-name" title="${(c.name || '').replace(/"/g, '&quot;')}">${c.name || c.code}</span>
         <button type="button" class="cmp-chip-x" data-rm="${c.code}" aria-label="移除 ${c.code}">×</button>
@@ -116,7 +123,20 @@
         removeChip(btn.getAttribute('data-rm'));
       });
     });
+    el.querySelectorAll('.cmp-chip').forEach((chip) => {
+      chip.addEventListener('dblclick', () => {
+        const idx = Number(chip.getAttribute('data-idx'));
+        if (!Number.isFinite(idx) || idx <= 0) return;
+        const item = state.chips[idx];
+        state.chips.splice(idx, 1);
+        state.chips.unshift(item);
+        renderChips();
+        window.StockQPro?.App?.toast?.(`已將 ${item.code} 設為基準（首檔）`, 'ok');
+        syncCompareHash();
+      });
+    });
     saveChips();
+    syncCompareHash();
   }
 
   function addChip(code, name = '', opts = {}) {
@@ -178,12 +198,14 @@
     document.querySelectorAll('.cmp-ctl-stock').forEach((el) => {
       el.style.display = state.mode === 'stocks' ? '' : 'none';
     });
+    if (state.mode === 'stocks') renderPresets();
     if (state.mode === 'strategies' && state.chips.length > 1) {
       state.chips = [state.chips[0]];
       renderChips();
       window.StockQPro?.App?.toast?.('多策略模式僅保留第一檔標的', 'inf');
     }
     updateSummaryBadge();
+    syncCompareHash();
     if (state.mode === 'strategies' && state.strategyResults) renderStrategies();
     else if (state.mode === 'stocks' && state.stockComparison) renderStocks();
     else clearCharts();
@@ -215,14 +237,328 @@
   function clearCharts() {
     const ch = chart || initChart();
     if (ch) ch.clear();
+    if (corrChart) corrChart.clear();
     const hd = $id('cmp-metric-hd');
     if (hd) hd.textContent = '';
     const stats = $id('cmp-stats-row');
     if (stats) stats.innerHTML = '';
+    const corr = $id('cmp-corr-panel');
+    if (corr) corr.hidden = true;
+    const heat = $id('cmp-corr-heat');
+    if (heat) heat.innerHTML = '';
     const tb = $id('cmp-tb');
     const thead = $id('cmp-thead');
     if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:28px">選擇標的後點擊「執行對比」</td></tr>';
     if (thead) thead.innerHTML = '';
+  }
+
+  function syncCompareHash() {
+    try {
+      if (window.StockQPro?.App?.current && window.StockQPro.App.current !== 'compare') return;
+      const qs = new URLSearchParams();
+      qs.set('mode', state.mode);
+      if (state.chips.length) qs.set('codes', state.chips.map((c) => c.code).join(','));
+      const days = $id('cmp-days')?.value;
+      if (days && state.mode === 'stocks') qs.set('days', days);
+      const idx = $id('cmp-index')?.value;
+      if (idx && state.mode === 'stocks') qs.set('index', idx);
+      const want = `#/compare?${qs.toString()}`;
+      if (location.hash !== want) history.replaceState(null, '', want);
+    } catch (_) { /* ignore */ }
+  }
+
+  function parseCompareFromHash() {
+    const h = String(location.hash || '');
+    if (!h.includes('compare')) return;
+    const qIdx = h.indexOf('?');
+    if (qIdx < 0) return;
+    const qs = new URLSearchParams(h.slice(qIdx + 1));
+    const mode = qs.get('mode');
+    if (mode === 'stocks' || mode === 'strategies') state.mode = mode;
+    const codes = qs.get('codes');
+    if (codes) {
+      const list = codes.split(/[,，\s]+/).map((x) => normalizeCode(x)).filter(isValidAshare);
+      if (list.length) {
+        state.chips = list.slice(0, MAX_STOCKS).map((code) => ({ code, name: resolveName(code) }));
+      }
+    }
+    const days = qs.get('days');
+    if (days && $id('cmp-days')) $id('cmp-days').value = days;
+    const idx = qs.get('index');
+    if (idx != null && $id('cmp-index')) $id('cmp-index').value = idx;
+  }
+
+  function loadCustomPresets() {
+    try {
+      if (typeof LocalStore !== 'undefined') {
+        const fromStore = LocalStore.get('compareCustomPresets');
+        if (Array.isArray(fromStore)) return fromStore.slice(0, MAX_CUSTOM_PRESETS);
+      }
+      const raw = localStorage.getItem(LS_CUSTOM_PRESETS);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr.slice(0, MAX_CUSTOM_PRESETS) : [];
+      }
+    } catch (_) { /* ignore */ }
+    return [];
+  }
+
+  function saveCustomPresets(list) {
+    const trimmed = list.slice(0, MAX_CUSTOM_PRESETS);
+    try {
+      localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(trimmed));
+      if (typeof LocalStore !== 'undefined') {
+        LocalStore.set('compareCustomPresets', trimmed);
+      }
+    } catch (_) { /* ignore */ }
+    return trimmed;
+  }
+
+  function saveCurrentAsPreset() {
+    if (state.chips.length < 2) {
+      return window.StockQPro?.App?.toast?.('至少 2 檔才能儲存組合', 'inf');
+    }
+    const name = String($id('cmp-preset-name')?.value || '').trim()
+      || `組合 ${new Date().toLocaleDateString('zh-TW')}`;
+    const presets = loadCustomPresets();
+    const entry = {
+      id: `custom_${Date.now()}`,
+      label: name.slice(0, 24),
+      codes: state.chips.map((c) => c.code),
+      savedAt: Date.now(),
+    };
+    const next = [entry, ...presets.filter((p) => p.label !== entry.label)].slice(0, MAX_CUSTOM_PRESETS);
+    saveCustomPresets(next);
+    if ($id('cmp-preset-name')) $id('cmp-preset-name').value = '';
+    renderPresets();
+    window.StockQPro?.App?.toast?.(`已儲存「${entry.label}」`, 'ok');
+  }
+
+  function deleteCustomPreset(id) {
+    const next = loadCustomPresets().filter((p) => p.id !== id);
+    saveCustomPresets(next);
+    renderPresets();
+    window.StockQPro?.App?.toast?.('已刪除自訂組合', 'ok');
+  }
+
+  function renderPresets() {
+    const wrap = $id('cmp-presets');
+    const customWrap = $id('cmp-custom-presets');
+    const presets = pickData()?.COMPARE_PRESETS || [];
+    if (wrap) {
+      wrap.innerHTML = presets.map((p) => `
+        <button type="button" class="cmp-preset-btn" data-preset="${p.id}" title="${p.codes.join(', ')}">${p.label}</button>
+      `).join('');
+      wrap.querySelectorAll('[data-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => applyPreset(btn.getAttribute('data-preset')));
+      });
+    }
+    if (customWrap) {
+      const custom = loadCustomPresets();
+      if (!custom.length) {
+        customWrap.innerHTML = '<p class="bt-pick-hint" style="margin:4px 0 0">尚無自訂組合</p>';
+      } else {
+        customWrap.innerHTML = custom.map((p) => `
+          <span class="cmp-preset-btn cmp-preset-custom" title="${(p.codes || []).join(', ')}">
+            <button type="button" class="cmp-preset-load" data-custom-preset="${p.id}">${p.label}</button>
+            <button type="button" class="cmp-preset-rm" data-rm-preset="${p.id}" aria-label="刪除">×</button>
+          </span>`).join('');
+        customWrap.querySelectorAll('[data-custom-preset]').forEach((btn) => {
+          btn.addEventListener('click', () => applyPreset(btn.getAttribute('data-custom-preset')));
+        });
+        customWrap.querySelectorAll('[data-rm-preset]').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteCustomPreset(btn.getAttribute('data-rm-preset'));
+          });
+        });
+      }
+    }
+  }
+
+  function applyPreset(presetId) {
+    const custom = loadCustomPresets().find((x) => x.id === presetId);
+    const builtin = (pickData()?.COMPARE_PRESETS || []).find((x) => x.id === presetId);
+    const p = custom || builtin;
+    if (!p?.codes?.length) return;
+    setMode('stocks');
+    state.chips = [];
+    p.codes.forEach((code) => addChip(code, resolveName(code), { silent: true }));
+    window.StockQPro?.App?.toast?.(`已載入組合：${p.label}`, 'ok');
+    syncCompareHash();
+  }
+
+  async function fillWatchlistToChips() {
+    setMode('stocks');
+    let items = [];
+    try {
+      const d = await Api.getWatchlist();
+      items = (d?.items || []).map((x) => ({ code: x.code, name: x.name }));
+    } catch (_) { /* ignore */ }
+    items = items.filter((x) => isValidAshare(normalizeCode(x.code))).slice(0, MAX_STOCKS);
+    if (!items.length) return window.StockQPro?.App?.toast?.('自選為空', 'inf');
+    state.chips = items.map((x) => ({ code: normalizeCode(x.code), name: x.name || resolveName(x.code) }));
+    renderChips();
+    window.StockQPro?.App?.toast?.(`已加入 ${items.length} 檔自選`, 'ok');
+  }
+
+  function copyCodesToClipboard() {
+    const text = state.chips.map((c) => c.code).join(',');
+    if (!text) return window.StockQPro?.App?.toast?.('尚無標的', 'inf');
+    const done = () => window.StockQPro?.App?.toast?.('已複製代碼', 'ok');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        window.StockQPro?.App?.toast?.('複製失敗', 'er');
+      });
+      return;
+    }
+    window.StockQPro?.App?.toast?.(text, 'inf');
+  }
+
+  function shareCompareLink() {
+    syncCompareHash();
+    const url = `${location.origin}${location.pathname}${location.hash}`;
+    const done = () => window.StockQPro?.App?.toast?.('已複製分享連結', 'ok');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(done).catch(() => window.StockQPro?.App?.toast?.('複製失敗', 'er'));
+      return;
+    }
+    window.StockQPro?.App?.toast?.(url, 'inf');
+  }
+
+  function initCorrChart() {
+    const el = $id('cmp-corr-heat');
+    if (!el) return null;
+    if (corrChart) {
+      corrChart.resize();
+      return corrChart;
+    }
+    corrChart = echarts.init(el, null, { renderer: 'canvas' });
+    return corrChart;
+  }
+
+  function renderCorrelationPanel() {
+    const panel = $id('cmp-corr-panel');
+    const corr = state.correlation;
+    if (!panel) return;
+    if (!corr?.matrix?.length || !(corr.codes?.length >= 2)) {
+      panel.hidden = true;
+      if (corrChart) corrChart.clear();
+      return;
+    }
+    panel.hidden = false;
+    const codes = corr.codes;
+    const labels = codes.map((c) => `${c}\n${resolveName(c).slice(0, 4)}`);
+    const heatData = [];
+    corr.matrix.forEach((row, i) => {
+      row.forEach((v, j) => {
+        heatData.push([j, i, Number(v)]);
+      });
+    });
+
+    const ch = initCorrChart();
+    if (!ch) return;
+
+    ch.setOption({
+      ...baseChartOpts(),
+      grid: { top: 36, right: 48, bottom: 52, left: 72 },
+      tooltip: {
+        position: 'top',
+        backgroundColor: '#252842',
+        borderColor: '#2d3158',
+        formatter: (p) => {
+          const v = p.data?.[2];
+          const i = p.data?.[1];
+          const j = p.data?.[0];
+          return `<b>${codes[i]} × ${codes[j]}</b><br/>相關係數：${Number(v).toFixed(3)}`;
+        },
+      },
+      xAxis: {
+        type: 'category',
+        data: labels,
+        splitArea: { show: true },
+        axisLabel: { color: '#9b9ab4', fontSize: 9, interval: 0 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: 'category',
+        data: labels,
+        splitArea: { show: true },
+        axisLabel: { color: '#9b9ab4', fontSize: 9, interval: 0 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      },
+      visualMap: {
+        min: -0.2,
+        max: 1,
+        calculable: false,
+        orient: 'vertical',
+        right: 0,
+        top: 'center',
+        itemHeight: 120,
+        text: ['高', '低'],
+        textStyle: { color: '#9b9ab4', fontSize: 9 },
+        inRange: {
+          color: ['#2d3158', '#4a5568', '#5c6b8a', '#60a5fa', '#93c5fd'],
+        },
+      },
+      series: [{
+        name: '相關性',
+        type: 'heatmap',
+        data: heatData,
+        label: {
+          show: codes.length <= 8,
+          color: '#eeeef2',
+          fontSize: 9,
+          formatter: (p) => {
+            const v = Number(p.data?.[2]);
+            return Number.isFinite(v) ? v.toFixed(2) : '';
+          },
+        },
+        emphasis: {
+          itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,.35)' },
+        },
+        itemStyle: {
+          borderColor: '#0f1117',
+          borderWidth: 2,
+        },
+      }],
+      title: {
+        text: `日收益相關性熱力圖 · ${corr.sample_days || 0} 交易日交集`,
+        left: 0,
+        top: 0,
+        textStyle: { color: '#9b9ab4', fontSize: 11, fontWeight: 600 },
+      },
+    }, true);
+  }
+
+  function sortStockCodes(codes, comp) {
+    const mode = $id('cmp-stock-sort')?.value || 'return_desc';
+    const statsOf = (code) => comp[code]?.stats || {};
+    return [...codes].sort((a, b) => {
+      if (mode === 'code') return a.localeCompare(b);
+      const sa = statsOf(a);
+      const sb = statsOf(b);
+      if (mode === 'vol_asc') return Number(sa.volatility_pct ?? 0) - Number(sb.volatility_pct ?? 0);
+      const ra = Number(sa.total_return_pct ?? comp[a]?.relative_return?.slice(-1)[0] ?? 0);
+      const rb = Number(sb.total_return_pct ?? comp[b]?.relative_return?.slice(-1)[0] ?? 0);
+      return mode === 'return_asc' ? ra - rb : rb - ra;
+    });
+  }
+
+  function filterStrategyRows(rows) {
+    const q = String($id('cmp-strat-q')?.value || '').trim().toLowerCase();
+    const minTrades = Number($id('cmp-strat-min-trades')?.value || 0);
+    let out = rows;
+    if (q) {
+      out = out.filter((r) => (
+        String(r.label || '').toLowerCase().includes(q)
+        || String(r.key || '').toLowerCase().includes(q)
+      ));
+    }
+    if (minTrades > 0) out = out.filter((r) => Number(r.trades) >= minTrades);
+    return out;
   }
 
   function metricLabel(key) {
@@ -569,14 +905,17 @@
       raw: r,
     }));
     rows = sortRows(rows, 'v', sortOrder);
+    const beforeFilter = rows.length;
+    rows = filterStrategyRows(rows);
     if (topN > 0) rows = rows.slice(0, topN);
 
     const hd = $id('cmp-metric-hd');
     const code = primaryCode();
     if (hd) {
+      const filtHint = beforeFilter !== rows.length ? ` · 篩選後 ${rows.length}` : '';
       hd.innerHTML = `<span class="lib-legend-item"><b>${code}</b></span>
         <span class="lib-legend-item">指標：${metricLabel(metric)}</span>
-        <span class="lib-legend-item">共 ${raw.length} 策略 · 顯示 ${rows.length}</span>`;
+        <span class="lib-legend-item">共 ${raw.length} 策略 · 顯示 ${rows.length}${filtHint}</span>`;
     }
 
     renderStats(rows, metric);
@@ -593,23 +932,51 @@
       clearCharts();
       return;
     }
-    const codes = Object.keys(comp);
+    const codes = sortStockCodes(Object.keys(comp), comp);
     const dates = comp[codes[0]]?.dates || [];
     const normalize = $id('cmp-normalize')?.checked !== false;
+    const vsBench = $id('cmp-vs-benchmark')?.checked && state.chips.length > 0;
+    const chartKind = $id('cmp-stock-chart')?.value || 'line';
+    const benchCode = state.benchmark || primaryCode();
+    const idx = state.indexOverlay;
+    const showIndex = idx?.relative_return?.length && ($id('cmp-normalize')?.checked !== false || vsBench);
 
-    const series = codes.map((code, i) => {
+    const series = codes.map((code) => {
       const item = comp[code];
       let data = item.relative_return || [];
-      if (!normalize && item.close) data = item.close;
-      return {
+      if (vsBench && state.excessReturn?.[code]) data = state.excessReturn[code];
+      else if (!normalize && item.close) data = item.close;
+      const base = {
         name: `${code} ${resolveName(code)}`,
-        type: 'line',
+        type: chartKind === 'area' ? 'line' : 'line',
         smooth: true,
         showSymbol: false,
         lineStyle: { width: 2 },
         data,
       };
+      if (chartKind === 'area') {
+        base.areaStyle = { opacity: 0.12 };
+      }
+      return base;
     });
+
+    if (showIndex) {
+      series.push({
+        name: `${idx.code} ${idx.name || '指數'}`,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 2, type: 'dashed', color: '#94a3b8' },
+        itemStyle: { color: '#94a3b8' },
+        data: idx.relative_return,
+        z: 10,
+      });
+    }
+
+    const yName = vsBench
+      ? `相對 ${benchCode} 超額 %`
+      : (normalize ? '相對收益 %' : '收盤價');
+    const pctAxis = normalize || vsBench;
 
     ch.setOption({
       ...baseChartOpts(),
@@ -620,7 +987,7 @@
         trigger: 'axis',
         backgroundColor: '#252842',
         borderColor: '#2d3158',
-        valueFormatter: (v) => (normalize ? `${Number(v).toFixed(2)}%` : Number(v).toFixed(2)),
+        valueFormatter: (v) => (pctAxis ? `${Number(v).toFixed(2)}%` : Number(v).toFixed(2)),
       },
       dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8 }],
       xAxis: {
@@ -632,11 +999,11 @@
       yAxis: {
         type: 'value',
         scale: true,
-        name: normalize ? '相對收益 %' : '收盤價',
+        name: yName,
         splitLine: { lineStyle: { color: '#1d2033', type: 'dashed' } },
         axisLabel: {
           color: '#5c5b72',
-          formatter: normalize ? '{value}%' : '{value}',
+          formatter: pctAxis ? '{value}%' : '{value}',
         },
       },
       series,
@@ -644,58 +1011,103 @@
 
     const hd = $id('cmp-metric-hd');
     if (hd) {
+      const idxHint = showIndex ? ` · 指數 ${idx.code}` : '';
       hd.innerHTML = `<span class="lib-legend-item">區間：${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}</span>
-        <span class="lib-legend-item">${normalize ? '歸一化累計收益' : '收盤價'}</span>
+        <span class="lib-legend-item">${vsBench ? `超額 vs ${benchCode}` : (normalize ? '歸一化累計收益' : '收盤價')}${idxHint}</span>
         <span class="lib-legend-item">${codes.length} 檔</span>`;
     }
 
-    renderStockStats(codes, comp, normalize);
-    renderStockTable(codes, comp, normalize);
+    renderStockStats(codes, comp, normalize, vsBench, idx);
+    renderStockTable(codes, comp, normalize, vsBench, !!idx);
+    renderCorrelationPanel();
   }
 
-  function renderStockStats(codes, comp, normalize) {
+  function stockReturnVal(code, comp, normalize, vsBench) {
+    const item = comp[code];
+    const st = item?.stats || {};
+    if (vsBench && state.excessReturn?.[code]?.length) {
+      const ex = state.excessReturn[code];
+      return ex[ex.length - 1];
+    }
+    if (st.total_return_pct != null && normalize) return st.total_return_pct;
+    const rel = item?.relative_return || [];
+    return rel.length ? rel[rel.length - 1] : 0;
+  }
+
+  function renderStockStats(codes, comp, normalize, vsBench, idx) {
     const el = $id('cmp-stats-row');
     if (!el) return;
-    const rets = codes.map((code) => {
-      const rel = comp[code]?.relative_return || [];
-      const last = rel.length ? rel[rel.length - 1] : 0;
-      return { code, name: resolveName(code), ret: last };
-    });
+    const rets = codes.map((code) => ({
+      code,
+      ret: stockReturnVal(code, comp, normalize, vsBench),
+      vol: Number(comp[code]?.stats?.volatility_pct ?? 0),
+      dd: Number(comp[code]?.stats?.max_drawdown_pct ?? 0),
+    }));
     const best = [...rets].sort((a, b) => b.ret - a.ret)[0];
     const worst = [...rets].sort((a, b) => a.ret - b.ret)[0];
-    el.innerHTML = [
-      { lbl: '區間最佳', val: best ? `${best.code} ${formatMetricValue('total_return_pct', best.ret)}` : '—', cls: 'pos' },
-      { lbl: '區間最弱', val: worst ? `${worst.code} ${formatMetricValue('total_return_pct', worst.ret)}` : '—', cls: 'neg' },
-      { lbl: '對比檔數', val: codes.length, cls: '', raw: true },
-    ].map((c) => `<div class="cmp-stat-card"><div class="cmp-stat-lbl">${c.lbl}</div><div class="cmp-stat-val ${c.cls}">${c.val}</div></div>`).join('');
+    const avgVol = rets.length ? rets.reduce((s, x) => s + x.vol, 0) / rets.length : 0;
+    const idxRet = idx?.stats?.total_return_pct;
+    const cards = [
+      { lbl: vsBench ? '超額最佳' : '區間最佳', val: best ? `${best.code} ${formatMetricValue('total_return_pct', best.ret)}` : '—', cls: 'pos' },
+      { lbl: vsBench ? '超額最弱' : '區間最弱', val: worst ? `${worst.code} ${formatMetricValue('total_return_pct', worst.ret)}` : '—', cls: 'neg' },
+      { lbl: '平均波動', val: `${avgVol.toFixed(2)}%`, cls: '', raw: true },
+    ];
+    if (idx && idxRet != null) {
+      cards.push({
+        lbl: `${idx.name || idx.code}`,
+        val: formatMetricValue('total_return_pct', idxRet),
+        cls: valueClass('total_return_pct', idxRet),
+      });
+    } else {
+      cards.push({ lbl: '對比檔數', val: codes.length, cls: '', raw: true });
+    }
+    el.innerHTML = cards.map((c) => `<div class="cmp-stat-card"><div class="cmp-stat-lbl">${c.lbl}</div><div class="cmp-stat-val ${c.cls}">${c.val}</div></div>`).join('');
   }
 
-  function renderStockTable(codes, comp, normalize) {
+  function renderStockTable(codes, comp, normalize, vsBench, hasIndex) {
     const thead = $id('cmp-thead');
     const tb = $id('cmp-tb');
     if (!tb) return;
+    const retLbl = vsBench ? '超額收益' : (normalize ? '區間收益' : '最新價');
+    const betaCol = hasIndex ? '<th>Beta</th><th>Alpha</th>' : '';
     if (thead) {
       thead.innerHTML = `<tr>
+        <th class="cmp-rank">#</th>
         <th>代碼</th><th>名稱</th>
-        <th>${normalize ? '區間收益' : '最新價'}</th>
-        <th>數據點</th>
-        <th></th>
+        <th>${retLbl}</th>
+        <th>波動</th>
+        <th>最大回撤</th>
+        ${betaCol}
+        <th>操作</th>
       </tr>`;
     }
-    tb.innerHTML = codes.map((code) => {
+    tb.innerHTML = codes.map((code, i) => {
       const item = comp[code];
-      const rel = item?.relative_return || [];
-      const last = rel.length ? rel[rel.length - 1] : 0;
+      const st = item?.stats || {};
+      const ret = stockReturnVal(code, comp, normalize, vsBench);
       const close = item?.close?.length ? item.close[item.close.length - 1] : '--';
-      const val = normalize ? last : close;
-      const cls = normalize ? valueClass('total_return_pct', val) : '';
-      const txt = normalize ? formatMetricValue('total_return_pct', val) : close;
+      const retTxt = (normalize || vsBench)
+        ? formatMetricValue('total_return_pct', ret)
+        : close;
+      const cls = (normalize || vsBench) ? valueClass('total_return_pct', ret) : '';
+      const volTxt = st.volatility_pct != null ? `${Number(st.volatility_pct).toFixed(2)}%` : '—';
+      const ddTxt = st.max_drawdown_pct != null ? formatMetricValue('max_drawdown_pct', st.max_drawdown_pct) : '—';
+      const betaTxt = st.beta_vs_index != null ? Number(st.beta_vs_index).toFixed(2) : '—';
+      const alphaTxt = st.alpha_vs_index_pct != null ? formatMetricValue('total_return_pct', st.alpha_vs_index_pct) : '—';
+      const rankCls = i < 3 ? 'cmp-rank top' : 'cmp-rank';
+      const betaCells = hasIndex ? `<td>${betaTxt}</td><td class="${valueClass('total_return_pct', st.alpha_vs_index_pct)}">${alphaTxt}</td>` : '';
       return `<tr>
+        <td class="${rankCls}">${i + 1}</td>
         <td class="ac">${code}</td>
         <td>${resolveName(code)}</td>
-        <td class="${cls}">${txt}</td>
-        <td>${rel.length}</td>
-        <td><button type="button" class="btn s" data-cmp-bt="${code}">回測</button></td>
+        <td class="${cls}">${retTxt}</td>
+        <td>${volTxt}</td>
+        <td class="neg">${ddTxt}</td>
+        ${betaCells}
+        <td class="cmp-row-actions">
+          <button type="button" class="btn s" data-cmp-asset="${code}">資產</button>
+          <button type="button" class="btn s" data-cmp-bt="${code}">回測</button>
+        </td>
       </tr>`;
     }).join('');
     tb.querySelectorAll('[data-cmp-bt]').forEach((btn) => {
@@ -703,6 +1115,18 @@
         const code = btn.getAttribute('data-cmp-bt');
         window.StockQPro?.App?.nav?.('backtest', { syncHash: true });
         window.StockQPro?.backtestSymbol?.setSymbol?.(code, resolveName(code));
+      });
+    });
+    tb.querySelectorAll('[data-cmp-asset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-cmp-asset');
+        const sym = `${code}.SH`;
+        window.StockQPro?.App?.nav?.('assets', { syncHash: true });
+        try {
+          window.StockQPro?.pages?.assets?.openDetail?.(sym);
+        } catch (_) {
+          location.hash = `#/asset/${encodeURIComponent(sym)}`;
+        }
       });
     });
   }
@@ -742,17 +1166,28 @@
     if (btn) btn.disabled = true;
     state.running = true;
     try {
-      const d = await Api.compareStocks(codes, days);
+      const vsBench = $id('cmp-vs-benchmark')?.checked && state.chips.length > 0;
+      const benchmark = vsBench ? primaryCode() : undefined;
+      const indexCode = $id('cmp-index')?.value || '';
+      const d = await Api.compareStocks(codes, days, { benchmark, index: indexCode || undefined });
       if (!d?.success) throw new Error(d?.error || '對比失敗');
       state.stockComparison = d.comparison || {};
+      state.correlation = d.correlation || null;
+      state.benchmark = d.benchmark || null;
+      state.excessReturn = d.excess_return || null;
+      state.indexOverlay = d.index_overlay || null;
       const missing = d.missing || [];
       if (missing.length) {
         window.StockQPro?.App?.toast?.(`部分標的無數據：${missing.join(', ')}`, 'inf');
+      }
+      if (indexCode && !state.indexOverlay) {
+        window.StockQPro?.App?.toast?.('指數數據暫不可用，已略過疊加', 'inf');
       }
       renderStocks();
       window.StockQPro?.App?.toast?.(`已載入 ${d.loaded || 0}/${d.total || codes.length} 檔`, 'ok');
     } catch (e) {
       state.stockComparison = null;
+      state.indexOverlay = null;
       clearCharts();
       window.StockQPro?.App?.toast?.(`對比失敗：${e?.message || e}`, 'er');
     } finally {
@@ -814,6 +1249,16 @@
       dates.forEach((dt, i) => {
         lines.push([dt, ...codes.map((c) => state.stockComparison[c]?.relative_return?.[i] ?? '')].join(','));
       });
+      lines.push('');
+      lines.push('code,total_return_pct,volatility_pct,max_drawdown_pct,annual_return_pct');
+      codes.forEach((c) => {
+        const st = state.stockComparison[c]?.stats || {};
+        lines.push([c, st.total_return_pct, st.volatility_pct, st.max_drawdown_pct, st.annual_return_pct].join(','));
+      });
+      if (state.indexOverlay?.stats) {
+        const ist = state.indexOverlay.stats;
+        lines.push([state.indexOverlay.code, ist.total_return_pct, ist.volatility_pct, ist.max_drawdown_pct, ist.annual_return_pct].join(','));
+      }
       Api.downloadBlob(lines.join('\n'), `stocks_compare_${Date.now()}.csv`, 'text/csv;charset=utf-8');
       window.StockQPro?.App?.toast?.('已匯出 CSV', 'ok');
       return;
@@ -1002,7 +1447,25 @@
     $id('cmp-search-q')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') runSearch();
     });
-    $id('cmp-clear-chips')?.addEventListener('click', clearChips);
+    $id('cmp-clear-chips')?.addEventListener('click', () => {
+      clearChips();
+      state.stockComparison = null;
+      state.correlation = null;
+      state.excessReturn = null;
+      state.indexOverlay = null;
+      clearCharts();
+      syncCompareHash();
+    });
+    $id('cmp-copy-codes')?.addEventListener('click', copyCodesToClipboard);
+    $id('cmp-fill-watch')?.addEventListener('click', fillWatchlistToChips);
+    $id('cmp-share-link')?.addEventListener('click', shareCompareLink);
+    $id('cmp-refresh')?.addEventListener('click', () => {
+      if (state.running) return;
+      if (state.mode === 'stocks' && state.chips.length >= 2) runStocks();
+      else if (state.mode === 'strategies' && primaryCode()) runStrategies();
+      else window.StockQPro?.App?.toast?.('請先選擇標的並執行對比', 'inf');
+    });
+    $id('cmp-preset-save')?.addEventListener('click', saveCurrentAsPreset);
     $id('cmp-use-bt')?.addEventListener('click', () => {
       const sym = window.StockQPro?.backtestSymbol;
       const c = sym?.getSymbol?.() || '';
@@ -1022,17 +1485,36 @@
         if (state.strategyResults?.length) renderStrategies();
       });
     });
+    ['cmp-strat-q', 'cmp-strat-min-trades'].forEach((id) => {
+      $id(id)?.addEventListener('input', () => {
+        if (state.strategyResults?.length) renderStrategies();
+      });
+      $id(id)?.addEventListener('change', () => {
+        if (state.strategyResults?.length) renderStrategies();
+      });
+    });
     $id('cmp-days')?.addEventListener('change', () => {
+      syncCompareHash();
       if (state.stockComparison) runStocks();
     });
-    $id('cmp-normalize')?.addEventListener('change', () => {
-      if (state.stockComparison) renderStocks();
+    $id('cmp-index')?.addEventListener('change', () => {
+      syncCompareHash();
+      if (state.stockComparison) runStocks();
+    });
+    ['cmp-normalize', 'cmp-vs-benchmark', 'cmp-stock-chart', 'cmp-stock-sort'].forEach((id) => {
+      $id(id)?.addEventListener('change', () => {
+        if (state.stockComparison) {
+          if (id === 'cmp-vs-benchmark') runStocks();
+          else renderStocks();
+        }
+      });
     });
   }
 
   async function init() {
     bindControls();
     loadChipsFromStorage();
+    parseCompareFromHash();
     if (!state.chips.length) {
       addChip('600519', '貴州茅台', { silent: true });
     } else {
@@ -1047,16 +1529,32 @@
   }
 
   function onShow() {
-    setTimeout(() => chart?.resize(), 60);
+    parseCompareFromHash();
+    renderChips();
+    renderPresets();
+    setMode(state.mode);
+    if (state.stockComparison) renderStocks();
+    setTimeout(() => {
+      chart?.resize();
+      corrChart?.resize();
+    }, 60);
   }
 
   function unload() {
     /* keep chart instance */
   }
 
-  window.addEventListener('resize', () => chart?.resize());
+  window.addEventListener('resize', () => {
+    chart?.resize();
+    corrChart?.resize();
+  });
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
-  window.StockQPro.pages.compare = { init, onShow, unload };
+  window.StockQPro.pages.compare = {
+    init,
+    onShow,
+    unload,
+    applyFromHash: parseCompareFromHash,
+  };
 })();

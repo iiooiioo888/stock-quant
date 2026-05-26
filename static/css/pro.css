@@ -970,6 +970,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
   border:1px solid rgba(232,184,48,.35);border-radius:100px;background:rgba(232,184,48,.1);
   font-family:var(--fm);font-size:.62rem;color:var(--ac);
 }
+.cmp-chip-bench{border-color:rgba(96,165,250,.55);background:rgba(96,165,250,.12);box-shadow:0 0 0 1px rgba(96,165,250,.15)}
 .cmp-chip-code{font-weight:700}
 .cmp-chip-name{color:var(--t2);max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmp-chip-x{
@@ -994,6 +995,34 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .cmp-table-wrap{margin-top:4px}
 .cmp-rank{width:28px;color:var(--t3);font-family:var(--fm);font-size:.62rem}
 .cmp-rank.top{color:var(--ac);font-weight:700}
+.cmp-preset-block{margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)}
+.cmp-presets{display:flex;flex-wrap:wrap;gap:6px}
+.cmp-preset-btn{
+  padding:4px 10px;border:1px solid var(--bd);border-radius:100px;background:var(--bg2);
+  font-size:.6rem;color:var(--t2);cursor:pointer;font-family:var(--fm);
+}
+.cmp-preset-btn:hover{border-color:rgba(232,184,48,.45);color:var(--ac)}
+.cmp-custom-preset-save{display:flex;gap:6px;margin-top:8px}
+.cmp-custom-preset-save .inp{flex:1;min-width:0;font-size:.64rem}
+.cmp-custom-presets{margin-top:6px}
+.cmp-preset-btn.cmp-preset-custom{padding-right:6px;display:inline-flex;align-items:center;gap:4px}
+.cmp-preset-load{
+  border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0;
+}
+.cmp-preset-rm{
+  width:16px;height:16px;border:none;border-radius:50%;background:var(--bg3);color:var(--t3);
+  cursor:pointer;font-size:.7rem;line-height:1;padding:0;
+}
+.cmp-preset-rm:hover{background:var(--rd);color:#fff}
+.cmp-corr-panel{margin-bottom:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--r);background:rgba(14,16,24,.4)}
+.cmp-corr-hd{font-size:.64rem;color:var(--t2);margin-bottom:8px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cmp-corr-heat{width:100%;height:220px;min-height:180px}
+.cmp-corr-scroll{overflow-x:auto;margin-top:8px}
+.cmp-corr-tbl th,.cmp-corr-tbl td{text-align:center;font-family:var(--fm);font-size:.58rem;padding:4px 6px}
+.cmp-corr-tbl td.corr-high{color:var(--quote-up)}
+.cmp-corr-tbl td.corr-low{color:var(--quote-down)}
+.cmp-corr-tbl td.corr-diag{color:var(--t4)}
+.cmp-row-actions{display:flex;flex-wrap:wrap;gap:4px;white-space:nowrap}
 
 /* ═══ 任務中心 v2（tasks-hub）═══ */
 .tasks-hub{display:flex;flex-direction:column;gap:var(--gap)}

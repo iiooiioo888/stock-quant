@@ -495,8 +495,19 @@
               </div>
               <div id="cmp-pick-search" class="bt-pick-list"></div>
             </div>
+            <div class="cmp-preset-block cmp-ctl-stock" style="display:none">
+              <p class="bt-pick-hint">快捷組合（點擊載入）</p>
+              <div id="cmp-presets" class="cmp-presets"></div>
+              <div class="cmp-custom-preset-save">
+                <input type="text" id="cmp-preset-name" class="inp" placeholder="自訂組合名稱" maxlength="24" />
+                <button type="button" class="btn s" id="cmp-preset-save">儲存</button>
+              </div>
+              <div id="cmp-custom-presets" class="cmp-presets cmp-custom-presets"></div>
+            </div>
             <div class="cmp-side-actions">
               <button type="button" class="btn s" id="cmp-use-bt">沿用回測標的</button>
+              <button type="button" class="btn s cmp-ctl-stock" id="cmp-fill-watch" style="display:none">全選自選</button>
+              <button type="button" class="btn s" id="cmp-copy-codes">複製代碼</button>
               <button type="button" class="btn s" id="cmp-clear-chips">清空</button>
             </div>
           </div>
@@ -526,6 +537,27 @@
                   <option value="250" selected>近 250 日</option>
                   <option value="500">近 500 日</option>
                 </select>
+                <select id="cmp-index" class="sel cmp-ctl-stock" style="min-width:108px;width:auto;display:none" aria-label="疊加指數基準">
+                  <option value="">不疊加指數</option>
+                  <option value="000300">滬深300</option>
+                  <option value="399006">創業板指</option>
+                  <option value="000016">上證50</option>
+                  <option value="399001">深證成指</option>
+                  <option value="000905">中證500</option>
+                </select>
+                <select id="cmp-stock-chart" class="sel cmp-ctl-stock" style="min-width:96px;width:auto;display:none" aria-label="走勢圖類型">
+                  <option value="line">折線</option>
+                  <option value="area">面積</option>
+                </select>
+                <select id="cmp-stock-sort" class="sel cmp-ctl-stock" style="min-width:100px;width:auto;display:none" aria-label="表格排序">
+                  <option value="return_desc">收益↓</option>
+                  <option value="return_asc">收益↑</option>
+                  <option value="vol_asc">波動↑</option>
+                  <option value="code">代碼</option>
+                </select>
+                <label class="tk-auto-label cmp-ctl-stock" style="display:none" title="以列表第一檔為基準，顯示超額收益">
+                  <input type="checkbox" id="cmp-vs-benchmark" /> 相對首檔
+                </label>
                 <select id="cmp-chart-type" class="sel cmp-ctl-strat" style="min-width:110px;width:auto" aria-label="圖表類型">
                   <option value="bar">橫向排行</option>
                   <option value="scatter">風險收益散點</option>
@@ -543,12 +575,24 @@
                 <label class="tk-auto-label cmp-ctl-stock" style="display:none">
                   <input type="checkbox" id="cmp-normalize" checked /> 歸一化收益
                 </label>
+                <input type="search" id="cmp-strat-q" class="inp cmp-ctl-strat" placeholder="篩策略名稱" style="min-width:110px;width:auto;display:none" aria-label="策略名稱篩選" />
+                <select id="cmp-strat-min-trades" class="sel cmp-ctl-strat" style="min-width:100px;width:auto;display:none" aria-label="最少交易次數">
+                  <option value="0">交易次數不限</option>
+                  <option value="5">≥5 筆</option>
+                  <option value="10">≥10 筆</option>
+                  <option value="20">≥20 筆</option>
+                </select>
                 <button type="button" class="btn btn-ac" id="cmp-run">執行對比</button>
+                <button type="button" class="btn s" id="cmp-refresh" title="使用當前標的重跑">刷新</button>
+                <button type="button" class="btn s" id="cmp-share-link" title="複製分享連結">分享</button>
                 <button type="button" class="btn s" id="cmp-export-png">PNG</button>
                 <button type="button" class="btn s" id="cmp-export-csv">CSV</button>
               </div>
               <div id="cmp-metric-hd" class="pro-meta-bar cmp-metric-hd"></div>
               <div id="cmp-stats-row" class="cmp-stats-row"></div>
+              <div id="cmp-corr-panel" class="cmp-corr-panel" hidden>
+                <div id="cmp-corr-heat" class="cmp-corr-heat"></div>
+              </div>
               <div id="cmp-ch" class="chart-panel cmp-chart-main"></div>
               <div class="table-wrap cmp-table-wrap">
                 <table class="tbl tbl-compact" id="cmp-table">
@@ -905,7 +949,7 @@
 <script src="/static/js/pro/stock-pick-data.js?v=20260526"></script>
 <script src="/static/js/pro/modules/backtest-symbol-picker.js?v=stock-pick-20260526"></script>
 <script src="/static/js/pro/modules/backtest-pro.js?v=bt-cache-fix-20260526b"></script>
-<script src="/static/js/pro/modules/compare-pro.js?v=cmp-metrics-zh-20260526"></script>
+<script src="/static/js/pro/modules/compare-pro.js?v=cmp-index-heat-custom-20260527"></script>
 <script src="/static/js/pro/modules/watchlist-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/scanner-pro.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/modules/alerts-pro.js?v=stockq-pro-v5"></script>

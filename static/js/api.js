@@ -392,8 +392,12 @@ const Api = {
     return this.get(url);
   },
 
-  async compareStocks(codes, days = 250) {
-    return this.post('/api/stocks/compare', { codes, days });
+  async compareStocks(codes, days = 250, opts = {}) {
+    const body = { codes, days };
+    if (opts.benchmark) body.benchmark = opts.benchmark;
+    if (opts.index) body.index = opts.index;
+    if (opts.withStats === false) body.with_stats = false;
+    return this.post('/api/stocks/compare', body);
   },
 
   async runTradeAnalysis({ code, strategy, params }) {
