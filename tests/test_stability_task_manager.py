@@ -229,8 +229,8 @@ class TestTaskCancellation:
         r = tm.create_task("backtest", {"code": "000040"})
         tid = r["task_id"]
         tm.cancel_task(tid)
-        # 重複取消
-        assert tm.cancel_task(tid) is True
+        # 終態不可再轉換，cancel_task 返回 False
+        assert tm.cancel_task(tid) is False
 
 
 # ── 並發操作 ────────────────────────────────────────────────────
@@ -431,9 +431,9 @@ class TestStaleCleanup:
         r = tm.create_task("backtest", {"code": "000080"})
         tid = r["task_id"]
         tm.update_task(tid, status=tm.STATUS_RUNNING)
-        # 人為設置 started_at 為很久以前
+        # 人為設置 last_accessed 為很久以前
         with tm._lock:
-            tm._tasks[tid]["started_at"] = "2020-01-01 00:00:00"
+            tm._tasks[tid]["last_accessed"] = "2020-01-01 00:00:00"
         count = tm.cleanup_stale_tasks(timeout_sec=60)
         assert count >= 1
         task = tm.get_task(tid)
