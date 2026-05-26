@@ -21,7 +21,8 @@ class TestMarketFetch:
 
         item = mf.build_index_chart_item("^GSPC", "標普 500", 60)
         assert item is not None
-        assert item["source"] == "eastmoney"
+        assert item["source"] == "東財"
+        assert item["source_raw"] == "eastmoney"
         assert len(item["kline"]) == 2
         assert item["latest"] == 102.0
 

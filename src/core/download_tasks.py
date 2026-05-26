@@ -1,6 +1,7 @@
 """
 市場數據下載任務 — 支持進度回報與任務列表展示
 """
+import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -100,7 +101,7 @@ def _download_codes_parallel(
         _check_cancelled(task_id)
         count = download_one(code, market=mkt)
         if throttle > 0:
-            time.sleep(throttle)
+            time.sleep(throttle * random.uniform(0.7, 1.3))
         return index, code, count
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -233,7 +234,8 @@ def run_download_all(task_id: str = None) -> dict:
         mkt = _market_key_to_mkt(market_key)
         count = download_one(code, market=mkt)
         if throttle > 0:
-            time.sleep(0.5 if market_key == "a_share" else 0.3)
+            base = 0.5 if market_key == "a_share" else 0.3
+            time.sleep(base * random.uniform(0.7, 1.3))
         return global_idx, market_key, code, count
 
     with ThreadPoolExecutor(max_workers=workers) as pool:

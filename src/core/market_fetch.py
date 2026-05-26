@@ -2,8 +2,11 @@
 統一行情拉取 — 多數據源自動降級
 
 優先級（依標的類型略有不同）：
-  本地庫 → Yahoo Finance → 東方財富 → Twelve Data（全球標的）
+  目錄 IB → TradingView → 本地庫 → Yahoo → 東方財富 → Twelve Data（全球標的）
 實時報價：A 股走 realtime.fetch_one_realtime；全球走 global_market.get_global_realtime
+
+寫入本地 K 線：persist_kline_df → defer_data_cache_clear；批量任務結束後 flush（見 data_pipeline）。
+財報：fundamental.get_fundamentals / data_pipeline.resolve_financials（非僅讀空表）。
 """
 from __future__ import annotations
 
@@ -245,14 +248,86 @@ def df_to_kline_records(df: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _source_label(raw: str) -> str:
+    """統一來源顯示名。"""
+    m = {
+        "tradingview": "TradingView",
+        "ib": "IB",
+        "yahoo": "Yahoo",
+        "eastmoney": "東財",
+        "local_db": "本地",
+        "global": "Global",
+        "twelvedata": "Twelve Data",
+        "a_share_realtime": "A股實時",
+    }
+    if not raw:
+        return ""
+    parts = str(raw).split("+")
+    return "+".join(m.get(p, p) for p in parts)
+
+
+def _fetch_catalog_primary(symbol: str, days: int) -> tuple[pd.DataFrame, dict, str]:
+    """
+    按目錄優先拉 IB → TradingView；無目錄或未命中則返回空。
+    """
+    from src.core.market_catalog import lookup_instrument
+
+    inst = lookup_instrument(symbol)
+    if not inst:
+        return pd.DataFrame(), {}, ""
+
+    try:
+        from src.config import settings
+    except Exception:
+        settings = None
+
+    # 1. Interactive Brokers
+    if inst.ib and settings and getattr(settings, "ib_enabled", False):
+        try:
+            from src.core.ib_data import fetch_ib_bundle
+
+            df, quote, src = fetch_ib_bundle(inst.ib, days)
+            if not df.empty or quote.get("price"):
+                return df, quote, src
+        except Exception as e:
+            logger.debug(f"IB 目錄 {symbol} 失敗: {e}")
+
+    # 2. TradingView
+    if inst.tv and (not settings or getattr(settings, "tradingview_enabled", True)):
+        try:
+            from src.core.tradingview_data import fetch_tv_bundle
+
+            df, quote, src = fetch_tv_bundle(inst.tv, inst.scanner, days, inst.symbol)
+            if not df.empty or quote.get("price"):
+                return df, quote, src
+        except Exception as e:
+            logger.debug(f"TradingView 目錄 {symbol} 失敗: {e}")
+
+    return pd.DataFrame(), {}, ""
+
+
 def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
-    """首頁指數卡片：K 線 + 報價（多源）"""
-    df, hist_source = fetch_history_df(symbol, days)
+    """首頁指數卡片：K 線 + 報價（IB → TV → 多源降級）"""
+    from src.core.market_catalog import lookup_instrument
+
+    inst = lookup_instrument(symbol)
+    group = inst.group if inst else ""
+    tv_symbol = inst.tv if inst else ""
+    topbar = inst.topbar if inst else True
+
+    df, quote, primary_source = _fetch_catalog_primary(symbol, days)
+    hist_source = primary_source
+    quote_source = primary_source
+
     if df.empty or len(df) < 2:
-        return None
+        df, hist_source = fetch_history_df(symbol, days)
+        if df.empty or len(df) < 2:
+            return None
+
+    if not quote:
+        quote, quote_source = fetch_quote(symbol)
 
     latest, change, change_pct = _metrics_from_df(df)
-    quote, quote_source = fetch_quote(symbol)
 
     if quote.get("price"):
         latest = float(quote["price"])
@@ -272,7 +347,11 @@ def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
         "change": round(change, 4),
         "change_pct": round(change_pct, 2),
         "currency": quote.get("currency", ""),
-        "source": source,
+        "source": _source_label(source),
+        "source_raw": source,
+        "tv_symbol": tv_symbol,
+        "group": group,
+        "topbar": topbar,
         "kline": df_to_kline_records(df),
     }
 

@@ -63,7 +63,7 @@ def test_ensure_daily_kline_fetches_once_when_empty(monkeypatch):
 
     monkeypatch.setattr("src.core.local_kline.load_daily_kline", fake_load)
     monkeypatch.setattr("src.core.history.download_one", fake_download)
-    monkeypatch.setattr("src.core.local_kline.clear_data_cache", lambda: None)
+    monkeypatch.setattr("src.core.db.clear_data_cache", lambda **kw: None)
 
     df, source = ensure_daily_kline("600519", min_bars=2, auto_fetch=True)
     assert source == "fetched"

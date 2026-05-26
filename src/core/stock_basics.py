@@ -13,6 +13,9 @@ from src.utils.logger import logger
 
 def _normalize_code(code: str) -> str:
     code = str(code).strip()
+    upper = code.upper()
+    if upper.endswith((".HK", ".US")):
+        return upper
     if code.isdigit() and len(code) < 6:
         return code.zfill(6)
     return code
@@ -102,10 +105,34 @@ def load_stock_profile(code: str) -> dict:
     }
 
 
-def load_stock_financials(code: str) -> Optional[dict]:
-    """合併 fundamentals 表與 stock_universe / 實時快照的財務欄位。"""
+def load_stock_financials(
+    code: str,
+    allow_fetch: bool = True,
+    max_age_days: int = 7,
+) -> Optional[dict]:
+    """合併 fundamentals 表與 stock_universe / 實時快照；A 股可觸發在線補齊。"""
     code = _normalize_code(code)
     realtime, fundamentals = _load_aux_data(code)
+
+    if allow_fetch and code.isdigit() and len(code) == 6:
+        from src.core.data_pipeline import is_stale
+        from src.core.fundamental import get_fundamentals
+
+        stale = not fundamentals or is_stale(fundamentals.get("update_date"), max_age_days)
+        missing_core = not fundamentals or fundamentals.get("pe_ttm") is None
+        if stale or missing_core:
+            fresh = get_fundamentals(code, max_age_days=max_age_days)
+            if fresh:
+                fundamentals = {
+                    k: fresh[k]
+                    for k in (
+                        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+                        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
+                        "revenue", "net_profit", "update_date", "name",
+                    )
+                    if fresh.get(k) is not None
+                }
+
     profile = load_stock_profile(code)
 
     fin: dict = {"code": code, "has_data": False}
@@ -130,10 +157,15 @@ def load_stock_financials(code: str) -> Optional[dict]:
         fin["realtime_change_pct"] = realtime.get("change_pct")
         fin["realtime_updated_at"] = realtime.get("updated_at")
 
+    if fundamentals.get("source"):
+        fin["source"] = fundamentals["source"]
+    elif allow_fetch:
+        fin["source"] = "merged"
+
     fin["has_data"] = any(
         fin.get(k) is not None
         for k in fin
-        if k not in ("code", "has_data", "realtime_price", "realtime_change_pct", "realtime_updated_at")
+        if k not in ("code", "has_data", "source", "realtime_price", "realtime_change_pct", "realtime_updated_at")
     )
     return fin if fin["has_data"] else None
 

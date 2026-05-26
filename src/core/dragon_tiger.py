@@ -42,13 +42,8 @@ CREATE TABLE IF NOT EXISTS dragon_tiger (
 
 
 def init_dragon_tiger_table():
-    """初始化龍虎榜表"""
-    with get_conn() as conn:
-        conn.execute(DDL_DRAGON_TIGER)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_dt_code ON dragon_tiger(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_dt_date ON dragon_tiger(date)")
-        conn.commit()
-    logger.info("龍虎榜表就緒")
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 # ============================================================

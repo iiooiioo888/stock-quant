@@ -40,6 +40,7 @@ def _retry_backtest(params: dict, task_id: str):
         strategy_name=params.get("strategy", "dual_ma"),
         params=params.get("params"),
         cash=params.get("cash"),
+        timeframe=params.get("timeframe", "1d"),
         task_id=task_id,
     )
 
@@ -55,6 +56,7 @@ def _retry_backtest_advanced(params: dict, task_id: str):
         slippage_pct=params.get("slippage_pct"),
         enable_t1=params.get("enable_t1", True),
         enable_limit=params.get("enable_limit", True),
+        timeframe=params.get("timeframe", "1d"),
         task_id=task_id,
     )
 

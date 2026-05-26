@@ -26,6 +26,15 @@ const Tasks = {
   _selectedIds: new Set(),
   _wsHandler: null,
   _prevStats: null,
+  _todayOnly: false,
+  _hasResultOnly: false,
+
+  isAutoRefreshEnabled() {
+    if (typeof window.StockQPro?.pages?.tasks?.isAutoRefresh === 'function') {
+      return window.StockQPro.pages.tasks.isAutoRefresh();
+    }
+    return true;
+  },
 
   /**
    * 初始化：綁定事件
@@ -105,7 +114,12 @@ const Tasks = {
 
   _startPolling() {
     this._stopPolling();
+    if (!this.isAutoRefreshEnabled()) return;
     this._pollTimer = setInterval(() => {
+      if (!this.isAutoRefreshEnabled()) {
+        this._stopPolling();
+        return;
+      }
       if (++this._pollCount > this._maxPolls) {
         this._stopPolling();
         return;
@@ -125,8 +139,12 @@ const Tasks = {
     this._wsHandler = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (!data || !data.type || !data.type.startsWith('task_')) return;
-        // 任務狀態變更 → 觸發一次刷新
+        if (!data || !data.type) return;
+        if (data.type === 'task_log' && data.task_id) {
+          this._appendLiveLog(data.task_id, data.log);
+          return;
+        }
+        if (!data.type.startsWith('task_')) return;
         this._pollCount = 0;
         this.refresh(true);
       } catch (_) {}
@@ -199,6 +217,26 @@ const Tasks = {
     }
   },
 
+  async cancelAllPending() {
+    if (!confirm('確定取消所有排隊中的任務？')) return;
+    const d = await Api.cancelAllPendingTasks();
+    if (d?.success) {
+      Utils.toast(`已取消 ${d.cancelled || 0} 個排隊任務`, 2000, 'success');
+      this.refresh();
+    }
+  },
+
+  async clearCompleted() {
+    if (!confirm('確定清空所有已結束的任務記錄？')) return;
+    const d = await Api.clearCompletedTasks(true, true);
+    if (d?.success) {
+      Utils.toast(`已清除 ${d.deleted || 0} 條記錄`, 2000, 'success');
+      this._selectedIds.clear();
+      this._expandedRows.clear();
+      this.refresh();
+    }
+  },
+
   async batchDelete() {
     const ids = [...this._selectedIds];
     if (!ids.length) return;
@@ -234,8 +272,16 @@ const Tasks = {
 
   _getFilteredTasks(tasks) {
     const { search } = this._getFilters();
-    if (!search) return tasks;
-    return tasks.filter(t => {
+    let list = tasks;
+    if (this._todayOnly) {
+      const today = new Date().toISOString().slice(0, 10);
+      list = list.filter(t => (t.created_at || '').slice(0, 10) === today);
+    }
+    if (this._hasResultOnly) {
+      list = list.filter(t => t.has_result || (t.status === 'completed' && t.result));
+    }
+    if (!search) return list;
+    return list.filter(t => {
       const haystack = [t.title, t.task_type, TaskCommon.typeName(t.task_type)].join(' ').toLowerCase();
       return haystack.includes(search);
     });
@@ -265,6 +311,9 @@ const Tasks = {
     this._loadError = '';
     this._lastData = d;
     this._renderFromPayload(d);
+    if (typeof window.StockQPro?.pages?.tasks?.markSynced === 'function') {
+      window.StockQPro.pages.tasks.markSynced();
+    }
     for (const id of this._expandedRows) {
       this._loadParams(id);
     }
@@ -282,9 +331,15 @@ const Tasks = {
   },
 
   _showLoadError() {
+    const banner = document.getElementById('taskLoadErrorBanner');
+    if (banner) {
+      banner.style.display = 'block';
+      banner.textContent = this._loadError || '載入失敗';
+      return;
+    }
     const tbody = document.getElementById('taskTableBody');
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="7">
+    tbody.innerHTML = `<tr><td colspan="9">
       <div class="empty-state">
         <span class="empty-icon">⚠️</span>
         <p><strong>${this._loadError || '載入失敗'}</strong></p>
@@ -295,7 +350,10 @@ const Tasks = {
 
   _hideLoadError() {
     const el = document.getElementById('taskLoadErrorBanner');
-    if (el) el.style.display = 'none';
+    if (el) {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
   },
 
   _renderQueue(snapshot) {
@@ -323,18 +381,21 @@ const Tasks = {
     if (!grid) return;
 
     const maxW = stats.max_workers || '-';
+    const heavyMax = stats.heavy_max_concurrent || '-';
+    const heavyFlight = stats.heavy_in_flight ?? 0;
     const inFlight = stats.in_flight ?? stats.running ?? 0;
     const items = [
-      { icon: '📋', label: '總任務數', value: stats.total || 0, color: '' },
-      { icon: '⚙️', label: '並行槽', value: `${inFlight}/${maxW}`, color: '#38bdf8' },
-      { icon: '⏸️', label: '等待中', value: stats.pending || 0, color: '#f59e0b' },
-      { icon: '⏳', label: '運行中', value: stats.running || 0, color: '#38bdf8' },
-      { icon: '✅', label: '已完成', value: stats.completed || 0, color: '#22c55e' },
-      { icon: '❌', label: '失敗', value: stats.failed || 0, color: '#ef4444' },
-      { icon: '🚫', label: '已取消', value: stats.cancelled || 0, color: '#94a3b8' },
+      { icon: '📋', label: '總任務數', value: stats.total || 0, color: '', filter: '' },
+      { icon: '⚙️', label: '並行槽', value: `${inFlight}/${maxW}`, color: '#38bdf8', filter: '' },
+      { icon: '🧠', label: '重型併發', value: `${heavyFlight}/${heavyMax}`, color: '#a78bfa', filter: '' },
+      { icon: '⏸️', label: '等待中', value: stats.pending || 0, color: '#f59e0b', filter: 'pending' },
+      { icon: '⏳', label: '運行中', value: stats.running || 0, color: '#38bdf8', filter: 'running' },
+      { icon: '✅', label: '已完成', value: stats.completed || 0, color: '#22c55e', filter: 'completed' },
+      { icon: '❌', label: '失敗', value: stats.failed || 0, color: '#ef4444', filter: 'failed' },
+      { icon: '🚫', label: '已取消', value: stats.cancelled || 0, color: '#94a3b8', filter: 'cancelled' },
     ];
     grid.innerHTML = items.map(i =>
-      `<div class="c stat-card"><h3>${i.icon} ${i.label}</h3>` +
+      `<div class="c stat-card task-stat-card" data-stat-filter="${i.filter || ''}" role="button" tabindex="0" title="${i.filter ? '點擊篩選' : ''}"><h3>${i.icon} ${i.label}</h3>` +
       `<div class="v" ${i.color ? `style="color:${i.color}"` : ''}>${i.value}</div></div>`
     ).join('');
   },
@@ -347,15 +408,16 @@ const Tasks = {
     const countEl = document.getElementById('taskRunningCount');
     if (!section || !list) return;
 
-    const running = tasks.filter(t => t.status === 'running' || t.status === 'pending');
+    const running = tasks.filter(t => ['running', 'pending', 'retrying'].includes(t.status));
     section.style.display = running.length ? 'block' : 'none';
     if (countEl) countEl.textContent = running.length ? `${running.length} 個` : '';
 
     list.innerHTML = running.map(t => {
       const typeName = TaskCommon.typeName(t.task_type);
       const progress = t.progress || 0;
-      const icon = t.status === 'pending' ? '⏸️' : '⏳';
-      const pulse = t.status === 'running' ? 'animation:pulse 1.5s infinite;' : '';
+      const icon = t.status === 'pending' ? '⏸️' : (t.status === 'retrying' ? '🔄' : '⏳');
+      const pulse = (t.status === 'running' || t.status === 'retrying')
+        ? 'animation:pulse 1.5s infinite;' : '';
       const sub = TaskCommon.formatTaskSubtitle(t);
       const elapsed = t.elapsed_sec > 0 ? TaskCommon.formatElapsed(Math.round(t.elapsed_sec)) : '';
       const eta = t.eta_sec > 0 && t.status === 'running' ? TaskCommon.formatEta(t.eta_sec) : '';
@@ -409,7 +471,7 @@ const Tasks = {
     if (countEl) countEl.textContent = `${filtered.length} 個`;
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="8">
+      tbody.innerHTML = `<tr><td colspan="9">
         <div class="empty-state">
           <span class="empty-icon">📋</span>
           <p><strong>暫無任務記錄</strong></p>
@@ -447,7 +509,7 @@ const Tasks = {
     const isExpanded = this._expandedRows.has(t.task_id);
     const sub = TC.formatTaskSubtitle(t);
     const canView = t.status === 'completed' && t.has_result;
-    const canCancel = t.status === 'running' || t.status === 'pending';
+    const canCancel = ['running', 'pending', 'retrying'].includes(t.status);
     const canDelete = ['completed', 'failed', 'cancelled'].includes(t.status);
     const canRetry = ['failed', 'cancelled'].includes(t.status);
     const isSelected = this._selectedIds.has(t.task_id);
@@ -472,6 +534,10 @@ const Tasks = {
     const elapsed = t.elapsed_sec > 0 ? TC.formatElapsed(Math.round(t.elapsed_sec)) : '';
     const eta = t.eta_sec > 0 && t.status === 'running' ? TC.formatEta(t.eta_sec) : '';
     const timeHtml = elapsed ? `<span title="${eta ? '預估剩餘: ' + eta : ''}">${elapsed}${eta ? ' · ' + eta : ''}</span>` : '-';
+    const preview = TC.formatResultPreview(t);
+    const previewHtml = preview
+      ? `<span class="task-preview" style="color:var(--t2);white-space:normal;line-height:1.35">${preview}</span>`
+      : '<span style="color:var(--t3)">—</span>';
 
     // 操作按鈕
     let actions = '';
@@ -490,7 +556,7 @@ const Tasks = {
       const elapsedStr = TC.formatElapsed(elapsed ? TC.elapsed(t.started_at || t.created_at, t.completed_at) : null);
       detailRow = `
         <tr id="detail-${t.task_id}" class="task-detail-row">
-          <td colspan="8" style="padding:0">
+          <td colspan="9" style="padding:0">
             <div style="background:var(--bg-primary);border-top:1px solid var(--border-color);padding:12px 16px;animation:tabFadeIn .2s ease">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div>
@@ -500,7 +566,9 @@ const Tasks = {
                 <div>
                   <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">ℹ️ 執行信息</div>
                   <table style="font-size:12px;width:100%">
-                    <tr><td style="color:var(--text-dim)">任務ID</td><td style="word-break:break-all">${t.task_id}</td></tr>
+                    <tr><td style="color:var(--text-dim)">任務ID</td><td style="word-break:break-all">${t.task_id}
+                      <button type="button" class="btn s" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="event.stopPropagation();Tasks.copyTaskId('${t.task_id}')">複製</button>
+                    </td></tr>
                     <tr><td style="color:var(--text-dim)">類型</td><td>${typeName}</td></tr>
                     <tr><td style="color:var(--text-dim)">創建時間</td><td>${t.created_at || '-'}</td></tr>
                     <tr><td style="color:var(--text-dim)">完成時間</td><td>${t.completed_at || '-'}</td></tr>
@@ -508,28 +576,79 @@ const Tasks = {
                   </table>
                 </div>
               </div>
-              ${t.error ? TC.renderError(t.error) : ''}
+                  ${t.error ? TC.renderError(t.error) : ''}
+              <div style="margin-top:10px">
+                <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">📜 執行日誌</div>
+                <pre id="logs-${t.task_id}" class="task-log-panel" style="font-size:11px;max-height:200px;overflow:auto;margin:0;padding:8px;background:var(--bg-secondary);border-radius:6px;white-space:pre-wrap">載入中...</pre>
+              </div>
             </div>
           </td>
         </tr>`;
 
-      // 異步載入參數
-      setTimeout(() => this._loadParams(t.task_id), 0);
+      setTimeout(() => {
+        this._loadParams(t.task_id);
+        this._loadLogs(t.task_id);
+      }, 0);
     }
 
     const cbHtml = `<input type="checkbox" id="cb-${t.task_id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation();Tasks._toggleSelect('${t.task_id}')" style="cursor:pointer">`;
 
+    const dbl = canView ? ` ondblclick="event.stopPropagation();TaskCommon.navigateToResult('${t.task_id}')"` : '';
+
     return `
-      <tr class="${isSelected ? 'task-row-selected' : ''}" style="cursor:pointer" onclick="Tasks.toggleExpand('${t.task_id}')">
+      <tr class="${isSelected ? 'task-row-selected' : ''}" style="cursor:pointer" onclick="Tasks.toggleExpand('${t.task_id}')"${dbl} title="${canView ? '雙擊前往結果' : ''}">
         <td style="text-align:center">${cbHtml}</td>
         <td>${statusHtml}</td>
         <td><span style="font-size:12px">${typeName}</span></td>
         <td style="font-weight:500">${t.title || '-'}${sub ? `<div style="font-size:11px;color:#38bdf8;font-weight:400;margin-top:2px">${sub}</div>` : ''}</td>
         <td>${progressHtml}</td>
+        <td style="font-size:11px;max-width:200px">${previewHtml}</td>
         <td style="font-size:11px;color:var(--text-dim)">${timeHtml}</td>
         <td style="font-size:11px;color:var(--text-dim)" title="${t.created_at || ''}">${Utils.timeAgo(t.created_at)}</td>
         <td onclick="event.stopPropagation()">${actions}</td>
       </tr>${detailRow}`;
+  },
+
+  async copyTaskId(taskId) {
+    const id = String(taskId || '');
+    if (!id) return;
+    if (typeof Utils !== 'undefined' && Utils.copyText) {
+      await Utils.copyText(id);
+      Utils.toast('已複製任務 ID', 1500, 'success');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(id);
+      Utils.toast('已複製任務 ID', 1500, 'success');
+    } catch (_) {
+      Utils.toast('複製失敗', 2000, 'error');
+    }
+  },
+
+  exportTaskList() {
+    const tasks = this._getFilteredTasks(this._lastData?.tasks || []);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      count: tasks.length,
+      tasks: tasks.map(t => ({
+        task_id: t.task_id,
+        task_type: t.task_type,
+        title: t.title,
+        status: t.status,
+        progress: t.progress,
+        created_at: t.created_at,
+        completed_at: t.completed_at,
+        result_preview: t.result_preview,
+        error: t.error,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tasks_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Utils.toast(`已匯出 ${tasks.length} 條任務`, 2000, 'success');
   },
 
   /**
@@ -547,6 +666,28 @@ const Tasks = {
   /**
    * 異步載入任務參數
    */
+  _appendLiveLog(taskId, entry) {
+    const el = document.getElementById(`logs-${taskId}`);
+    if (!el || !entry) return;
+    const line = `[${entry.ts || ''}] ${entry.message || ''}\n`;
+    if (el.textContent === '載入中...') el.textContent = '';
+    el.textContent += line;
+    el.scrollTop = el.scrollHeight;
+  },
+
+  async _loadLogs(taskId) {
+    const el = document.getElementById(`logs-${taskId}`);
+    if (!el) return;
+    const d = await Api.getTaskLogs(taskId, 150);
+    const logs = d?.logs || [];
+    if (!logs.length) {
+      el.textContent = '（暫無日誌）';
+      return;
+    }
+    el.textContent = logs.map(l => `[${l.ts}] ${l.message}`).join('\n');
+    el.scrollTop = el.scrollHeight;
+  },
+
   async _loadParams(taskId) {
     const container = document.getElementById(`params-${taskId}`);
     if (!container) return;
@@ -570,10 +711,14 @@ const Tasks = {
 
   _updateNavBadge(stats) {
     const badge = document.getElementById('navBadgeTasks');
-    if (!badge) return;
-    const active = (stats?.running || 0) + (stats?.pending || 0);
-    badge.textContent = active;
-    badge.style.display = active > 0 ? 'inline-block' : 'none';
+    const active = (stats?.running || 0) + (stats?.pending || 0) + (stats?.retrying || 0);
+    if (badge) {
+      badge.textContent = active;
+      badge.style.display = active > 0 ? 'inline-block' : 'none';
+    }
+    if (typeof window.StockQPro?.pages?.tasks?.updateBadges === 'function') {
+      window.StockQPro.pages.tasks.updateBadges(stats, active);
+    }
   },
 
   async cancelTask(taskId) {

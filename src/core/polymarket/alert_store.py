@@ -37,15 +37,8 @@ CREATE TABLE IF NOT EXISTS polymarket_prob_state (
 
 
 def init_polymarket_alert_tables() -> None:
-    """建表（由 init_polymarket_tables 調用）。"""
-    with get_conn() as conn:
-        conn.execute(DDL_ALERT_RULES)
-        conn.execute(DDL_PROB_STATE)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pm_alert_enabled "
-            "ON polymarket_alert_rules(enabled)"
-        )
-        conn.commit()
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 def list_alert_rules(enabled_only: bool = False) -> list[dict]:

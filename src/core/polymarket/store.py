@@ -39,27 +39,10 @@ CREATE TABLE IF NOT EXISTS polymarket_price_point (
 
 
 def init_polymarket_tables() -> None:
-    """建表與索引（init_db 時調用）。"""
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
     from src.core.polymarket.alert_store import init_polymarket_alert_tables
 
     init_polymarket_alert_tables()
-    with get_conn() as conn:
-        conn.execute(DDL_MARKET_SNAPSHOT)
-        conn.execute(DDL_PRICE_POINT)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pm_snapshot_slug "
-            "ON polymarket_market_snapshot(slug)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pm_snapshot_fetched "
-            "ON polymarket_market_snapshot(fetched_at)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pm_price_token_ts "
-            "ON polymarket_price_point(token_id, ts)"
-        )
-        conn.commit()
-    logger.debug("Polymarket 快照表已就緒")
 
 
 def upsert_market_snapshots(markets: list[dict]) -> int:

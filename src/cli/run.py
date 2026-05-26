@@ -16,6 +16,7 @@ from src.cli.commands import (
     cmd_cvar,
     cmd_degradation,
     cmd_download,
+    cmd_seed,
     cmd_dynamic_portfolio,
     cmd_dynamic_rebalance,
     cmd_export,
@@ -58,6 +59,7 @@ Handler = Callable[[argparse.Namespace], None]
 _SIMPLE_HANDLERS: dict[str, Handler] = {
     "serve": cmd_serve,
     "download": cmd_download,
+    "seed": cmd_seed,
     "backtest": cmd_backtest,
     "optimize": cmd_optimize,
     "portfolio": cmd_portfolio,

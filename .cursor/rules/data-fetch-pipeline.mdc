@@ -1,0 +1,32 @@
+---
+description: 行情/財報/新聞爬取與快取規範（統一管線）
+globs:
+  - src/core/market_fetch.py
+  - src/core/fundamental.py
+  - src/core/data_pipeline.py
+  - src/core/local_kline.py
+  - src/core/asset_detail.py
+  - src/api/routers/indices.py
+alwaysApply: false
+---
+
+# 數據爬取管線
+
+## 行情 K 線
+
+- 入口：`market_fetch.fetch_history_df` / `build_index_chart_item`
+- 順序：目錄 IB → TV → 本地庫 → Yahoo → 東財 → global
+- 外網成功後 `local_kline.persist_kline_df` 寫庫；**禁止**在 `persist_kline_df` 內調 `clear_data_cache()`，改用 `data_pipeline.defer_data_cache_clear()`
+- 批量掛牌（`indices` ThreadPool）在 `finally` 調 `flush_deferred_data_cache_clear()` 一次
+
+## 財報（A 股）
+
+- 入口：`data_pipeline.resolve_financials` 或 `fundamental.get_fundamentals(code, max_age_days=7)`
+- 禁止詳情頁只讀 `load_stock_financials` 且不觸發在線補齊
+- 在線鏈：`stock_financial_analysis_indicator` → `stock_financial_abstract` → `stock_individual_info_em` → `stock_profit_sheet_by_report_em`
+- DB 過期判斷：`data_pipeline.is_stale(update_date, max_age_days)`
+
+## 日誌
+
+- 批量清快取使用 `clear_data_cache(quiet=True, reason=...)`
+- 避免單標的寫庫刷屏 `數據緩存已清除`

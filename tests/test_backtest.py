@@ -147,9 +147,11 @@ class TestDualMAStrategy:
         from src.core.backtest import run_backtest
 
         # Mock 本地優先 K 線入口，避免單元測試觸發外部數據源。
+        # 需同時 patch local_kline（源）和 kline_timeframe（from-import 引用）。
         synthetic_df = _generate_synthetic_kline(code="TEST001", days=250, trend="up")
 
-        with patch("src.core.local_kline.ensure_daily_kline", return_value=(synthetic_df, "mock")):
+        with patch("src.core.local_kline.ensure_daily_kline", return_value=(synthetic_df, "mock")), \
+             patch("src.core.kline_timeframe.ensure_daily_kline", return_value=(synthetic_df, "mock")):
             result = run_backtest("TEST001", strategy_name="dual_ma", cash=100000)
 
         assert "total_return_pct" in result

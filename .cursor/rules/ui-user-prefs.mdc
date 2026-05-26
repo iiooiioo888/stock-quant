@@ -1,0 +1,16 @@
+---
+description: 工作台用戶偏好（漲跌配色等）存 localStorage，改動行情色須用 CSS 變量
+globs:
+  - static/js/pro/user-prefs.js
+  - static/js/pro/modules/settings-pro.js
+  - static/css/pro.css
+  - static/js/pro/ui/dashboard-components.js
+alwaysApply: false
+---
+
+# 用戶偏好（StockQ Pro）
+
+- 存儲鍵：`stockq:pro_prefs_v1`，模塊：`StockQPro.Prefs`
+- 漲跌色：`quoteColorScheme` → `html[data-quote-colors="cn"|"us"]` → `--quote-up` / `--quote-down`
+- **禁止**在新組件裡寫死 `var(--rd)` 表示上漲；漲跌語義一律用 `--quote-up` / `--quote-down`
+- 保存後派發 `stockq:prefs-changed`；掛牌服務需訂閱並刷新

@@ -13,6 +13,8 @@ import math
 import os
 import time
 import threading
+import uuid
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Callable, Optional
@@ -21,8 +23,28 @@ from src.utils.logger import logger
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
+STATUS_SUCCESS = STATUS_COMPLETED  # API 別名
 STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
+STATUS_RETRYING = "retrying"
+
+TERMINAL_STATUSES = frozenset({
+    STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED,
+})
+ACTIVE_STATUSES = frozenset({
+    STATUS_PENDING, STATUS_RUNNING, STATUS_RETRYING,
+})
+
+_VALID_TRANSITIONS: dict[str, frozenset[str]] = {
+    STATUS_PENDING: frozenset({STATUS_RUNNING, STATUS_COMPLETED, STATUS_CANCELLED, STATUS_RETRYING}),
+    STATUS_RUNNING: frozenset({
+        STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_RETRYING,
+    }),
+    STATUS_RETRYING: frozenset({STATUS_RUNNING, STATUS_FAILED, STATUS_CANCELLED}),
+    STATUS_COMPLETED: frozenset(),
+    STATUS_FAILED: frozenset(),
+    STATUS_CANCELLED: frozenset(),
+}
 
 # 單一任務類型註冊表（async=True 的會出現在任務列表與篩選器）
 TASK_REGISTRY: dict[str, dict] = {
@@ -149,6 +171,11 @@ _dispatched: set[str] = set()  # 已提交線程池、尚未結束
 _executor: Optional[ThreadPoolExecutor] = None
 _executor_lock = threading.Lock()
 _progress_throttle: dict[str, tuple] = {}  # task_id -> (last_ts, last_saved_progress)
+_task_logs: dict[str, deque] = {}  # task_id -> 最近 N 行日誌
+_pipelines: dict[str, dict] = {}  # pipeline_id -> 編排狀態
+_watchdog_stop = threading.Event()
+_watchdog_thread: Optional[threading.Thread] = None
+_MAX_LOG_LINES = 500
 
 # ── WebSocket 任務推送 ──────────────────────────────────────────
 _ws_broadcast: Optional[Callable] = None
@@ -158,6 +185,41 @@ def register_ws_broadcaster(broadcast_fn: Callable):
     """註冊 WebSocket 廣播函數，任務狀態變更時自動推送。"""
     global _ws_broadcast
     _ws_broadcast = broadcast_fn
+
+
+def append_task_log(task_id: str, line: str, *, level: str = "info") -> None:
+    """追加任務日誌行並推送 WebSocket。"""
+    if not line:
+        return
+    entry = {
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "level": level,
+        "message": line.rstrip()[:2000],
+    }
+    with _lock:
+        buf = _task_logs.setdefault(task_id, deque(maxlen=_MAX_LOG_LINES))
+        buf.append(entry)
+    if _ws_broadcast is None:
+        return
+    try:
+        _ws_broadcast(_to_json_safe({
+            "type": "task_log",
+            "task_id": task_id,
+            "log": entry,
+        }))
+    except Exception as e:
+        logger.debug(f"WS 任務日誌推送失敗: {e}")
+
+
+def get_task_logs(task_id: str, *, tail: int = 200) -> list[dict]:
+    with _lock:
+        buf = _task_logs.get(task_id)
+        if not buf:
+            return []
+        items = list(buf)
+    if tail > 0:
+        items = items[-tail:]
+    return [_to_json_safe(x) for x in items]
 
 
 def _notify_task_update(task_id: str, event: str = "task_update"):
@@ -177,8 +239,10 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
             "progress": task.get("progress", 0),
             "error": task.get("error"),
             "elapsed_sec": _calc_elapsed(task),
+            "eta_sec": _calc_eta(task),
             "created_at": task.get("created_at"),
             "completed_at": task.get("completed_at"),
+            "result_preview": _extract_result_preview(task),
         })
         _ws_broadcast(payload)
     except Exception as e:
@@ -195,6 +259,66 @@ def _resolve_max_workers() -> int:
         return configured
     cpu = os.cpu_count() or 4
     return max(1, min(4, max(1, cpu - 1)))
+
+
+def _resolve_heavy_max_concurrent() -> int:
+    try:
+        from src.config import settings
+        configured = int(getattr(settings, "task_heavy_max_concurrent", 2) or 2)
+    except Exception:
+        configured = 2
+    return max(1, min(configured, _resolve_max_workers()))
+
+
+def _resolve_task_timeout() -> int:
+    try:
+        from src.config import settings
+        return int(getattr(settings, "task_timeout_sec", 1800) or 1800)
+    except Exception:
+        return 1800
+
+
+def _resolve_watchdog_interval() -> float:
+    try:
+        from src.config import settings
+        return float(getattr(settings, "task_watchdog_interval_sec", 60.0) or 60.0)
+    except Exception:
+        return 60.0
+
+
+def normalize_status(status: str) -> str:
+    """統一狀態字串（success → completed）。"""
+    if not status:
+        return status
+    s = status.lower().strip()
+    if s == "success":
+        return STATUS_COMPLETED
+    return s
+
+
+def can_transition(from_status: str, to_status: str) -> bool:
+    from_s = normalize_status(from_status)
+    to_s = normalize_status(to_status)
+    if from_s == to_s:
+        return True
+    allowed = _VALID_TRANSITIONS.get(from_s)
+    if allowed is None:
+        return False
+    return to_s in allowed
+
+
+def transition_task(task_id: str, to_status: str, **kwargs) -> Optional[dict]:
+    """依狀態機校驗後更新任務。"""
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return None
+        from_s = task.get("status", STATUS_PENDING)
+        to_s = normalize_status(to_status)
+        if not can_transition(from_s, to_s):
+            logger.warning(f"任務狀態轉換拒絕: {task_id} {from_s} → {to_s}")
+            return task
+    return update_task(task_id, status=to_s, **kwargs)
 
 
 def _to_json_safe(obj):
@@ -308,7 +432,7 @@ def _count_in_flight() -> int:
     with _lock:
         return sum(
             1 for tid, t in _tasks.items()
-            if t["status"] == STATUS_RUNNING or tid in _dispatched
+            if t["status"] in (STATUS_RUNNING, STATUS_RETRYING) or tid in _dispatched
         )
 
 
@@ -331,7 +455,7 @@ def create_task(task_type: str, params: dict, title: str = "") -> dict:
     with _lock:
         for tid, t in _tasks.items():
             if t["task_type"] == task_type and t["params_hash"] == params_hash:
-                if t["status"] in (STATUS_PENDING, STATUS_RUNNING) or tid in _dispatched:
+                if t["status"] in ACTIVE_STATUSES or tid in _dispatched:
                     logger.info(f"任務去重: {task_type} 已在佇列中 (task_id={tid})")
                     t["last_accessed"] = time.time()
                     return {
@@ -433,7 +557,7 @@ def _mark_running(task_id: str) -> bool:
             return False
         if _cancel_flags.get(task_id) or task["status"] == STATUS_CANCELLED:
             return False
-        if task["status"] != STATUS_PENDING:
+        if task["status"] not in (STATUS_PENDING, STATUS_RETRYING):
             return task["status"] == STATUS_RUNNING
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         task["status"] = STATUS_RUNNING
@@ -454,21 +578,30 @@ def _on_task_finished(task_id: str):
 
 def _drain_queue():
     max_workers = _resolve_max_workers()
+    heavy_max = _resolve_heavy_max_concurrent()
     to_start: list[tuple[str, Callable]] = []
+
+    try:
+        from src.core.compute_budget import HEAVY_TASK_TYPES
+    except Exception:
+        HEAVY_TASK_TYPES = frozenset()
 
     with _lock:
         pending = [
             t for t in _tasks.values()
-            if t["status"] == STATUS_PENDING
+            if t["status"] in (STATUS_PENDING, STATUS_RETRYING)
             and t["task_id"] not in _dispatched
             and not _cancel_flags.get(t["task_id"])
         ]
         pending.sort(key=lambda t: t.get("created_at", ""))
         in_flight = _count_in_flight()
+        heavy_in_flight = count_in_flight_heavy()
 
         for t in pending:
             if in_flight >= max_workers:
                 break
+            if t["task_type"] in HEAVY_TASK_TYPES and heavy_in_flight >= heavy_max:
+                continue
             fn = t.get("_worker_fn")
             if fn is None:
                 continue
@@ -476,6 +609,8 @@ def _drain_queue():
             _dispatched.add(tid)
             to_start.append((tid, fn))
             in_flight += 1
+            if t["task_type"] in HEAVY_TASK_TYPES:
+                heavy_in_flight += 1
 
     for task_id, fn in to_start:
         _start_worker(task_id, fn)
@@ -483,6 +618,8 @@ def _drain_queue():
 
 def _start_worker(task_id: str, work_fn: Callable):
     def _run():
+        from src.core.task_log_stream import capture_exception, task_log_context
+
         try:
             if not _mark_running(task_id):
                 if is_task_cancelled(task_id):
@@ -491,12 +628,16 @@ def _start_worker(task_id: str, work_fn: Callable):
             if is_task_cancelled(task_id):
                 update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
                 return
-            result = work_fn()
+            append_task_log(task_id, f"任務開始執行 ({task_id})")
+            with task_log_context(task_id):
+                result = work_fn()
             if is_task_cancelled(task_id):
                 update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
             else:
+                append_task_log(task_id, "任務執行完成")
                 update_task(task_id, status=STATUS_COMPLETED, progress=100, result=result)
         except Exception as e:
+            capture_exception(task_id, e)
             if is_task_cancelled(task_id):
                 update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
             else:
@@ -564,7 +705,14 @@ def update_task(task_id: str, status: str = None, progress: int = None,
             return None
 
         if status:
-            task["status"] = status
+            new_status = normalize_status(status)
+            old_status = task.get("status")
+            if old_status != new_status and not can_transition(old_status, new_status):
+                logger.warning(
+                    f"任務狀態跳轉: {task_id} {old_status} → {new_status}（未在狀態機中定義）"
+                )
+            task["status"] = new_status
+            status = new_status
         if progress is not None:
             task["progress"] = progress
         if result is not None:
@@ -583,8 +731,12 @@ def update_task(task_id: str, status: str = None, progress: int = None,
     # WebSocket 推送（鎖外執行，避免死鎖）
     if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
         _notify_task_update(task_id, f"task_{status}")
+        if status == STATUS_COMPLETED:
+            _on_task_completed_pipeline(task_id)
     elif status == STATUS_RUNNING:
         _notify_task_update(task_id, "task_started")
+    elif status == STATUS_RETRYING:
+        _notify_task_update(task_id, "task_retrying")
     elif progress is not None and progress >= 0:
         _notify_task_update(task_id, "task_progress")
 
@@ -628,9 +780,13 @@ def get_task_stats() -> dict:
         "total": len(tasks),
         "pending": sum(1 for t in tasks if t["status"] == STATUS_PENDING),
         "running": sum(1 for t in tasks if t["status"] == STATUS_RUNNING),
+        "retrying": sum(1 for t in tasks if t["status"] == STATUS_RETRYING),
         "dispatched": len(_dispatched),
         "in_flight": in_flight,
         "max_workers": _resolve_max_workers(),
+        "heavy_max_concurrent": _resolve_heavy_max_concurrent(),
+        "heavy_in_flight": count_in_flight_heavy(),
+        "task_timeout_sec": _resolve_task_timeout(),
         "completed": sum(1 for t in tasks if t["status"] == STATUS_COMPLETED),
         "failed": sum(1 for t in tasks if t["status"] == STATUS_FAILED),
         "cancelled": sum(1 for t in tasks if t["status"] == STATUS_CANCELLED),
@@ -678,7 +834,7 @@ def cancel_task(task_id: str) -> bool:
         task = _tasks.get(task_id)
         if not task:
             return False
-        if task["status"] not in (STATUS_PENDING, STATUS_RUNNING) and task_id not in _dispatched:
+        if task["status"] not in ACTIVE_STATUSES and task_id not in _dispatched:
             return False
         _cancel_flags[task_id] = True
         if task["status"] == STATUS_PENDING:
@@ -699,7 +855,7 @@ def delete_task(task_id: str) -> bool:
         task = _tasks.get(task_id)
         if not task:
             return False
-        if task["status"] in (STATUS_PENDING, STATUS_RUNNING) or task_id in _dispatched:
+        if task["status"] in ACTIVE_STATUSES or task_id in _dispatched:
             return False
         del _tasks[task_id]
         _cancel_flags.pop(task_id, None)
@@ -753,12 +909,14 @@ def get_task_params(task_id: str) -> Optional[dict]:
     }
 
 
-def cleanup_stale_tasks(timeout_sec: int = 3600) -> int:
+def cleanup_stale_tasks(timeout_sec: int = None) -> int:
+    if timeout_sec is None:
+        timeout_sec = _resolve_task_timeout()
     now = time.time()
     cleaned = 0
     with _lock:
         for tid, t in list(_tasks.items()):
-            if t["status"] in (STATUS_PENDING, STATUS_RUNNING) or tid in _dispatched:
+            if t["status"] in ACTIVE_STATUSES or tid in _dispatched:
                 last = t.get("last_accessed", time.time())
                 if isinstance(last, str):
                     try:
@@ -808,7 +966,7 @@ def is_task_running(task_type: str, params: dict) -> bool:
         for t in _tasks.values():
             if (t["task_type"] == task_type and
                 t["params_hash"] == params_hash and
-                (t["status"] in (STATUS_PENDING, STATUS_RUNNING) or t["task_id"] in _dispatched)):
+                (t["status"] in ACTIVE_STATUSES or t["task_id"] in _dispatched)):
                 return True
     return False
 
@@ -844,7 +1002,35 @@ def _task_summary(task: dict) -> dict:
                 "total_symbols": r.get("total_symbols"),
                 "market_name": r.get("market_name") or dl.get("market_name"),
             }
+    preview = _extract_result_preview(task)
+    if preview:
+        summary["result_preview"] = preview
     return summary
+
+
+def _extract_result_preview(task: dict) -> Optional[dict]:
+    """從回測/優化結果提取列表欄位可展示的指標。"""
+    result = task.get("result")
+    if not isinstance(result, dict):
+        return None
+    task_type = task.get("task_type", "")
+    if task_type in ("backtest", "backtest_advanced", "backtest_multi", "portfolio", "walkforward"):
+        return {
+            "annual_return_pct": result.get("annual_return_pct"),
+            "max_drawdown_pct": result.get("max_drawdown_pct"),
+            "sharpe_ratio": result.get("sharpe_ratio"),
+            "total_return_pct": result.get("total_return_pct"),
+            "win_rate_pct": result.get("win_rate_pct"),
+        }
+    if task_type == "optimize" and isinstance(result.get("best"), dict):
+        best = result["best"]
+        return {
+            "annual_return_pct": best.get("annual_return_pct"),
+            "max_drawdown_pct": best.get("max_drawdown_pct"),
+            "sharpe_ratio": best.get("sharpe_ratio"),
+            "objective": result.get("objective"),
+        }
+    return None
 
 
 def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optional[dict]:
@@ -886,45 +1072,47 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
 
 
 def _save_task_to_db(task: dict, force: bool = False):
-    if not force and task.get("status") == STATUS_RUNNING:
+    if not force and task.get("status") in (STATUS_RUNNING, STATUS_RETRYING):
         prog = task.get("progress", 0)
         if 0 < prog < 100:
             return
     try:
         from src.core.db import get_conn
+        meta = dict(task.get("meta") or {})
+        if force and task.get("task_id") in _task_logs:
+            logs = list(_task_logs.get(task["task_id"], []))[-50:]
+            if logs:
+                meta["log_tail"] = logs
+        meta_json = json.dumps(meta, ensure_ascii=False, default=str) if meta else None
+        pipeline_id = meta.get("pipeline_id")
+        parent_task_id = meta.get("parent_task_id")
         with get_conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS task_log (
-                    task_id     TEXT PRIMARY KEY,
-                    task_type   TEXT NOT NULL,
-                    params_hash TEXT NOT NULL,
-                    title       TEXT,
-                    status      TEXT NOT NULL,
-                    progress    INTEGER DEFAULT 0,
-                    error       TEXT,
-                    created_at  TEXT,
-                    completed_at TEXT,
-                    params_json TEXT
-                )
-            """)
-            try:
-                conn.execute("ALTER TABLE task_log ADD COLUMN params_json TEXT")
-            except Exception:
-                pass
             params_json = json.dumps(task.get("params") or {}, ensure_ascii=False, default=str)
-            conn.execute("""
-                INSERT OR REPLACE INTO task_log
-                (task_id, task_type, params_hash, title, status, progress, error,
-                 created_at, completed_at, params_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            cols = [
+                "task_id", "task_type", "params_hash", "title", "status", "progress", "error",
+                "created_at", "completed_at", "params_json",
+            ]
+            vals = [
                 task["task_id"], task["task_type"], task["params_hash"],
                 task.get("title", ""), task["status"], task.get("progress", 0),
                 task.get("error"), task.get("created_at"), task.get("completed_at"),
                 params_json,
-            ))
+            ]
+            if _column_exists_conn(conn, "task_log", "parent_task_id"):
+                cols.extend(["parent_task_id", "pipeline_id", "meta_json"])
+                vals.extend([parent_task_id, pipeline_id, meta_json])
+            placeholders = ", ".join("?" for _ in vals)
+            conn.execute(
+                f"INSERT OR REPLACE INTO task_log ({', '.join(cols)}) VALUES ({placeholders})",
+                tuple(vals),
+            )
     except Exception as e:
         logger.debug(f"任務持久化跳過: {e}")
+
+
+def _column_exists_conn(conn, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r[1] == column for r in rows)
 
 
 def _evict_old_tasks_inner():
@@ -941,35 +1129,224 @@ def _evict_old_tasks_inner():
         logger.debug(f"任務淘汰: {tid}")
 
 
-def _init():
-    try:
-        from src.core.db import get_conn
-        with get_conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS task_log (
-                    task_id     TEXT PRIMARY KEY,
-                    task_type   TEXT NOT NULL,
-                    params_hash TEXT NOT NULL,
-                    title       TEXT,
-                    status      TEXT NOT NULL,
-                    progress    INTEGER DEFAULT 0,
-                    error       TEXT,
-                    created_at  TEXT,
-                    completed_at TEXT,
-                    params_json TEXT
-                )
-            """)
+def recover_stale_tasks_on_startup() -> int:
+    """啟動自癒：記憶體中殘留的活躍任務標記失敗（DB 由遷移 003 處理）。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    recovered = 0
+    with _lock:
+        for tid, t in list(_tasks.items()):
+            if t["status"] not in ACTIVE_STATUSES and tid not in _dispatched:
+                continue
+            t["status"] = STATUS_FAILED
+            t["error"] = "服務重啟導致任務中斷"
+            t["completed_at"] = now
+            t.pop("_worker_fn", None)
+            _dispatched.discard(tid)
+            _cancel_flags.pop(tid, None)
+            _save_task_to_db(t, force=True)
+            recovered += 1
+    if recovered:
+        logger.warning(f"啟動自癒：已標記 {recovered} 個殘留任務為失敗")
+    return recovered
+
+
+def start_task_watchdog() -> None:
+    """背景看門狗：週期性熔斷超時任務。"""
+    global _watchdog_thread
+    if _watchdog_thread and _watchdog_thread.is_alive():
+        return
+    _watchdog_stop.clear()
+
+    def _loop():
+        while not _watchdog_stop.wait(_resolve_watchdog_interval()):
             try:
-                conn.execute("ALTER TABLE task_log ADD COLUMN params_json TEXT")
-            except Exception:
-                pass
-            conn.execute("""
-                UPDATE task_log SET status = 'failed', error = '服務重啟',
-                completed_at = ? WHERE status IN ('pending', 'running')
-            """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),))
-    except Exception as e:
-        logger.debug(f"任務管理器初始化跳過: {e}")
+                n = cleanup_stale_tasks()
+                if n:
+                    logger.info(f"看門狗：已熔斷 {n} 個超時任務")
+            except Exception as e:
+                logger.debug(f"任務看門狗異常: {e}")
+
+    _watchdog_thread = threading.Thread(target=_loop, name="task-watchdog", daemon=True)
+    _watchdog_thread.start()
+    logger.info(
+        f"任務看門狗已啟動: interval={_resolve_watchdog_interval()}s, "
+        f"timeout={_resolve_task_timeout()}s"
+    )
 
 
-_init()
+def stop_task_watchdog() -> None:
+    _watchdog_stop.set()
+
+
+def cancel_all_pending() -> int:
+    """取消所有排隊中的任務。"""
+    cancelled = 0
+    with _lock:
+        pending_ids = [
+            tid for tid, t in _tasks.items()
+            if t["status"] == STATUS_PENDING
+        ]
+    for tid in pending_ids:
+        if cancel_task(tid):
+            cancelled += 1
+    return cancelled
+
+
+def delete_all_completed(*, include_failed: bool = True, include_cancelled: bool = True) -> int:
+    """清空已結束的歷史任務（內存）。"""
+    removable = {STATUS_COMPLETED}
+    if include_failed:
+        removable.add(STATUS_FAILED)
+    if include_cancelled:
+        removable.add(STATUS_CANCELLED)
+    deleted = 0
+    with _lock:
+        ids = [tid for tid, t in _tasks.items() if t["status"] in removable]
+    for tid in ids:
+        if delete_task(tid):
+            deleted += 1
+    return deleted
+
+
+def create_pipeline(steps: list[dict], title: str = "任務管道") -> dict:
+    """
+    建立任務管道：前一步 SUCCESS 後自動派發下一步。
+
+    steps: [{"task_type", "params", "title?", "pass_result?"}, ...]
+    """
+    if not steps:
+        raise ValueError("管道至少需要一個步驟")
+    pipeline_id = f"pipeline_{uuid.uuid4().hex[:12]}"
+    with _lock:
+        _pipelines[pipeline_id] = {
+            "pipeline_id": pipeline_id,
+            "title": title,
+            "steps": steps,
+            "current_index": 0,
+            "task_ids": [],
+            "status": "running",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    first = steps[0]
+    created = create_task(
+        first["task_type"],
+        first.get("params") or {},
+        title=first.get("title") or f"{title} (1/{len(steps)})",
+    )
+    task_id = created["task_id"]
+    with _lock:
+        t = _tasks.get(task_id)
+        if t:
+            meta = t.setdefault("meta", {})
+            meta["pipeline_id"] = pipeline_id
+            meta["pipeline_step"] = 0
+            meta["pipeline_total"] = len(steps)
+        _pipelines[pipeline_id]["task_ids"].append(task_id)
+    return {
+        "pipeline_id": pipeline_id,
+        "task_id": task_id,
+        "status": created.get("status"),
+        "steps": len(steps),
+        "title": title,
+    }
+
+
+def submit_pipeline_step(pipeline_id: str, step_index: int, work_fn: Callable) -> str:
+    """為管道某一步註冊 worker 並排隊（由 API 在 create 後調用）。"""
+    with _lock:
+        pipe = _pipelines.get(pipeline_id)
+        if not pipe:
+            raise ValueError(f"管道不存在: {pipeline_id}")
+        task_ids = pipe.get("task_ids") or []
+        if step_index >= len(task_ids):
+            raise ValueError("管道步驟與任務 ID 不一致")
+        task_id = task_ids[step_index]
+    submit_task(task_id, work_fn)
+    return task_id
+
+
+def get_pipeline(pipeline_id: str) -> Optional[dict]:
+    with _lock:
+        pipe = _pipelines.get(pipeline_id)
+        return _to_json_safe(dict(pipe)) if pipe else None
+
+
+def _on_task_completed_pipeline(task_id: str) -> None:
+    with _lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return
+        meta = task.get("meta") or {}
+        pipeline_id = meta.get("pipeline_id")
+        if not pipeline_id:
+            return
+        pipe = _pipelines.get(pipeline_id)
+        if not pipe or pipe.get("status") != "running":
+            return
+        step_idx = int(meta.get("pipeline_step", 0))
+        steps = pipe.get("steps") or []
+        prev_result = task.get("result")
+        if step_idx + 1 >= len(steps):
+            pipe["status"] = "completed"
+            pipe["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(f"管道完成: {pipeline_id}")
+            return
+        next_idx = step_idx + 1
+        pipe["current_index"] = next_idx
+
+    _dispatch_pipeline_step(pipeline_id, next_idx, prev_result)
+
+
+def _dispatch_pipeline_step(pipeline_id: str, step_index: int, prev_result) -> None:
+    from src.core.task_retry import RetryWorkerError, build_retry_worker
+
+    with _lock:
+        pipe = _pipelines.get(pipeline_id)
+        if not pipe:
+            return
+        steps = pipe["steps"]
+        step = steps[step_index]
+        parent_id = (pipe.get("task_ids") or [])[-1] if pipe.get("task_ids") else None
+
+    params = dict(step.get("params") or {})
+    if step.get("pass_result") and prev_result is not None:
+        params["_pipeline_prev_result"] = prev_result
+
+    title = step.get("title") or f"{pipe['title']} ({step_index + 1}/{len(steps)})"
+    created = create_task(step["task_type"], params, title=title)
+    task_id = created["task_id"]
+
+    with _lock:
+        t = _tasks.get(task_id)
+        if t:
+            meta = t.setdefault("meta", {})
+            meta["pipeline_id"] = pipeline_id
+            meta["pipeline_step"] = step_index
+            meta["pipeline_total"] = len(steps)
+            if parent_id:
+                meta["parent_task_id"] = parent_id
+        pipe["task_ids"].append(task_id)
+
+    if created.get("status") == STATUS_COMPLETED:
+        _on_task_completed_pipeline(task_id)
+        return
+    if created.get("is_duplicate"):
+        return
+
+    try:
+        work_fn = build_retry_worker(step["task_type"], params, task_id)
+    except RetryWorkerError as e:
+        update_task(task_id, status=STATUS_FAILED, error=str(e))
+        with _lock:
+            if pipeline_id in _pipelines:
+                _pipelines[pipeline_id]["status"] = "failed"
+        return
+
+    submit_task(task_id, work_fn)
+    append_task_log(
+        task_id,
+        f"管道 {pipeline_id} 步驟 {step_index + 1}/{len(steps)} 已派發",
+    )
+
+
 logger.info("任務管理器已初始化")

@@ -152,18 +152,9 @@ _sector_tables_ready = False
 
 
 def init_sector_table():
-    """初始化板塊數據表 + 快照表"""
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
     global _sector_tables_ready
-    with get_conn() as conn:
-        conn.execute(DDL_SECTOR)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sector_code ON sector_data(code)")
-        conn.execute(DDL_SECTOR_SNAPSHOT)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_date ON sector_snapshot(snapshot_date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_type ON sector_snapshot(sector_type)")
-        conn.commit()
     if not _sector_tables_ready:
-        logger.debug("板塊數據表 + 快照表就緒")
         _sector_tables_ready = True
 
 

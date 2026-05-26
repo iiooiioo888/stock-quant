@@ -59,7 +59,12 @@ class Settings(BaseSettings):
     # ====== 回測 ======
     backtest_cash: float = Field(default=100000.0, gt=0)
     backtest_commission: float = Field(default=0.001, ge=0, le=0.1)
-    backtest_stamp_tax: float = Field(default=0.001, ge=0, le=0.1)
+    backtest_stamp_tax: float = Field(default=0.0005, ge=0, le=0.1)  # 2023 年後 0.05%，僅賣出收取
+    # 生產環境建議 SQ_ALLOW_STRATEGY_UPLOAD=false
+    allow_strategy_upload: bool = True
+    strategy_upload_max_bytes: int = Field(default=65536, ge=1024, le=512000)
+    volume_slippage_enabled: bool = False
+    volume_slippage_participation_cap: float = Field(default=0.05, gt=0, le=1.0)
 
     # ====== 股票庫 ======
     stock_universe_max_count: int = Field(default=20000, ge=100, le=50000)
@@ -78,6 +83,9 @@ class Settings(BaseSettings):
     optimize_all_workers: int = Field(default=2, ge=1, le=8)  # 僅 optimize_all_parallel=true 時生效
     optimize_all_parallel: bool = False  # 默認策略串行+進程池，避免嵌套爆炸
     task_progress_save_interval_sec: float = Field(default=2.0, ge=0.5, le=30.0)
+    task_heavy_max_concurrent: int = Field(default=2, ge=1, le=16)  # Backtrader 等重型任務同時上限
+    task_timeout_sec: int = Field(default=1800, ge=60, le=86400)  # 單任務超時熔斷（秒）
+    task_watchdog_interval_sec: float = Field(default=60.0, ge=10.0, le=600.0)
 
     # ====== 通知 ======
     notify_console: bool = True
@@ -108,6 +116,13 @@ class Settings(BaseSettings):
 
     # ====== 加密貨幣行情（Binance 等，只讀） ======
     crypto_enabled: bool = True
+
+    # ====== TradingView / IB 行情（儀表盤掛牌） ======
+    tradingview_enabled: bool = True
+    ib_enabled: bool = False
+    ib_host: str = "127.0.0.1"
+    ib_port: int = Field(default=7497, ge=1, le=65535)
+    ib_client_id: int = Field(default=10, ge=0, le=9999)
 
     # ====== Polymarket 預測市場（只讀，Gamma + CLOB） ======
     polymarket_enabled: bool = True
@@ -159,16 +174,22 @@ class Settings(BaseSettings):
     web_workers: int = Field(default=1, ge=1, le=16)
     cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://localhost:5173"
 
-    # ====== 策略參數（全部 19 個內置策略） ======
+    # ====== 策略參數（全部 29 個內置策略） ======
     strategy_params: dict = Field(default={
         # --- 趨勢類 ---
         "dual_ma": {"fast": 5, "slow": 20},
+        "ema_cross": {"fast": 12, "slow": 26},
         "macd": {"fast": 12, "slow": 26, "signal": 9},
         "turtle": {"entry_period": 20, "exit_period": 10, "atr_period": 20, "risk_pct": 1.0},
         "breakout": {"period": 60, "atr_period": 20, "atr_multiplier": 2.0},
         "momentum": {"lookback": 20, "hold_period": 5},
         "adx_trend": {"adx_period": 14, "adx_threshold": 25, "di_period": 14},
         "parabolic_sar": {"af_start": 0.02, "af_step": 0.02, "af_max": 0.20},
+        "donchian": {"period": 20},
+        "supertrend": {"period": 10, "multiplier": 3.0},
+        "atr_trail": {"ma_period": 20, "atr_period": 14, "atr_mult": 2.5},
+        "triple_ma": {"fast": 5, "mid": 20, "slow": 60},
+        "pullback_ma": {"fast": 10, "slow": 50, "trend": 120},
         # --- 均值回歸類 ---
         "bollinger": {"period": 20, "devfactor": 2.0},
         "bollinger_squeeze": {"period": 20, "devfactor": 2.0, "squeeze_threshold": 0.03, "squeeze_lookback": 5},
@@ -177,8 +198,11 @@ class Settings(BaseSettings):
         # --- 振盪指標類 ---
         "rsi": {"period": 14, "overbought": 70, "oversold": 30},
         "kdj": {"period": 9, "period_dfast": 3, "period_dslow": 3, "overbought": 80, "oversold": 20},
+        "williams_r": {"period": 14, "overbought": -20, "oversold": -80},
+        "cci": {"period": 20, "overbought": 100, "oversold": -100},
         # --- 量價類 ---
         "volume_price": {"price_ma": 20, "volume_ma": 20, "volume_ratio": 2.0},
+        "ema_volume": {"fast": 12, "slow": 26, "vol_ma": 20, "vol_ratio": 1.2},
         "vwap": {"period": 20, "deviation_pct": 1.0},
         "obv": {"obv_ma_period": 20, "price_ma_period": 20},
         # --- 日內突破類 ---
@@ -186,6 +210,7 @@ class Settings(BaseSettings):
         "grid": {"grid_pct": 3.0, "position_pct": 0.1},
         # --- 組合類 ---
         "composite": {"min_agreement": 3, "ma_fast": 5, "ma_slow": 20, "macd_fast": 12, "macd_slow": 26, "macd_signal": 9, "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30, "boll_period": 20, "boll_dev": 2.0},
+        "macd_rsi": {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9, "rsi_period": 14, "rsi_max": 68, "rsi_min": 35},
     })
 
     # ====== 預警規則 ======

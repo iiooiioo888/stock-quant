@@ -1,0 +1,30 @@
+---
+description: Pro 工作台 UI 不顯示可見滾動條；滾動由主內容區統一承載
+globs:
+  - static/css/pro.css
+  - static/css/**/*.css
+  - static/app.html
+  - static/js/pro/**/*
+alwaysApply: true
+---
+
+# UI：不顯示滾動條
+
+## 原則
+
+- **禁止**在介面上出現可見的滾動條（含 WebKit 細條、Firefox `scrollbar-width: thin`）。
+- **允許**用滑鼠滾輪、觸控板、鍵盤在內容過長時滾動；滾動條僅隱藏，不取消滾動能力。
+- 全站已在 `static/css/pro.css` 對 `*` 設定 `scrollbar-width: none` 與 `::-webkit-scrollbar { display: none }`，新增樣式時勿覆寫回可見滾動條。
+
+## 佈局
+
+- **優先**單一滾動容器：`.main`（`overflow-y: auto` + 隱藏滾動條）。
+- **避免**巢狀 `overflow-y: auto` + `max-height`（例如掛牌網格、資產庫卡片區）；內容應在頁面內自然展開，由 `.main` 整頁滾動。
+- 橫向分組標籤（pill）用 `flex-wrap: wrap`，不要用 `overflow-x: auto` 產生橫向滾動條。
+- 頂欄 `ticker-strip` 若需橫滑，沿用 `.ticker-strip-inner` 的隱藏滾動條寫法，勿改為可見滾動條。
+
+## 實作檢查清單
+
+- [ ] 未新增 `::-webkit-scrollbar-thumb` 等可見樣式
+- [ ] 未在子區塊單獨設 `max-height` + `overflow-y: auto`（modal、cmd 列表等既有例外可保留隱藏滾動）
+- [ ] 新頁面長列表依賴 `.main` 滾動，而非區塊內第二根滾動條

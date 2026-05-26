@@ -4,7 +4,8 @@
 import os
 
 HEAVY_TASK_TYPES = frozenset({
-    "optimize", "auto_optimize", "backtest_multi", "walkforward",
+    "backtest", "backtest_advanced", "backtest_multi",
+    "optimize", "auto_optimize", "walkforward", "portfolio",
 })
 
 

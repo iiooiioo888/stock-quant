@@ -41,6 +41,9 @@ const Api = {
       localStorage.removeItem('sq_token');
     }
     this._updateAuthUI();
+    try {
+      window.StockQPro?.App?.reconnectWs?.();
+    } catch (_) {}
   },
 
   /**
@@ -220,23 +223,24 @@ const Api = {
     const basePath = path.split('?')[0];
     const ttl = opts.noCache ? 0 : (this._cacheTtl[basePath] || 0);
     const reqOpts = opts.silent ? { silent: true } : null;
+    const cacheKey = path.includes('?') ? path : basePath;
     if (ttl > 0) {
-      const hit = this._getCache.get(path);
+      const hit = this._getCache.get(cacheKey);
       if (hit && Date.now() - hit.ts < ttl) {
         return hit.data;
       }
-      if (this._inflight.has(path)) {
-        return this._inflight.get(path);
+      if (this._inflight.has(cacheKey)) {
+        return this._inflight.get(cacheKey);
       }
     }
     const p = this.request(path, reqOpts);
     if (ttl > 0) {
-      this._inflight.set(path, p);
-      p.then(data => {
+      this._inflight.set(cacheKey, p);
+      p.then((data) => {
         if (data != null && !data._rateLimited) {
-          this._getCache.set(path, { ts: Date.now(), data });
+          this._getCache.set(cacheKey, { ts: Date.now(), data });
         }
-      }).finally(() => this._inflight.delete(path));
+      }).finally(() => this._inflight.delete(cacheKey));
     }
     return p;
   },
@@ -279,12 +283,20 @@ const Api = {
   /**
    * POST JSON
    */
-  async post(path, body = {}) {
+  async post(path, body = {}, opts = {}) {
     return this.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      silent: !!opts.silent,
     });
+  },
+
+  /** 寫操作前檢查登錄；未登錄時彈出登錄框 */
+  ensureLoggedIn() {
+    if (this.isLoggedIn()) return true;
+    this.showLoginModal(false);
+    return false;
   },
 
   /**
@@ -416,6 +428,10 @@ const Api = {
     return this.post('/api/alerts/rules/auto', body || {});
   },
 
+  async getWatchlist() {
+    return this.get('/api/watchlist');
+  },
+
   async addToWatchlist(code, name = '', opts = {}) {
     const q = new URLSearchParams({ code, name: name || '' });
     if (opts.auto_rule) q.set('auto_rule', 'true');
@@ -425,11 +441,51 @@ const Api = {
     return this.post(`/api/watchlist/add?${q}`);
   },
 
-  async getBacktestHistory(code, strategy, limit = 50) {
-    let url = `/api/backtest/history?limit=${limit}`;
+  async removeFromWatchlist(code) {
+    return this.delete(`/api/watchlist/${encodeURIComponent(code)}`);
+  },
+
+  async getBacktestHistory(code, strategy, limit = 50, offset = 0) {
+    let url = `/api/backtest/history?limit=${limit}&offset=${offset}`;
     if (code) url += `&code=${encodeURIComponent(code)}`;
     if (strategy) url += `&strategy=${encodeURIComponent(strategy)}`;
     return this.get(url);
+  },
+
+  async getBacktestCompare(ids) {
+    const list = (ids || []).map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+    if (!list.length) return { results: [], total: 0 };
+    return this.get(`/api/backtest/compare?ids=${list.join(',')}`);
+  },
+
+  /** 帶 Token 下載檔案（匯出 CSV/JSON） */
+  async downloadAuthenticated(path, filename) {
+    const headers = {};
+    if (this._token) headers.Authorization = `Bearer ${this._token}`;
+    const resp = await fetch(API_BASE + path, { headers });
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try {
+        const j = await resp.json();
+        detail = j.detail || j.error || detail;
+      } catch (_) { /* ignore */ }
+      throw new Error(detail || `下載失敗 (${resp.status})`);
+    }
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename || 'export.dat';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  downloadBlob(content, filename, mime = 'text/plain;charset=utf-8') {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
   },
 
   async runWalkForward(params) {
@@ -604,8 +660,16 @@ const Api = {
     return this.get(`/api/strategies/leaderboard?sort_by=${sortBy}&limit=${limit}`);
   },
 
-  async getIndicesCharts(days = 90) {
-    return this.get(`/api/indices/charts?days=${days}`);
+  async getIndicesCharts(days = 90, scope = 'all') {
+    return this.get(`/api/indices/charts?days=${days}&scope=${encodeURIComponent(scope)}`);
+  },
+
+  async getAssetsCatalog() {
+    return this.get('/api/assets/catalog');
+  },
+
+  async getAssetDetail(symbol, days = 180) {
+    return this.get(`/api/assets/detail?symbol=${encodeURIComponent(symbol)}&days=${days}`);
   },
 
   async getMinutesData(code, period = '5m') { return this.get(`/api/data/minutes?code=${code}&period=${period}`); },
@@ -632,6 +696,15 @@ const Api = {
   async retryTask(taskId) { return this.post(`/api/tasks/${taskId}/retry`); },
   async batchCancelTasks(taskIds) { return this.post('/api/tasks/batch/cancel', { task_ids: taskIds }); },
   async batchDeleteTasks(taskIds) { return this.post('/api/tasks/batch/delete', { task_ids: taskIds }); },
+  async cancelAllPendingTasks() { return this.post('/api/tasks/cancel-pending'); },
+  async clearCompletedTasks(includeFailed = true, includeCancelled = true) {
+    const q = `include_failed=${includeFailed}&include_cancelled=${includeCancelled}`;
+    return this.post(`/api/tasks/clear-completed?${q}`);
+  },
+  async getTaskLogs(taskId, tail = 200) {
+    return this.get(`/api/tasks/${encodeURIComponent(taskId)}/logs?tail=${tail}`, { silent: true });
+  },
+  async createTaskPipeline(body) { return this.post('/api/tasks/pipeline', body); },
   async getTaskStats() { return this.get('/api/tasks/stats'); },
 };
 

@@ -70,25 +70,8 @@ _COL_CANDIDATES = {
 
 
 def init_stock_universe_table():
-    with get_conn() as conn:
-        conn.execute(DDL_STOCK_UNIVERSE)
-        cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(stock_universe)").fetchall()
-        }
-        if "intro" not in cols:
-            conn.execute("ALTER TABLE stock_universe ADD COLUMN intro TEXT")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_univ_rank ON stock_universe(rank_mv)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_univ_market ON stock_universe(market)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_univ_mv ON stock_universe(total_mv DESC)"
-        )
-        conn.commit()
-    logger.info("股票庫表 stock_universe 就緒")
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 def _normalize_intro(text: str | None, max_len: int = 480) -> str:

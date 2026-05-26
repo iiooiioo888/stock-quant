@@ -28,66 +28,8 @@ from src.utils.logger import logger
 # ============================================================
 
 def _init_paper_tables():
-    """初始化模擬交易相關表"""
-    with get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS paper_trades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                code TEXT NOT NULL,
-                side TEXT NOT NULL,
-                shares INTEGER NOT NULL,
-                price REAL NOT NULL,
-                value REAL NOT NULL,
-                commission REAL DEFAULT 0,
-                stamp_tax REAL DEFAULT 0,
-                strategy TEXT,
-                signal_strength REAL DEFAULT 0,
-                risk_status TEXT DEFAULT 'approved',
-                pnl REAL DEFAULT 0,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS paper_sessions (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                initial_capital REAL NOT NULL,
-                current_capital REAL NOT NULL,
-                nav REAL NOT NULL,
-                total_trades INTEGER DEFAULT 0,
-                total_pnl REAL DEFAULT 0,
-                win_rate REAL DEFAULT 0,
-                max_drawdown REAL DEFAULT 0,
-                status TEXT DEFAULT 'active',
-                started_at TEXT NOT NULL,
-                stopped_at TEXT,
-                config TEXT
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS paper_positions (
-                session_id TEXT NOT NULL,
-                code TEXT NOT NULL,
-                shares INTEGER NOT NULL,
-                avg_cost REAL NOT NULL,
-                current_price REAL NOT NULL,
-                value REAL NOT NULL,
-                unrealized_pnl REAL DEFAULT 0,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (session_id, code)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS paper_nav_history (
-                session_id TEXT NOT NULL,
-                nav REAL NOT NULL,
-                cash REAL NOT NULL,
-                invested REAL NOT NULL,
-                drawdown_pct REAL DEFAULT 0,
-                recorded_at TEXT NOT NULL
-            )
-        """)
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 # ============================================================

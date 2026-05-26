@@ -23,6 +23,10 @@ def max_workers_3(monkeypatch):
         "src.core.task_manager._resolve_max_workers",
         lambda: 3,
     )
+    monkeypatch.setattr(
+        "src.core.task_manager._resolve_heavy_max_concurrent",
+        lambda: 3,
+    )
 
 
 def test_count_in_flight_not_double_running():

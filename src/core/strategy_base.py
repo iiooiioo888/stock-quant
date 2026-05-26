@@ -6,68 +6,23 @@
 """
 import os
 import re
-import ast
 import importlib.util
 import pandas as pd
 import backtrader as bt
 from pathlib import Path
 from src.utils.logger import logger
-
-
-# ============================================================
-# 沙箱安全檢查
-# ============================================================
-
-# 禁止導入的模塊 — 防止用戶策略執行危險操作
-BLOCKED_MODULES = {
-    "os", "sys", "subprocess", "shutil", "socket", "http",
-    "ftplib", "smtplib", "ctypes", "importlib", "code",
-    "codeop", "compile", "compile_command", "eval", "exec",
-    "pickle", "shelve", "dbm", "sqlite3", "multiprocessing",
-    "threading", "signal", "mmap", "pathlib",
-}
+from src.core.strategy_sandbox import (
+    validate_strategy_file,
+    validate_strategy_source,
+)
 
 
 def _check_strategy_safety(filepath: str) -> bool:
-    """
-    檢查策略文件是否安全。
-    使用 AST 解析，禁止 import os/sys/subprocess 等危險模塊。
-    """
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            source = f.read()
-        tree = ast.parse(source, mode="exec")
-    except SyntaxError as e:
-        logger.warning(f"策略文件語法錯誤: {filepath} — {e}")
-        return False
-    except Exception as e:
-        logger.warning(f"策略文件讀取失敗: {filepath} — {e}")
-        return False
-
-    for node in ast.walk(tree):
-        # 檢查 import 語句
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                mod_root = alias.name.split(".")[0]
-                if mod_root in BLOCKED_MODULES:
-                    logger.warning(f"策略文件包含禁止的模塊: {alias.name} ({filepath})")
-                    return False
-
-        # 檢查 from ... import 語句
-        if isinstance(node, ast.ImportFrom) and node.module:
-            mod_root = node.module.split(".")[0]
-            if mod_root in BLOCKED_MODULES:
-                logger.warning(f"策略文件包含禁止的模塊: {node.module} ({filepath})")
-                return False
-
-        # 檢查 __import__ 調用
-        if isinstance(node, ast.Call):
-            func = node.func
-            if isinstance(func, ast.Name) and func.id in ("__import__", "eval", "exec", "compile"):
-                logger.warning(f"策略文件包含禁止的函數調用: {func.id} ({filepath})")
-                return False
-
-    return True
+    """策略沙箱校驗（見 strategy_sandbox.py）。"""
+    result = validate_strategy_file(filepath)
+    if not result.ok:
+        logger.warning(f"策略安全檢查未通過: {filepath} — {result.error}")
+    return result.ok
 
 
 # ============================================================
@@ -210,7 +165,7 @@ class UserStrategy:
 # 策略加載器
 # ============================================================
 
-def load_user_strategy(filepath: str) -> list[type]:
+def load_user_strategy(filepath: str, source: str | None = None) -> list[type]:
     """
     從 .py 文件加載 UserStrategy 子類。
 
@@ -230,8 +185,12 @@ def load_user_strategy(filepath: str) -> list[type]:
         logger.warning(f"策略文件不存在: {filepath}")
         return []
 
-    # 安全檢查
-    if not _check_strategy_safety(filepath):
+    if source is not None:
+        check = validate_strategy_source(source)
+        if not check.ok:
+            logger.warning(f"策略安全檢查未通過: {filepath} — {check.error}")
+            return []
+    elif not _check_strategy_safety(filepath):
         return []
 
     try:

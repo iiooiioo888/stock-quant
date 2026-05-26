@@ -32,6 +32,19 @@ def build_parser():
     p_dl.add_argument("--incremental", action="store_true", help="增量下載")
     p_dl.add_argument("--force", action="store_true", help="強制重新下載全部")
 
+    # seed — 預載常見數據
+    p_seed = subparsers.add_parser("seed", help="預載常見數據（藍籌/指數/目錄）")
+    p_seed.add_argument(
+        "--profile",
+        choices=("quick", "standard", "full"),
+        default="standard",
+        help="quick | standard（默認）| full",
+    )
+    p_seed.add_argument("--force", action="store_true", help="強制重新下載日 K")
+    p_seed.add_argument("--no-download", action="store_true", help="僅寫目錄，不下載 K 線")
+    p_seed.add_argument("--sync-universe", action="store_true", help="從行情源同步股票庫")
+    p_seed.add_argument("--with-backtest", action="store_true", help="生成示範回測")
+
     # backtest
     p_bt = subparsers.add_parser(
         "backtest",

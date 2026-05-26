@@ -42,8 +42,24 @@ class TestSmokeAPI:
         assert "tasks" in data
         assert "queue" in data
 
-    def test_static_index(self, client):
-        assert client.get("/").status_code == 200
+    def test_html_entrypoints(self, client):
+        home = client.get("/")
+        assert home.status_code == 200
+        assert "site-portals" in home.text or "StockQ" in home.text
+        assert "home-strat-grid" in home.text
+        assert "strategy-catalog" in home.text or "支援的策略庫" in home.text
+
+        app = client.get("/app")
+        assert app.status_code == 200
+        assert "pg-dashboard" in app.text
+        assert "dashboard-root" in app.text
+        assert "topbar-ticker-strip" in app.text
+        assert "pg-assets" in app.text
+
+        admin = client.get("/admin")
+        assert admin.status_code == 200
+        assert "admin-gate" in admin.text
+
         assert client.get("/static/js/app.js").status_code == 200
 
     def test_ws_auth_flag_in_health(self, client):
@@ -56,6 +72,58 @@ class TestSmokeAPI:
         data = resp.json()
         assert "indices" in data
         assert isinstance(data["indices"], list)
+        assert "groups" in data
+        assert "providers" in data
+        assert "tradingview" in data["providers"]
+
+    def test_indices_charts_topbar_days(self, client):
+        """頂欄輕量請求允許 days≤14，不可再 422。"""
+        resp = client.get("/api/indices/charts?days=14&scope=topbar")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("scope") == "topbar"
+        assert data.get("days") == 14
+
+    def test_indices_providers(self, client):
+        resp = client.get("/api/indices/providers")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("catalog_size", 0) >= 80
+        assert "hk_stock" in data.get("groups", {})
+        assert "asset_classes" in data
+        assert "tradingview" in data
+        assert "ib" in data
+
+    def test_assets_catalog(self, client):
+        resp = client.get("/api/assets/catalog")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("total", 0) >= 200
+        assert "instruments" in data
+        assert "group_order" in data
+        groups = data.get("groups") or {}
+        assert "asia" in groups
+        assert "us_stock" in groups
+
+    def test_assets_detail(self, client):
+        resp = client.get("/api/assets/detail?symbol=^GSPC&days=60")
+        assert resp.status_code == 200
+        resp_hk = client.get("/api/assets/detail?symbol=1299.HK&days=60")
+        assert resp_hk.status_code == 200
+        assert resp_hk.json().get("detail", {}).get("kline")
+        resp_175 = client.get("/api/assets/detail?symbol=0175.HK&days=90")
+        assert resp_175.status_code == 200
+        d175 = resp_175.json().get("detail") or {}
+        assert len(d175.get("profile", {}).get("intro", "")) > 20
+        assert d175.get("stats", {}).get("period_high") is not None
+        assert isinstance(d175.get("links"), list) and len(d175["links"]) >= 2
+        data = resp.json()
+        assert data.get("success") is True
+        detail = data.get("detail") or {}
+        assert detail.get("symbol") == "^GSPC"
+        assert isinstance(detail.get("kline"), list)
+        assert "quote" in detail
+        assert "news" in detail
 
     @pytest.mark.parametrize(
         "path,keys",

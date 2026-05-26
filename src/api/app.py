@@ -26,6 +26,7 @@ from src.api import state
 from src.api.routers.health import router as health_router
 from src.api.routers.tasks import router as tasks_router
 from src.api.routers.indices import router as indices_router
+from src.api.routers.assets import router as assets_router
 from src.api.routers.dashboard_market import router as dashboard_market_router
 from src.api.routers.auth import router as auth_router
 from src.api.routers.stocks import router as stocks_router
@@ -47,6 +48,11 @@ from src.api.ws import router as ws_router, ws_realtime_push
 async def lifespan(app: FastAPI):
     """應用生命週期"""
     init_db()
+    try:
+        from src.core.watchlist_store import apply_runtime_on_startup
+        apply_runtime_on_startup()
+    except Exception as e:
+        logger.debug(f"自選股 runtime 載入跳過: {e}")
     logger.info(f"🚀 {settings.app_name} v{settings.app_version} 啟動")
     logger.info(f"   http://{settings.web_host}:{settings.web_port}")
 
@@ -63,13 +69,6 @@ async def lifespan(app: FastAPI):
                 seed_demo_data()
         except Exception:
             seed_demo_data()
-
-    # 初始化排行榜表
-    try:
-        from src.core.leaderboard import init_leaderboard_table
-        init_leaderboard_table()
-    except Exception as e:
-        logger.debug(f"排行榜表初始化跳過: {e}")
 
     # 自動發現用戶策略
     try:
@@ -103,6 +102,13 @@ async def lifespan(app: FastAPI):
     register_ws_broadcaster(sync_broadcast)
     _ws_task = asyncio.create_task(ws_realtime_push())
 
+    try:
+        from src.core.task_manager import recover_stale_tasks_on_startup, start_task_watchdog
+        recover_stale_tasks_on_startup()
+        start_task_watchdog()
+    except Exception as e:
+        logger.debug(f"任務自癒/看門狗啟動跳過: {e}")
+
     yield
 
     # 關閉 WebSocket 推送
@@ -117,6 +123,11 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
     except Exception:
         pass
+    try:
+        from src.core.task_manager import stop_task_watchdog
+        stop_task_watchdog()
+    except Exception:
+        pass
     logger.info("👋 應用關閉")
 
 
@@ -129,6 +140,7 @@ app = FastAPI(
 app.include_router(health_router)
 app.include_router(tasks_router)
 app.include_router(indices_router)
+app.include_router(assets_router)
 app.include_router(dashboard_market_router)
 app.include_router(ws_router)
 app.include_router(auth_router)
@@ -302,11 +314,11 @@ async def rate_limit_middleware(request: Request, call_next):
 # 不需要認證的路徑前綴（白名單）
 AUTH_WHITELIST_PREFIX = (
     "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
-    "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/data-sources",
-    "/api/markets", "/api/indices", "/api/dashboard", "/api/data/", "/api/tasks",
+    "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/stock-universe", "/api/data-sources",
+    "/api/markets", "/api/indices", "/api/assets", "/api/dashboard", "/api/data/", "/api/tasks",
     "/api/polymarket",
     "/api/external",
-    "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts",
+    "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts", "/api/watchlist",
     "/docs", "/openapi.json",
     "/redoc", "/static", "/", "/ws",
 )
@@ -344,6 +356,10 @@ def _auth_write_requires_login(path: str, method: str) -> bool:
         return False
     if path.startswith("/api/auth/login") or path.startswith("/api/auth/register"):
         return False
+    # 本地 debug / 非公開演示：回測/優化/組合允許匿名提交
+    if (settings.debug or settings.demo_mode) and not settings.is_public_demo_deployment():
+        if path.startswith(("/api/backtest", "/api/optimize", "/api/auto-optimize", "/api/portfolio")):
+            return False
     if _auth_read_allowed(path):
         return any(path.startswith(prefix) for prefix in _AUTH_WRITE_PROTECTED_PREFIX)
     return True
@@ -573,12 +589,17 @@ async def get_config():
             "backtest_commission": settings.backtest_commission,
             "backtest_stamp_tax": settings.backtest_stamp_tax,
             "task_max_workers": settings.task_max_workers,
+            "task_heavy_max_concurrent": settings.task_heavy_max_concurrent,
+            "task_timeout_sec": settings.task_timeout_sec,
             "task_parallel_grid": settings.task_parallel_grid,
             "strategy_params": settings.strategy_params,
             "param_grids": PARAM_GRIDS,
             "param_ranges": {k: {pk: list(pv) for pk, pv in v.items()} for k, v in PARAM_RANGES.items()},
             "alert_rules": settings.alert_rules,
             "portfolio_presets": settings.portfolio_presets,
+            "tradingview_enabled": settings.tradingview_enabled,
+            "ib_enabled": settings.ib_enabled,
+            "local_first_auto_fetch": settings.local_first_auto_fetch,
         }
 
     return cached_response("api:config", ttl=60, builder=_build)
@@ -1521,36 +1542,57 @@ async def list_strategies_api():
 
 @app.post("/api/strategies/upload")
 async def upload_strategy(file: UploadFile = File(...)):
-    """上傳用戶策略 .py 文件"""
+    """上傳用戶策略 .py 文件（AST 白名單沙箱，寫入前校驗）"""
+    from src.config import settings
     from src.core.strategy_base import load_user_strategy
-    import tempfile
-    import shutil
+    from src.core.strategy_sandbox import (
+        sanitize_strategy_filename,
+        validate_strategy_source,
+    )
 
-    if not file.filename.endswith(".py"):
-        raise HTTPException(400, "策略文件必須是 .py 格式")
+    if not settings.allow_strategy_upload:
+        raise HTTPException(403, "管理員已禁用自定義策略上傳（SQ_ALLOW_STRATEGY_UPLOAD=false）")
 
-    # 保存到 strategies 目錄
-    strategies_dir = Path(__file__).parent.parent.parent / "strategies"
-    strategies_dir.mkdir(exist_ok=True)
-    dest = strategies_dir / file.filename
+    safe_name = sanitize_strategy_filename(file.filename or "")
+    if not safe_name:
+        raise HTTPException(400, "檔名僅允許字母數字與底線，且須為 .py（例: my_ma_strategy.py）")
+
+    raw = await file.read(settings.strategy_upload_max_bytes + 1)
+    if len(raw) > settings.strategy_upload_max_bytes:
+        raise HTTPException(400, f"策略檔案超過 {settings.strategy_upload_max_bytes} bytes 上限")
 
     try:
-        with open(dest, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        source = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "策略檔案必須為 UTF-8 編碼")
+
+    check = validate_strategy_source(source, max_bytes=settings.strategy_upload_max_bytes)
+    if not check.ok:
+        raise HTTPException(400, f"策略安全校驗失敗: {check.error}")
+
+    strategies_dir = Path(__file__).parent.parent.parent / "strategies"
+    strategies_dir.mkdir(exist_ok=True)
+    dest = (strategies_dir / safe_name).resolve()
+    if strategies_dir.resolve() not in dest.parents:
+        raise HTTPException(400, "非法路徑")
+
+    try:
+        dest.write_text(source, encoding="utf-8")
     except Exception as e:
         raise HTTPException(500, f"文件保存失敗: {e}")
 
-    # 驗證策略
-    strategy_classes = load_user_strategy(str(dest))
+    strategy_classes = load_user_strategy(str(dest), source=source)
     if not strategy_classes:
-        # 刪除無效文件
         dest.unlink(missing_ok=True)
-        raise HTTPException(400, "文件中未找到有效的 UserStrategy 子類，或包含禁止的模塊")
+        raise HTTPException(
+            400,
+            "文件中未找到有效的 UserStrategy 子類，或未通過安全校驗",
+        )
 
     names = [getattr(s, "name", s.__name__) for s in strategy_classes]
     return {
         "success": True,
-        "filename": file.filename,
+        "filename": safe_name,
         "filepath": str(dest),
         "strategies": names,
         "count": len(strategy_classes),
@@ -2267,6 +2309,15 @@ async def compat_iconfont_stock_svg_mount(
     return _stock_logo_response(filename[:-4], market, name)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """避免瀏覽器預設請求 favicon.ico 404。"""
+    path = static_dir / "img" / "brand.svg"
+    if path.is_file():
+        return FileResponse(path, media_type="image/svg+xml")
+    raise HTTPException(404, "favicon not found")
+
+
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     logger.info(f"📁 靜態文件目錄: {static_dir}")
@@ -2274,15 +2325,38 @@ else:
     logger.warning(f"⚠️ 靜態文件目錄不存在: {static_dir}，使用內建儀表盤")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    """首頁 — 返回前端 SPA"""
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+def _serve_static_html(filename: str, *, fallback=None) -> HTMLResponse:
+    """返回 static/ 下獨立 HTML 頁（企業首頁 / 工作台 / 管理後台）。"""
+    path = static_dir / filename
+    if path.exists():
+        return HTMLResponse(content=path.read_text(encoding="utf-8"))
+    if fallback:
+        return HTMLResponse(content=fallback())
+    raise HTTPException(404, f"{filename} not found")
 
-    # 內建最小儀表盤（fallback）
-    return HTMLResponse(content=_builtin_dashboard())
+
+@app.get("/", response_class=HTMLResponse)
+async def site_home():
+    """企業官網式產品首頁（功能介紹、三入口導航）。"""
+    return _serve_static_html("home.html", fallback=_builtin_dashboard)
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_workbench():
+    """量化交易工作台（原 SPA 主界面）。"""
+    return _serve_static_html("app.html", fallback=_builtin_dashboard)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_console():
+    """管理員後台。"""
+    return _serve_static_html("admin.html")
+
+
+@app.get("/panel", response_class=HTMLResponse)
+async def panel_alias():
+    """工作台別名（與 /app 相同）。"""
+    return await app_workbench()
 
 
 def _builtin_dashboard() -> str:

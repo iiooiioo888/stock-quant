@@ -25,26 +25,22 @@ BASE_URL = os.environ.get("SQ_UI_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
 SIDEBAR_TABS = [
     "dashboard",
+    "strategies",
     "backtest",
-    "optimize",
-    "walkforward",
-    "heatmap",
-    "history",
-    "portfolio",
     "compare",
-    "screener",
-    "signals",
-    "data",
-    "analysis",
-    "stock-detail",
-    "polymarket",
-    "tasks",
-    "reports",
-    "scheduler",
+    "portfolio",
+    "watchlist",
+    "scanner",
     "alerts",
-    "markets",
-    "crypto",
-    "connectivity",
+    "risk",
+    "journal",
+    "backhistory",
+    "ai",
+    "factor",
+    "seasonal",
+    "regime",
+    "pricing",
+    "settings",
 ]
 
 COMPARE_API_FRAGMENT = "/api/stocks/compare"
@@ -61,28 +57,41 @@ def _server_reachable() -> bool:
 def _tab_visible(page: Page, tab: str) -> bool:
     return page.evaluate(
         """(name) => {
-          const el = document.getElementById('tab-' + name);
-          return !!(el && !el.classList.contains('h'));
+          const el = document.getElementById('pg-' + name);
+          return !!(el && el.classList.contains('on'));
         }""",
         tab,
     )
 
 
 def _dismiss_modal(page: Page) -> None:
-    cancel = page.locator(".modal button", has_text="取消")
-    if cancel.count() and cancel.first.is_visible():
-        cancel.first.click()
-        page.wait_for_timeout(200)
+    close_btn = page.locator('[data-close="m-strat"]').first
+    if close_btn.count() and close_btn.is_visible():
+        close_btn.click()
+        page.wait_for_timeout(150)
+    # 關閉命令面板（如有開啟）— 輸入框聚焦時 Escape 被 JS 跳過，用 JS 直接關閉
+    page.evaluate("""() => {
+        const ov = document.getElementById('cmd-ov');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+        document.querySelectorAll('.modal-ov.show').forEach(m => m.classList.remove('show'));
+    }""")
+    page.wait_for_timeout(100)
 
 
 def _click_sidebar_tab(page: Page, tab: str) -> None:
-    btn = page.locator(f'.sidebar button[data-tab="{tab}"]')
+    # 確保命令面板已關閉（輸入框聚焦時 Escape 無效，用 JS 直接關閉）
+    page.evaluate("""() => {
+        const ov = document.getElementById('cmd-ov');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    }""")
+    page.wait_for_timeout(100)
+    btn = page.locator(f'.sidebar button.sb[data-p="{tab}"]')
     btn.scroll_into_view_if_needed()
     btn.click(timeout=15_000)
     page.wait_for_function(
         """(name) => {
-          const el = document.getElementById('tab-' + name);
-          return el && !el.classList.contains('h');
+          const el = document.getElementById('pg-' + name);
+          return el && el.classList.contains('on');
         }""",
         arg=tab,
         timeout=8000,
@@ -101,12 +110,34 @@ def page(skip_without_server):
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1400, "height": 900})
         pg = context.new_page()
-        pg.goto(BASE_URL + "/", wait_until="domcontentloaded", timeout=30_000)
+        pg.goto(BASE_URL + "/app", wait_until="domcontentloaded", timeout=30_000)
         pg.wait_for_timeout(800)
         _dismiss_modal(pg)
         yield pg
         context.close()
         browser.close()
+
+
+@pytest.mark.ui
+class TestUISiteEntrypoints:
+    def test_marketing_home_has_portals(self, skip_without_server):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(BASE_URL + "/", wait_until="domcontentloaded", timeout=30_000)
+            assert page.locator(".site-portals").count() >= 1
+            assert page.locator('a[href="/app"]').count() >= 1
+            page.wait_for_selector("#home-strat-grid .strat-card", timeout=15_000)
+            assert page.locator("#home-strat-grid .strat-card").count() >= 50
+            browser.close()
+
+    def test_admin_shell_loads(self, skip_without_server):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(BASE_URL + "/admin", wait_until="domcontentloaded", timeout=30_000)
+            assert page.locator("#admin-gate").count() == 1
+            browser.close()
 
 
 @pytest.mark.ui
@@ -128,45 +159,21 @@ class TestUIPlaywrightSmoke:
         page.wait_for_timeout(600)
         assert not seen, f"進入多股對比不應自動請求 compare API，實際：{seen}"
 
-    def test_scheduler_tab_and_reports_shortcut(self, page: Page):
-        _click_sidebar_tab(page, "scheduler")
-        assert page.locator("#tab-scheduler").is_visible()
-        assert page.locator("#schedStatsGrid").count() >= 1
-
-        _click_sidebar_tab(page, "reports")
-        page.locator('button:has-text("定時任務管理")').click()
-        page.wait_for_function(
-            "() => !document.getElementById('tab-scheduler').classList.contains('h')",
-            timeout=8000,
-        )
-        assert _tab_visible(page, "scheduler")
-
-    def test_global_search_navigates_to_scheduler(self, page: Page):
+    def test_cmd_palette_opens(self, page: Page):
         _click_sidebar_tab(page, "dashboard")
-        page.locator("#globalSearch").fill("定時")
-        page.wait_for_timeout(400)
-        result = page.locator("#searchResults .search-result-item").first
-        assert result.count(), "全局搜索應出現「定時任務」等結果"
-        result.click()
-        page.wait_for_function(
-            "() => !document.getElementById('tab-scheduler').classList.contains('h')",
-            timeout=8000,
-        )
-        assert _tab_visible(page, "scheduler")
-
-    def test_crypto_card_opens_crypto_tab(self, page: Page):
-        _click_sidebar_tab(page, "dashboard")
-        card = page.locator(".crypto-card").first
-        try:
-            card.wait_for(state="visible", timeout=12_000)
-        except Exception:
-            pytest.skip("儀表盤無加密卡片（可能未載入行情）")
-        card.click()
-        page.wait_for_function(
-            "() => !document.getElementById('tab-crypto').classList.contains('h')",
-            timeout=8000,
-        )
-        assert _tab_visible(page, "crypto")
+        page.locator("#cmd-open-btn").click()
+        page.wait_for_timeout(200)
+        assert page.locator("#cmd-ov").is_visible()
+        page.locator("#cmd-in").fill("策略庫")
+        page.wait_for_timeout(200)
+        assert page.locator("#cmd-list .cmd-item").count() >= 1
+        # Escape 在輸入框聚焦時無效，用 JS 直接關閉
+        page.evaluate("""() => {
+            const ov = document.getElementById('cmd-ov');
+            if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+        }""")
+        page.wait_for_timeout(100)
+        assert not page.locator("#cmd-ov.show").is_visible()
 
     def test_no_switch_tab_console_error(self, page: Page):
         _dismiss_modal(page)
@@ -177,7 +184,7 @@ class TestUIPlaywrightSmoke:
                 errors.append(msg.text)
 
         page.on("console", on_console)
-        for tab in ("dashboard", "compare", "scheduler", "tasks"):
+        for tab in ("dashboard", "compare", "settings", "watchlist"):
             _click_sidebar_tab(page, tab)
             page.wait_for_timeout(200)
         assert not errors, errors

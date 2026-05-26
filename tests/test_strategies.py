@@ -1,5 +1,5 @@
 """
-策略測試 — 覆蓋全部 19 個內置策略的基本回測
+策略測試 — 覆蓋全部內置策略的基本回測
 
 每個策略至少運行一次回測，驗證:
   - 策略能正常初始化和運行
@@ -96,18 +96,43 @@ def _run_strategy_backtest(strategy_cls, data: pd.DataFrame, params: dict = None
 
 
 # ============================================================
-# 測試：所有 19 個策略
+# 測試：內置策略（registry）
 # ============================================================
 
-# 從 backtest 模塊導入所有策略
+from src.core.strategies import STRATEGIES, STRATEGY_NAMES
 from src.core.backtest import (
-    DualMAStrategy, MACDStrategy, BollingerStrategy, KDJStrategy,
-    RSIStrategy, GridStrategy, TurtleStrategy, DualThrustStrategy,
-    MomentumStrategy, MeanReversionStrategy, VolumePriceStrategy,
-    BreakoutStrategy, CompositeStrategy, VWAPStrategy, EnvelopeStrategy,
-    ParabolicSARStrategy, OBVStrategy, BollingerSqueezeStrategy,
-    ADXTrendStrategy, STRATEGIES, STRATEGY_NAMES,
+    DualMAStrategy,
+    MACDStrategy,
+    BollingerStrategy,
+    KDJStrategy,
+    RSIStrategy,
+    GridStrategy,
+    TurtleStrategy,
+    DualThrustStrategy,
+    MomentumStrategy,
+    MeanReversionStrategy,
+    VolumePriceStrategy,
+    BreakoutStrategy,
+    CompositeStrategy,
+    VWAPStrategy,
+    EnvelopeStrategy,
+    ParabolicSARStrategy,
+    OBVStrategy,
+    BollingerSqueezeStrategy,
+    ADXTrendStrategy,
+    EMACrossStrategy,
+    DonchianStrategy,
+    WilliamsRStrategy,
+    CCIStrategy,
+    SuperTrendStrategy,
+    ATRTrailTrendStrategy,
+    EMAVolumeStrategy,
+    TripleMAFilterStrategy,
+    MacdRsiFilterStrategy,
+    PullbackMAStrategy,
 )
+
+EXPECTED_STRATEGY_COUNT = 29
 
 
 class TestAllStrategies:
@@ -223,15 +248,59 @@ class TestAllStrategies:
             "adx_period": 14, "adx_threshold": 25, "di_period": 14,
         })
 
+    def test_ema_cross(self, synthetic_data):
+        self._test_strategy(EMACrossStrategy, synthetic_data, {"fast": 12, "slow": 26})
+
+    def test_donchian(self, synthetic_data):
+        self._test_strategy(DonchianStrategy, synthetic_data, {"period": 20})
+
+    def test_williams_r(self, synthetic_data):
+        self._test_strategy(WilliamsRStrategy, synthetic_data, {
+            "period": 14, "overbought": -20, "oversold": -80,
+        })
+
+    def test_cci(self, synthetic_data):
+        self._test_strategy(CCIStrategy, synthetic_data, {
+            "period": 20, "overbought": 100, "oversold": -100,
+        })
+
+    def test_supertrend(self, synthetic_data):
+        self._test_strategy(SuperTrendStrategy, synthetic_data, {
+            "period": 10, "multiplier": 3.0,
+        })
+
+    def test_atr_trail(self, synthetic_data):
+        self._test_strategy(ATRTrailTrendStrategy, synthetic_data, {
+            "ma_period": 20, "atr_period": 14, "atr_mult": 2.5,
+        })
+
+    def test_ema_volume(self, synthetic_data):
+        self._test_strategy(EMAVolumeStrategy, synthetic_data, {
+            "fast": 12, "slow": 26, "vol_ma": 20, "vol_ratio": 1.2,
+        })
+
+    def test_triple_ma(self, synthetic_data):
+        self._test_strategy(TripleMAFilterStrategy, synthetic_data, {
+            "fast": 5, "mid": 20, "slow": 60,
+        })
+
+    def test_macd_rsi(self, synthetic_data):
+        self._test_strategy(MacdRsiFilterStrategy, synthetic_data)
+
+    def test_pullback_ma(self, synthetic_data):
+        self._test_strategy(PullbackMAStrategy, synthetic_data, {
+            "fast": 10, "slow": 50, "trend": 120,
+        })
+
 
 class TestStrategiesDict:
     """測試 STRATEGIES 字典完整性"""
 
-    def test_all_19_strategies_registered(self):
-        assert len(STRATEGIES) == 19
+    def test_all_strategies_registered(self):
+        assert len(STRATEGIES) == EXPECTED_STRATEGY_COUNT
 
     def test_strategy_names_match(self):
-        assert len(STRATEGY_NAMES) == 19
+        assert len(STRATEGY_NAMES) == EXPECTED_STRATEGY_COUNT
         for name in STRATEGIES:
             assert name in STRATEGY_NAMES, f"{name} 缺少中文名"
 

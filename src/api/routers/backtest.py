@@ -11,6 +11,15 @@ from src.api.dispatch import dispatch_async_task
 
 router = APIRouter()
 
+
+@router.get("/api/backtest/timeframes")
+async def list_backtest_timeframes():
+    """回測可選 K 線週期"""
+    from src.core.kline_timeframe import list_timeframes
+
+    return {"timeframes": list_timeframes()}
+
+
 @router.post("/api/backtest")
 async def run_backtest_api(
     code: str,
@@ -21,15 +30,25 @@ async def run_backtest_api(
     take_profit_pct: float = None,
     trailing_stop_pct: float = None,
     benchmark: bool = False,
+    timeframe: str = "1d",
 ):
     """執行回測（自動去重：相同參數的回測不會重複執行）"""
     from src.core.backtest import run_backtest, STRATEGIES
+    from src.core.kline_timeframe import normalize_timeframe
     from src.core.task_manager import create_task
+
+    try:
+        timeframe = normalize_timeframe(timeframe)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     if strategy not in STRATEGIES:
         raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
 
-    task_params = {"code": code, "strategy": strategy, "params": params, "cash": cash}
+    task_params = {
+        "code": code, "strategy": strategy, "params": params, "cash": cash,
+        "timeframe": timeframe,
+    }
     task = create_task("backtest", task_params, title=f"回測 {code}/{strategy}")
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
@@ -42,6 +61,7 @@ async def run_backtest_api(
             code, strategy_name=strategy, params=params, cash=cash,
             stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
             trailing_stop_pct=trailing_stop_pct, benchmark=benchmark,
+            timeframe=timeframe,
             task_id=task_id,
         )
 
@@ -69,8 +89,10 @@ async def run_advanced_backtest_api(body: dict):
         slippage_pct: 滑點百分比（默認 0.0，即 0%）
         enable_t1: 是否啟用 T+1 限制（默認 True）
         enable_limit: 是否啟用漲跌停限制（默認 True）
+        timeframe: K 線週期 1d / 1h / 1m（默認 1d）
     """
     from src.core.backtest import run_backtest, STRATEGIES
+    from src.core.kline_timeframe import normalize_timeframe
     from src.core.task_manager import create_task
 
     code = body.get("code", "")
@@ -85,9 +107,14 @@ async def run_advanced_backtest_api(body: dict):
     slippage_pct = body.get("slippage_pct", 0.0)
     enable_t1 = body.get("enable_t1", True)
     enable_limit = body.get("enable_limit", True)
+    timeframe = body.get("timeframe", "1d")
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
+    try:
+        timeframe = normalize_timeframe(timeframe)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     if strategy not in STRATEGIES:
         raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
 
@@ -95,6 +122,7 @@ async def run_advanced_backtest_api(body: dict):
     task_params = {
         "code": code, "strategy": strategy, "params": params, "cash": cash,
         "slippage_pct": slippage_pct, "enable_t1": enable_t1, "enable_limit": enable_limit,
+        "timeframe": timeframe,
     }
     task = create_task("backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}")
     if task.get("is_duplicate"):
@@ -110,6 +138,7 @@ async def run_advanced_backtest_api(body: dict):
             take_profit_pct=take_profit_pct, trailing_stop_pct=trailing_stop_pct,
             benchmark=benchmark, slippage_pct=slippage_pct,
             enable_t1=enable_t1, enable_limit=enable_limit,
+            timeframe=timeframe,
             task_id=task_id,
         )
 

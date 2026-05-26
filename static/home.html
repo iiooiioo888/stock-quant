@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockQ Pro — A 股量化回測與實時盯盤</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=stockq-site-v1" />
+  <link rel="stylesheet" href="/static/css/site.css?v=stockq-site-v2" />
+  <style>body{overflow:auto;height:auto}.home-feat{text-decoration:none;color:inherit}</style>
+</head>
+<body>
+<div class="site-wrap">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="/" class="site-brand"><span class="site-brand-icon">Q</span> StockQ <span>Pro</span></a>
+      <nav class="site-nav" aria-label="官網導航">
+        <a href="#features">產品能力</a>
+        <a href="#strategies">策略庫</a>
+        <a href="#portals">入口</a>
+        <a href="/docs" target="_blank" rel="noopener">API 文檔</a>
+      </nav>
+      <div class="site-actions">
+        <a href="/admin" class="site-btn">管理後台</a>
+        <a href="/app" class="site-btn site-btn-primary">進入工作台</a>
+      </div>
+    </div>
+  </header>
+  <main class="site-main">
+
+        <section class="home-hero pnl">
+          <div class="home-hero-inner pb">
+            <div class="home-hero-text">
+              <p class="home-kicker">StockQ Pro · 量化交易工作站</p>
+              <h1 class="home-title">A 股量化回測<br/>與實時盯盤，一站完成</h1>
+              <p class="home-lead">
+                本地 SQLite 存儲、Yahoo / AKShare 多源行情、<strong>130+</strong> 策略目錄與
+                <strong>19</strong> 種可回測內建策略；支援異步任務、組合回測、參數優化與風控預警。
+              </p>
+              <div class="home-cta">
+                <a class="site-btn site-btn-primary" href="/app#/dashboard">進入儀表盤</a>
+                <a class="site-btn" href="/app#/backtest">開始回測</a>
+                <a class="site-btn" href="/app#/strategies">瀏覽策略庫</a>
+              </div>
+            </div>
+            <div class="home-hero-stats" id="home-stats">
+              <div class="home-stat"><span class="home-stat-val" id="home-st-stocks">--</span><span class="home-stat-lbl">本地標的</span></div>
+              <div class="home-stat"><span class="home-stat-val" id="home-st-klines">--</span><span class="home-stat-lbl">日 K 記錄</span></div>
+              <div class="home-stat"><span class="home-stat-val" id="home-st-ver">v4.0</span><span class="home-stat-lbl">系統版本</span></div>
+              <div class="home-stat"><span class="home-stat-val" id="home-st-uptime">--</span><span class="home-stat-lbl">運行時間</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="site-section site-features-wrap" id="features" aria-labelledby="features-title">
+        <div class="site-section-head" style="max-width:var(--max);margin:0 auto;padding:0 28px 20px">
+          <div>
+            <span class="site-eyebrow">Product</span>
+            <h2 class="site-section-title" id="features-title">核心能力</h2>
+            <p class="site-section-lead">從行情總覽、策略研究到風控預警，覆蓋量化研究與盯盤的完整鏈路。</p>
+          </div>
+          <span class="badge b-ac">8 大模組</span>
+        </div>
+        <div class="home-grid">
+          <div class="pnl home-block">
+            <div class="ph"><div class="pt">功能一覽</div><div class="pa"><span class="badge b-bl">Pro v4</span></div></div>
+            <div class="pb">
+              <div class="home-feat-grid" id="home-feat-grid">
+                <a class="home-feat" href="/app#/dashboard">
+                  <div class="home-feat-icon" style="--c:var(--ac)">📊</div>
+                  <h3>市場儀表盤</h3>
+                  <p>指數行情、板塊熱力圖、資金流向與市場概覽，快速掌握當日環境。</p>
+                  <span class="home-feat-link">前往總覽 →</span>
+                </a>
+                <a class="home-feat" href="/app#/strategies">
+                  <div class="home-feat-icon" style="--c:var(--pu)">📚</div>
+                  <h3>超級策略庫</h3>
+                  <p>130+ 策略目錄、10 大類別；內建 19 種策略可直接回測，支援自定義策略擴展。</p>
+                  <span class="home-feat-link">瀏覽策略 →</span>
+                </a>
+                <a class="home-feat" href="/app#/backtest">
+                  <div class="home-feat-icon" style="--c:var(--bl)">📈</div>
+                  <h3>策略回測</h3>
+                  <p>雙均線、MACD、布林、RSI 等經典策略；夏普、回撤、勝率等完整績效指標。</p>
+                  <span class="home-feat-link">開始回測 →</span>
+                </a>
+                <a class="home-feat" href="/app#/compare">
+                  <div class="home-feat-icon" style="--c:var(--cy)">⚖️</div>
+                  <h3>多股 / 多策略對比</h3>
+                  <p>並排比較不同標的或策略表現，輔助選股與策略篩選決策。</p>
+                  <span class="home-feat-link">打開對比 →</span>
+                </a>
+                <a class="home-feat" href="/app#/scanner">
+                  <div class="home-feat-icon" style="--c:var(--gn)">🔍</div>
+                  <h3>選股與股票庫</h3>
+                  <p>全市場掃描、基本面篩選；股票庫按市值收錄多市場標的元數據。</p>
+                  <span class="home-feat-link">選股器 →</span>
+                </a>
+                <a class="home-feat" href="/app#/watchlist">
+                  <div class="home-feat-icon" style="--c:var(--or)">⭐</div>
+                  <h3>自選與預警</h3>
+                  <p>自選股分組管理；價格突破、條件觸發預警，配合實時盯盤推送。</p>
+                  <span class="home-feat-link">管理自選 →</span>
+                </a>
+                <a class="home-feat" href="/app#/portfolio">
+                  <div class="home-feat-icon" style="--c:var(--pk)">💼</div>
+                  <h3>組合回測</h3>
+                  <p>多策略資產配置、風險平價、Black-Litterman 等組合方法（API + 任務隊列）。</p>
+                  <span class="home-feat-link">組合分析 →</span>
+                </a>
+                <a class="home-feat" href="/app#/risk">
+                  <div class="home-feat-icon" style="--c:var(--rd)">🛡️</div>
+                  <h3>風控與交易日誌</h3>
+                  <p>倉位與風險規則、模擬交易流水；記錄決策過程，便於覆盤改進。</p>
+                  <span class="home-feat-link">風控中心 →</span>
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="home-side-col">
+            <div class="pnl home-block">
+              <div class="ph"><div class="pt">快速開始</div></div>
+              <div class="pb">
+                <ol class="home-steps">
+                  <li><strong>預載數據</strong><code>python main.py seed</code> 或從數據中心下載日 K</li>
+                  <li><strong>選策略</strong>在策略庫挑選內建策略，或創建自定義策略</li>
+                  <li><strong>跑回測</strong>輸入代碼與參數，提交後在任務面板查看進度</li>
+                  <li><strong>上線盯盤</strong>加入自選、設置預警，交易時段實時監控</li>
+                </ol>
+                <div class="home-quick">
+                  <a class="site-btn" href="/app#/backhistory">回測歷史</a>
+                  <a class="site-btn" href="/app#/alerts">預警規則</a>
+                  <a class="site-btn" href="/app#/settings">系統設定</a>
+                </div>
+              </div>
+            </div>
+            <div class="pnl home-block">
+              <div class="ph"><div class="pt">技術架構</div></div>
+              <div class="pb">
+                <ul class="home-tech">
+                  <li><span class="badge b-bl">FastAPI</span> REST + WebSocket 實時推送</li>
+                  <li><span class="badge b-gn">SQLite</span> 本地 WAL 數據庫 + 版本化遷移</li>
+                  <li><span class="badge b-ac">Yahoo</span> 主行情源，AKShare 備選降級</li>
+                  <li><span class="badge b-pu">Redis</span> 可選跨進程結果緩存（Docker）</li>
+                  <li><span class="badge">任務隊列</span> 回測 / 優化 / 組合異步執行</li>
+                </ul>
+                <p class="home-note">進階功能（數據中心、Polymarket、調度器）可從命令面板搜尋，或訪問<a href="/static/legacy/index.html" target="_blank" rel="noopener">舊版完整界面</a>。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        </section>
+
+    <section class="site-strat-section" id="strategies" aria-labelledby="strategies-title">
+      <div class="site-section-head site-strat-head">
+        <div>
+          <span class="site-eyebrow">Strategy Library</span>
+          <h2 class="site-section-title" id="strategies-title">支援的策略庫</h2>
+          <p class="site-section-lead site-strat-lead">130+ 策略目錄按十大類別整理；標記為「可回測」者已接入回測引擎，其餘為路線圖預覽。</p>
+        </div>
+        <a href="/app#/strategies" class="site-btn site-btn-primary">在工作台打開完整策略庫</a>
+      </div>
+
+      <div class="pnl site-strat-panel">
+        <div class="pb">
+          <div class="home-lib-stats" id="home-lib-stats">
+            <div class="home-lib-stat"><span class="v">…</span><span class="l">載入中</span></div>
+          </div>
+
+          <div class="home-builtin-row" id="home-builtin-row" hidden>
+            <span class="home-builtin-label">回測引擎已支援</span>
+            <div class="home-builtin-chips" id="home-builtin-chips"></div>
+          </div>
+
+          <div class="home-lib-toolbar">
+            <div class="lib-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="search" id="home-lib-search" placeholder="搜尋策略名稱或描述…" autocomplete="off" />
+            </div>
+            <label class="home-lib-filter">
+              <input type="checkbox" id="home-lib-impl-only" />
+              <span>僅顯示可回測</span>
+            </label>
+          </div>
+
+          <div class="cat-pills" id="home-cat-pills"></div>
+          <div class="strat-grid" id="home-strat-grid"></div>
+          <p class="home-strat-foot" id="home-strat-foot"></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="site-portals-wrap" id="portals">
+      <div class="site-section-head">
+        <div>
+          <span class="site-eyebrow">Access</span>
+          <h2 class="site-section-title">系統入口</h2>
+          <p class="site-section-lead">官網、工作台與管理後台分離，各司其職。</p>
+        </div>
+      </div>
+    <div class="site-portals">
+      <div class="portal-card">
+        <h3>官網首頁</h3>
+        <p>產品介紹、能力概覽與快速開始指引（當前頁面）。</p>
+        <span class="site-btn" style="opacity:.6;cursor:default">您已在這裡</span>
+      </div>
+      <div class="portal-card">
+        <h3>量化工作台</h3>
+        <p>儀表盤、策略庫、回測、自選、預警與風控 — 日常交易分析主界面。</p>
+        <a href="/app" class="site-btn site-btn-primary">打開 /app</a>
+      </div>
+      <div class="portal-card admin">
+        <h3>管理員後台</h3>
+        <p>用戶與角色管理、系統健康檢查（需 admin 賬號登錄）。</p>
+        <a href="/admin" class="site-btn">打開 /admin</a>
+      </div>
+    </div>
+    </div>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span>© StockQ Pro · 本地量化工作站</span>
+      <div class="site-footer-links">
+        <a href="/app">工作台</a>
+        <a href="/admin">管理後台</a>
+        <a href="/static/legacy/index.html">舊版 UI</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </div>
+    </div>
+  </footer>
+</div>
+<script src="/static/js/site/home-landing.js?v=stockq-site-v3"></script>
+</body>
+</html>

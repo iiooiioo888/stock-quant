@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockQ Pro — 管理後台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/admin.css?v=stockq-admin-v1" />
+</head>
+<body>
+  <div class="admin-gate" id="admin-gate">
+    <h2>管理員後台</h2>
+    <p class="gate-msg">驗證身份中…</p>
+    <button type="button" class="admin-btn admin-btn-primary" id="admin-login-btn">管理員登錄</button>
+    <p style="margin-top:14px;font-size:.72rem;color:var(--t3)">
+      <a href="/">返回官網</a> · <a href="/app">工作台</a>
+    </p>
+  </div>
+
+  <div class="admin-app" id="admin-shell" style="display:none">
+    <aside class="admin-side">
+      <div class="admin-brand">StockQ <span>Admin</span></div>
+      <nav class="admin-nav" aria-label="管理選單">
+        <button type="button" class="on" data-panel="overview">總覽</button>
+        <button type="button" data-panel="users">用戶管理</button>
+        <button type="button" data-panel="system">系統狀態</button>
+      </nav>
+      <div class="admin-side-footer">
+        <span id="admin-who">--</span>
+        <a href="/app">工作台</a>
+        <a href="/">官網首頁</a>
+        <a href="/docs" target="_blank" rel="noopener">API 文檔</a>
+        <button type="button" class="admin-btn admin-btn-sm" id="admin-logout-btn">登出</button>
+      </div>
+    </aside>
+
+    <div class="admin-main">
+      <div class="admin-top">
+        <h1>管理員控制台</h1>
+        <span style="font-size:.72rem;color:var(--t3)">用戶、角色與系統健康</span>
+      </div>
+
+      <section class="admin-panel on" id="panel-overview">
+        <div class="admin-card">
+          <div class="admin-card-h">三入口架構</div>
+          <div class="admin-card-b" style="font-size:.76rem;color:var(--t2);line-height:1.65">
+            <p><strong style="color:var(--tx)">/</strong> — 企業官網式產品首頁（功能介紹、無交易側欄）</p>
+            <p style="margin-top:8px"><strong style="color:var(--tx)">/app</strong> — 量化交易工作站（回測、策略、盯盤）</p>
+            <p style="margin-top:8px"><strong style="color:var(--tx)">/admin</strong> — 本管理後台（需 admin 角色）</p>
+          </div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-card-h">快捷操作</div>
+          <div class="admin-card-b" style="display:flex;flex-wrap:wrap;gap:8px">
+            <a class="admin-btn" href="/app#/dashboard">打開儀表盤</a>
+            <a class="admin-btn" href="/app#/settings">系統設定</a>
+            <a class="admin-btn" href="/static/legacy/index.html" target="_blank" rel="noopener">舊版完整 UI</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-panel" id="panel-users">
+        <div class="admin-card">
+          <div class="admin-card-h"><span>用戶列表</span><span style="font-weight:400;color:var(--t3)">GET /api/admin/users</span></div>
+          <div class="admin-card-b" style="overflow:auto">
+            <table class="admin-table">
+              <thead>
+                <tr><th>ID</th><th>用戶名</th><th>角色</th><th>註冊時間</th><th>操作</th></tr>
+              </thead>
+              <tbody id="users-tbody"><tr><td colspan="5">載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-panel" id="panel-system">
+        <div class="admin-card">
+          <div class="admin-card-h">運行指標</div>
+          <div class="admin-card-b">
+            <div class="admin-stat-grid" id="system-stats">載入中…</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/static/js/utils.js?v=stockq-admin-v1"></script>
+  <script src="/static/js/api.js?v=stockq-admin-v1"></script>
+  <script src="/static/js/pro/admin-app.js?v=stockq-admin-v1"></script>
+</body>
+</html>

@@ -1346,12 +1346,15 @@
                 <select id="taskStatusFilter">
                     <option value="">全部狀態</option>
                     <option value="running">⏳ 運行中</option>
+                    <option value="retrying">🔄 重試中</option>
                     <option value="completed">✅ 已完成</option>
                     <option value="failed">❌ 失敗</option>
                     <option value="cancelled">🚫 已取消</option>
                 </select>
             </div>
             <button class="btn s" onclick="Tasks.refresh()">🔄 刷新</button>
+            <button class="btn s" onclick="Tasks.cancelAllPending()">⏹ 取消排隊</button>
+            <button class="btn s" onclick="Tasks.clearCompleted()">🗑 清空歷史</button>
             <button class="btn s" onclick="Tasks.cleanup()">🧹 清理超時</button>
         </div>
     </div>

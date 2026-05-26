@@ -11,7 +11,7 @@ from __future__ import annotations
 import pandas as pd
 
 from src.config import settings
-from src.core.db import clear_data_cache, load_daily_kline
+from src.core.db import load_daily_kline
 from src.utils.logger import logger
 
 
@@ -61,7 +61,8 @@ def ensure_daily_kline(
     logger.info(f"本地無 {code} 日 K（{len(df)} 條），首次從外網拉取並寫入庫…")
     count = download_one(code, start_date=start, market=mkt)
     if count > 0:
-        clear_data_cache()
+        from src.core.db import clear_data_cache
+        clear_data_cache(quiet=True, reason=f"ensure_daily_kline:{code}")
 
     df = load_daily_kline(code, start_date=start_date, end_date=end_date)
     if len(df) >= min_bars:
@@ -86,5 +87,6 @@ def persist_kline_df(symbol: str, df: pd.DataFrame) -> int:
     market = detect_market(code)
     n = save_daily_kline(out, code, market=market)
     if n > 0:
-        clear_data_cache()
+        from src.core.data_pipeline import defer_data_cache_clear
+        defer_data_cache_clear()
     return n

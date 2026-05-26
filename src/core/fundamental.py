@@ -1,15 +1,19 @@
 """
-基本面數據模塊 — PE、PB、ROE、市值等基本面指標
+基本面數據模塊 — PE、PB、ROE、市值、營收淨利等（akshare 多源降級 + SQLite 緩存）
 """
-import akshare as ak
-import pandas as pd
 import time
 import sqlite3
 from datetime import datetime
+from typing import Any, Optional
+
+import akshare as ak
+import pandas as pd
+
+from src.core.data_pipeline import is_stale
 from src.core.db import get_conn
 from src.utils.logger import logger
 
-_RATE_LIMIT = 0.5
+_RATE_LIMIT = 0.45
 
 
 def _rate_sleep():
@@ -53,95 +57,206 @@ _EXTRA_FUND_COLS = [
 
 
 def init_fundamentals_table():
-    """初始化基本面數據表"""
-    with get_conn() as conn:
-        conn.execute(DDL_FUNDAMENTALS)
-        for col, typ in _EXTRA_FUND_COLS:
-            try:
-                conn.execute(f"ALTER TABLE fundamentals ADD COLUMN {col} {typ}")
-            except sqlite3.OperationalError:
-                pass
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fund_code ON fundamentals(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fund_date ON fundamentals(update_date)")
-        conn.commit()
-    logger.info("基本面數據表就緒")
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 # ============================================================
 # 基本面數據獲取
 # ============================================================
 
-def get_fundamentals(code: str) -> dict:
-    """
-    獲取單只股票的基本面指標
-    
-    Args:
-        code: 股票代碼
-    
-    Returns:
-        基本面指標字典
-    """
-    # 先查緩存
-    cached = _load_fundamentals_from_db(code)
-    if cached:
-        return cached
-    
-    try:
-        # 使用財務分析指標接口
-        df = ak.stock_financial_analysis_indicator(symbol=code)
-        
-        if df.empty:
-            logger.warning(f"{code}: 無基本面數據")
-            return {}
-        
-        # 取最新一條
-        latest = df.iloc[0]
-        
-        # 靈活匹配列名
-        result = {
-            "code": code,
-            "name": "",
-            "update_date": str(latest.get("日期", datetime.now().strftime("%Y-%m-%d"))),
-            "pe_ttm": _safe_float(latest, ["市盈率(TTM)", "市盈率", "pe_ttm"]),
-            "pb": _safe_float(latest, ["市净率", "市淨率", "pb"]),
-            "roe": _safe_float(latest, ["净资产收益率(%)", "净资产收益率", "加权净资产收益率(%)", "roe"]),
-            "eps": _safe_float(latest, ["基本每股收益(元)", "基本每股收益", "eps"]),
-            "bvps": _safe_float(latest, ["每股净资产(元)", "每股净资产", "bvps"]),
-            "total_mv": 0,
-            "circulating_mv": 0,
-            "revenue": 0,
-            "net_profit": 0,
-            "gross_margin": _safe_float(latest, ["销售毛利率(%)", "毛利率(%)", "gross_margin"]),
-            "net_margin": _safe_float(latest, ["销售净利率(%)", "净利率(%)", "net_margin"]),
-            "debt_ratio": _safe_float(latest, ["资产负债率(%)", "资产负债率", "debt_ratio"]),
-            "dividend_yield": 0,
-        }
-        
-        # 嘗試獲取市值信息
-        try:
-            _rate_sleep()
-            spot_df = ak.stock_individual_info_em(symbol=code)
-            if not spot_df.empty:
-                for _, row in spot_df.iterrows():
-                    item = str(row.get("item", ""))
-                    value = row.get("value", 0)
-                    if "總市值" in item:
-                        result["total_mv"] = _to_yi(float(value or 0))
-                    elif "流通市值" in item:
-                        result["circulating_mv"] = _to_yi(float(value or 0))
-                    elif "股票簡稱" in item or "名稱" in item:
-                        result["name"] = str(value)
-        except Exception:
-            pass
-        
-        # 存入數據庫
-        _save_fundamentals(result)
-        _rate_sleep()
-        return result
-        
-    except Exception as e:
-        logger.error(f"獲取 {code} 基本面失敗: {e}")
+def _normalize_code(code: str) -> str:
+    code = str(code).strip()
+    if code.isdigit() and len(code) < 6:
+        return code.zfill(6)
+    return code
+
+
+def load_fundamentals_db(code: str) -> dict:
+    """讀取 fundamentals 表最新一條（不做過期判斷）。"""
+    return _load_fundamentals_from_db(_normalize_code(code))
+
+
+def fundamentals_row_to_fin(row: dict) -> dict:
+    """DB / 在線行 → 詳情頁 financials 結構。"""
+    if not row:
         return {}
+    code = row.get("code", "")
+    fin: dict = {"code": code, "has_data": False, "source": row.get("source", "fundamentals_db")}
+    for key in (
+        "pe_ttm", "pb", "roe", "eps", "bvps", "total_mv", "circulating_mv",
+        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
+        "revenue", "net_profit", "update_date", "name",
+    ):
+        val = row.get(key)
+        if val is not None and val != "":
+            fin[key] = val
+    fin["has_data"] = any(
+        fin.get(k) is not None
+        for k in fin
+        if k not in ("code", "has_data", "source", "name")
+    )
+    return fin if fin["has_data"] else {}
+
+
+def get_fundamentals(code: str, max_age_days: int = 7, force_refresh: bool = False) -> dict:
+    """
+    獲取單只股票基本面：庫內未過期則命中，否則 akshare 拉取並寫庫。
+    """
+    code = _normalize_code(code)
+    if not code.isdigit() or len(code) != 6:
+        return {}
+
+    if not force_refresh:
+        cached = load_fundamentals_db(code)
+        if cached and not is_stale(cached.get("update_date"), max_age_days):
+            cached.setdefault("source", "fundamentals_db")
+            return cached
+
+    online = fetch_fundamentals_online(code)
+    if online:
+        return online
+
+    cached = load_fundamentals_db(code)
+    if cached:
+        cached.setdefault("source", "fundamentals_db_stale")
+        return cached
+    return {}
+
+
+def fetch_fundamentals_online(code: str) -> dict:
+    """從 akshare 多接口拉取財報並持久化。"""
+    code = _normalize_code(code)
+    result: dict = {}
+
+    for fetcher in (_fetch_analysis_indicator, _fetch_abstract_em):
+        try:
+            partial = fetcher(code)
+            if partial:
+                result.update({k: v for k, v in partial.items() if v is not None and v != ""})
+        except Exception as e:
+            logger.debug(f"{code} 財報接口 {fetcher.__name__} 失敗: {e}")
+
+    if not result:
+        logger.warning(f"{code}: 無基本面數據（所有財報接口）")
+        return {}
+
+    _enrich_market_cap_em(code, result)
+    _enrich_revenue_profit(code, result)
+
+    result["code"] = code
+    result.setdefault("update_date", datetime.now().strftime("%Y-%m-%d"))
+    result["source"] = "akshare"
+    _save_fundamentals(result)
+    _rate_sleep()
+    return result
+
+
+def _fetch_analysis_indicator(code: str) -> dict:
+    df = ak.stock_financial_analysis_indicator(symbol=code)
+    if df is None or df.empty:
+        return {}
+    latest = df.iloc[0]
+    ud = latest.get("日期") or latest.get("报告期") or latest.get("report_date")
+    return {
+        "name": "",
+        "update_date": str(ud)[:10] if ud is not None else datetime.now().strftime("%Y-%m-%d"),
+        "pe_ttm": _safe_float(latest, ["市盈率(TTM)", "市盈率", "pe_ttm"]),
+        "pb": _safe_float(latest, ["市净率", "市淨率", "pb"]),
+        "roe": _safe_float(latest, ["净资产收益率(%)", "净资产收益率", "加权净资产收益率(%)", "roe"]),
+        "eps": _safe_float(latest, ["基本每股收益(元)", "基本每股收益", "eps"]),
+        "bvps": _safe_float(latest, ["每股净资产(元)", "每股净资产", "bvps"]),
+        "gross_margin": _safe_float(latest, ["销售毛利率(%)", "毛利率(%)", "gross_margin"]),
+        "net_margin": _safe_float(latest, ["销售净利率(%)", "净利率(%)", "net_margin"]),
+        "debt_ratio": _safe_float(latest, ["资产负债率(%)", "资产负债率", "debt_ratio"]),
+        "revenue": _safe_float(latest, ["营业总收入(元)", "营业总收入", "营业收入", "revenue"], default=0),
+        "net_profit": _safe_float(latest, ["净利润(元)", "净利润", "net_profit"], default=0),
+        "dividend_yield": _safe_float(latest, ["股息率(%)", "股息率", "dividend_yield"], default=0),
+    }
+
+
+def _fetch_abstract_em(code: str) -> dict:
+    """東財主要財務指標摘要（補齊分析指標接口缺失欄位）。"""
+    fn = getattr(ak, "stock_financial_abstract", None)
+    if fn is None:
+        return {}
+    df = fn(symbol=code)
+    if df is None or df.empty:
+        return {}
+    row = df.iloc[0]
+    out: dict = {}
+    for col in df.columns:
+        c = str(col)
+        val = row[col]
+        if pd.isna(val):
+            continue
+        if "每股净资产" in c or "每股淨資產" in c:
+            out["bvps"] = float(val)
+        elif "净资产收益率" in c or "淨資產收益率" in c:
+            out["roe"] = float(val)
+        elif "资产负债率" in c:
+            out["debt_ratio"] = float(val)
+        elif "营业总收入" in c or "營業總收入" in c:
+            out["revenue"] = _to_yi(float(val))
+        elif col == "净利润" or "净利润" in c:
+            out["net_profit"] = _to_yi(float(val))
+    if "报告期" in df.columns:
+        out["update_date"] = str(row.get("报告期", ""))[:10]
+    return out
+
+
+def _enrich_market_cap_em(code: str, result: dict) -> None:
+    try:
+        _rate_sleep()
+        spot_df = ak.stock_individual_info_em(symbol=code)
+        if spot_df is None or spot_df.empty:
+            return
+        for _, row in spot_df.iterrows():
+            item = str(row.get("item", ""))
+            value = row.get("value", 0)
+            if "總市值" in item or "总市值" in item:
+                result["total_mv"] = _to_yi(float(value or 0))
+            elif "流通市值" in item:
+                result["circulating_mv"] = _to_yi(float(value or 0))
+            elif "股票簡稱" in item or "名稱" in item or "股票简称" in item:
+                result["name"] = str(value)
+            elif "股息率" in item and not result.get("dividend_yield"):
+                try:
+                    result["dividend_yield"] = float(str(value).replace("%", "") or 0)
+                except (TypeError, ValueError):
+                    pass
+    except Exception as e:
+        logger.debug(f"{code} 東財個股信息: {e}")
+
+
+def _enrich_revenue_profit(code: str, result: dict) -> None:
+    """利潤表接口補營收 / 淨利（億）。"""
+    if result.get("revenue") and result.get("net_profit"):
+        return
+    market = "SH" if code.startswith(("5", "6", "9")) else "SZ"
+    sym = f"{market}{code}"
+    fn = getattr(ak, "stock_profit_sheet_by_report_em", None)
+    if fn is None:
+        return
+    try:
+        _rate_sleep()
+        df = fn(symbol=sym)
+        if df is None or df.empty:
+            return
+        latest = df.iloc[0]
+        if not result.get("revenue"):
+            rev = _safe_float(latest, ["营业总收入", "營業總收入", "营业收入"], default=0)
+            if rev:
+                result["revenue"] = _to_yi(rev) if rev > 1e6 else rev
+        if not result.get("net_profit"):
+            npf = _safe_float(latest, ["净利润", "淨利潤", "归属于母公司所有者的净利润"], default=0)
+            if npf:
+                result["net_profit"] = _to_yi(npf) if npf > 1e6 else npf
+        rd = latest.get("报告日") or latest.get("报告期")
+        if rd and not result.get("update_date"):
+            result["update_date"] = str(rd)[:10]
+    except Exception as e:
+        logger.debug(f"{code} 利潤表: {e}")
 
 
 def screen_by_fundamentals(filters: dict) -> list[dict]:
@@ -338,14 +453,17 @@ def _save_fundamentals(data: dict):
 
 def _load_fundamentals_from_db(code: str) -> dict:
     """從數據庫讀取基本面（最近一條）"""
+    code = _normalize_code(code)
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """SELECT * FROM fundamentals 
                WHERE code = ? 
                ORDER BY update_date DESC LIMIT 1""",
-            (code,)
+            (code,),
         ).fetchone()
     if row:
-        return dict(row)
+        d = dict(row)
+        d.pop("raw_json", None)
+        return d
     return {}

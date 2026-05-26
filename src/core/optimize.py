@@ -39,6 +39,16 @@ PARAM_GRIDS = {
     "bollinger_squeeze": {"period": [15, 20, 25, 30], "devfactor": [1.5, 2.0, 2.5],
                           "squeeze_threshold": [0.02, 0.03, 0.04, 0.05], "squeeze_lookback": [3, 5, 8]},
     "adx_trend": {"adx_period": [10, 14, 20, 28], "adx_threshold": [20, 25, 30, 35], "di_period": [10, 14, 20]},
+    "ema_cross": {"fast": [8, 10, 12, 15], "slow": [20, 26, 30, 40]},
+    "donchian": {"period": [10, 15, 20, 30, 40]},
+    "williams_r": {"period": [10, 14, 20], "overbought": [-15, -20, -25], "oversold": [-75, -80, -85]},
+    "cci": {"period": [14, 20, 28], "overbought": [80, 100, 120], "oversold": [-120, -100, -80]},
+    "supertrend": {"period": [7, 10, 14], "multiplier": [2.0, 2.5, 3.0, 3.5]},
+    "atr_trail": {"ma_period": [10, 20, 30], "atr_period": [10, 14, 20], "atr_mult": [2.0, 2.5, 3.0]},
+    "ema_volume": {"fast": [8, 12], "slow": [20, 26], "vol_ma": [15, 20, 30], "vol_ratio": [1.1, 1.2, 1.5]},
+    "triple_ma": {"fast": [5, 8, 10], "mid": [15, 20, 30], "slow": [50, 60, 90]},
+    "macd_rsi": {"macd_fast": [10, 12], "macd_slow": [24, 26], "macd_signal": [7, 9], "rsi_period": [10, 14], "rsi_max": [65, 68, 72], "rsi_min": [30, 35, 40]},
+    "pullback_ma": {"fast": [8, 10, 12], "slow": [40, 50, 60], "trend": [90, 120, 150]},
 }
 
 PARAM_RANGES = {
@@ -65,6 +75,16 @@ PARAM_RANGES = {
     "bollinger_squeeze": {"period": (10, 40), "devfactor": (1.0, 3.5),
                           "squeeze_threshold": (0.01, 0.08), "squeeze_lookback": (2, 10)},
     "adx_trend": {"adx_period": (8, 35), "adx_threshold": (15, 40), "di_period": (8, 35)},
+    "ema_cross": {"fast": (5, 20), "slow": (15, 60)},
+    "donchian": {"period": (8, 60)},
+    "williams_r": {"period": (8, 28), "overbought": (-30, -10), "oversold": (-90, -70)},
+    "cci": {"period": (10, 40), "overbought": (60, 150), "oversold": (-150, -60)},
+    "supertrend": {"period": (5, 20), "multiplier": (1.5, 4.5)},
+    "atr_trail": {"ma_period": (8, 40), "atr_period": (8, 28), "atr_mult": (1.5, 4.0)},
+    "ema_volume": {"fast": (5, 20), "slow": (15, 50), "vol_ma": (10, 40), "vol_ratio": (1.0, 2.0)},
+    "triple_ma": {"fast": (3, 15), "mid": (10, 35), "slow": (40, 120)},
+    "macd_rsi": {"macd_fast": (8, 16), "macd_slow": (20, 35), "macd_signal": (5, 12), "rsi_period": (8, 21), "rsi_max": (60, 75), "rsi_min": (25, 45)},
+    "pullback_ma": {"fast": (5, 20), "slow": (30, 80), "trend": (60, 200)},
 }
 
 
@@ -84,10 +104,15 @@ def _run_single(code: str, strategy_name: str, params: dict) -> dict:
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
 
+    from src.core.backtest_runtime import dispose_cerebro
+
     initial_value = cerebro.broker.getvalue()
-    results = cerebro.run()
-    final_value = cerebro.broker.getvalue()
-    strat = results[0]
+    try:
+        results = cerebro.run()
+        final_value = cerebro.broker.getvalue()
+        strat = results[0]
+    finally:
+        dispose_cerebro(cerebro, results)
 
     sharpe = strat.analyzers.sharpe.get_analysis()
     drawdown = strat.analyzers.drawdown.get_analysis()
@@ -174,10 +199,15 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
             cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", riskfreerate=0.03)
             cerebro.addanalyzer(bt.analyzers.Returns, _name="returns")
 
+            from src.core.backtest_runtime import dispose_cerebro
+
             initial = cerebro.broker.getvalue()
-            res = cerebro.run()
-            final = cerebro.broker.getvalue()
-            strat = res[0]
+            try:
+                res = cerebro.run()
+                final = cerebro.broker.getvalue()
+                strat = res[0]
+            finally:
+                dispose_cerebro(cerebro, res)
 
             oos_return = (final - initial) / initial * 100
             sharpe_data = strat.analyzers.sharpe.get_analysis()

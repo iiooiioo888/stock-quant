@@ -117,6 +117,40 @@ def cmd_download(args):
 
 
 
+def cmd_seed(args):
+    """預載常見數據（日 K、股票庫目錄、板塊等）"""
+    from src.core.database.seed import seed_common_data
+
+    ensure_db()
+    result = seed_common_data(
+        args.profile,
+        force=args.force,
+        download=not args.no_download,
+        backtest_samples=args.with_backtest,
+        sync_universe=args.sync_universe,
+    )
+    dl = result.get("download") or {}
+    if dl.get("skipped"):
+        print("日 K：已存在，跳過（可加 --force）")
+    else:
+        print(
+            f"日 K：{dl.get('ok', 0)}/{result.get('codes_planned', 0)} 檔，"
+            f"共 {dl.get('total_records', 0)} 條"
+        )
+    if result.get("catalog_rows") is not None:
+        print(f"股票庫目錄：+{result['catalog_rows']} 條")
+    if result.get("realtime_rows"):
+        print(f"實時快照：{result['realtime_rows']} 檔")
+    if result.get("sector"):
+        print(f"板塊快照：{result['sector']}")
+    if result.get("fundamentals") is not None:
+        print(f"基本面：{result['fundamentals']} 檔")
+    if result.get("backtests"):
+        print(f"示範回測：{result['backtests']} 條")
+
+
+
+
 def cmd_monitor(args):
     """實時盯盤"""
     import time

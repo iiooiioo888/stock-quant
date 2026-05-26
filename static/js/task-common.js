@@ -28,17 +28,20 @@ const TaskCommon = {
 
   STATUS_ICONS: {
     running: '⏳', completed: '✅', failed: '❌',
-    cancelled: '🚫', pending: '⏸️',
+    cancelled: '🚫', pending: '⏸️', retrying: '🔄',
+    success: '✅',
   },
 
   STATUS_COLORS: {
     running: '#38bdf8', completed: '#22c55e', failed: '#ef4444',
-    cancelled: '#94a3b8', pending: '#f59e0b',
+    cancelled: '#94a3b8', pending: '#f59e0b', retrying: '#a78bfa',
+    success: '#22c55e',
   },
 
   STATUS_CHIP: {
     running: 'chip cfg', completed: 'chip on', failed: 'chip off',
-    cancelled: 'chip', pending: 'chip',
+    cancelled: 'chip', pending: 'chip', retrying: 'chip cfg',
+    success: 'chip on',
   },
 
   TAB_MAP: {
@@ -100,9 +103,30 @@ const TaskCommon = {
     return taskType === 'data_download' || taskType === 'data_download_all' || taskType === 'data_incremental';
   },
 
+  formatResultPreview(task) {
+    const p = task?.result_preview;
+    if (!p) return '';
+    const parts = [];
+    if (p.annual_return_pct != null && !Number.isNaN(Number(p.annual_return_pct))) {
+      parts.push(`年化 ${Number(p.annual_return_pct).toFixed(2)}%`);
+    }
+    if (p.max_drawdown_pct != null && !Number.isNaN(Number(p.max_drawdown_pct))) {
+      parts.push(`回撤 ${Number(p.max_drawdown_pct).toFixed(2)}%`);
+    }
+    if (p.sharpe_ratio != null && !Number.isNaN(Number(p.sharpe_ratio))) {
+      parts.push(`夏普 ${Number(p.sharpe_ratio).toFixed(2)}`);
+    }
+    if (p.total_return_pct != null && parts.length < 2) {
+      parts.push(`總收益 ${Number(p.total_return_pct).toFixed(2)}%`);
+    }
+    return parts.join(' · ');
+  },
+
   formatTaskSubtitle(task) {
     if (!task) return '';
-    if (task.status === 'running' || task.status === 'pending') {
+    const metrics = this.formatResultPreview(task);
+    if (metrics && (task.status === 'completed' || task.status === 'success')) return metrics;
+    if (task.status === 'running' || task.status === 'pending' || task.status === 'retrying') {
       const sub = this.downloadSubtitle(task);
       if (sub) return sub;
     }
@@ -527,16 +551,16 @@ const TaskCommon = {
 
     let actions = '';
     if (canNav) {
-      actions += `<button class="btn primary" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();TaskCommon.navigateToResult('${task.task_id}')">前往查看</button> `;
-      if (!compact && typeof Tasks !== 'undefined') {
-        actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.viewResult('${task.task_id}')">查看詳情</button>`;
+      actions += `<button type="button" class="btn primary" style="font-size:11px;padding:4px 10px" data-tk-goto="${task.task_id}">前往查看</button> `;
+      if (!compact) {
+        actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" data-tk-queue-action="result" data-task-id="${task.task_id}">查看詳情</button>`;
       }
     }
     if (canCancel) {
-      actions += `<button class="btn danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.cancelTask('${task.task_id}')">取消</button>`;
+      actions += `<button class="btn danger" style="font-size:11px;padding:4px 10px" data-tk-queue-action="cancel" data-task-id="${task.task_id}">取消</button>`;
     }
-    if (canRetry && typeof Tasks !== 'undefined') {
-      actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();Tasks.retryTask('${task.task_id}')">重試</button>`;
+    if (canRetry) {
+      actions += `<button class="btn s" style="font-size:11px;padding:4px 10px" data-tk-queue-action="retry" data-task-id="${task.task_id}">重試</button>`;
     }
 
     return `<div class="task-queue-card${highlight}" data-role="${role}" data-task-id="${task.task_id}">
@@ -564,7 +588,7 @@ const TaskCommon = {
   },
 
   renderNavigateButton(taskId, label) {
-    return `<button class="btn primary" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();TaskCommon.navigateToResult('${taskId}')">${label || '前往查看'}</button>`;
+    return `<button type="button" class="btn primary" style="padding:2px 8px;font-size:10px" data-tk-goto="${taskId}">${label || '前往查看'}</button>`;
   },
 
   tabForTaskType(taskType) {
@@ -576,6 +600,11 @@ const TaskCommon = {
     const task = d?.task;
     if (!task?.result) {
       Utils.toast('此任務暫無結果', 2000, 'warning');
+      return;
+    }
+
+    if (window.StockQPro?.App?.nav) {
+      await this._navigateProResult(task);
       return;
     }
 
@@ -627,10 +656,39 @@ const TaskCommon = {
       }
     } else if (tab === 'data' && typeof App !== 'undefined') {
       if (App.loadMarkets) App.loadMarkets();
-      if (typeof Tasks !== 'undefined' && Tasks.viewResult) Tasks.viewResult(taskId);
-    } else if (typeof Tasks !== 'undefined' && Tasks.viewResult) {
-      Tasks.viewResult(taskId);
+      const T = window.StockQPro?.Tasks || window.Tasks;
+      if (T?.viewResult) T.viewResult(taskId);
+    } else {
+      const T = window.StockQPro?.Tasks || window.Tasks;
+      if (T?.viewResult) T.viewResult(taskId);
     }
+  },
+
+  async _navigateProResult(task) {
+    const App = window.StockQPro.App;
+    const p = task.params || {};
+    const r = task.result;
+    const tt = task.task_type || '';
+    const backtestTypes = ['backtest', 'backtest_advanced', 'backtest_multi'];
+
+    if (backtestTypes.includes(tt)) {
+      App.nav('backtest', { syncHash: true });
+      if (window.StockQPro?.pages?.backtest?.showResult) {
+        window.StockQPro.pages.backtest.showResult(r, task);
+      } else {
+        const T = window.StockQPro?.Tasks || window.Tasks;
+        if (T?.viewResult) T.viewResult(task.task_id);
+      }
+      return;
+    }
+
+    const tab = this.tabForTaskType(tt);
+    const proPages = ['compare', 'watchlist', 'scanner', 'alerts', 'backhistory', 'settings'];
+    if (proPages.includes(tab)) {
+      App.nav(tab, { syncHash: true });
+    }
+    const T = window.StockQPro?.Tasks || window.Tasks;
+    if (T?.viewResult) T.viewResult(task.task_id);
   },
 };
 

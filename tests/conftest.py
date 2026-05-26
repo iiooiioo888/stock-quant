@@ -22,6 +22,25 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)
+def _reset_task_manager_state():
+    """隔離任務管理器內存狀態，避免並行/重型任務測試互相污染。"""
+    import src.core.task_manager as tm
+
+    def _clear():
+        with tm._lock:
+            tm._tasks.clear()
+            tm._dispatched.clear()
+            tm._cancel_flags.clear()
+            tm._progress_throttle.clear()
+            tm._task_logs.clear()
+            tm._pipelines.clear()
+
+    _clear()
+    yield
+    _clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiters():
     """每個用例清空限流桶，避免 register/login 連續觸發 429"""
     from src.api import app as api_module

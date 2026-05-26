@@ -1,5 +1,5 @@
 """
-回測引擎 — 基於 Backtrader，支持 19 種策略
+回測引擎 — 基於 Backtrader，支持多種內置策略
 包含：滑點模擬、漲跌停限制、T+1 限制、權益曲線分析
 """
 import backtrader as bt
@@ -9,6 +9,43 @@ from datetime import datetime, timedelta
 from src.core.db import load_daily_kline
 from src.config import settings
 from src.utils.logger import logger
+
+
+# ============================================================
+# A 股精確佣金模型
+# ============================================================
+
+class AStockCommission(bt.CommInfoBase):
+    """
+    A 股交易成本模型：
+      - 佣金：雙邊收取，默認 0.025%，最低 5 元
+      - 印花稅：僅賣出收取，2023 年後 0.05%
+      - 過戶費：雙邊收取，0.001%
+    """
+    params = (
+        ("commission", 0.00025),     # 佣金費率（雙邊）
+        ("min_commission", 5.0),     # 最低佣金（元）
+        ("stamp_tax", 0.0005),       # 印花稅費率（僅賣出）
+        ("transfer_fee", 0.00001),   # 過戶費費率（雙邊）
+        ("stocklike", True),
+        ("commtype", bt.CommInfoBase.COMM_PERC),
+    )
+
+    def _getcommission(self, size, price, pseudoexec):
+        """計算單筆交易總成本（佣金 + 印花稅 + 過戶費）"""
+        turnover = abs(size) * price
+
+        # 佣金：按費率計算，最低 5 元
+        comm = max(turnover * self.p.commission, self.p.min_commission)
+
+        # 印花稅：僅賣出
+        if size < 0:
+            comm += turnover * self.p.stamp_tax
+
+        # 過戶費：雙邊
+        comm += turnover * self.p.transfer_fee
+
+        return comm
 
 
 # ============================================================
@@ -840,8 +877,15 @@ def benchmark_comparison_detail(bt_result: dict) -> dict:
     }
 
 
-def _calc_risk_metrics(daily_returns: list, dates: list, max_dd_pct: float, nav: list) -> dict:
-    """計算完整風險指標"""
+def _calc_risk_metrics(
+    daily_returns: list,
+    dates: list,
+    max_dd_pct: float,
+    nav: list,
+    periods_per_year: int = 252,
+) -> dict:
+    """計算完整風險指標（periods_per_year 隨 K 線週期調整年化）"""
+    bpy = max(int(periods_per_year), 1)
     if not daily_returns or len(daily_returns) < 2:
         return {
             "var_95": 0, "cvar_95": 0, "sortino_ratio": 0,
@@ -859,18 +903,18 @@ def _calc_risk_metrics(daily_returns: list, dates: list, max_dd_pct: float, nav:
     cvar_95 = float(np.mean(dr[dr <= var_95])) if np.any(dr <= var_95) else var_95
 
     # Annual volatility
-    annual_volatility = float(np.std(dr) * np.sqrt(252))
+    annual_volatility = float(np.std(dr) * np.sqrt(bpy))
 
     # Sortino ratio (downside deviation)
     downside = dr[dr < 0]
     downside_std = float(np.std(downside)) if len(downside) > 0 else 1e-9
     mean_ret = float(np.mean(dr))
-    sortino_ratio = (mean_ret - 0.03 / 252) / downside_std * np.sqrt(252) if downside_std > 0 else 0
+    sortino_ratio = (mean_ret - 0.03 / bpy) / downside_std * np.sqrt(bpy) if downside_std > 0 else 0
 
     # Annual return
     if dates:
-        start = dates[0] if isinstance(dates[0], datetime) else datetime.strptime(str(dates[0]), "%Y-%m-%d")
-        end = dates[-1] if isinstance(dates[-1], datetime) else datetime.strptime(str(dates[-1]), "%Y-%m-%d")
+        start = pd.to_datetime(dates[0]).to_pydatetime()
+        end = pd.to_datetime(dates[-1]).to_pydatetime()
         years = (end - start).days / 365.25
         if years > 0 and nav and len(nav) > 1:
             annual_return_pct = float((nav[-1] / nav[0]) ** (1 / years) - 1) * 100
@@ -945,1058 +989,20 @@ def _calc_risk_metrics(daily_returns: list, dates: list, max_dd_pct: float, nav:
 
 
 # ============================================================
-# 策略定義
+# 策略定義 — 已遷移至 src.core.strategies 包
 # ============================================================
-
-class DualMAStrategy(bt.Strategy):
-    """雙均線策略"""
-    params = (
-        ("fast", 5),
-        ("slow", 20),
-    )
-
-    def __init__(self):
-        self.ma_fast = bt.indicators.SMA(period=self.p.fast)
-        self.ma_slow = bt.indicators.SMA(period=self.p.slow)
-        self.crossover = bt.indicators.CrossOver(self.ma_fast, self.ma_slow)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-        if self.crossover > 0 and not self.position:
-            self.order = self.buy()
-        elif self.crossover < 0 and self.position:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class MACDStrategy(bt.Strategy):
-    """MACD 策略"""
-    params = (
-        ("fast", 12),
-        ("slow", 26),
-        ("signal", 9),
-    )
-
-    def __init__(self):
-        self.macd = bt.indicators.MACD(
-            period_me1=self.p.fast,
-            period_me2=self.p.slow,
-            period_signal=self.p.signal,
-        )
-        self.crossover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-        if self.crossover > 0 and not self.position:
-            self.order = self.buy()
-        elif self.crossover < 0 and self.position:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class BollingerStrategy(bt.Strategy):
-    """布林帶策略"""
-    params = (
-        ("period", 20),
-        ("devfactor", 2.0),
-    )
-
-    def __init__(self):
-        self.boll = bt.indicators.BollingerBands(
-            period=self.p.period, devfactor=self.p.devfactor
-        )
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-        if not self.position and self.data.close < self.boll.lines.bot:
-            self.order = self.buy()
-        elif self.position and self.data.close > self.boll.lines.top:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class KDJStrategy(bt.Strategy):
-    """KDJ 策略"""
-    params = (
-        ("period", 9),
-        ("period_dfast", 3),
-        ("period_dslow", 3),
-        ("overbought", 80),
-        ("oversold", 20),
-    )
-
-    def __init__(self):
-        self.stoch = bt.indicators.Stochastic(
-            period=self.p.period,
-            period_dfast=self.p.period_dfast,
-            period_dslow=self.p.period_dslow,
-        )
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        k = self.stoch.percK[0]
-        d = self.stoch.percD[0]
-        k_prev = self.stoch.percK[-1] if len(self.stoch.percK) > 1 else k
-        d_prev = self.stoch.percD[-1] if len(self.stoch.percD) > 1 else d
-
-        if k_prev <= d_prev and k > d and k < self.p.oversold and not self.position:
-            self.order = self.buy()
-        elif k_prev >= d_prev and k < d and k > self.p.overbought and self.position:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class RSIStrategy(bt.Strategy):
-    """RSI 策略"""
-    params = (
-        ("period", 14),
-        ("overbought", 70),
-        ("oversold", 30),
-    )
-
-    def __init__(self):
-        self.rsi = bt.indicators.RSI(period=self.p.period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        rsi = self.rsi[0]
-        rsi_prev = self.rsi[-1] if len(self.rsi) > 1 else rsi
-
-        if rsi_prev < self.p.oversold and rsi >= self.p.oversold and not self.position:
-            self.order = self.buy()
-        elif rsi_prev > self.p.overbought and rsi <= self.p.overbought and self.position:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class GridStrategy(bt.Strategy):
-    """網格交易策略"""
-    params = (
-        ("grid_pct", 3.0),
-        ("position_pct", 0.1),
-    )
-
-    def __init__(self):
-        self.grid_base = None
-        self.grid_level = 0
-        self.lot_size = 100
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        cash = self.broker.getcash()
-        total_value = self.broker.getvalue()
-
-        if self.grid_base is None:
-            self.grid_base = price
-            return
-
-        grid_step = self.grid_base * self.p.grid_pct / 100.0
-        if grid_step <= 0:
-            return
-
-        current_level = int((price - self.grid_base) / grid_step)
-
-        if current_level < self.grid_level:
-            target_value = total_value * self.p.position_pct
-            shares = int(target_value / price / self.lot_size) * self.lot_size
-            if shares >= self.lot_size and cash >= shares * price:
-                self.order = self.buy(size=shares)
-                self.grid_level = current_level
-
-        elif current_level > self.grid_level and self.position:
-            shares = min(self.position.size, int(self.position.size * self.p.position_pct / 100 * 100))
-            shares = max(shares, self.lot_size)
-            if shares >= self.lot_size:
-                self.order = self.sell(size=shares)
-                self.grid_level = current_level
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class TurtleStrategy(bt.Strategy):
-    """海龜交易策略"""
-    params = (
-        ("entry_period", 20),
-        ("exit_period", 10),
-        ("atr_period", 20),
-        ("risk_pct", 1.0),
-    )
-
-    def __init__(self):
-        self.highest = bt.indicators.Highest(self.data.high, period=self.p.entry_period)
-        self.lowest = bt.indicators.Lowest(self.data.low, period=self.p.exit_period)
-        self.atr = bt.indicators.ATR(period=self.p.atr_period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        total_value = self.broker.getvalue()
-
-        if not self.position and price > self.highest[-1]:
-            risk_amount = total_value * self.p.risk_pct / 100.0
-            atr = self.atr[0]
-            if atr > 0:
-                shares = int(risk_amount / atr / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-
-        elif self.position and price < self.lowest[-1]:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class MomentumStrategy(bt.Strategy):
-    """動量策略 — 基於 N 日 ROC 動量指標，正動量買入，負動量賣出"""
-    params = (
-        ("lookback", 20),       # 動量回看期
-        ("hold_period", 5),     # 持有期
-        ("top_pct", 0.1),       # 動量排名百分比（單股用，此處保留）
-    )
-
-    def __init__(self):
-        # 使用 ROC（Rate of Change）作為動量指標
-        self.roc = bt.indicators.ROC(self.data.close, period=self.p.lookback)
-        self.order = None
-        self.hold_counter = 0  # 持有計數器
-
-    def next(self):
-        if self.order:
-            return
-
-        roc_val = self.roc[0]
-
-        if not self.position:
-            # 買入條件：ROC > 0（正動量）
-            if roc_val > 0:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-                    self.hold_counter = 0
-        else:
-            self.hold_counter += 1
-            # 賣出條件：ROC 轉負 或 持有超過 hold_period
-            if roc_val < 0 or self.hold_counter >= self.p.hold_period:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class MeanReversionStrategy(bt.Strategy):
-    """均值回歸策略 — 基於滾動 Z-score，超賣買入，回歸均值賣出"""
-    params = (
-        ("period", 20),
-        ("entry_zscore", -2.0),  # Z-score 低於此值買入（超賣）
-        ("exit_zscore", 0.0),    # Z-score 高於此值賣出（回歸均值）
-    )
-
-    def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.p.period)
-        self.std = bt.indicators.StdDev(self.data.close, period=self.p.period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        # 計算 Z-score: (price - MA) / rolling_std
-        std_val = self.std[0]
-        if std_val <= 0:
-            return  # 標準差為零時跳過
-
-        zscore = (self.data.close[0] - self.sma[0]) / std_val
-
-        if not self.position:
-            # 買入：Z-score 低於 entry_zscore（價格遠低於均值，超賣）
-            if zscore < self.p.entry_zscore:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 賣出：Z-score 高於 exit_zscore（價格回歸或超越均值）
-            if zscore > self.p.exit_zscore:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class VolumePriceStrategy(bt.Strategy):
-    """量價策略 — 放量上漲買入，縮量下跌賣出"""
-    params = (
-        ("price_ma", 20),       # 價格均線週期
-        ("volume_ma", 20),      # 成交量均線週期
-        ("volume_ratio", 2.0),  # 成交量放大倍數閾值
-    )
-
-    def __init__(self):
-        self.price_sma = bt.indicators.SMA(self.data.close, period=self.p.price_ma)
-        self.volume_sma = bt.indicators.SMA(self.data.volume, period=self.p.volume_ma)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        vol = self.data.volume[0]
-        price_ma = self.price_sma[0]
-        vol_ma = self.volume_sma[0]
-
-        if vol_ma <= 0:
-            return
-
-        vol_ratio = vol / vol_ma
-
-        if not self.position:
-            # 買入：價格站上均線 且 成交量放大（放量上漲）
-            if price > price_ma and vol_ratio > self.p.volume_ratio:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 賣出：價格跌破均線 或 成交量萎縮（縮量下跌）
-            if price < price_ma or vol_ratio < 0.5:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class BreakoutStrategy(bt.Strategy):
-    """突破策略 — N 日高點突破買入，ATR 移動止損賣出"""
-    params = (
-        ("period", 60),          # N日高點突破
-        ("atr_period", 20),      # ATR 週期
-        ("atr_multiplier", 2.0), # ATR 止損倍數
-    )
-
-    def __init__(self):
-        self.highest = bt.indicators.Highest(self.data.high, period=self.p.period)
-        self.atr = bt.indicators.ATR(period=self.p.atr_period)
-        self.order = None
-        self.entry_price = None
-        self.trailing_stop = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        atr_val = self.atr[0]
-
-        if not self.position:
-            # 買入：價格突破 N 日最高價
-            highest_prev = self.highest[-1]
-            if highest_prev is not None and price > highest_prev:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-                    self.entry_price = price
-                    self.trailing_stop = price - atr_val * self.p.atr_multiplier
-        else:
-            # 更新移動止損（只會上移，不會下移）
-            new_stop = price - atr_val * self.p.atr_multiplier
-            if self.trailing_stop is not None and new_stop > self.trailing_stop:
-                self.trailing_stop = new_stop
-
-            # 賣出：價格跌破移動止損
-            if self.trailing_stop is not None and price < self.trailing_stop:
-                self.order = self.sell()
-                self.entry_price = None
-                self.trailing_stop = None
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class CompositeStrategy(bt.Strategy):
-    """多策略組合信號 — 綜合 dual_ma、macd、rsi、bollinger 四個子策略的買賣信號"""
-    params = (
-        ("min_agreement", 3),    # 至少 N 個子策略同意才執行
-        # 子策略參數
-        ("ma_fast", 5),
-        ("ma_slow", 20),
-        ("macd_fast", 12),
-        ("macd_slow", 26),
-        ("macd_signal", 9),
-        ("rsi_period", 14),
-        ("rsi_overbought", 70),
-        ("rsi_oversold", 30),
-        ("boll_period", 20),
-        ("boll_dev", 2.0),
-    )
-
-    def __init__(self):
-        # === 雙均線 ===
-        self.ma_fast = bt.indicators.SMA(self.data.close, period=self.p.ma_fast)
-        self.ma_slow = bt.indicators.SMA(self.data.close, period=self.p.ma_slow)
-        self.ma_crossover = bt.indicators.CrossOver(self.ma_fast, self.ma_slow)
-
-        # === MACD ===
-        self.macd = bt.indicators.MACD(
-            period_me1=self.p.macd_fast,
-            period_me2=self.p.macd_slow,
-            period_signal=self.p.macd_signal,
-        )
-        self.macd_crossover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
-
-        # === RSI ===
-        self.rsi = bt.indicators.RSI(period=self.p.rsi_period)
-
-        # === 布林帶 ===
-        self.boll = bt.indicators.BollingerBands(
-            period=self.p.boll_period, devfactor=self.p.boll_dev
-        )
-
-        self.order = None
-
-    def _compute_sub_signals(self):
-        """計算四個子策略的信號：返回 (buy_count, sell_count)"""
-        buy_count = 0
-        sell_count = 0
-
-        # 1. 雙均線：金叉買入，死叉賣出
-        if self.ma_crossover > 0:
-            buy_count += 1
-        elif self.ma_crossover < 0:
-            sell_count += 1
-
-        # 2. MACD：金叉買入，死叉賣出
-        if self.macd_crossover > 0:
-            buy_count += 1
-        elif self.macd_crossover < 0:
-            sell_count += 1
-
-        # 3. RSI：超賣買入，超買賣出
-        rsi_val = self.rsi[0]
-        if rsi_val < self.p.rsi_oversold:
-            buy_count += 1
-        elif rsi_val > self.p.rsi_overbought:
-            sell_count += 1
-
-        # 4. 布林帶：觸及下軌買入，觸及上軌賣出
-        if self.data.close[0] < self.boll.lines.bot:
-            buy_count += 1
-        elif self.data.close[0] > self.boll.lines.top:
-            sell_count += 1
-
-        return buy_count, sell_count
-
-    def next(self):
-        if self.order:
-            return
-
-        buy_count, sell_count = self._compute_sub_signals()
-
-        if not self.position:
-            # 買入：至少 min_agreement 個子策略同意買入
-            if buy_count >= self.p.min_agreement:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 賣出：至少 min_agreement 個子策略同意賣出
-            if sell_count >= self.p.min_agreement:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class DualThrustStrategy(bt.Strategy):
-    """DualThrust 策略"""
-    params = (
-        ("period", 4),
-        ("k_up", 0.5),
-        ("k_down", 0.5),
-    )
-
-    def __init__(self):
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        if len(self.data) < self.p.period + 1:
-            return
-
-        highs = [self.data.high[-i] for i in range(1, self.p.period + 1)]
-        lows = [self.data.low[-i] for i in range(1, self.p.period + 1)]
-        closes = [self.data.close[-i] for i in range(1, self.p.period + 1)]
-
-        hh = max(highs)
-        ll = min(lows)
-        hc = max(closes)
-        lc = min(closes)
-
-        range_val = max(hh - lc, hc - ll)
-
-        open_price = self.data.open[0]
-        upper = open_price + self.p.k_up * range_val
-        lower = open_price - self.p.k_down * range_val
-
-        price = self.data.close[0]
-
-        if not self.position and price > upper:
-            cash = self.broker.getcash()
-            shares = int(cash * 0.95 / price / 100) * 100
-            if shares >= 100:
-                self.order = self.buy(size=shares)
-
-        elif self.position and price < lower:
-            self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-# ============================================================
-# 止損/止盈策略包裝器
-# ============================================================
-
-class StrategyWithSLTP(bt.Strategy):
-    """
-    止損/止盈包裝策略。
-    包裝任意策略，監控未實現盈虧，自動觸發止損/止盈。
-    注意：此策略只負責監控持倉並在觸發條件時賣出，不開新倉。
-    """
-    params = (
-        ("stop_loss_pct", 0),       # 止損百分比 (0 = 不啟用)
-        ("take_profit_pct", 0),     # 止盈百分比 (0 = 不啟用)
-        ("trailing_stop_pct", 0),   # 移動止損 (0 = 不啟用)
-    )
-
-    def __init__(self):
-        self.entry_price = None
-        self.max_price = None
-        self.sltp_order = None  # 用獨立變量避免與主策略衝突
-
-    def notify_order(self, order):
-        # 只追蹤自己發出的訂單
-        if order is not self.sltp_order:
-            return
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            if order.status == order.Completed and order.isbuy():
-                self.entry_price = order.executed.price
-                self.max_price = order.executed.price
-            self.sltp_order = None
-
-    def notify_trade(self, trade):
-        # 通過 trade 回調獲取真實的入場價
-        if trade.isclosed:
-            self.entry_price = None
-            self.max_price = None
-        elif trade.isopen:
-            self.entry_price = trade.price
-            self.max_price = trade.price
-
-    def next(self):
-        if self.sltp_order:
-            return
-
-        if not self.position:
-            self.entry_price = None
-            self.max_price = None
-            return
-
-        price = self.data.close[0]
-        if self.entry_price is None:
-            self.entry_price = price
-        if self.max_price is None:
-            self.max_price = price
-
-        # 更新最高價
-        if price > self.max_price:
-            self.max_price = price
-
-        pnl_pct = (price - self.entry_price) / self.entry_price * 100
-
-        # 止損
-        if self.p.stop_loss_pct > 0 and pnl_pct <= -self.p.stop_loss_pct:
-            self.sltp_order = self.sell()
-            return
-
-        # 止盈
-        if self.p.take_profit_pct > 0 and pnl_pct >= self.p.take_profit_pct:
-            self.sltp_order = self.sell()
-            return
-
-        # 移動止損
-        if self.p.trailing_stop_pct > 0:
-            from_high = (self.max_price - price) / self.max_price * 100
-            if from_high >= self.p.trailing_stop_pct:
-                self.sltp_order = self.sell()
-                return
-
-
-class VWAPStrategy(bt.Strategy):
-    """VWAP 策略 — 成交量加权平均价格，价格低于 VWAP 买入，高于 VWAP 卖出"""
-    params = (
-        ("period", 20),         # VWAP 计算周期
-        ("deviation_pct", 1.0), # 偏离阈值百分比
-    )
-
-    def __init__(self):
-        self.order = None
-        self.cum_vol = 0
-        self.cum_pv = 0
-        self.vwap = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        vol = self.data.volume[0]
-
-        if vol <= 0:
-            return
-
-        # 滚动 VWAP：用 SMA 近似
-        # 计算典型价格 * 成交量的滚动和 / 成交量的滚动和
-        typical = (self.data.high[0] + self.data.low[0] + self.data.close[0]) / 3.0
-
-        # 使用简单方法：累计 VWAP
-        if len(self.data) < self.p.period + 1:
-            return
-
-        # 计算滚动 VWAP
-        cum_tp_vol = 0.0
-        cum_vol = 0.0
-        for i in range(self.p.period):
-            idx = -i
-            h = self.data.high[idx]
-            l = self.data.low[idx]
-            c = self.data.close[idx]
-            v = self.data.volume[idx]
-            tp = (h + l + c) / 3.0
-            cum_tp_vol += tp * v
-            cum_vol += v
-
-        if cum_vol <= 0:
-            return
-
-        vwap_val = cum_tp_vol / cum_vol
-        deviation = (price - vwap_val) / vwap_val * 100
-
-        if not self.position:
-            # 买入：价格低于 VWAP 超过 deviation_pct（折价买入）
-            if deviation < -self.p.deviation_pct:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 卖出：价格高于 VWAP 超过 deviation_pct（溢价卖出）
-            if deviation > self.p.deviation_pct:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class EnvelopeStrategy(bt.Strategy):
-    """均线通道策略 — 基于均线的上下轨通道，触下轨买入，触上轨卖出"""
-    params = (
-        ("period", 20),       # 均线周期
-        ("deviation_pct", 5), # 通道偏离百分比
-    )
-
-    def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.p.period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        price = self.data.close[0]
-        ma = self.sma[0]
-        upper = ma * (1 + self.p.deviation_pct / 100.0)
-        lower = ma * (1 - self.p.deviation_pct / 100.0)
-
-        if not self.position:
-            # 买入：价格触及下轨
-            if price <= lower:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 卖出：价格触及上轨
-            if price >= upper:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class ParabolicSARStrategy(bt.Strategy):
-    """抛物线 SAR 策略 — 趋势跟踪，SAR 翻转时交易"""
-    params = (
-        ("af_start", 0.02),   # 加速因子初始值
-        ("af_step", 0.02),    # 加速因子步长
-        ("af_max", 0.20),     # 加速因子最大值
-    )
-
-    def __init__(self):
-        self.order = None
-        self.sar = None
-        self.ep = None       # 极值点
-        self.af = self.p.af_start
-        self.is_long = True  # 当前方向
-
-    def next(self):
-        if self.order:
-            return
-
-        if len(self.data) < 3:
-            return
-
-        high = self.data.high[0]
-        low = self.data.low[0]
-        prev_high = self.data.high[-1]
-        prev_low = self.data.low[-1]
-
-        # 初始化
-        if self.sar is None:
-            self.sar = low
-            self.ep = high
-            self.is_long = True
-            return
-
-        prev_sar = self.sar
-
-        if self.is_long:
-            # 上升趋势
-            self.sar = prev_sar + self.af * (self.ep - prev_sar)
-
-            # SAR 不能高于前两根K线的最低点
-            if len(self.data) >= 2:
-                self.sar = min(self.sar, self.data.low[-1], self.data.low[-2] if len(self.data) >= 3 else self.data.low[-1])
-
-            if low < self.sar:
-                # 翻转为下降趋势
-                self.is_long = False
-                self.sar = self.ep
-                self.ep = low
-                self.af = self.p.af_start
-
-                # 卖出
-                if self.position:
-                    self.order = self.sell()
-            else:
-                if high > self.ep:
-                    self.ep = high
-                    self.af = min(self.af + self.p.af_step, self.p.af_max)
-        else:
-            # 下降趋势
-            self.sar = prev_sar + self.af * (self.ep - prev_sar)
-
-            # SAR 不能低于前两根K线的最高点
-            if len(self.data) >= 2:
-                self.sar = max(self.sar, self.data.high[-1], self.data.high[-2] if len(self.data) >= 3 else self.data.high[-1])
-
-            if high > self.sar:
-                # 翻转为上升趋势
-                self.is_long = True
-                self.sar = self.ep
-                self.ep = high
-                self.af = self.p.af_start
-
-                # 买入
-                if not self.position:
-                    cash = self.broker.getcash()
-                    shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
-                    if shares >= 100:
-                        self.order = self.buy(size=shares)
-            else:
-                if low < self.ep:
-                    self.ep = low
-                    self.af = min(self.af + self.p.af_step, self.p.af_max)
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class _OBV(bt.Indicator):
-    """自定義 OBV（On-Balance Volume）指標"""
-    lines = ('obv',)
-    params = ()
-
-    def __init__(self):
-        vol = self.data.volume
-        close = self.data.close
-        prev_close = close(-1)
-        direction = bt.If(close > prev_close, vol, bt.If(close < prev_close, -vol, 0))
-        self.lines.obv = bt.indicators.SumN(direction, period=len(self.data))
-
-
-class OBVStrategy(bt.Strategy):
-    """OBV 能量潮策略 — OBV 趨勢與價格趨勢背離時交易"""
-    params = (
-        ("obv_ma_period", 20),   # OBV 均線週期
-        ("price_ma_period", 20), # 價格均線週期
-    )
-
-    def __init__(self):
-        self.obv = _OBV(self.data)
-        self.obv_sma = bt.indicators.SMA(self.obv, period=self.p.obv_ma_period)
-        self.price_sma = bt.indicators.SMA(self.data.close, period=self.p.price_ma_period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        if len(self.data) < max(self.p.obv_ma_period, self.p.price_ma_period) + 1:
-            return
-
-        price = self.data.close[0]
-        price_ma = self.price_sma[0]
-        obv_now = self.obv[0]
-        obv_ma = self.obv_sma[0]
-
-        if not self.position:
-            # 买入：OBV 上穿均线（资金流入）且价格在均线下方（底背离）
-            if obv_now > obv_ma and price < price_ma:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 卖出：OBV 下穿均线（资金流出）或价格上穿均线
-            if obv_now < obv_ma or price > price_ma * 1.05:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class BollingerSqueezeStrategy(bt.Strategy):
-    """布林带收窄策略 — 布林带宽收窄后突破，预期大行情"""
-    params = (
-        ("period", 20),           # 布林带周期
-        ("devfactor", 2.0),       # 标准差倍数
-        ("squeeze_threshold", 0.03),  # 带宽收窄阈值（带宽/中轨 < 此值视为收窄）
-        ("squeeze_lookback", 5),  # 收窄持续判断回看期
-    )
-
-    def __init__(self):
-        self.boll = bt.indicators.BollingerBands(
-            period=self.p.period, devfactor=self.p.devfactor
-        )
-        self.sma = bt.indicators.SMA(self.data.close, period=self.p.period)
-        self.order = None
-        self.was_squeezed = False
-
-    def next(self):
-        if self.order:
-            return
-
-        if len(self.data) < self.p.period + self.p.squeeze_lookback:
-            return
-
-        price = self.data.close[0]
-        top = self.boll.lines.top[0]
-        bot = self.boll.lines.bot[0]
-        mid = self.sma[0]
-
-        if mid <= 0:
-            return
-
-        bandwidth = (top - bot) / mid
-
-        # 判断是否处于收窄状态
-        is_squeeze = bandwidth < self.p.squeeze_threshold
-
-        # 检查之前是否收窄过
-        if is_squeeze:
-            self.was_squeezed = True
-
-        if self.was_squeezed and not is_squeeze:
-            # 收窄后扩张 — 突破信号
-            if not self.position and price > top:
-                # 向上突破
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-                    self.was_squeezed = False
-            elif self.position and price < bot:
-                # 向下突破（卖出）
-                self.order = self.sell()
-                self.was_squeezed = False
-
-        # 正常买卖逻辑：非收窄突破时也交易
-        if not self.was_squeezed:
-            if not self.position and price < bot:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / price / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-            elif self.position and price > top:
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-class ADXTrendStrategy(bt.Strategy):
-    """ADX 趋势强度策略 — ADX 高于阈值时趋势交易，配合 +DI/-DI 交叉"""
-    params = (
-        ("adx_period", 14),    # ADX 周期
-        ("adx_threshold", 25), # ADX 阈值（高于此值视为强趋势）
-        ("di_period", 14),     # DI 周期
-    )
-
-    def __init__(self):
-        self.adx = bt.indicators.ADX(self.data, period=self.p.adx_period)
-        self.plus_di = bt.indicators.PlusDI(self.data, period=self.p.di_period)
-        self.minus_di = bt.indicators.MinusDI(self.data, period=self.p.di_period)
-        self.order = None
-
-    def next(self):
-        if self.order:
-            return
-
-        if len(self.data) < max(self.p.adx_period, self.p.di_period) + 1:
-            return
-
-        adx_val = self.adx[0]
-        plus_di = self.plus_di[0]
-        minus_di = self.minus_di[0]
-        plus_di_prev = self.plus_di[-1] if len(self.plus_di) > 1 else plus_di
-        minus_di_prev = self.minus_di[-1] if len(self.minus_di) > 1 else minus_di
-
-        if not self.position:
-            # 买入：ADX > 阈值（强趋势）且 +DI 上穿 -DI
-            if adx_val > self.p.adx_threshold and plus_di_prev <= minus_di_prev and plus_di > minus_di:
-                cash = self.broker.getcash()
-                shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
-                if shares >= 100:
-                    self.order = self.buy(size=shares)
-        else:
-            # 卖出：ADX 回落 或 -DI 上穿 +DI
-            if adx_val < self.p.adx_threshold or (minus_di_prev <= plus_di_prev and minus_di > plus_di):
-                self.order = self.sell()
-
-    def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
-            self.order = None
-
-
-# 策略中文名稱映射
-STRATEGY_NAMES = {
-    "dual_ma": "雙均線金叉策略",
-    "macd": "MACD金叉策略",
-    "bollinger": "布林帶突破策略",
-    "kdj": "KDJ隨機指標策略",
-    "rsi": "RSI相對強弱策略",
-    "grid": "網格交易策略",
-    "turtle": "海龜趨勢跟蹤策略",
-    "dual_thrust": "雙軌日內突破策略",
-    "momentum": "動量ROC策略",
-    "mean_reversion": "均值回歸Z-score策略",
-    "volume_price": "量價齊升策略",
-    "breakout": "N日高點突破策略",
-    "composite": "多策略組合投票策略",
-    "vwap": "VWAP成交量加權策略",
-    "envelope": "均線通道策略",
-    "parabolic_sar": "拋物線SAR策略",
-    "obv": "OBV能量潮策略",
-    "bollinger_squeeze": "布林帶收窄突破策略",
-    "adx_trend": "ADX趨勢強度策略",
-}
-
-
-# 策略映射
-STRATEGIES = {
-    "dual_ma": DualMAStrategy,
-    "macd": MACDStrategy,
-    "bollinger": BollingerStrategy,
-    "kdj": KDJStrategy,
-    "rsi": RSIStrategy,
-    "grid": GridStrategy,
-    "turtle": TurtleStrategy,
-    "dual_thrust": DualThrustStrategy,
-    "momentum": MomentumStrategy,
-    "mean_reversion": MeanReversionStrategy,
-    "volume_price": VolumePriceStrategy,
-    "breakout": BreakoutStrategy,
-    "composite": CompositeStrategy,
-    "vwap": VWAPStrategy,
-    "envelope": EnvelopeStrategy,
-    "parabolic_sar": ParabolicSARStrategy,
-    "obv": OBVStrategy,
-    "bollinger_squeeze": BollingerSqueezeStrategy,
-    "adx_trend": ADXTrendStrategy,
-}
-
+from src.core.strategies import STRATEGIES, STRATEGY_NAMES
+from src.core.strategies.base import StrategyWithSLTP
+
+for _cls in STRATEGIES.values():
+    globals()[_cls.__name__] = _cls
 
 # ============================================================
 # 回測執行
 # ============================================================
 
 _prepared_df_cache: dict[str, pd.DataFrame] = {}
-_PREPARED_CACHE_MAX = 64
+_PREPARED_CACHE_MAX = 96
 
 
 def clear_prepare_cache():
@@ -2004,32 +1010,40 @@ def clear_prepare_cache():
     _prepared_df_cache.clear()
 
 
-def _get_prepared_df(code: str) -> pd.DataFrame:
-    """Backtrader 用 OHLCV DataFrame（按 code 進程內緩存）"""
-    if code in _prepared_df_cache:
-        return _prepared_df_cache[code]
+def _format_bar_datetime(dt) -> str:
+    """日線僅日期；分鐘線含時分。"""
+    if hasattr(dt, "strftime"):
+        if getattr(dt, "hour", 0) == 0 and getattr(dt, "minute", 0) == 0:
+            return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%d %H:%M")
+    return str(dt)[:16]
 
-    from src.core.local_kline import ensure_daily_kline
 
-    df, _src = ensure_daily_kline(code, min_bars=60)
+def _get_prepared_df(code: str, timeframe: str = "1d") -> pd.DataFrame:
+    """Backtrader 用 OHLCV DataFrame（按 code+週期 進程內緩存）"""
+    from src.core.kline_timeframe import cache_key, ensure_kline_for_backtest
+
+    key = cache_key(code, timeframe)
+    if key in _prepared_df_cache:
+        return _prepared_df_cache[key]
+
+    df, _src, _tf = ensure_kline_for_backtest(code, timeframe)
     if df.empty:
-        raise ValueError(f"股票 {code} 無歷史數據（首次自動拉取失敗，請檢查代碼或網路）")
+        raise ValueError(f"股票 {code} 無歷史數據（請檢查代碼、週期或網路）")
 
-    df = df.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.set_index("date")
-    df = df[["open", "high", "low", "close", "volume"]]
-    df.columns = ["Open", "High", "Low", "Close", "Volume"]
+    from src.core.backtest_runtime import trim_ohlcv_dataframe
+
+    df = trim_ohlcv_dataframe(df)
 
     if len(_prepared_df_cache) >= _PREPARED_CACHE_MAX:
         _prepared_df_cache.pop(next(iter(_prepared_df_cache)))
-    _prepared_df_cache[code] = df
+    _prepared_df_cache[key] = df
     return df
 
 
-def prepare_data(code: str) -> bt.feeds.PandasData:
+def prepare_data(code: str, timeframe: str = "1d") -> bt.feeds.PandasData:
     """從數據庫讀取數據並轉為 Backtrader 格式"""
-    return bt.feeds.PandasData(dataname=_get_prepared_df(code))
+    return bt.feeds.PandasData(dataname=_get_prepared_df(code, timeframe=timeframe))
 
 
 def run_backtest(
@@ -2044,8 +1058,11 @@ def run_backtest(
     trailing_stop_pct: float = None,
     benchmark: bool = False,
     slippage_pct: float = 0.0,
+    volume_slippage: bool = None,
+    order_size_shares: int = 0,
     enable_t1: bool = True,
     enable_limit: bool = True,
+    timeframe: str = "1d",
     task_id: str = None,
 ) -> dict:
     """
@@ -2065,7 +1082,18 @@ def run_backtest(
         slippage_pct: 滑點百分比（默認 0.0，即 0%）
         enable_t1: 是否啟用 T+1 限制（默認 True）
         enable_limit: 是否啟用漲跌停限制（默認 True）
+        timeframe: K 線週期 1d / 1h / 1m（默認 1d）
     """
+    from src.core.kline_timeframe import (
+        bars_per_year as tf_bars_per_year,
+        normalize_timeframe,
+        timeframe_label,
+    )
+
+    tf = normalize_timeframe(timeframe)
+    bpy = tf_bars_per_year(tf)
+    tf_label = timeframe_label(tf)
+
     if cash is None:
         cash = settings.backtest_cash
     if commission is None:
@@ -2081,7 +1109,13 @@ def run_backtest(
             raise RuntimeError("任務已取消")
         update_task(task_id, progress=10)
 
+    from src.core.backtest_runtime import (
+        compute_volume_impact_slippage_pct,
+        dispose_cerebro,
+    )
+
     cerebro = bt.Cerebro()
+    results = None
 
     # 添加主策略
     if params:
@@ -2101,7 +1135,7 @@ def run_backtest(
     if sltp_params:
         cerebro.addstrategy(StrategyWithSLTP, **sltp_params)
 
-    data = prepare_data(code)
+    data = prepare_data(code, timeframe=tf)
     # 將股票代碼掛載到 data 上，供 LimitFilter 使用
     data._name = code
     cerebro.adddata(data)
@@ -2110,8 +1144,31 @@ def run_backtest(
     # 設置手續費和滑點
     # Backtrader 的 slip_perc 只作用於價格，不作用於佣金
     # 所以我們手動設置 slip_perc 來模擬滑點
-    slip_pct = slippage_pct / 100.0 if slippage_pct > 0 else 0.0
-    cerebro.broker.setcommission(commission=commission)
+    use_volume_slip = (
+        volume_slippage
+        if volume_slippage is not None
+        else getattr(settings, "volume_slippage_enabled", False)
+    )
+    effective_slip_pct = slippage_pct
+    if use_volume_slip and slippage_pct > 0:
+        prep_df = _get_prepared_df(code, timeframe=tf)
+        bar_vol = float(prep_df["Volume"].iloc[-1]) if not prep_df.empty and "Volume" in prep_df.columns else 0.0
+        est_shares = float(order_size_shares or 100)
+        effective_slip_pct = compute_volume_impact_slippage_pct(
+            slippage_pct,
+            est_shares,
+            bar_vol,
+            participation_cap=getattr(settings, "volume_slippage_participation_cap", 0.05),
+        )
+    slip_pct = effective_slip_pct / 100.0 if effective_slip_pct > 0 else 0.0
+    # 使用 A 股精確佣金模型（佣金最低 5 元 + 印花稅僅賣出 + 過戶費）
+    stamp_tax_rate = settings.backtest_stamp_tax
+    comm_info = AStockCommission(
+        commission=commission,
+        stamp_tax=stamp_tax_rate,
+        min_commission=5.0,
+    )
+    cerebro.broker.addcommissioninfo(comm_info)
     if slip_pct > 0:
         cerebro.broker.set_slippage_perc(slip_pct)
 
@@ -2136,7 +1193,7 @@ def run_backtest(
         def notify_trade(self, trade):
             if trade.isclosed:
                 trade_log.append({
-                    "date": self.datas[0].num2date(trade.dtclose).strftime("%Y-%m-%d"),
+                    "date": _format_bar_datetime(self.datas[0].num2date(trade.dtclose)),
                     "type": "close",
                     "price": round(trade.price, 2),
                     "size": trade.size,
@@ -2146,7 +1203,7 @@ def run_backtest(
                 })
             elif trade.isopen:
                 trade_log.append({
-                    "date": self.datas[0].num2date(trade.dtopen).strftime("%Y-%m-%d"),
+                    "date": _format_bar_datetime(self.datas[0].num2date(trade.dtopen)),
                     "type": "open",
                     "price": round(trade.price, 2),
                     "size": trade.size,
@@ -2158,10 +1215,13 @@ def run_backtest(
     cerebro.addanalyzer(TradeObserver, _name="tradeobs")
 
     initial_value = cerebro.broker.getvalue()
-    results = cerebro.run()
-    final_value = cerebro.broker.getvalue()
-
-    strat = results[0]
+    try:
+        results = cerebro.run()
+        final_value = cerebro.broker.getvalue()
+        strat = results[0]
+    finally:
+        if not plot:
+            dispose_cerebro(cerebro, results)
 
     sharpe = strat.analyzers.sharpe.get_analysis()
     drawdown = strat.analyzers.drawdown.get_analysis()
@@ -2189,7 +1249,7 @@ def run_backtest(
     if daily_returns and len(daily_returns) > 1:
         mean_ret = np.mean(daily_returns)
         std_ret = np.std(daily_returns)
-        computed_sharpe = (mean_ret - 0.03 / 252) / std_ret * (252 ** 0.5) if std_ret > 0 else 0
+        computed_sharpe = (mean_ret - 0.03 / bpy) / std_ret * (bpy ** 0.5) if std_ret > 0 else 0
     else:
         computed_sharpe = 0
 
@@ -2221,7 +1281,7 @@ def run_backtest(
         kline_df = data.p.dataname  # 這是 prepare_data 返回的 DataFrame
         if kline_df is not None and not kline_df.empty:
             for idx, row in kline_df.iterrows():
-                date_str = str(idx.date()) if hasattr(idx, 'date') else str(idx)
+                date_str = _format_bar_datetime(idx)
                 kline.append({
                     "date": date_str,
                     "open": round(float(row["Open"]), 2),
@@ -2254,7 +1314,7 @@ def run_backtest(
         })
 
     # 計算風險指標
-    risk = _calc_risk_metrics(daily_returns, dates, max_dd, nav)
+    risk = _calc_risk_metrics(daily_returns, dates, max_dd, nav, periods_per_year=bpy)
 
     # 權益曲線深度分析
     equity_analysis = analyze_equity_curve(nav, dates, daily_returns)
@@ -2271,6 +1331,9 @@ def run_backtest(
     result = {
         "code": code,
         "strategy": strategy_name,
+        "timeframe": tf,
+        "timeframe_label": tf_label,
+        "bars_count": len(dates),
         "initial_cash": cash,
         "final_value": final_value,
         "total_return_pct": round(total_return, 4),
@@ -2282,6 +1345,10 @@ def run_backtest(
         "win_rate_pct": round(win_rate, 2),
         "nav": [round(v, 6) for v in nav],
         "dates": [str(d) for d in dates],
+        "equity_curve": [
+            {"date": str(dates[i]), "value": round(float(nav[i]), 6)}
+            for i in range(min(len(dates), len(nav)))
+        ],
         "daily_returns": [round(r, 6) for r in daily_returns],
         "trade_details": paired_trades,
         "signals": signals,
@@ -2297,6 +1364,8 @@ def run_backtest(
         "profit_loss_ratio": risk["profit_loss_ratio"],
         # 進階回測參數
         "slippage_pct": slippage_pct,
+        "effective_slippage_pct": round(effective_slip_pct, 6),
+        "volume_slippage": bool(use_volume_slip),
         "enable_t1": enable_t1,
         "enable_limit": enable_limit,
         # 漲跌停限制結果

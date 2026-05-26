@@ -39,13 +39,8 @@ CREATE TABLE IF NOT EXISTS strategy_leaderboard (
 
 
 def init_leaderboard_table():
-    """初始化排行榜數據表"""
-    with get_conn() as conn:
-        conn.execute(DDL_LEADERBOARD)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lb_strategy ON strategy_leaderboard(strategy_name)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lb_evaluated ON strategy_leaderboard(evaluated_at)")
-        conn.commit()
-    logger.debug("排行榜表已就緒")
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 def update_leaderboard(codes: list[str] = None) -> list[dict]:

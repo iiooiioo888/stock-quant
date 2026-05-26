@@ -2,13 +2,12 @@
 數據庫操作層 — SQLite 讀寫封裝（含 LRU 緩存 + 線程本地連接池）
 """
 import sqlite3
-import os
-import threading
 import time
 import pandas as pd
 from functools import lru_cache
-from contextlib import contextmanager
 from src.config import settings
+from src.core.database.connection import get_conn
+from src.core.database.bootstrap import init_database
 from src.utils.logger import logger
 
 _KLINE_COLS = "code, date, open, high, low, close, volume, amount, turnover, market"
@@ -18,38 +17,7 @@ _STATS_CACHE_TTL = 5.0
 _CODES_CACHE_TTL = 30.0
 
 
-# ============================================================
-# 線程本地連接池（避免每次請求都 connect/close）
-# ============================================================
-_thread_local = threading.local()
-
-
-def _get_thread_conn() -> sqlite3.Connection:
-    """獲取當前線程的數據庫連接（複用）"""
-    conn = getattr(_thread_local, "conn", None)
-    if conn is None:
-        conn = sqlite3.connect(settings.db_path, check_same_thread=False, timeout=10.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-32000")  # 32MB 頁緩存
-        conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap 讀取
-        conn.execute("PRAGMA busy_timeout=5000")  # 5 秒等待鎖釋放
-        _thread_local.conn = conn
-    return conn
-
-
-@contextmanager
-def get_conn():
-    """獲取數據庫連接（上下文管理器，使用線程本地連接池）"""
-    conn = _get_thread_conn()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-
+# get_conn 由 src.core.database.connection 提供（向後兼容 re-export）
 
 # ============================================================
 # LRU 緩存層
@@ -78,7 +46,7 @@ def _load_daily_kline_cached(code: str, start_date: str = None, end_date: str = 
     return (tuple(df.itertuples(index=False, name=None)), tuple(df.columns))
 
 
-def clear_data_cache():
+def clear_data_cache(quiet: bool = False, reason: str = ""):
     """清除數據緩存（進程內 LRU + 計算結果緩存）"""
     global _codes_cache, _db_stats_cache
     _load_daily_kline_cached.cache_clear()
@@ -103,208 +71,16 @@ def clear_data_cache():
         invalidate_compute()
     except Exception:
         pass
-    logger.info("數據緩存已清除")
-
-
-DDL_DAILY = """
-CREATE TABLE IF NOT EXISTS daily_kline (
-    code        TEXT    NOT NULL,
-    date        TEXT    NOT NULL,
-    open        REAL,
-    high        REAL,
-    low         REAL,
-    close       REAL,
-    volume      REAL,
-    amount      REAL,
-    turnover    REAL,
-    market      TEXT    DEFAULT 'a_share',
-    PRIMARY KEY (code, date)
-)
-"""
-
-DDL_REALTIME = """
-CREATE TABLE IF NOT EXISTS realtime_snapshot (
-    code        TEXT    PRIMARY KEY,
-    name        TEXT,
-    price       REAL,
-    change_pct  REAL,
-    volume      REAL,
-    amount      REAL,
-    high        REAL,
-    low         REAL,
-    open        REAL,
-    prev_close  REAL,
-    updated_at  TEXT
-)
-"""
-
-DDL_ALERTS = """
-CREATE TABLE IF NOT EXISTS alert_log (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    code        TEXT    NOT NULL,
-    rule_type   TEXT    NOT NULL,
-    message     TEXT    NOT NULL,
-    price       REAL,
-    triggered_at TEXT   NOT NULL
-)
-"""
-
-DDL_BACKTEST_RESULTS = """
-CREATE TABLE IF NOT EXISTS backtest_results (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    code            TEXT NOT NULL,
-    strategy        TEXT NOT NULL,
-    params          TEXT,
-    total_return_pct REAL,
-    sharpe_ratio    REAL,
-    max_drawdown_pct REAL,
-    annual_return_pct REAL,
-    sortino_ratio   REAL,
-    calmar_ratio    REAL,
-    var_95          REAL,
-    cvar_95         REAL,
-    total_trades    INTEGER,
-    win_rate_pct    REAL,
-    initial_cash    REAL,
-    final_value     REAL,
-    created_at      TEXT NOT NULL
-)
-"""
-
-DDL_MINUTE_KLINE = """
-CREATE TABLE IF NOT EXISTS minute_kline (
-    code        TEXT    NOT NULL,
-    datetime    TEXT    NOT NULL,
-    period      TEXT    NOT NULL,  -- '1m','5m','15m','30m','60m'
-    open        REAL,
-    high        REAL,
-    low         REAL,
-    close       REAL,
-    volume      REAL,
-    amount      REAL,
-    PRIMARY KEY (code, datetime, period)
-)
-"""
-
-DDL_SIGNAL_LOG = """
-CREATE TABLE IF NOT EXISTS signal_log (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    code            TEXT NOT NULL,
-    strategy        TEXT NOT NULL,
-    signal          TEXT NOT NULL,
-    price           REAL,
-    strength        REAL,
-    params          TEXT,
-    triggered_at    TEXT NOT NULL
-)
-"""
-
-# ====== 用戶系統表 ======
-
-DDL_USERS = """
-CREATE TABLE IF NOT EXISTS users (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    username        TEXT UNIQUE NOT NULL,
-    password_hash   TEXT NOT NULL,
-    role            TEXT DEFAULT 'user',
-    settings        TEXT DEFAULT '{}',
-    created_at      TEXT NOT NULL
-)
-"""
-
-DDL_USER_WATCHLISTS = """
-CREATE TABLE IF NOT EXISTS user_watchlists (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL,
-    name            TEXT NOT NULL,
-    codes           TEXT NOT NULL,
-    created_at      TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-"""
-
-DDL_USER_ALERT_RULES = """
-CREATE TABLE IF NOT EXISTS user_alert_rules (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL,
-    code            TEXT NOT NULL,
-    rule_type       TEXT NOT NULL,
-    params          TEXT NOT NULL,
-    enabled         INTEGER DEFAULT 1,
-    created_at      TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-"""
+    suffix = f" ({reason})" if reason else ""
+    if quiet:
+        logger.debug(f"數據緩存已清除{suffix}")
+    else:
+        logger.info(f"數據緩存已清除{suffix}")
 
 
 def init_db():
-    """初始化數據庫，建表 + 建索引"""
-    os.makedirs(os.path.dirname(settings.db_path), exist_ok=True)
-
-    with get_conn() as conn:
-        conn.execute(DDL_DAILY)
-        conn.execute(DDL_REALTIME)
-        conn.execute(DDL_ALERTS)
-        conn.execute(DDL_BACKTEST_RESULTS)
-        conn.execute(DDL_SIGNAL_LOG)
-        conn.execute(DDL_MINUTE_KLINE)
-        # 用戶系統表
-        conn.execute(DDL_USERS)
-        conn.execute(DDL_USER_WATCHLISTS)
-        conn.execute(DDL_USER_ALERT_RULES)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_code ON daily_kline(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_kline(date)")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_kline(code, date)"
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_bt_code ON backtest_results(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_bt_created ON backtest_results(created_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sig_code ON signal_log(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sig_triggered ON signal_log(triggered_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sig_strategy ON signal_log(strategy)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_minute_code ON minute_kline(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_minute_period ON minute_kline(period)")
-        # 用戶表索引
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_username ON users(username)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user ON user_watchlists(user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_alert_user ON user_alert_rules(user_id)")
-
-        # ====== 遷移：添加 market 列（兼容舊數據庫）======
-        try:
-            conn.execute("ALTER TABLE daily_kline ADD COLUMN market TEXT DEFAULT 'a_share'")
-        except sqlite3.OperationalError:
-            pass  # 列已存在
-
-        # 市場索引
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_market ON daily_kline(market)")
-
-        conn.commit()
-    
-    # 初始化擴展數據表（板塊、資金流向、龍虎榜、基本面）
-    try:
-        from src.core.sector import init_sector_table
-        from src.core.capital_flow import init_capital_flow_table
-        from src.core.dragon_tiger import init_dragon_tiger_table
-        from src.core.fundamental import init_fundamentals_table
-        from src.core.stock_universe import init_stock_universe_table
-        init_sector_table()
-        init_capital_flow_table()
-        init_dragon_tiger_table()
-        init_fundamentals_table()
-        init_stock_universe_table()
-        from src.core.polymarket.store import init_polymarket_tables
-        init_polymarket_tables()
-    except Exception as e:
-        logger.warning(f"擴展數據表初始化跳過: {e}")
-    
-    # 創建默認管理員賬號（首次運行時）
-    try:
-        from src.core.auth import ensure_default_admin
-        ensure_default_admin()
-    except Exception as e:
-        logger.warning(f"默認管理員初始化跳過: {e}")
-    
-    logger.info(f"數據庫就緒: {settings.db_path}")
+    """初始化數據庫（版本化遷移 + 默認管理員）— 向後兼容入口"""
+    init_database()
 
 
 def save_daily_kline(df: pd.DataFrame, code: str, market: str = "a_share") -> int:

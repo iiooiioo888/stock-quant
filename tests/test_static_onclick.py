@@ -65,9 +65,10 @@ class TestStaticOnclick:
         assert "switchTab" not in dashboard
 
     def test_scheduler_tab_exists_in_html(self):
-        html = (STATIC / "index.html").read_text(encoding="utf-8")
-        assert 'id="tab-scheduler"' in html
-        assert 'data-tab="scheduler"' in html
+        html = (STATIC / "app.html").read_text(encoding="utf-8")
+        # 任務中心 Tab（原 scheduler 已合併到 tasks）
+        assert 'data-p="tasks"' in html
+        assert 'id="pg-tasks"' in html
 
     def test_onclick_handlers_resolve(self):
         app_methods = _collect_app_methods()

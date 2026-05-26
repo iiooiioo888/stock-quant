@@ -90,6 +90,64 @@ async def auto_add_alert_rules_api(body: dict = None):
         raise HTTPException(400, str(e))
 
 
+def _normalize_watchlist_code(code: str) -> str:
+    code = str(code).strip()
+    if not code:
+        raise HTTPException(400, "股票代碼不能為空")
+    if code.isdigit() and len(code) < 6:
+        code = code.zfill(6)
+    if not (code.isdigit() and len(code) == 6):
+        raise HTTPException(400, "請輸入 6 位 A 股代碼，例如 600519")
+    return code
+
+
+def _basic_alert_rule(code: str, name: str = "", change_pct: float = 5.0) -> dict:
+    from src.api.constants import STOCK_NAMES
+
+    return {
+        "name": name or STOCK_NAMES.get(code) or code,
+        "price_above": None,
+        "price_below": None,
+        "change_pct": float(change_pct),
+    }
+
+
+@router.get("/api/watchlist")
+async def list_watchlist():
+    """自選股列表（含簡要行情）。"""
+    from src.api.constants import STOCK_NAMES
+    from src.core.watchlist_store import list_codes
+
+    codes = list_codes()
+    quotes: dict[str, dict] = {}
+    try:
+        from src.core.realtime import fetch_realtime
+
+        df = fetch_realtime(codes)
+        if df is not None and not df.empty:
+            for row in df.to_dict(orient="records"):
+                c = str(row.get("code", "")).strip()
+                if c:
+                    quotes[c] = row
+    except Exception as e:
+        logger.debug(f"自選股行情: {e}")
+
+    items = []
+    for code in codes:
+        rule = settings.alert_rules.get(code) or {}
+        q = quotes.get(code) or {}
+        items.append({
+            "code": code,
+            "name": rule.get("name") or q.get("name") or STOCK_NAMES.get(code) or code,
+            "price": q.get("price"),
+            "change_pct": q.get("change_pct"),
+            "price_above": rule.get("price_above"),
+            "price_below": rule.get("price_below"),
+            "alert_change_pct": rule.get("change_pct"),
+        })
+    return {"success": True, "items": items, "total": len(items)}
+
+
 @router.post("/api/watchlist/add")
 async def add_to_watchlist(
     code: str,
@@ -99,16 +157,20 @@ async def add_to_watchlist(
     below_pct: float = 3.0,
     change_pct: float = 5.0,
 ):
-    """添加股票到監控列表；auto_rule=true 時依最新價生成預警閾值"""
-    if code in settings.alert_rules:
-        return {"success": True, "message": f"{code} 已在監控列表", "rules": settings.alert_rules}
+    """添加股票到自選 / 監控列表；auto_rule=true 時嘗試依最新價生成預警閾值"""
+    from src.core.watchlist_store import ensure_in_watchlist, save_runtime
 
-    rule = {
-        "name": name or code,
-        "price_above": None,
-        "price_below": None,
-        "change_pct": change_pct,
-    }
+    code = _normalize_watchlist_code(code)
+    if code in settings.watchlist and code in settings.alert_rules:
+        payload = await list_watchlist()
+        return {
+            "success": True,
+            "message": f"{code} 已在自選列表",
+            "items": payload["items"],
+        }
+
+    rule = _basic_alert_rule(code, name, change_pct)
+    rule_hint = ""
     if auto_rule:
         from src.core.alert_rules_auto import suggest_alert_rule
 
@@ -120,13 +182,33 @@ async def add_to_watchlist(
                 change_pct=change_pct,
             )
             rule = suggested["rule"]
+            rule_hint = "（已自動生成預警規則）"
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            logger.info(f"{code} 自動預警規則失敗，使用基礎規則: {e}")
+            rule_hint = "（已加入；未取得最新價，預警閾值請稍後編輯）"
 
     settings.alert_rules[code] = rule
-    if code not in settings.watchlist:
-        settings.watchlist.append(code)
-    msg = f"{code} 已加入監控"
-    if auto_rule:
-        msg += "（已自動生成預警規則）"
-    return {"success": True, "message": msg, "rules": settings.alert_rules, "rule": rule}
+    ensure_in_watchlist(code)
+    save_runtime()
+    display = rule.get("name") or code
+    return {
+        "success": True,
+        "message": f"{display}（{code}）已加入自選{rule_hint}",
+        "rule": rule,
+        "items": (await list_watchlist())["items"],
+    }
+
+
+@router.delete("/api/watchlist/{code}")
+async def remove_from_watchlist(code: str):
+    """從自選列表移除。"""
+    from src.core.watchlist_store import remove_from_watchlist as _remove
+
+    code = _normalize_watchlist_code(code)
+    if not _remove(code):
+        raise HTTPException(404, f"自選列表中無 {code}")
+    return {
+        "success": True,
+        "message": f"已移除 {code}",
+        "items": (await list_watchlist())["items"],
+    }

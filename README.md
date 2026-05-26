@@ -4,10 +4,12 @@
 
 ### 核心特性
 
-- **異步任務佇列**：回測、優化、組合、Walk-Forward 等提交後立即返回，Web 端輪詢並在「任務面板」查看進度
+- **雙前端**：**Pro 工作站**（`/app`，ECharts + 模塊化頁面）與 **Legacy SPA**（`/legacy/`，Chart.js 全功能 Tab）
+- **異步任務佇列**：回測、優化、組合、Walk-Forward 等提交後立即返回，Web 端輪詢並在「任務中心」查看進度
 - **並行加速**：可配置任務槽位、網格搜索進程/線程池；Windows 自動使用線程池避免 SQLite 多進程問題
 - **結果緩存**：相同參數 + 相同 K 線版本命中緩存，秒級返回；支持本地 LRU 或 Redis（Docker 默認帶 Redis）
-- **19 種內置策略** + 多種組合方法（約 21 個 API）+ Optuna 貝葉斯優化
+- **30+ 可回測策略**（`src/core/strategies/` 模塊化註冊）+ **策略庫目錄**（分類展示，含規劃項）+ 13+ 組合方法 + Optuna 貝葉斯優化
+- **多股 / 多策略對比**：Pro 頁支持標的選擇器、多股收益走勢、全策略排行 / 散點 / 淨值曲線與 CSV/PNG 導出
 
 ## 🌐 在線演示
 
@@ -17,7 +19,7 @@
 
 演示模式特性（`SQ_DEMO_MODE=true`）：
 - 自動下載 5 只示範股票數據（平安銀行、貴州茅台、五糧液、中國平安、美的集團）
-- 5 隻示範股票 + 5 種示範策略（系統內建共 19 種策略可回測）
+- 5 隻示範股票 + 多種示範策略（引擎內建 30+ 種可回測）
 - **未登錄可讀**：儀表盤、數據中心、任務列表、信號等 GET 接口
 - **寫入需登錄**：下載入庫、取消任務、回測提交、調度器變更等 POST/DELETE
 - 參數優化、Walk-Forward、組合回測均可體驗
@@ -36,7 +38,10 @@ pip install -r requirements.txt
 # 啟動 Web 服務
 python main.py serve
 
-# 訪問 http://localhost:8000
+# 訪問
+#   http://localhost:8000/        落地頁
+#   http://localhost:8000/app     Pro 工作站（推薦）
+#   http://localhost:8000/legacy/ 舊版全功能 SPA
 ```
 
 ### 方式二：Docker Compose（推薦）
@@ -266,77 +271,46 @@ python main.py scheduler run incremental_update
 ```
 stock-quant/
 ├── main.py                 # CLI + Web 入口
-├── Dockerfile              # Docker 鏡像
-├── docker-compose.yml      # Docker Compose
-├── .env.example            # 環境變量模板
+├── Dockerfile / docker-compose.yml
+├── .env.example
 ├── requirements.txt
+├── docs/
+│   ├── manual/             # 項目說明書（架構、API、前端、部署等）
+│   └── MCP.md              # MCP Server 文檔
 ├── src/
-│   ├── config.py           # 配置管理（支持環境變量 + .env）
+│   ├── config.py
 │   ├── api/
-│   │   ├── app.py          # FastAPI 主應用
-│   │   ├── routers/        # 健康檢查、任務等路由
-│   │   ├── ws.py           # WebSocket 推送
-│   │   └── demo.py         # 演示數據填充
+│   │   ├── app.py          # FastAPI 主應用 + 靜態頁路由
+│   │   ├── routers/        # 分模塊路由（backtest、tasks、assets…）
+│   │   ├── ws.py
+│   │   └── demo.py
 │   ├── core/
-│   │   ├── db.py           # 數據庫操作（SQLite + 進程內 LRU）
-│   │   ├── yahoo_finance.py # Yahoo Finance（A股/全球 主源）
-│   │   ├── cache.py        # Redis / 本地 LRU 統一緩存
-│   │   ├── result_cache.py # 回測/優化等計算結果緩存
-│   │   ├── task_manager.py # 異步任務佇列 + 去重 + 並行槽位
-│   │   ├── compute_budget.py # 全局 CPU 預算分配
-│   │   ├── history.py      # 歷史數據下載 + 增量更新
-│   │   ├── realtime.py     # 實時行情
-│   │   ├── alerts.py       # 預警引擎 + 多渠道通知
-│   │   ├── backtest.py     # 回測引擎（19 種策略 + 滑點/T+1/漲跌停）
-│   │   ├── optimize.py     # 參數優化（網格 + Optuna）
-│   │   ├── portfolio.py    # 組合分析（風險平價/MVO/Black-Litterman 等）
-│   │   ├── walkforward.py  # Walk-Forward 分析
-│   │   ├── auto_optimize.py# 全自動參數尋優
-│   │   ├── heatmap.py      # 參數敏感性熱力圖
-│   │   ├── screener.py     # 股票篩選器
-│   │   ├── benchmark.py    # 滬深300基準對比
-│   │   ├── export.py       # CSV/JSON 導出
-│   │   ├── signals.py      # 實時信號引擎
-│   │   ├── scheduler.py    # APScheduler 定時任務
-│   │   ├── report.py       # 每日策略報告
-│   │   ├── auth.py         # JWT 用戶認證
-│   │   ├── strategy_base.py# 策略基類
-│   │   ├── leaderboard.py  # 策略排行榜
-│   │   ├── sector.py       # 板塊數據
-│   │   ├── capital_flow.py # 資金流向
-│   │   ├── dragon_tiger.py # 龍虎榜
-│   │   ├── fundamental.py  # 基本面數據
-│   │   └── ...
-│   ├── models/
-│   │   └── schemas.py      # Pydantic 數據模型
-│   └── utils/
-│       └── logger.py       # 日誌系統（輪轉 + 分級）
+│   │   ├── database/       # Schema、遷移、連接、種子數據
+│   │   ├── strategies/     # 30+ 策略（registry 註冊）
+│   │   ├── backtest.py     # 回測引擎
+│   │   ├── task_manager.py # 異步任務佇列
+│   │   ├── optimize.py / portfolio.py / …
+│   │   └── db.py           # 兼容層（轉發 database 包）
+│   └── cli/                # 命令行子命令
 ├── static/
-│   ├── index.html          # 內建儀表盤（多 Tab + 任務面板）
-│   ├── css/style.css       # 暗色/亮色主題
+│   ├── home.html           # 落地頁（/）
+│   ├── app.html            # Pro 工作站（/app）
+│   ├── admin.html
+│   ├── css/pro.css         # Pro 設計系統（表單、膠囊、面板）
 │   ├── js/
-│   │   ├── app.js          # 主應用 + Tab 路由
-│   │   ├── api.js          # API 客戶端
-│   │   ├── charts.js       # 圖表封裝
-│   │   ├── dashboard.js    # 儀表盤
-│   │   ├── backtest.js     # 回測 Tab
-│   │   ├── tasks.js        # 任務面板 Tab
-│   │   ├── task-common.js  # 任務佇列 UI 組件
-│   │   ├── optimize.js     # 優化 Tab
-│   │   ├── portfolio.js    # 組合 Tab
-│   │   ├── signals.js      # 信號 Tab
-│   │   ├── screener.js     # 篩選器 Tab
-│   │   ├── heatmap.js      # 熱力圖 Tab
-│   │   ├── data.js         # 數據中心 Tab
-│   │   └── utils.js        # 工具函數
-├── data/
-│   └── stock.db            # SQLite 數據庫
+│   │   ├── api.js          # 共享 API 客戶端（Token、任務輪詢、緩存）
+│   │   ├── pro/            # Pro 模塊（app.js、各 *-pro.js）
+│   │   └── …               # Legacy Tab 腳本
+│   └── legacy/index.html   # 舊版 SPA（/legacy/）
+├── data/stock.db
 └── logs/
-    ├── app.log             # 應用日誌
-    └── error.log           # 錯誤日誌
 ```
 
+完整文件索引見 [docs/manual/15-文件索引.md](docs/manual/15-文件索引.md)。
+
 ## 內置策略
+
+> 引擎已遷至 `src/core/strategies/` 獨立模塊（`register_strategy` 註冊）。下表為常用策略示例；完整列表以 `/api/strategies/list` 或 CLI `backtest … all` 為準。
 
 | 策略 | 說明 | 核心參數 |
 |------|------|----------|
@@ -359,6 +333,11 @@ stock-quant/
 | `obv` | OBV 能量潮策略 | obv_ma=20, price_ma=20 |
 | `bollinger_squeeze` | 布林帶收窄突破策略 | period=20, squeeze_threshold=0.03 |
 | `adx_trend` | ADX 趨勢強度策略 | adx_period=14, adx_threshold=25 |
+| `supertrend` | SuperTrend 趨勢 | period=10, multiplier=3 |
+| `donchian` | 唐奇安通道突破 | period=20 |
+| `cci` / `williams_r` | CCI / 威廉指標 | 見各模塊默認參數 |
+| `ema_cross` / `triple_ma` | 均線系統 | 見各模塊默認參數 |
+| … | 其餘見 `src/core/strategies/` | — |
 
 ### 進階回測參數
 
@@ -467,26 +446,51 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 
 ## 擴展
 
-- **添加新策略**: 在 `src/core/backtest.py` 中繼承 `bt.Strategy`，註冊到 `STRATEGIES`
+- **添加新策略**: 在 `src/core/strategies/` 新建模塊，使用 `@register_strategy` 註冊（見 `registry.py`）
 - **自定義策略上傳**: 通過 `/api/strategies/upload` 上傳 .py 文件，繼承 `StrategyBase`
 - **添加通知渠道**: 修改 `src/core/alerts.py` 的 `dispatch()` 方法
 - **添加新股票**: 修改 `src/config.py` 的 `watchlist` 和 `alert_rules`
 - **自定義優化空間**: 修改 `src/core/optimize.py` 的 `PARAM_GRIDS` 和 `PARAM_RANGES`
 
+## 文檔
+
+| 文檔 | 說明 |
+|------|------|
+| [docs/manual/README.md](docs/manual/README.md) | 說明書目錄（概覽、快速開始、架構、API、前端、部署、測試） |
+| [docs/manual/06-前端說明.md](docs/manual/06-前端說明.md) | Pro / Legacy 雙前端路由與模塊 |
+| [docs/manual/13-架構設計.md](docs/manual/13-架構設計.md) | 架構與設計決策 |
+| [docs/MCP.md](docs/MCP.md) | MCP Agent 接入 |
+
 ## 前端
 
-內建暗色/亮色主題儀表盤，主要 Tab 包括：
+### Pro 工作站（推薦，`/app`）
 
-1. **儀表盤** — 系統概覽 + 監控列表
-2. **回測** — 單策略/全策略對比 + K線 + 交易明細（異步任務 + 緩存）
-3. **優化** — 參數優化 + 全自動尋優
-4. **組合** — 多種組合方法 + 預設組合 + 有效前沿
-5. **任務面板** — 執行佇列、並行槽、等待/運行/完成任務、一鍵跳轉結果
-6. **₿ 加密行情** — 獨立 Tab：`/api/crypto/realtime`、`/api/crypto/kline`（舊路徑 `/api/markets/crypto/*` 仍相容）
-7. **多市場 / 接口檢查** — 全球市場卡片、Polymarket 預測市場、外部源探測
-8. **對比 / 歷史 / Walk-Forward / 熱力圖 / 篩選器 / 信號 / 數據 / 報告 / 預警** 等
+深色量化工作台（`static/app.html` + `static/css/pro.css`），ECharts 圖表、Cmd+K 命令面板、統一設計系統（表單 / 膠囊 / 面板）。
 
-右下角浮動任務面板可快速查看後台任務進度。
+| 頁面 | 模塊 | 功能摘要 |
+|------|------|----------|
+| 總覽 | `dashboard-pro.js` | 指數、行情條、概覽卡片 |
+| 策略庫 | `strategy-catalog.js` | 分類、搜尋、方案/狀態篩選、策略卡片 |
+| 回測 | `backtest-pro.js` + `backtest-symbol-picker.js` | 標的選擇、進階參數、異步回測、導出 |
+| **對比** | `compare-pro.js` | **多策略**（排行/散點/淨值 Top5）與 **多股票**（區間收益）；標的選擇器；PNG/CSV |
+| 任務中心 | `tasks-pro.js` | 佇列、統計、列表、詳情抽屜、批量操作 |
+| 回測歷史 | `backhistory-pro.js` | 篩選、多選對比、導出 |
+| 自選 / 掃描 / 預警 / 資產庫 / 設定 | `*-pro.js` | 各業務頁 |
+
+WebSocket（`/ws`）在登錄後推送任務狀態；未登錄時不建立連線（避免 403 刷屏）。
+
+### Legacy SPA（`/legacy/`）
+
+完整 16 Tab 舊版界面（Chart.js、組合、優化、Walk-Forward、熱力圖、數據中心、加密行情、接口檢查等），與 Pro 共用 `static/js/api.js`。
+
+### 入口一覽
+
+| URL | 頁面 |
+|-----|------|
+| `/` | 落地頁 `home.html` |
+| `/app` | Pro 工作站 |
+| `/admin` | 管理後台 |
+| `/legacy/` | 舊版 SPA |
 
 ## 部署
 

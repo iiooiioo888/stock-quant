@@ -10,6 +10,19 @@ class BatchIdsRequest(BaseModel):
     task_ids: list[str]
 
 
+class PipelineStepRequest(BaseModel):
+    task_type: str
+    params: dict = {}
+    title: str = ""
+    pass_result: bool = False
+
+
+class PipelineCreateRequest(BaseModel):
+    title: str = "任務管道"
+    steps: list[PipelineStepRequest]
+    auto_dispatch: bool = True
+
+
 @router.get("/api/tasks")
 async def list_tasks_api(task_type: str = None, status: str = None, limit: int = 50):
     """獲取任務列表"""
@@ -129,17 +142,78 @@ async def retry_task_api(task_id: str):
         }
 
     new_id = new_task["task_id"]
+    from src.core.task_manager import STATUS_RETRYING, update_task
+    update_task(new_id, status=STATUS_RETRYING, progress=0)
     retry_work = build_retry_worker(task_type, params, new_id)
     out = dispatch_async_task(new_id, retry_work)
     out["message"] = "已提交重試任務"
     return out
 
 
+@router.post("/api/tasks/cancel-pending")
+async def cancel_all_pending_api():
+    """一鍵取消所有排隊任務"""
+    from src.core.task_manager import cancel_all_pending
+    n = cancel_all_pending()
+    return {"success": True, "cancelled": n}
+
+
+@router.post("/api/tasks/clear-completed")
+async def clear_completed_tasks_api(
+    include_failed: bool = True,
+    include_cancelled: bool = True,
+):
+    """清空已結束的歷史任務"""
+    from src.core.task_manager import delete_all_completed
+    n = delete_all_completed(
+        include_failed=include_failed,
+        include_cancelled=include_cancelled,
+    )
+    return {"success": True, "deleted": n}
+
+
+@router.get("/api/tasks/{task_id}/logs")
+async def get_task_logs_api(task_id: str, tail: int = 200):
+    """獲取任務執行日誌（最近 N 行）"""
+    from src.core.task_manager import get_task, get_task_logs
+    if not get_task(task_id):
+        raise HTTPException(404, "任務不存在")
+    return {"task_id": task_id, "logs": get_task_logs(task_id, tail=tail)}
+
+
+@router.post("/api/tasks/pipeline")
+async def create_pipeline_api(body: PipelineCreateRequest):
+    """建立任務管道並派發第一步"""
+    from src.core.task_manager import STATUS_COMPLETED, create_pipeline, submit_task
+    from src.core.task_retry import RetryWorkerError, build_retry_worker
+    from src.api.dispatch import dispatch_async_task
+
+    if not body.steps:
+        raise HTTPException(400, "管道至少需要一個步驟")
+    steps = [s.model_dump() for s in body.steps]
+    pipe = create_pipeline(steps, title=body.title)
+    task_id = pipe["task_id"]
+    if not body.auto_dispatch:
+        return {"success": True, **pipe, "async": False}
+
+    first = steps[0]
+    if pipe.get("status") == STATUS_COMPLETED:
+        return {"success": True, **pipe, "async": False, "from_cache": True}
+
+    try:
+        work_fn = build_retry_worker(first["task_type"], first.get("params") or {}, task_id)
+    except RetryWorkerError as e:
+        raise HTTPException(400, str(e)) from e
+
+    out = dispatch_async_task(task_id, work_fn)
+    return {"success": True, **pipe, **out}
+
+
 @router.post("/api/tasks/cleanup")
-async def cleanup_tasks_api(timeout_sec: int = 3600):
+async def cleanup_tasks_api(timeout_sec: int = 0):
     """清理超時任務"""
     from src.core.task_manager import cleanup_stale_tasks
-    cleaned = cleanup_stale_tasks(timeout_sec)
+    cleaned = cleanup_stale_tasks(timeout_sec or None)
     return {"success": True, "cleaned": cleaned}
 
 

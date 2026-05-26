@@ -36,12 +36,8 @@ def _rate_sleep():
 
 
 def init_capital_flow_table():
-    with get_conn() as conn:
-        conn.execute(DDL_CAPITAL_FLOW)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_code ON capital_flow(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_date ON capital_flow(date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cf_type ON capital_flow(flow_type)")
-        conn.commit()
+    """向後兼容；表結構由 src.core.database.schema 集中管理。"""
+    pass
 
 
 def _save_capital_flow(records: list[dict], flow_type: str):

@@ -3,6 +3,7 @@ from src.cli.commands.core import (
     cmd_config,
     cmd_serve,
     cmd_download,
+    cmd_seed,
     cmd_monitor,
     cmd_scheduler,
     cmd_stock_universe,

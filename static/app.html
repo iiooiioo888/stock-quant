@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-quote-colors="cn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockQ Pro — 量化工作台 v4.0</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=stockq-pro-v21" />
+  <script src="/static/vendor/echarts.min.js?v=5.5.0"></script>
+  <style>
+    .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
+    @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
+    .bt-strat-sel{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--bd);border-radius:var(--rl);cursor:pointer;margin-bottom:12px;background:linear-gradient(165deg,rgba(255,255,255,.03),var(--bg0));transition:border-color .18s,box-shadow .18s,transform .18s}
+    .bt-strat-sel:hover{border-color:var(--bf);box-shadow:0 4px 18px rgba(0,0,0,.2);transform:translateY(-1px)}
+    .bt-strat-sel-body{flex:1;min-width:0}
+    .bt-strat-sel-name{font-weight:600;font-size:.78rem}
+    .bt-strat-sel-desc{font-size:.66rem;color:var(--t3);margin-top:4px}
+    .fg-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+    .fg-checks{display:flex;flex-wrap:wrap;gap:12px;font-size:.68rem;margin-bottom:8px}
+    .bt-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .bt-actions--sub{margin-top:6px}
+    .placeholder-msg{font-size:.85rem;color:var(--t2);padding:28px;text-align:center}
+    #toasts{position:fixed;bottom:34px;right:16px;z-index:1000;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+    #toasts .toast{pointer-events:auto}
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══ TOPBAR ═══ -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <a class="logo" href="/app#/dashboard" data-nav="dashboard" aria-label="StockQ Pro 首頁">
+        <span class="logo-icon" aria-hidden="true">Q</span>
+        StockQ <span>Pro</span>
+      </a>
+      <nav class="topbar-links" aria-label="站點入口">
+        <a href="/">官網</a>
+        <a href="/admin">管理後台</a>
+      </nav>
+      <div class="ticker-strip" id="topbar-ticker-strip" aria-label="行情跑馬燈">
+        <div class="ticker-strip-inner"></div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button type="button" class="srch" id="cmd-open-btn" title="命令面板 (Ctrl+K)">
+        <span>搜尋…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="sts" title="WebSocket 連線狀態">
+        <span class="dot-g" aria-hidden="true"></span>
+        <span id="conn-status">連線中…</span>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="tbtn" id="notif-btn" title="任務通知" aria-label="任務通知">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="dot" id="notif-task-dot" style="display:none" title="進行中任務"></span>
+      </button>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="avatar auth-pill" id="auth-pill" role="button" tabindex="0" title="登錄 / 登出">訪</div>
+    </div>
+  </header>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <nav class="sidebar" aria-label="主導航">
+    <button type="button" class="sb on" data-p="dashboard" title="總覽">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      <span class="tp">總覽</span>
+    </button>
+    <button type="button" class="sb" data-p="strategies" title="策略庫">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span class="tp">策略庫</span>
+    </button>
+    <button type="button" class="sb" data-p="backtest" title="回測">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+      <span class="tp">回測</span>
+    </button>
+    <button type="button" class="sb" data-p="assets" title="資產庫">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+      <span class="tp">資產庫</span>
+    </button>
+    <button type="button" class="sb" data-p="tasks" title="任務中心">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="plk" id="task-sb-badge" style="display:none">0</span>
+      <span class="tp">任務中心</span>
+    </button>
+    <div class="sd" aria-hidden="true"></div>
+    <button type="button" class="sb" data-p="compare" title="多股對比">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 16v5h-5"/><path d="M3 16v5h5"/><path d="M21 8 8 21"/><path d="M3 8l13 13"/></svg>
+      <span class="tp">對比</span>
+    </button>
+    <button type="button" class="sb" data-p="portfolio" title="組合">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+      <span class="tp">組合</span>
+    </button>
+    <button type="button" class="sb" data-p="watchlist" title="自選股">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <span class="tp">自選股</span>
+    </button>
+    <button type="button" class="sb" data-p="scanner" title="選股器">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <span class="tp">選股器</span>
+    </button>
+    <button type="button" class="sb" data-p="alerts" title="預警">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="tp">預警</span>
+    </button>
+    <button type="button" class="sb" data-p="risk" title="風控">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span class="tp">風控</span>
+    </button>
+    <button type="button" class="sb" data-p="journal" title="交易日誌">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="tp">日誌</span>
+    </button>
+    <button type="button" class="sb" data-p="backhistory" title="回測歷史">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="tp">回測歷史</span>
+    </button>
+    <div class="sd" aria-hidden="true"></div>
+    <button type="button" class="sb" data-p="ai" title="AI 分析">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 0 6h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1 0-6h1V6a4 4 0 0 1 4-4z"/></svg>
+      <span class="tp">AI</span>
+      <span class="plk">PRO</span>
+    </button>
+    <button type="button" class="sb" data-p="factor" title="因子">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="tp">因子</span>
+    </button>
+    <button type="button" class="sb" data-p="seasonal" title="季節性">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/><circle cx="12" cy="12" r="4"/></svg>
+      <span class="tp">季節性</span>
+    </button>
+    <button type="button" class="sb" data-p="regime" title="市場狀態">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 20h20"/><path d="M5 20V10M10 20V4M15 20v-6M20 20V8"/></svg>
+      <span class="tp">市場狀態</span>
+    </button>
+    <button type="button" class="sb" data-p="pricing" title="定價">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span class="tp">定價</span>
+    </button>
+    <div class="sd" aria-hidden="true"></div>
+    <button type="button" class="sb" data-p="settings" title="設定">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <span class="tp">設定</span>
+    </button>
+  </nav>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main" id="main-content">
+
+    <!-- 1. Dashboard -->
+    <div class="pg pro-page on" id="pg-dashboard">
+      <div id="dashboard-root"></div>
+    </div>
+
+    <!-- 2. Strategies -->
+    <div class="pg pro-page" id="pg-strategies">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">📚 策略庫</div>
+          <div class="pa">
+            <span class="badge b-ac badge-count" id="lib-total">載入中…</span>
+          </div>
+        </div>
+        <div class="pb">
+          <div class="lib-toolbar pro-toolbar pro-toolbar--stack">
+            <div class="pro-field pro-field--grow">
+              <input type="search" id="lib-search" class="inp" placeholder="搜尋策略名稱或描述…" autocomplete="off" />
+            </div>
+            <select id="lib-tier" class="sel" aria-label="方案篩選">
+              <option value="">全部方案</option>
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="ent">Enterprise</option>
+            </select>
+            <select id="lib-status" class="sel" aria-label="狀態篩選">
+              <option value="">全部狀態</option>
+              <option value="implemented">可回測</option>
+            </select>
+            <select id="lib-view" class="sel" aria-label="檢視模式">
+              <option value="grid">網格</option>
+              <option value="list">列表</option>
+            </select>
+          </div>
+          <div id="cat-pills" class="cat-pills" role="tablist" aria-label="策略分類"></div>
+          <div id="lib-stats" class="lib-stats"></div>
+          <div id="lib-content" class="lib-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Backtest -->
+    <div class="pg pro-page" id="pg-backtest">
+      <div class="bt-layout">
+        <div class="bt-side">
+          <div class="pnl bt-symbol-card" id="bt-symbol-card">
+            <div class="ph"><div class="pt">標的選擇</div></div>
+            <div class="pb">
+              <input type="hidden" id="bt-code" value="600519" />
+              <div class="bt-symbol-current">
+                <div>
+                  <div class="bt-symbol-current-code" id="bt-picked-code">600519</div>
+                  <div class="bt-symbol-current-name" id="bt-picked-name">貴州茅台</div>
+                </div>
+                <button type="button" class="btn s" id="bt-open-asset">資產詳情</button>
+              </div>
+              <div class="bt-pick-modes" role="tablist">
+                <button type="button" class="bt-pick-mode on" data-bt-pick="code">代碼輸入</button>
+                <button type="button" class="bt-pick-mode" data-bt-pick="watch">自選</button>
+                <button type="button" class="bt-pick-mode" data-bt-pick="catalog">資產庫</button>
+                <button type="button" class="bt-pick-mode" data-bt-pick="hot">熱門</button>
+                <button type="button" class="bt-pick-mode" data-bt-pick="search">搜索</button>
+              </div>
+              <div class="bt-pick-panel on" data-bt-pick-panel="code">
+                <div class="bt-code-row">
+                  <input type="text" id="bt-code-input" class="inp" placeholder="6 位 A 股代碼" maxlength="6" inputmode="numeric" autocomplete="off" />
+                </div>
+                <div id="bt-code-suggest" class="bt-code-suggest" hidden></div>
+              </div>
+              <div class="bt-pick-panel" data-bt-pick-panel="watch">
+                <div id="bt-pick-watch" class="bt-pick-list"></div>
+              </div>
+              <div class="bt-pick-panel" data-bt-pick-panel="catalog">
+                <p class="bt-pick-hint">從本地資產庫快速選股</p>
+                <button type="button" class="btn s" id="bt-pick-assets-nav">打開資產庫</button>
+                <div id="bt-pick-catalog" class="bt-pick-list"></div>
+              </div>
+              <div class="bt-pick-panel" data-bt-pick-panel="hot">
+                <div id="bt-pick-hot" class="bt-pick-list bt-pick-list--chips"></div>
+              </div>
+              <div class="bt-pick-panel" data-bt-pick-panel="search">
+                <div class="bt-code-row">
+                  <input type="search" id="bt-search-q" class="inp" placeholder="代碼或名稱關鍵字" />
+                  <button type="button" class="btn" id="bt-search-btn">搜</button>
+                </div>
+                <div id="bt-pick-search" class="bt-pick-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pnl">
+            <div class="ph"><div class="pt">策略與參數</div></div>
+            <div class="pb">
+              <input type="hidden" id="bt-strategy" value="dual_ma" />
+              <div class="bt-strat-sel" id="bt-sel" role="button" tabindex="0" data-nav="strategies" title="前往策略庫選擇">
+                <span class="cdot" style="background:var(--ac)"></span>
+                <div class="bt-strat-sel-body">
+                  <div class="bt-strat-sel-name" id="bt-sel-name">#001 雙均線</div>
+                  <div class="bt-strat-sel-desc" id="bt-sel-desc">短期均線上穿長期均線買入</div>
+                </div>
+                <span class="badge b-gn" id="bt-sel-tier">FREE</span>
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-timeframe">週期</label>
+                <select id="bt-timeframe" class="sel">
+                  <option value="1d" selected>日線</option>
+                  <option value="1w">週線</option>
+                  <option value="1h">60 分鐘</option>
+                </select>
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-capital">初始資金</label>
+                <input type="number" id="bt-capital" class="inp" value="100000" min="1000" step="1000" />
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-slip">滑點 %</label>
+                <input type="number" id="bt-slip" class="inp" value="0.1" min="0" step="0.01" />
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-comm">佣金 %</label>
+                <input type="number" id="bt-comm" class="inp" value="0.03" min="0" step="0.01" />
+              </div>
+              <div class="fg-row fg-checks">
+                <label><input type="checkbox" id="bt-t1" checked /> T+1</label>
+                <label><input type="checkbox" id="bt-limit" checked /> 漲跌停</label>
+                <label><input type="checkbox" id="bt-bg" /> 背景任務</label>
+              </div>
+              <div class="bt-actions">
+                <button type="button" class="btn btn-ac" id="bt-run-btn">▶ 執行回測</button>
+                <button type="button" class="btn s" id="bt-opt-btn">參數優化</button>
+                <button type="button" class="btn s" id="bt-tasks-btn">任務佇列</button>
+              </div>
+              <div class="bt-actions bt-actions--sub">
+                <button type="button" class="btn s" id="bt-copy-params-btn">複製參數</button>
+                <button type="button" class="btn s" id="bt-export-btn">導出 JSON</button>
+                <button type="button" class="btn s" id="bt-export-csv-btn">導出成交 CSV</button>
+                <button type="button" class="btn s" id="bt-export-png-btn">導出圖表 PNG</button>
+                <button type="button" class="btn s" id="bt-clear-log">清空日誌</button>
+              </div>
+              <div class="progress-bar-wrap" aria-hidden="true"><div class="progress-bar" id="bt-bar" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bt-main">
+          <div class="pnl bt-results">
+            <div class="ph">
+              <div class="pt">回測結果</div>
+              <div class="pa">
+                <button type="button" class="btn s" id="bt-save-btn" style="display:none">保存</button>
+              </div>
+            </div>
+            <div class="pb">
+              <div class="bt-empty" id="bt-empty">
+                <span class="bt-empty-icon" aria-hidden="true">📊</span>
+                <p><strong>選擇標的與策略後執行回測</strong></p>
+                <p style="margin-top:6px;font-size:.68rem;color:var(--t3)">結果將展示淨值曲線、回撤、成交明細與風險指標</p>
+              </div>
+              <div class="bt-data-panel" id="bt-data-panel" style="display:none">
+                <div id="bt-verdict" class="bt-verdict"></div>
+                <div id="bt-hero" class="bt-hero-row"></div>
+                <div id="bt-funds" class="bt-funds-bar"></div>
+                <div id="bt-viz" class="bt-viz-row"></div>
+                <div id="bt-sections" class="bt-sections"></div>
+                <div id="bt-meta" class="bt-meta" style="font-size:.62rem;color:var(--t4);margin:8px 0"></div>
+                <div class="bt-block-title">圖表</div>
+                <div class="bt-tabs" role="tablist">
+                  <button type="button" class="bt-tab on" data-bt-tab="equity">淨值</button>
+                  <button type="button" class="bt-tab" data-bt-tab="drawdown">回撤</button>
+                  <button type="button" class="bt-tab" data-bt-tab="kline">K 線</button>
+                </div>
+                <div id="bt-chart-equity" class="bt-chart-pane" style="height:280px"></div>
+                <div id="bt-chart-dd" class="bt-chart-pane" style="height:200px;display:none"></div>
+                <div id="bt-chart-kline" class="bt-chart-pane" style="height:320px;display:none"></div>
+                <details class="bt-trades-wrap" open>
+                  <summary>成交明細 <span id="bt-trades-summary"></span></summary>
+                  <div class="table-wrap">
+                    <table class="tbl tbl-compact">
+                      <thead>
+                        <tr><th>日期</th><th>方向</th><th>價格</th><th>數量</th><th>盈虧</th></tr>
+                      </thead>
+                      <tbody id="bt-trades-tb"></tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+              <div class="bt-log-wrap">
+                <div class="bt-block-title">執行日誌</div>
+                <div class="bt-log" id="bt-log">
+                  <div class="ll"><span class="lt">--:--</span><span class="lm">就緒</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Tasks (tasks-hub) -->
+    <div class="pg pro-page" id="pg-tasks">
+      <div class="tasks-page tasks-hub">
+        <header class="tk-header pnl">
+          <div class="ph">
+            <div class="pt">
+              任務中心
+              <span class="tk-live off" id="tk-live-dot" title="即時推送">●</span>
+            </div>
+            <div class="pa tk-sync-meta">
+              <span id="tk-last-sync">尚未同步</span>
+              <label class="tk-auto-label">
+                <input type="checkbox" id="tk-auto-refresh" checked />
+                自動刷新
+              </label>
+              <button type="button" class="btn s" id="tk-refresh">刷新</button>
+              <button type="button" class="btn s" id="tk-export">導出</button>
+              <button type="button" class="btn s" id="tk-cancel-pending">取消排隊</button>
+              <button type="button" class="btn s" id="tk-clear-done">清空歷史</button>
+              <button type="button" class="btn s" id="tk-cleanup">清理超時</button>
+            </div>
+          </div>
+        </header>
+
+        <div id="tkCapacityBar" aria-label="任務容量"></div>
+
+        <div class="g" id="taskStatsGrid" aria-label="任務統計"></div>
+
+        <div class="pnl tk-queue-pnl">
+          <div class="ph"><div class="pt">🎯 執行佇列</div></div>
+          <div class="pb">
+            <div class="task-queue-grid" id="taskQueueGrid"></div>
+          </div>
+        </div>
+
+        <div class="tk-main" style="display:grid;grid-template-columns:1fr minmax(280px,34%);gap:var(--gap);align-items:start">
+          <div class="tk-list-col pnl">
+            <div class="ph"><div class="pt">📋 任務列表</div></div>
+            <div class="pb">
+              <div id="tk-quick-filters" class="tk-quick">
+                <button type="button" class="tk-pill on" data-tk-status="">全部</button>
+                <button type="button" class="tk-pill" data-tk-status="running">運行中</button>
+                <button type="button" class="tk-pill" data-tk-status="pending">等待中</button>
+                <button type="button" class="tk-pill" data-tk-status="completed">已完成</button>
+                <button type="button" class="tk-pill" data-tk-status="failed">失敗</button>
+                <button type="button" class="tk-pill" data-tk-filter="today">今日</button>
+                <button type="button" class="tk-pill" data-tk-filter="has_result">有結果</button>
+              </div>
+
+              <div id="taskLoadErrorBanner" class="tk-error-banner" style="display:none" role="alert"></div>
+
+              <div class="pro-toolbar pro-toolbar--row" style="margin-bottom:10px">
+                <div class="pro-field pro-field--grow">
+                  <input type="search" id="taskSearch" class="inp" placeholder="搜尋任務名稱或類型…" />
+                </div>
+                <select id="taskTypeFilter" class="sel" style="min-width:120px;width:auto" aria-label="任務類型">
+                  <option value="">全部類型</option>
+                </select>
+                <select id="taskStatusFilter" class="sel" style="min-width:120px;width:auto" aria-label="任務狀態">
+                  <option value="">全部狀態</option>
+                  <option value="running">運行中</option>
+                  <option value="retrying">重試中</option>
+                  <option value="pending">等待中</option>
+                  <option value="completed">已完成</option>
+                  <option value="failed">失敗</option>
+                  <option value="cancelled">已取消</option>
+                </select>
+              </div>
+
+              <div id="taskLoadingIndicator" class="task-loading" style="display:none">
+                <span>載入中…</span>
+              </div>
+
+              <div id="taskBatchBar" class="task-batch-bar">
+                <span>已選 <span class="count" id="taskBatchCount">0</span> 個</span>
+                <span class="flex-spacer"></span>
+                <button type="button" class="btn s" id="taskBatchCancelBtn">批量取消</button>
+                <button type="button" class="btn s" id="taskBatchDeleteBtn">批量刪除</button>
+              </div>
+
+              <div id="tkTaskList" class="tk-task-list" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <aside class="tk-detail pnl" id="tkDetailPanel" hidden>
+            <div class="ph">
+              <div class="pt">任務詳情</div>
+              <div class="pa">
+                <button type="button" class="btn s" id="tk-detail-close" aria-label="關閉詳情">✕</button>
+              </div>
+            </div>
+            <div class="pb">
+              <div id="tk-detail-body" class="tk-detail-body"></div>
+              <div id="tk-detail-actions" class="tk-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Compare -->
+    <div class="pg pro-page" id="pg-compare">
+      <div class="cmp-layout">
+        <aside class="pnl cmp-side" id="cmp-symbol-card">
+          <div class="ph"><div class="pt">標的選擇</div></div>
+          <div class="pb">
+            <div class="cmp-mode-tabs" role="tablist" aria-label="對比模式">
+              <button type="button" class="cat-pill on" data-cmp-mode="strategies">多策略</button>
+              <button type="button" class="cat-pill" data-cmp-mode="stocks">多股票</button>
+            </div>
+            <p class="cmp-mode-hint" id="cmp-mode-hint">選 1 檔股票，對比全部可回測策略表現</p>
+            <div id="cmp-chips" class="cmp-chips" aria-live="polite"></div>
+            <div class="bt-code-row cmp-add-row">
+              <input type="text" id="cmp-code-input" class="inp" placeholder="輸入 6 位代碼或搜尋名稱" maxlength="12" autocomplete="off" />
+              <button type="button" class="btn s" id="cmp-add-btn">加入</button>
+            </div>
+            <div id="cmp-code-suggest" class="bt-code-suggest" hidden></div>
+            <div class="bt-pick-modes cmp-pick-modes">
+              <button type="button" class="bt-pick-mode on" data-cmp-pick="hot">熱門</button>
+              <button type="button" class="bt-pick-mode" data-cmp-pick="watch">自選</button>
+              <button type="button" class="bt-pick-mode" data-cmp-pick="catalog">資產庫</button>
+              <button type="button" class="bt-pick-mode" data-cmp-pick="search">搜尋</button>
+            </div>
+            <div class="bt-pick-panel on" data-cmp-pick-panel="hot">
+              <div id="cmp-pick-hot" class="bt-pick-list bt-pick-list--chips"></div>
+            </div>
+            <div class="bt-pick-panel" data-cmp-pick-panel="watch">
+              <div id="cmp-pick-watch" class="bt-pick-list"></div>
+            </div>
+            <div class="bt-pick-panel" data-cmp-pick-panel="catalog">
+              <p class="bt-pick-hint">從本地資產庫點選加入</p>
+              <button type="button" class="btn s" id="cmp-pick-assets-nav">打開資產庫</button>
+              <div id="cmp-pick-catalog" class="bt-pick-list"></div>
+            </div>
+            <div class="bt-pick-panel" data-cmp-pick-panel="search">
+              <div class="bt-code-row">
+                <input type="search" id="cmp-search-q" class="inp" placeholder="代碼或名稱關鍵字" />
+                <button type="button" class="btn s" id="cmp-search-btn">搜</button>
+              </div>
+              <div id="cmp-pick-search" class="bt-pick-list"></div>
+            </div>
+            <div class="cmp-side-actions">
+              <button type="button" class="btn s" id="cmp-use-bt">沿用回測標的</button>
+              <button type="button" class="btn s" id="cmp-clear-chips">清空</button>
+            </div>
+          </div>
+        </aside>
+
+        <div class="cmp-main">
+          <div class="pnl">
+            <div class="ph">
+              <div class="pt">📊 對比分析</div>
+              <div class="pa"><span class="badge b-ac badge-count" id="cmp-summary-badge">—</span></div>
+            </div>
+            <div class="pb">
+              <div class="pro-toolbar pro-toolbar--row cmp-controls">
+                <select id="cmp-metric" class="sel cmp-ctl-strat" style="min-width:130px;width:auto" aria-label="策略指標">
+                  <option value="total_return_pct">總收益 %</option>
+                  <option value="sharpe_ratio">夏普比率</option>
+                  <option value="sortino_ratio">Sortino</option>
+                  <option value="calmar_ratio">Calmar</option>
+                  <option value="max_drawdown_pct">最大回撤 %</option>
+                  <option value="win_rate_pct">勝率 %</option>
+                  <option value="annual_return_pct">年化收益 %</option>
+                  <option value="total_trades">交易次數</option>
+                </select>
+                <select id="cmp-days" class="sel cmp-ctl-stock" style="min-width:100px;width:auto;display:none" aria-label="行情天數">
+                  <option value="60">近 60 日</option>
+                  <option value="120">近 120 日</option>
+                  <option value="250" selected>近 250 日</option>
+                  <option value="500">近 500 日</option>
+                </select>
+                <select id="cmp-chart-type" class="sel cmp-ctl-strat" style="min-width:110px;width:auto" aria-label="圖表類型">
+                  <option value="bar">橫向排行</option>
+                  <option value="scatter">風險收益散點</option>
+                  <option value="nav">淨值曲線 Top5</option>
+                </select>
+                <select id="cmp-sort" class="sel cmp-ctl-strat" style="min-width:88px;width:auto" aria-label="排序">
+                  <option value="desc">高→低</option>
+                  <option value="asc">低→高</option>
+                </select>
+                <select id="cmp-topn" class="sel cmp-ctl-strat" style="min-width:88px;width:auto" aria-label="顯示數量">
+                  <option value="10">Top 10</option>
+                  <option value="20">Top 20</option>
+                  <option value="0" selected>全部</option>
+                </select>
+                <label class="tk-auto-label cmp-ctl-stock" style="display:none">
+                  <input type="checkbox" id="cmp-normalize" checked /> 歸一化收益
+                </label>
+                <button type="button" class="btn btn-ac" id="cmp-run">執行對比</button>
+                <button type="button" class="btn s" id="cmp-export-png">PNG</button>
+                <button type="button" class="btn s" id="cmp-export-csv">CSV</button>
+              </div>
+              <div id="cmp-metric-hd" class="pro-meta-bar cmp-metric-hd"></div>
+              <div id="cmp-stats-row" class="cmp-stats-row"></div>
+              <div id="cmp-ch" class="chart-panel cmp-chart-main"></div>
+              <div class="table-wrap cmp-table-wrap">
+                <table class="tbl tbl-compact" id="cmp-table">
+                  <thead id="cmp-thead"></thead>
+                  <tbody id="cmp-tb"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Watchlist -->
+    <div class="pg pro-page" id="pg-watchlist">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">⭐ 自選股</div>
+          <div class="pa"><span class="badge b-bl badge-count" id="wl-count">0</span></div>
+        </div>
+        <div class="pb">
+          <div class="pro-toolbar pro-toolbar--row">
+            <input type="text" id="wl-code-input" class="inp" placeholder="代碼" maxlength="6" style="width:100px;flex:none" />
+            <div class="pro-field pro-field--grow">
+              <input type="text" id="wl-name-input" class="inp" placeholder="備註名稱（可選）" />
+            </div>
+            <label class="tk-auto-label"><input type="checkbox" id="wl-auto-rule" /> 自動規則</label>
+            <button type="button" class="btn btn-ac" id="wl-add">添加</button>
+            <button type="button" class="btn s" id="wl-reload">刷新</button>
+          </div>
+          <div class="wl-split" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)">
+            <div class="table-wrap">
+              <table class="tbl tbl-compact">
+                <thead>
+                  <tr><th>代碼</th><th>名稱</th><th>最新</th><th>漲跌</th><th></th></tr>
+                </thead>
+                <tbody id="wl-tb"></tbody>
+              </table>
+            </div>
+            <div id="wl-ch" class="chart-panel" style="height:320px;min-height:200px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Scanner -->
+    <div class="pg pro-page" id="pg-scanner">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">🔍 全市場掃描</div>
+          <div class="pa"><span class="badge b-ac badge-count" id="scan-cnt">0</span></div>
+        </div>
+        <div class="pb">
+          <div class="pro-toolbar pro-toolbar--row">
+            <select id="scan-market" class="sel" style="min-width:120px;width:auto" aria-label="市場">
+              <option value="all">全市場</option>
+              <option value="a_share">A 股</option>
+            </select>
+            <select id="scan-preset" class="sel" style="min-width:140px;width:auto" aria-label="預設條件">
+              <option value="ma_bullish">均線多頭</option>
+              <option value="volume_surge">放量突破</option>
+              <option value="near_high">接近新高</option>
+              <option value="gain_5d">5 日漲幅</option>
+            </select>
+            <button type="button" class="btn btn-ac" id="scan-run">開始掃描</button>
+            <button type="button" class="btn s" id="scan-export">導出 CSV</button>
+          </div>
+          <div id="scan-res" class="scan-res"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Alerts -->
+    <div class="pg pro-page" id="pg-alerts">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">🔔 預警規則</div>
+          <div class="pa"><button type="button" class="btn s" id="al-reload">刷新</button></div>
+        </div>
+        <div class="pb no-pad">
+          <div class="table-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>名稱</th><th>標的</th><th>條件</th><th>狀態</th><th>操作</th></tr>
+              </thead>
+              <tbody id="al-tb"><tr><td colspan="5" style="padding:24px;text-align:center;color:var(--t3)">載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9. Back history -->
+    <div class="pg pro-page" id="pg-backhistory">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">📜 回測歷史</div>
+          <div class="pa"><span id="bh-count" class="badge b-bl badge-count">0</span></div>
+        </div>
+        <div class="pb">
+          <div class="pro-toolbar pro-toolbar--row">
+            <input type="text" id="bh-filter-code" class="inp" placeholder="代碼篩選" style="width:110px;flex:none" />
+            <input type="text" id="bh-filter-strategy" class="inp" placeholder="策略篩選" style="width:140px;flex:none" />
+            <input type="number" id="bh-limit" class="inp" value="50" min="10" max="200" style="width:80px;flex:none" title="條數" />
+            <button type="button" class="btn s" id="bh-reload">刷新</button>
+            <button type="button" class="btn s" id="bh-compare-btn" disabled>對比選中</button>
+            <button type="button" class="btn s" id="bh-export-csv-btn" disabled>導出 CSV</button>
+            <button type="button" class="btn s" id="bh-clear-sel">清除選擇</button>
+            <span id="bh-sel-hint" class="pro-meta-bar" style="margin:0;flex:1;justify-content:flex-end">最多選 3 筆對比</span>
+          </div>
+          <div id="bh-compare-panel" class="bh-compare-panel" style="display:none"></div>
+          <div class="table-wrap">
+            <table class="tbl tbl-compact">
+              <thead>
+                <tr>
+                  <th style="width:32px"></th>
+                  <th>時間</th>
+                  <th>代碼</th>
+                  <th>策略</th>
+                  <th>收益</th>
+                  <th>夏普</th>
+                  <th>回撤</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="bh-tb"><tr><td colspan="8" style="padding:24px;text-align:center;color:var(--t3)">載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. Assets -->
+    <div class="pg pro-page" id="pg-assets">
+      <div id="assets-list-view">
+        <div class="pnl">
+          <div class="ph">
+            <div class="pt">📦 資產庫</div>
+            <div class="pa"><span id="assets-meta" class="badge b-bl badge-count">--</span></div>
+          </div>
+          <div class="pb">
+            <div class="pro-toolbar pro-toolbar--stack" style="margin-bottom:10px">
+              <div class="pro-field pro-field--grow">
+                <input type="search" id="assets-search" class="inp" placeholder="搜尋代碼或名稱…" autocomplete="off" />
+              </div>
+            </div>
+            <div id="assets-group-pills" class="assets-pills-wrap"></div>
+            <div id="assets-grid" class="assets-grid"></div>
+          </div>
+        </div>
+      </div>
+      <div id="assets-detail-view" class="h">
+        <div class="pnl">
+          <div class="ph">
+            <div class="pt">資產詳情</div>
+            <div class="pa">
+              <button type="button" class="btn s" data-assets-back>返回列表</button>
+            </div>
+          </div>
+          <div class="pb">
+            <div id="assets-detail-root"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11. Settings -->
+    <div class="pg pro-page" id="pg-settings">
+      <div class="pnl">
+        <div class="ph"><div class="pt">⚙️ 偏好設定</div></div>
+        <div class="pb">
+          <div class="settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--gap)">
+            <section class="pnl">
+              <div class="ph"><div class="pt">漲跌配色</div></div>
+              <div class="pb">
+                <div id="set-color-preview" class="settings-preview">
+                  <span class="settings-preview-chip up">+1.28%</span>
+                  <span class="settings-preview-chip down">-0.85%</span>
+                </div>
+                <fieldset style="border:none;margin-top:12px;display:grid;gap:8px">
+                  <label><input type="radio" name="set-quote-scheme" value="cn-red-up" checked /> A 股（紅漲綠跌）</label>
+                  <label><input type="radio" name="set-quote-scheme" value="us" /> 美股（綠漲紅跌）</label>
+                </fieldset>
+              </div>
+            </section>
+            <section class="pnl">
+              <div class="ph"><div class="pt">介面與行情</div></div>
+              <div class="pb" style="display:grid;gap:10px">
+                <label class="fg-row">圖表預設天數
+                  <input type="number" id="set-chart-days" class="inp" value="90" min="30" max="365" />
+                </label>
+                <label class="fg-row">行情輪詢（秒）
+                  <input type="number" id="set-poll-sec" class="inp" value="90" min="15" max="600" />
+                </label>
+                <label><input type="checkbox" id="set-compact-topbar" checked /> 緊湊頂欄</label>
+              </div>
+            </section>
+            <section class="pnl">
+              <div class="ph"><div class="pt">回測與任務</div></div>
+              <div class="pb" style="display:grid;gap:10px">
+                <label class="fg-row">預設佣金 %
+                  <input type="number" id="set-commission" class="inp" value="0.03" step="0.01" min="0" />
+                </label>
+                <label class="fg-row">最大並行任務
+                  <input type="number" id="set-max-parallel" class="inp" value="4" min="1" max="16" />
+                </label>
+              </div>
+            </section>
+            <section class="pnl">
+              <div class="ph"><div class="pt">數據源狀態</div></div>
+              <div class="pb" style="font-size:.72rem;color:var(--t2);line-height:1.8">
+                <div>TradingView：<span id="set-src-tv">--</span></div>
+                <div>Interactive Brokers：<span id="set-src-ib">--</span></div>
+              </div>
+            </section>
+          </div>
+          <div class="fr" style="flex-wrap:wrap;gap:8px;margin-top:14px">
+            <button type="button" class="btn btn-primary" id="set-save-btn">保存偏好</button>
+            <button type="button" class="btn s" id="set-reload-btn">重新載入</button>
+            <button type="button" class="btn s" id="set-clear-cache">清除緩存</button>
+            <button type="button" class="btn s" id="set-reset-prefs">恢復預設</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder pages -->
+    <div class="pg" id="pg-portfolio">
+      <div class="pnl"><div class="ph"><div class="pt">組合回測</div></div><div class="pb"><p class="placeholder-msg">組合分析模組開發中…</p><p style="font-size:.72rem;color:var(--t3);margin-top:8px">完整組合回測請暫用 <a href="/static/legacy/index.html" target="_blank" rel="noopener">舊版工作台</a></p></div></div>
+    </div>
+    <div class="pg" id="pg-risk">
+      <div class="pnl"><div class="ph"><div class="pt">風控中心</div></div><div class="pb"><p class="placeholder-msg">風控規則與 VaR 面板開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-journal">
+      <div class="pnl"><div class="ph"><div class="pt">交易日誌</div></div><div class="pb"><p class="placeholder-msg">交易日誌開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-ai">
+      <div class="pnl"><div class="ph"><div class="pt">AI 分析</div><span class="badge b-pu">PRO</span></div><div class="pb"><p class="placeholder-msg">AI 解讀與信號摘要開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-factor">
+      <div class="pnl"><div class="ph"><div class="pt">因子研究</div></div><div class="pb"><p class="placeholder-msg">因子分析開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-seasonal">
+      <div class="pnl"><div class="ph"><div class="pt">季節性分析</div></div><div class="pb"><p class="placeholder-msg">季節性統計開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-regime">
+      <div class="pnl"><div class="ph"><div class="pt">市場狀態</div></div><div class="pb"><p class="placeholder-msg">Regime 識別開發中…</p></div></div>
+    </div>
+    <div class="pg" id="pg-pricing">
+      <div class="pnl"><div class="ph"><div class="pt">方案定價</div></div><div class="pb"><p class="placeholder-msg">訂閱方案頁開發中…</p></div></div>
+    </div>
+
+  </main>
+
+  <!-- ═══ STATUSBAR ═══ -->
+  <footer class="statusbar" role="contentinfo">
+    <div class="sbl">
+      <span class="sbi"><span class="dot-g" aria-hidden="true"></span><span id="conn-status">連線中…</span></span>
+      <span class="sbi">StockQ Pro v4.0</span>
+    </div>
+    <div class="sbr">
+      <span class="sbi">本地 SQLite</span>
+      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">T</kbd> 任務</span>
+      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">?</kbd> 命令面板</span>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══ GLOBAL UI ═══ -->
+<div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
+
+<div class="cmd-ov" id="cmd-ov" aria-hidden="true" role="dialog" aria-label="命令面板">
+  <div class="cmd-box">
+    <input type="search" id="cmd-in" class="cmd-in" placeholder="搜尋頁面、策略或代碼…" autocomplete="off" />
+    <div id="cmd-list" class="cmd-list"></div>
+  </div>
+</div>
+
+<div id="modalRoot" class="task-modal-root" aria-live="polite"></div>
+
+<div class="modal-ov" id="m-strat" aria-hidden="true" role="dialog" aria-labelledby="sd-title">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2 id="sd-title">策略詳情</h2>
+      <button type="button" class="btn s" data-close="m-strat" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-bd" id="sd-body"></div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-primary" id="sd-use">用於回測</button>
+      <button type="button" class="btn s" data-close="m-strat">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCRIPTS ═══ -->
+<script src="/static/js/utils.js?v=stockq-pro-v5"></script>
+<script src="/static/js/api.js?v=stockq-pro-v6"></script>
+<script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/user-prefs.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/app-store.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/ui/index.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/ui/dashboard-components.js?v=stockq-pro-v9"></script>
+<script src="/static/js/pro/services/market-ticker.js?v=stockq-pro-v10"></script>
+<script src="/static/js/pro/strategy-catalog.js?v=stockq-pro-v6"></script>
+<script src="/static/js/pro/modules/dashboard-pro.js?v=stockq-pro-v8"></script>
+<script src="/static/js/pro/modules/backtest-symbol-picker.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/backtest-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/compare-pro.js?v=stockq-pro-v6"></script>
+<script src="/static/js/pro/modules/watchlist-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/scanner-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/alerts-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/backhistory-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/assets-pro.js?v=stockq-pro-v7"></script>
+<script src="/static/js/pro/modules/settings-pro.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/modules/tasks-pro.js?v=stockq-pro-v7"></script>
+<script src="/static/js/pro/app.js?v=stockq-pro-v9"></script>
+</body>
+</html>

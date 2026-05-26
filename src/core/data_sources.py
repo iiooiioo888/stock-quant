@@ -217,6 +217,12 @@ register("global_realtime", DataSource("Twelve Data", priority=4, rate_limit=8.0
 # --- 全球歷史 ---
 register("global_history", DataSource("Yahoo Finance", priority=1, rate_limit=0.5))
 register("global_history", DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800))
+register("global_history", DataSource("TradingView", priority=3, rate_limit=1.0))
+
+# --- 儀表盤專用（TradingView Scanner + IB TWS） ---
+register("dashboard_quote", DataSource("Interactive Brokers", priority=1, rate_limit=0.5))
+register("dashboard_quote", DataSource("TradingView", priority=2, rate_limit=0.8))
+register("dashboard_quote", DataSource("Yahoo Finance", priority=3, rate_limit=0.5))
 
 # --- 外匯 ---
 register("forex_realtime", DataSource("Frankfurter", priority=1, rate_limit=0.5))
