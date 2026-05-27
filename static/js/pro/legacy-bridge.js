@@ -13,7 +13,6 @@
     reports: 'reports',
     connectivity: 'connectivity',
     alerts: 'alerts',
-    polymarket: 'polymarket',
     crypto: 'crypto',
     markets: 'markets',
   };
@@ -33,7 +32,6 @@
     '/static/js/data.js?v=legacy-pro-20260527',
     '/static/js/analysis.js?v=legacy-pro-20260527',
     '/static/js/scheduler.js?v=legacy-pro-20260527',
-    '/static/js/polymarket.js?v=legacy-pro-20260527',
     '/static/js/crypto.js?v=legacy-pro-20260527',
     '/static/js/connectivity.js?v=legacy-pro-20260527',
     '/static/js/app.js?v=legacy-pro-20260527',
@@ -183,9 +181,6 @@
           break;
         case 'markets':
           Promise.all([App.loadMarkets?.(), App.loadMarketRealtime?.()].filter(Boolean));
-          break;
-        case 'polymarket':
-          if (typeof PolymarketUI !== 'undefined') PolymarketUI.load?.();
           break;
         case 'connectivity':
           if (typeof ConnectivityPage !== 'undefined') ConnectivityPage.load?.();

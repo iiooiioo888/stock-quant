@@ -551,10 +551,6 @@
   function renderNewsPanel(d) {
     const blocks = [];
     blocks.push(renderSection('新聞與資訊', renderNews(d.news)));
-    const pm = renderPolymarket(d.polymarket);
-    if (pm) {
-      blocks.push(renderSection('預測市場', pm));
-    }
     return UI.h('div', { class: 'asset-panel asset-panel--news' }, ...blocks);
   }
 
@@ -718,23 +714,6 @@
         }
         return UI.h('li', null, inner);
       }),
-    );
-  }
-
-  function renderPolymarket(pm) {
-    const events = pm?.events || pm?.markets || [];
-    const list = Array.isArray(events) ? events : [];
-    if (!list.length) {
-      return UI.h('div', { class: 'assets-empty' }, '暫無 Polymarket 關聯預測');
-    }
-    return UI.h('ul', { class: 'assets-pm-list' },
-      ...list.slice(0, 10).map((ev) => UI.h('li', { class: 'assets-pm-item' },
-        UI.h('a', {
-          href: ev.url || ev.link || '#',
-          target: '_blank',
-          rel: 'noopener',
-        }, ev.question || ev.title || ev.slug || '—'),
-      )),
     );
   }
 

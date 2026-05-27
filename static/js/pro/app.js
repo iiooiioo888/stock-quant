@@ -253,7 +253,6 @@
         { n: '實時信號', d: '當前 / 歷史 / 強度', p: 'signals' },
         { n: '數據中心', d: '下載 / 板塊 / 資金流', p: 'data' },
         { n: '深度分析', d: '技術 + 基本面', p: 'analysis' },
-        { n: '預測市場', d: 'Polymarket', p: 'polymarket' },
         { n: '策略報告', d: '日報生成', p: 'reports' },
         { n: '定時任務', d: 'APScheduler', p: 'scheduler' },
         { n: '多市場', d: 'A股 / 美股 / 港股', p: 'markets' },

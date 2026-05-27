@@ -126,12 +126,6 @@ TASK_REGISTRY: dict[str, dict] = {
         "tab": "data",
         "async": True,
     },
-    "polymarket_sync": {
-        "label": "Polymarket 快照同步",
-        "icon": "🔮",
-        "tab": "markets",
-        "async": True,
-    },
     "scheduled_job": {
         "label": "定時任務",
         "icon": "⏰",
@@ -469,13 +463,26 @@ def _task_data_version(params: dict) -> str:
         return "v0"
 
 
+def _is_scheduler_trigger(params: dict | None) -> bool:
+    """定時觸發：每次執行應在任務中心獨立一列，不走去重/結果緩存短路。"""
+    p = params or {}
+    return (
+        p.get("source") == "scheduler"
+        or bool(p.get("scheduler_job_id"))
+        or bool(p.get("scheduler_run_id"))
+    )
+
+
 def create_task(task_type: str, params: dict, title: str = "", *, force_refresh: bool = False) -> dict:
+    params = dict(params or {})
     params_hash = _make_params_hash(params)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data_ver = _task_data_version(params)
+    scheduler_trigger = _is_scheduler_trigger(params)
+    out: dict | None = None
 
     with _lock:
-        if force_refresh:
+        if force_refresh and not scheduler_trigger:
             drop_ids = [
                 tid for tid, t in _tasks.items()
                 if t["task_type"] == task_type and t["params_hash"] == params_hash
@@ -484,78 +491,80 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
             for tid in drop_ids:
                 _tasks.pop(tid, None)
 
-        for tid, t in _tasks.items():
-            if t["task_type"] == task_type and t["params_hash"] == params_hash:
-                if t["status"] in ACTIVE_STATUSES or tid in _dispatched:
-                    logger.info(f"任務去重: {task_type} 已在佇列中 (task_id={tid})")
-                    t["last_accessed"] = time.time()
-                    return {
-                        "task_id": tid,
-                        "status": t["status"],
-                        "is_duplicate": True,
-                        "title": t.get("title", ""),
-                        "created_at": t.get("created_at", ""),
-                        "progress": t.get("progress", 0),
+        if not scheduler_trigger:
+            for tid, t in _tasks.items():
+                if t["task_type"] == task_type and t["params_hash"] == params_hash:
+                    if t["status"] in ACTIVE_STATUSES or tid in _dispatched:
+                        logger.info(f"任務去重: {task_type} 已在佇列中 (task_id={tid})")
+                        t["last_accessed"] = time.time()
+                        return {
+                            "task_id": tid,
+                            "status": t["status"],
+                            "is_duplicate": True,
+                            "title": t.get("title", ""),
+                            "created_at": t.get("created_at", ""),
+                            "progress": t.get("progress", 0),
+                        }
+                    if (
+                        not force_refresh
+                        and t["status"] == STATUS_COMPLETED
+                        and t.get("result") is not None
+                        and t.get("data_version") == data_ver
+                    ):
+                        logger.info(f"任務內存命中: {task_type} (task_id={tid})")
+                        t["last_accessed"] = time.time()
+                        return {
+                            "task_id": tid,
+                            "status": STATUS_COMPLETED,
+                            "is_duplicate": False,
+                            "from_cache": True,
+                            "title": t.get("title", ""),
+                            "created_at": t.get("created_at", ""),
+                            "progress": 100,
+                            "result": t.get("result"),
+                        }
+
+        # 全局結果緩存命中 → 直接建立已完成任務（定時觸發跳過，確保列表有執行紀錄）
+        if not scheduler_trigger:
+            try:
+                from src.core.result_cache import get_cached_compute, _code_from_params
+                cached = None
+                if not force_refresh:
+                    cached = get_cached_compute(task_type, params, code=_code_from_params(params))
+                if cached is not None:
+                    task_id = _make_task_id(task_type, params)
+                    task = {
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "params_hash": params_hash,
+                        "params": params,
+                        "title": title or f"{task_type}",
+                        "status": STATUS_COMPLETED,
+                        "progress": 100,
+                        "result": _to_json_safe(cached),
+                        "error": None,
+                        "created_at": now,
+                        "started_at": now,
+                        "completed_at": now,
+                        "last_accessed": time.time(),
+                        "from_cache": True,
+                        "data_version": data_ver,
                     }
-                if (
-                    not force_refresh
-                    and t["status"] == STATUS_COMPLETED
-                    and t.get("result") is not None
-                    and t.get("data_version") == data_ver
-                ):
-                    logger.info(f"任務內存命中: {task_type} (task_id={tid})")
-                    t["last_accessed"] = time.time()
+                    _tasks[task_id] = task
+                    _save_task_to_db(task, force=True)
+                    logger.info(f"緩存命中任務: {task_type} (task_id={task_id})")
                     return {
-                        "task_id": tid,
+                        "task_id": task_id,
                         "status": STATUS_COMPLETED,
                         "is_duplicate": False,
                         "from_cache": True,
-                        "title": t.get("title", ""),
-                        "created_at": t.get("created_at", ""),
+                        "title": task["title"],
+                        "created_at": now,
                         "progress": 100,
-                        "result": t.get("result"),
+                        "result": task["result"],
                     }
-
-        # 全局結果緩存命中 → 直接建立已完成任務
-        try:
-            from src.core.result_cache import get_cached_compute, _code_from_params
-            cached = None
-            if not force_refresh:
-                cached = get_cached_compute(task_type, params, code=_code_from_params(params))
-            if cached is not None:
-                task_id = _make_task_id(task_type, params)
-                task = {
-                    "task_id": task_id,
-                    "task_type": task_type,
-                    "params_hash": params_hash,
-                    "params": params,
-                    "title": title or f"{task_type}",
-                    "status": STATUS_COMPLETED,
-                    "progress": 100,
-                    "result": _to_json_safe(cached),
-                    "error": None,
-                    "created_at": now,
-                    "started_at": now,
-                    "completed_at": now,
-                    "last_accessed": time.time(),
-                    "from_cache": True,
-                    "data_version": data_ver,
-                }
-                _tasks[task_id] = task
-                _save_task_to_db(task, force=True)
-                logger.info(f"緩存命中任務: {task_type} (task_id={task_id})")
-                return {
-                    "task_id": task_id,
-                    "status": STATUS_COMPLETED,
-                    "is_duplicate": False,
-                    "from_cache": True,
-                    "title": task["title"],
-                    "created_at": now,
-                    "progress": 100,
-                    "result": task["result"],
-                }
-        except Exception as e:
-            logger.debug(f"緩存查詢跳過: {e}")
+            except Exception as e:
+                logger.debug(f"緩存查詢跳過: {e}")
 
         task_id = _make_task_id(task_type, params)
         task = {
@@ -580,7 +589,7 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
         _save_task_to_db(task)
 
         logger.info(f"任務創建: {task_type} (task_id={task_id}, pending)")
-        return {
+        out = {
             "task_id": task_id,
             "status": STATUS_PENDING,
             "is_duplicate": False,
@@ -588,6 +597,10 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
             "created_at": now,
             "progress": 0,
         }
+
+    if out and out.get("status") == STATUS_PENDING and not out.get("is_duplicate"):
+        _notify_task_update(out["task_id"], "task_created")
+    return out
 
 
 def _mark_running(task_id: str) -> bool:
@@ -821,15 +834,88 @@ def get_task(task_id: str) -> Optional[dict]:
         return _load_task_from_db(task_id, include_result=True)
 
 
-def get_tasks(task_type: str = None, status: str = None, limit: int = 50) -> list[dict]:
+def _fetch_recent_task_rows(limit: int = 150) -> list[dict]:
+    """從 task_log 讀取最近任務（不含 result，供列表合併）。"""
+    try:
+        from src.core.db import get_conn
+        with get_conn() as conn:
+            rows = conn.execute(
+                """SELECT task_id, task_type, params_hash, title, status, progress, error,
+                          created_at, completed_at, params_json
+                   FROM task_log
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        out = []
+        for row in rows:
+            params = {}
+            if row[9]:
+                try:
+                    params = json.loads(row[9])
+                except Exception:
+                    params = {}
+            meta = {}
+            if params.get("source") == "scheduler" or params.get("scheduler_job_id"):
+                meta["source"] = "scheduler"
+                meta["scheduler_job_id"] = params.get("scheduler_job_id")
+            out.append({
+                "task_id": row[0],
+                "task_type": row[1],
+                "params_hash": row[2],
+                "title": row[3] or "",
+                "status": row[4],
+                "progress": row[5] or 0,
+                "error": row[6],
+                "created_at": row[7] or "",
+                "completed_at": row[8],
+                "params": params,
+                "meta": meta,
+                "result": None,
+                "from_db": True,
+            })
+        return out
+    except Exception as e:
+        logger.debug(f"讀取 task_log 列表跳過: {e}")
+        return []
+
+
+def load_recent_tasks_from_db(limit: int = 200) -> int:
+    """啟動時將持久化任務灌入內存，避免重啟後任務中心為空。"""
+    loaded = 0
     with _lock:
-        tasks = list(_tasks.values())
+        for row in _fetch_recent_task_rows(limit=limit):
+            tid = row["task_id"]
+            if tid in _tasks:
+                continue
+            _tasks[tid] = row
+            loaded += 1
+    if loaded:
+        logger.info(f"已從 task_log 載入 {loaded} 條歷史任務至任務中心")
+    return loaded
+
+
+def _merge_tasks_for_list(limit: int = 50) -> list[dict]:
+    """合併內存與 task_log（內存狀態優先）。"""
+    with _lock:
+        merged: dict[str, dict] = {t["task_id"]: dict(t) for t in _tasks.values()}
+    for row in _fetch_recent_task_rows(limit=max(limit * 3, 150)):
+        tid = row.get("task_id")
+        if tid and tid not in merged:
+            merged[tid] = row
+    tasks = list(merged.values())
+    tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    return tasks[:limit]
+
+
+def get_tasks(task_type: str = None, status: str = None, limit: int = 50) -> list[dict]:
+    tasks = _merge_tasks_for_list(limit=limit)
     if task_type:
         tasks = [t for t in tasks if t["task_type"] == task_type]
     if status:
         tasks = [t for t in tasks if t["status"] == status]
-    tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
     return [_task_summary(t) for t in tasks[:limit]]
+
 
 
 def get_running_tasks() -> list[dict]:
@@ -837,8 +923,7 @@ def get_running_tasks() -> list[dict]:
 
 
 def get_task_stats() -> dict:
-    with _lock:
-        tasks = list(_tasks.values())
+    tasks = _merge_tasks_for_list(limit=_MAX_TASKS)
     in_flight = len(_dispatched) + sum(
         1 for t in tasks
         if t["status"] == STATUS_RUNNING and t["task_id"] not in _dispatched
@@ -1072,6 +1157,13 @@ def _task_summary(task: dict) -> dict:
     preview = _extract_result_preview(task)
     if preview:
         summary["result_preview"] = preview
+    params = task.get("params") or {}
+    if meta.get("source") == "scheduler" or params.get("source") == "scheduler":
+        summary["source"] = "scheduler"
+        summary["scheduler_job_id"] = meta.get("scheduler_job_id") or params.get("scheduler_job_id")
+        summary["is_scheduled"] = True
+    elif (task.get("title") or "").startswith("定時·"):
+        summary["is_scheduled"] = True
     return summary
 
 

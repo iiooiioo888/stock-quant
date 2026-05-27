@@ -49,6 +49,39 @@ class TestSchedulerRegistry:
         with pytest.raises(ValueError, match="未知任務"):
             run_job_now("not_a_real_job")
 
+    def test_scheduler_tasks_never_dedupe_same_job_type(self):
+        from src.core.task_manager import create_task, get_tasks
+
+        a = create_task(
+            "scheduled_job",
+            {"source": "scheduler", "scheduler_job_id": "x", "scheduler_run_id": "run-a"},
+            title="定時·測試A",
+        )
+        b = create_task(
+            "scheduled_job",
+            {"source": "scheduler", "scheduler_job_id": "x", "scheduler_run_id": "run-b"},
+            title="定時·測試B",
+        )
+        assert a["task_id"] != b["task_id"]
+        assert not b.get("is_duplicate")
+        ids = {t["task_id"] for t in get_tasks(limit=50)}
+        assert a["task_id"] in ids and b["task_id"] in ids
+
+    def test_scheduled_tasks_appear_in_get_tasks_list(self):
+        from src.core.scheduler import _run_scheduled_as_task
+        from src.core.task_manager import get_tasks
+
+        task_id = _run_scheduled_as_task(
+            "test_list_visibility",
+            "列表可見性測試",
+            lambda: {"ok": True},
+        )
+        assert task_id
+        ids = {t["task_id"] for t in get_tasks(limit=100)}
+        assert task_id in ids
+        row = next(t for t in get_tasks(limit=100) if t["task_id"] == task_id)
+        assert row.get("is_scheduled") is True
+
     def test_scheduled_run_registers_task(self):
         import time
         from src.core.scheduler import _run_scheduled_as_task

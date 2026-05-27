@@ -114,6 +114,7 @@
 
     loadPromise = (async () => {
       ensureLayout();
+      window.StockQPro?.CurrencyManager?.init('currency-toggle');
       const t0 = performance.now();
       const [health, cfg] = await Promise.all([
         Api.get('/api/health', { silent: true }).catch(() => null),

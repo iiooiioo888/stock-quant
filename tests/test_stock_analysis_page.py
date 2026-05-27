@@ -18,7 +18,3 @@ class TestStockAnalysisPage:
         assert "signals" in data
         assert isinstance(data["signals"], dict)
         assert "signals" in data["signals"]
-        assert "polymarket" in data
-        pm = data["polymarket"]
-        assert "queries" in pm
-        assert "markets" in pm

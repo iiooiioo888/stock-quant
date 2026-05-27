@@ -420,6 +420,9 @@
     _renderCard(t) {
       const TC = TaskCommon;
       const typeName = TC.typeName(t.task_type);
+      const schedBadge = t.is_scheduled
+        ? '<span class="badge b-am tk-scheduled-badge" title="定時任務">定時</span>'
+        : '';
       const icon = TC.STATUS_ICONS[t.status] || '❓';
       const color = TC.STATUS_COLORS[t.status] || '#94a3b8';
       const isActive = ['running', 'pending', 'retrying'].includes(t.status);
@@ -452,7 +455,7 @@
             <input type="checkbox" class="tk-card-chk" data-id="${t.task_id}" ${selected ? 'checked' : ''} aria-label="選取" />
             <span class="tk-status-dot" style="--tk-status-color:${color}" title="${t.status}">${icon}</span>
             <div class="tk-card-titles">
-              <div class="tk-card-title">${t.title || typeName}</div>
+              <div class="tk-card-title-row">${schedBadge}<span class="tk-card-title">${t.title || typeName}</span></div>
               <div class="tk-card-meta">${typeName} · ${Utils.timeAgo(t.created_at)}</div>
             </div>
             ${isActive && t.status === 'running' ? `<span class="tk-pct">${progress}%</span>` : ''}
@@ -923,6 +926,11 @@
       try {
         const data = JSON.parse(e.data);
         if (!data?.type?.startsWith('task_')) return;
+        if (proApp()?.current === 'tasks') {
+          if (data.type === 'task_created' || data.type === 'task_started') {
+            window.StockQPro?.Tasks?.refresh?.(true);
+          }
+        }
         if (proApp()?.current !== 'tasks') return;
         if (data.type === 'task_completed') {
           proApp()?.toast?.(`任務完成：${data.task?.title || data.title || ''}`, 'ok');

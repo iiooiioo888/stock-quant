@@ -582,29 +582,7 @@ const StockDetail = {
       </div>`;
   },
 
-  _renderPolymarket(d) {
-    const hint = document.getElementById('sdPmHint');
-    const pm = d.polymarket || {};
-    if (typeof PolymarketUI === 'undefined') {
-      if (hint) hint.textContent = 'Polymarket 模組未載入';
-      return;
-    }
-    PolymarketUI.useScope('stock');
-    if (pm.disabled) {
-      if (hint) hint.textContent = pm.error || 'Polymarket 功能已關閉';
-      PolymarketUI.setMarkets([]);
-      return;
-    }
-    const queries = (pm.queries || []).join(' · ');
-    const markets = pm.markets || [];
-    if (hint) {
-      hint.textContent = markets.length
-        ? `依「${queries}」搜尋到 ${markets.length} 個相關預測市場`
-        : `未找到與「${queries}」相關的預測市場（可至預測市場 Tab 手動搜尋）`;
-    }
-    PolymarketUI.setMarkets(markets);
-    if (markets.length) PolymarketUI.showDetail(markets[0]);
-  },
+  _renderPolymarket() {},
 
   _fmtPrice(value, code) {
     const n = Number(value);
@@ -721,7 +699,7 @@ const StockDetail = {
       }
     });
     document.getElementById('sdPmTabBtn')?.addEventListener('click', () => {
-      if (typeof App !== 'undefined') App.loadTab('polymarket');
+      if (typeof App !== 'undefined') App.loadTab('markets');
     });
   },
 };

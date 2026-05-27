@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # True：讀 K 線時本地無數據則自動爬取一次入庫；之後僅讀本地
     local_first_auto_fetch: bool = Field(default=True)
 
+    # ====== 多幣種結算 ======
+    default_preferred_currency: str = Field(default="MOP", pattern=r"^(HKD|MOP|USD|CNY)$")
+
     # ====== 盯盤 ======
     watchlist: list[str] = Field(default=[
         "000001",  # 平安銀行

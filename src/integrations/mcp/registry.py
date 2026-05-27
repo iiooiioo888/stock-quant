@@ -10,13 +10,11 @@ from src.integrations.mcp.protocol import ToolSpec
 from src.integrations.mcp.tools_backtest import BACKTEST_TOOLS
 from src.integrations.mcp.tools_core import CORE_TOOLS
 from src.integrations.mcp.tools_data import DATA_TOOLS
-from src.integrations.mcp.tools_polymarket import POLYMARKET_TOOLS
 
 ALL_TOOL_MODULES: list[list[ToolSpec]] = [
     CORE_TOOLS,
     DATA_TOOLS,
     BACKTEST_TOOLS,
-    POLYMARKET_TOOLS,
 ]
 
 # 啟動時扁平化；禁止重名
@@ -53,9 +51,7 @@ def tool_domains() -> dict[str, list[str]]:
     """按名稱前綴分組，供文檔與調試。"""
     domains: dict[str, list[str]] = {}
     for spec in get_all_tools():
-        if spec.name.startswith("polymarket_"):
-            key = "polymarket"
-        elif spec.name.startswith("sq_"):
+        if spec.name.startswith("sq_"):
             key = "stock_quant"
         else:
             key = "other"

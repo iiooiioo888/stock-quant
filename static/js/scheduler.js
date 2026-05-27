@@ -165,7 +165,12 @@ const SchedulerTab = {
     try {
       const d = await Api.runSchedulerJob(jobId);
       if (d) {
-        Utils.toast(d.message || `已觸發 ${jobId}`, 2500, 'success');
+        const hint = d.task_id
+          ? `已加入任務中心（${String(d.task_id).slice(0, 16)}…）`
+          : (d.message || `已觸發 ${jobId}`);
+        Utils.toast(hint, 3200, 'success');
+        window.StockQPro?.Tasks?.refresh?.(true);
+        window.StockQPro?.pages?.tasks?.refreshSidebarBadge?.();
         setTimeout(() => this.refresh(true), 800);
       }
     } finally {

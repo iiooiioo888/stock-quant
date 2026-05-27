@@ -479,6 +479,24 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .dash-page{display:grid;gap:14px}
 .dash-section{display:grid;gap:12px}
 .dash-section--tight{margin-top:-4px}
+.dash-section--portfolio{margin-bottom:8px}
+.currency-toggle-host,.currency-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.currency-btn{font-size:.68rem;padding:6px 12px;border:1px solid var(--bd);border-radius:var(--rs);background:var(--bg1);color:var(--t2);cursor:pointer;transition:border-color .15s,color .15s}
+.currency-btn:hover{border-color:var(--bf);color:var(--t1)}
+.currency-btn.active{border-color:var(--ac);color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--bg1))}
+.fx-timestamp{font-size:.62rem;color:var(--t3);margin-left:auto}
+.fx-disclaimer{width:100%;font-size:.58rem;color:var(--t3);margin:4px 0 0}
+.dash-portfolio-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
+@media(max-width:900px){.dash-portfolio-grid{grid-template-columns:1fr}}
+.dash-portfolio-card--wide{grid-column:1/-1}
+.portfolio-total{font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
+.portfolio-pnl{font-size:.72rem;color:var(--t2);margin-top:6px;font-variant-numeric:tabular-nums}
+.portfolio-pnl.is-up{color:var(--quote-up)}
+.portfolio-pnl.is-down{color:var(--quote-down)}
+.portfolio-allocation{display:flex;flex-wrap:wrap;gap:8px}
+.alloc-pill{font-size:.64rem;padding:4px 10px;border-radius:var(--rs);background:var(--bg2);border:1px solid var(--bd)}
+.alloc-pill b{margin-right:4px;color:var(--t1)}
+.portfolio-trend-chart{min-height:200px}
 .dash-section-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
 .dash-section-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .dash-provider-badges{display:flex;flex-wrap:wrap;gap:6px}
@@ -1057,7 +1075,9 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .tk-card-chk{margin-top:3px;accent-color:var(--ac);cursor:pointer;flex-shrink:0}
 .tk-status-dot{flex-shrink:0;font-size:14px;line-height:1}
 .tk-card-titles{flex:1;min-width:0}
+.tk-card-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .tk-card-title{font-size:.78rem;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tk-scheduled-badge{font-size:.58rem;padding:2px 6px;flex-shrink:0}
 .tk-card-meta{font-size:.6rem;color:var(--t3);margin-top:2px}
 .tk-pct{font-family:var(--fm);font-size:.72rem;font-weight:700;color:var(--bl);flex-shrink:0}
 .tk-card-sub{font-size:.66rem;color:var(--bl);margin-top:6px;line-height:1.35}

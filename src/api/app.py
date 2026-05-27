@@ -34,10 +34,10 @@ from src.api.routers.backtest import router as backtest_router
 from src.api.routers.target_search import router as target_search_router
 from src.api.routers.alerts import router as alerts_router
 from src.api.routers.data_center import router as data_center_router
-from src.api.routers.polymarket import router as polymarket_router
 from src.api.routers.crypto import router as crypto_router
 from src.api.routers.external_check import router as external_check_router
 from src.api.routers.llm import router as llm_router
+from src.api.routers.portfolio_settlement import router as portfolio_settlement_router
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
@@ -112,7 +112,12 @@ async def lifespan(app: FastAPI):
     _ws_task = asyncio.create_task(ws_realtime_push())
 
     try:
-        from src.core.task_manager import recover_stale_tasks_on_startup, start_task_watchdog
+        from src.core.task_manager import (
+            load_recent_tasks_from_db,
+            recover_stale_tasks_on_startup,
+            start_task_watchdog,
+        )
+        load_recent_tasks_from_db()
         recover_stale_tasks_on_startup()
         start_task_watchdog()
     except Exception as e:
@@ -166,10 +171,10 @@ app.include_router(backtest_router)
 app.include_router(target_search_router)
 app.include_router(alerts_router)
 app.include_router(data_center_router)
-app.include_router(polymarket_router)
 app.include_router(crypto_router)
 app.include_router(external_check_router)
 app.include_router(llm_router)
+app.include_router(portfolio_settlement_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -459,7 +464,6 @@ AUTH_WHITELIST_PREFIX = (
     "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
     "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/stock-universe", "/api/data-sources",
     "/api/markets", "/api/indices", "/api/assets", "/api/dashboard", "/api/data/", "/api/tasks",
-    "/api/polymarket",
     "/api/external",
     "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts", "/api/watchlist",
     "/api/llm/status",
@@ -483,7 +487,6 @@ _AUTH_WRITE_PROTECTED_PREFIX = (
     "/api/portfolio",
     "/api/strategies/",
     "/api/scheduler/",
-    "/api/polymarket",
 )
 
 

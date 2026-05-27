@@ -625,20 +625,18 @@ async def get_stock_analysis_page(
     code: str,
     kline_days: int = Query(180, ge=30, le=500),
     sparkline_days: int = Query(90, ge=20, le=365),
-    pm_limit: int = Query(15, ge=1, le=30),
 ):
-    """個股分析頁聚合：K 線、走勢指標、Polymarket 相關市場。"""
+    """個股分析頁聚合：K 線、走勢指標、基本面。"""
     from src.core.api_cache import cached_response
     from src.core.local_kline import ensure_daily_kline, normalize_kline_code
     from src.core.market_fetch import build_sparkline_item, df_to_kline_records
-    from src.core.polymarket.stock_link import resolve_stock_name, search_polymarket_for_stock
     from src.core.result_cache import get_data_version
     from src.core.stock_basics import build_stock_overview, load_stock_financials, load_stock_profile
 
     code = normalize_kline_code(code.strip())
     profile = load_stock_profile(code)
-    name = profile.get("name") or resolve_stock_name(code)
-    cache_key = f"api:analysis-page:{code}:{kline_days}:{sparkline_days}:{pm_limit}:{get_data_version(code)}"
+    name = profile.get("name") or ""
+    cache_key = f"api:analysis-page:{code}:{kline_days}:{sparkline_days}:{get_data_version(code)}"
 
     def _build():
         kline: list[dict] = []
@@ -653,7 +651,6 @@ async def get_stock_analysis_page(
             logger.debug(f"analysis-page kline {code}: {e}")
 
         spark = build_sparkline_item(code, sparkline_days)
-        pm = search_polymarket_for_stock(code, name, limit_per_query=8, max_results=pm_limit)
 
         financials = load_stock_financials(code)
 
@@ -697,7 +694,6 @@ async def get_stock_analysis_page(
             "kline": kline,
             "kline_source": kline_source,
             "sparkline": spark,
-            "polymarket": pm,
         }
 
     try:

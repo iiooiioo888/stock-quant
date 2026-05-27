@@ -412,6 +412,18 @@ CREATE TABLE IF NOT EXISTS task_log (
 )
 """
 
+# ── 匯率（多幣種結算） ─────────────────────────────────────
+
+DDL_FX_RATES_DAILY = """
+CREATE TABLE IF NOT EXISTS fx_rates_daily (
+    base    TEXT NOT NULL DEFAULT 'USD',
+    target  TEXT NOT NULL,
+    rate    REAL NOT NULL,
+    date    TEXT NOT NULL,
+    PRIMARY KEY (base, target, date)
+)
+"""
+
 # ── 遷移元數據 ────────────────────────────────────────────
 
 DDL_SCHEMA_MIGRATIONS = """
@@ -449,6 +461,7 @@ TABLE_DDL: list[tuple[str, str]] = [
     ("paper_sessions", DDL_PAPER_SESSIONS),
     ("paper_positions", DDL_PAPER_POSITIONS),
     ("paper_nav_history", DDL_PAPER_NAV_HISTORY),
+    ("fx_rates_daily", DDL_FX_RATES_DAILY),
     ("task_log", DDL_TASK_LOG),
     ("schema_migrations", DDL_SCHEMA_MIGRATIONS),
 ]
@@ -491,6 +504,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_lb_evaluated ON strategy_leaderboard(evaluated_at)",
     "CREATE INDEX IF NOT EXISTS idx_paper_trades_session ON paper_trades(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_paper_nav_session ON paper_nav_history(session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_fx_date ON fx_rates_daily(date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_task_status ON task_log(status)",
     "CREATE INDEX IF NOT EXISTS idx_task_created ON task_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",

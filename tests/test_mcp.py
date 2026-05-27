@@ -13,16 +13,12 @@ class TestMcpRegistry:
         names = [t.name for t in tools]
         assert len(names) == len(set(names))
         assert "sq_health" in names
-        assert "polymarket_list_markets" in names
-        assert "polymarket_evaluate_alerts" in names
-        assert "polymarket_strategy_signals" in names
 
     def test_tool_domains(self):
         from src.integrations.mcp.registry import tool_domains
 
         domains = tool_domains()
         assert "stock_quant" in domains
-        assert "polymarket" in domains
         assert "sq_health" in domains["stock_quant"]
 
     def test_get_tool_by_name(self):
@@ -54,17 +50,3 @@ class TestMcpCoreHandlers:
         assert data["total"] == 1
         assert data["tasks"][0]["task_id"] == "t1"
 
-
-class TestMcpPolymarketHandlers:
-    def test_list_markets_tool(self):
-        from src.integrations.mcp.tools_polymarket import handle_polymarket_list_markets
-
-        with patch(
-            "src.integrations.mcp.tools_polymarket.get_polymarket_service"
-        ) as mock_get:
-            mock_get.return_value.list_markets.return_value = {
-                "markets": [],
-                "total": 0,
-            }
-            text = handle_polymarket_list_markets({"limit": 5})
-        assert "markets" in text

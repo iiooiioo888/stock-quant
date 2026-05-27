@@ -24,7 +24,6 @@ def build_retry_worker(task_type: str, params: dict, task_id: str) -> Callable[[
         "data_download": _retry_data_download,
         "data_download_all": _retry_data_download_all,
         "data_incremental": _retry_data_incremental,
-        "polymarket_sync": _retry_polymarket_sync,
     }
     builder = builders.get(task_type)
     if not builder:
@@ -178,13 +177,6 @@ def _retry_data_incremental(params: dict, task_id: str):
         force=params.get("force", False),
         task_id=task_id,
     )
-
-
-def _retry_polymarket_sync(params: dict, task_id: str):
-    from src.core.polymarket.service import get_polymarket_service
-
-    cap = params.get("limit") or settings.polymarket_default_limit
-    return get_polymarket_service().sync_snapshots(limit=cap)
 
 
 def _retry_portfolio(params: dict, task_id: str):

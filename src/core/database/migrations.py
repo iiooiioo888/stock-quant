@@ -104,12 +104,46 @@ def _migration_004_task_log_meta(conn: sqlite3.Connection) -> None:
                 pass
 
 
+def _migration_006_multi_currency(conn: sqlite3.Connection) -> None:
+    """多幣種結算：用戶偏好幣種 + 日匯率表。"""
+    if _table_exists(conn, "users") and not _column_exists(conn, "users", "preferred_currency"):
+        try:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN preferred_currency TEXT DEFAULT 'MOP'"
+            )
+            conn.execute(
+                """
+                UPDATE users SET preferred_currency = 'MOP'
+                WHERE preferred_currency IS NULL OR preferred_currency = ''
+                """
+            )
+        except sqlite3.OperationalError as e:
+            logger.debug(f"preferred_currency 欄位: {e}")
+
+    if not _table_exists(conn, "fx_rates_daily"):
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fx_rates_daily (
+                base TEXT NOT NULL DEFAULT 'USD',
+                target TEXT NOT NULL,
+                rate REAL NOT NULL,
+                date TEXT NOT NULL,
+                PRIMARY KEY (base, target, date)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fx_date ON fx_rates_daily(date DESC)"
+        )
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline_schema", _migration_001_baseline),
     (2, "legacy_column_patches", _migration_002_legacy_columns),
     (3, "recover_stale_tasks", _migration_003_post_startup),
     (4, "task_log_pipeline_meta", _migration_004_task_log_meta),
     (5, "performance_indexes", _migration_005_performance_indexes),
+    (6, "multi_currency_settlement", _migration_006_multi_currency),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

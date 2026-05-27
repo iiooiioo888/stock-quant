@@ -11,6 +11,7 @@
 每次觸發會經 task_manager 登記，出現在任務中心列表。
 """
 import threading
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -128,6 +129,7 @@ def _run_scheduled_as_task(
     params: dict = {
         "scheduler_job_id": job_id,
         "source": "scheduler",
+        "scheduler_run_id": uuid.uuid4().hex[:12],
         "triggered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     if extra_params:
@@ -135,11 +137,28 @@ def _run_scheduled_as_task(
 
     title = f"定時·{display_name}"
     created = create_task(ttype, params, title=title)
-    if created.get("is_duplicate"):
-        logger.info(f"定時任務 {job_id} 略過：相同任務已在佇列中")
-        return None
-
     task_id = created["task_id"]
+
+    from src.core.task_manager import _lock as tm_lock, _tasks
+
+    with tm_lock:
+        t = _tasks.get(task_id)
+        if t is not None:
+            meta = t.setdefault("meta", {})
+            meta["source"] = "scheduler"
+            meta["scheduler_job_id"] = job_id
+
+    from src.core.task_manager import _save_task_to_db
+
+    with tm_lock:
+        t = _tasks.get(task_id)
+        if t is not None:
+            _save_task_to_db(t, force=True)
+
+    if created.get("is_duplicate"):
+        logger.warning(
+            f"定時任務 {job_id} 意外去重 (task_id={task_id}, status={created.get('status')})"
+        )
 
     def work():
         if is_task_cancelled(task_id):
@@ -492,45 +511,6 @@ def disable_leaderboard_refresh():
 
 
 # ============================================================
-# Polymarket 概率預警
-# ============================================================
-
-def enable_polymarket_alerts():
-    """啟用 Polymarket 概率預警輪詢（間隔 SQ_POLYMARKET_ALERT_POLL_SEC）。"""
-    from src.config import settings
-
-    if not settings.polymarket_enabled or not settings.polymarket_alert_enabled:
-        logger.info("跳過 Polymarket 預警：功能或預警開關已關閉")
-        return
-
-    scheduler = _get_scheduler()
-    _remove_job_safe("polymarket_alerts")
-
-    def _job_impl():
-        from src.core.polymarket.alerts import run_polymarket_alert_cycle
-        result = run_polymarket_alert_cycle()
-        if result.get("triggered"):
-            logger.info(f"Polymarket 預警觸發 {result['triggered']} 條")
-        return result
-
-    interval = settings.polymarket_alert_poll_sec
-    scheduler.add_job(
-        _wrap_scheduled_job("polymarket_alerts", "Polymarket 概率預警", _job_impl),
-        "interval",
-        seconds=interval,
-        id="polymarket_alerts",
-        replace_existing=True,
-        name="Polymarket 概率預警",
-    )
-    logger.info(f"已啟用 Polymarket 概率預警 (每 {interval}s)")
-
-
-def disable_polymarket_alerts():
-    _remove_job_safe("polymarket_alerts")
-    logger.info("已禁用 Polymarket 概率預警")
-
-
-# ============================================================
 # 任務註冊表與統一管理
 # ============================================================
 
@@ -571,12 +551,6 @@ JOB_CATALOG = [
         "schedule": "每週日 17:00",
         "description": "全策略回測並更新排行榜",
     },
-    {
-        "id": "polymarket_alerts",
-        "name": "Polymarket 概率預警",
-        "schedule": "間隔輪詢（SQ_POLYMARKET_ALERT_POLL_SEC）",
-        "description": "依 yes 機率閾值與變動幅度觸發預警通知",
-    },
 ]
 
 _ENABLE_BY_ID = {
@@ -586,7 +560,6 @@ _ENABLE_BY_ID = {
     "degradation_check": enable_degradation_check,
     "correlation_monitor": enable_correlation_monitor,
     "leaderboard_refresh": enable_leaderboard_refresh,
-    "polymarket_alerts": enable_polymarket_alerts,
 }
 
 _DISABLE_BY_ID = {
@@ -596,7 +569,6 @@ _DISABLE_BY_ID = {
     "degradation_check": disable_degradation_check,
     "correlation_monitor": disable_correlation_monitor,
     "leaderboard_refresh": disable_leaderboard_refresh,
-    "polymarket_alerts": disable_polymarket_alerts,
 }
 
 
@@ -684,11 +656,6 @@ def setup_from_settings():
         enable_leaderboard_refresh()
     else:
         disable_leaderboard_refresh()
-
-    if getattr(settings, "scheduler_job_polymarket_alerts", False):
-        enable_polymarket_alerts()
-    else:
-        disable_polymarket_alerts()
 
     jobs = list_jobs()
     logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")

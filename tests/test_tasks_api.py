@@ -33,7 +33,6 @@ ASYNC_TASK_TYPES = frozenset({
     "data_download",
     "data_download_all",
     "data_incremental",
-    "polymarket_sync",
     "scheduled_job",
 })
 

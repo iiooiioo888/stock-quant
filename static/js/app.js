@@ -274,7 +274,6 @@ const App = {
       { ti: 'ti-chart-candle', code: '000858', name: '五糧液', type: 'A股', action: () => this.openStockDetail('000858') },
       { ti: 'ti-chart-candle', code: '601318', name: '中國平安', type: 'A股', action: () => this.openStockDetail('601318') },
       { ti: 'ti-chart-candle', code: '000333', name: '美的集團', type: 'A股', action: () => this.openStockDetail('000333') },
-      { ti: 'ti-crystal-ball', code: '', name: '預測市場', type: '功能', action: () => this.loadTab('polymarket') },
       { ti: 'ti-chart-line', code: '', name: '股票詳情索引', type: '功能', action: () => this.openStockDetail('') },
       { ti: 'ti-flask', code: '', name: '策略回測', type: '功能', action: () => this.openStockTool('backtest') },
       { ti: 'ti-bolt', code: '', name: '參數優化', type: '功能', action: () => this.openStockTool('optimize') },
@@ -474,7 +473,6 @@ const App = {
         'r': 'reports',
         'a': 'alerts',
         'm': 'markets',
-        'p': 'polymarket',
         'x': 'crypto',
         't': 'tasks',
       };
@@ -503,7 +501,6 @@ const App = {
       ['C', '多股對比'],
       ['T', '任務面板'],
       ['M', '多市場'],
-      ['P', '預測市場'],
       ['X', '加密行情'],
       ['Esc', '關閉彈窗'],
     ];
@@ -765,9 +762,6 @@ const App = {
         break;
       case 'markets':
         Promise.all([this.loadMarkets(), this.loadMarketRealtime()]);
-        break;
-      case 'polymarket':
-        if (typeof PolymarketUI !== 'undefined') PolymarketUI.load();
         break;
       case 'stock-detail':
         if (typeof StockDetail !== 'undefined') StockDetail.onTabActivated();
@@ -1627,7 +1621,14 @@ App._listSchedulerJobs = async function() {
 
 App._runSchedulerJob = async function(jobId) {
   const d = await Api.runSchedulerJob(jobId);
-  if (d) Utils.toast(d.message || '已觸發', 2000, 'success');
+  if (d) {
+    const hint = d.task_id
+      ? `已加入任務中心（${String(d.task_id).slice(0, 16)}…）`
+      : (d.message || '已觸發');
+    Utils.toast(hint, 2800, 'success');
+    window.StockQPro?.Tasks?.refresh?.(true);
+    window.StockQPro?.pages?.tasks?.refreshSidebarBadge?.();
+  }
 };
 
 App._enableSchedulerJob = async function(jobId) {

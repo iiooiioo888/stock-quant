@@ -14,6 +14,8 @@
     compactTopbar: true,
     /** 資產庫進入詳情時預設分頁 */
     assetDetailTab: 'chart',
+    /** HKD | MOP | USD | CNY */
+    preferredCurrency: 'MOP',
   };
 
   const SCHEME_ATTR = {
