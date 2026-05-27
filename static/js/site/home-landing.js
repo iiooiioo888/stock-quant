@@ -89,11 +89,17 @@
   function renderBuiltinChips() {
     const row = document.getElementById('home-builtin-row');
     const chips = document.getElementById('home-builtin-chips');
+    const desc = document.getElementById('home-builtin-desc');
     if (!row || !chips || !state.builtin.length) return;
     row.hidden = false;
+    const n = state.builtin.length;
+    if (desc) {
+      desc.textContent = `共 ${n} 種內建策略已接入回測引擎，點選策略名稱可直達回測頁預填。`;
+    }
     chips.innerHTML = state.builtin.map((b) => {
       const label = escapeHtml(b.display_name || b.name);
-      return `<a class="home-builtin-chip" href="/app#/backtest" title="${escapeHtml(b.description || b.name)}">${label}</a>`;
+      const key = escapeHtml(b.name || '');
+      return `<a class="home-builtin-chip" href="/app#/backtest" role="listitem" data-strategy="${key}" title="${escapeHtml(b.description || b.name)}">${label}</a>`;
     }).join('');
   }
 
@@ -169,6 +175,7 @@
     const grid = document.getElementById('home-strat-grid');
     const foot = document.getElementById('home-strat-foot');
     if (!grid || !state.catalog) return;
+    grid.classList.remove('is-loading');
 
     const list = filteredStrats();
     if (!list.length) {
@@ -202,18 +209,34 @@
     }
   }
 
+  function setGridLoading(on) {
+    const grid = document.getElementById('home-strat-grid');
+    if (!grid) return;
+    grid.classList.toggle('is-loading', !!on);
+    if (on) {
+      grid.innerHTML = '策略目錄載入中…';
+      grid.setAttribute('aria-busy', 'true');
+    } else {
+      grid.removeAttribute('aria-busy');
+    }
+  }
+
   async function initStrategyLibrary() {
     const grid = document.getElementById('home-strat-grid');
     if (!grid) return;
+    setGridLoading(true);
     try {
-      await Promise.all([loadCatalog(), loadBuiltin()]);
+      await loadCatalog();
+      await loadBuiltin();
       renderLibStats();
       renderBuiltinChips();
       renderCatPills();
       bindToolbar();
+      setGridLoading(false);
       renderGrid();
     } catch (e) {
-      grid.innerHTML = `<p style="color:var(--rd);font-size:.74rem">策略庫載入失敗：${escapeHtml(e.message)}</p>`;
+      grid.classList.remove('is-loading');
+      grid.innerHTML = `<p style="color:var(--rd);font-size:.74rem;padding:20px 0;text-align:center">策略庫載入失敗：${escapeHtml(e.message)}</p>`;
     }
   }
 

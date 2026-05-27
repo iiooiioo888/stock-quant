@@ -38,6 +38,8 @@ from src.api.routers.crypto import router as crypto_router
 from src.api.routers.external_check import router as external_check_router
 from src.api.routers.llm import router as llm_router
 from src.api.routers.portfolio_settlement import router as portfolio_settlement_router
+from src.api.routers.stream import router as stream_router
+from src.api.errors import register_exception_handlers
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
@@ -158,6 +160,7 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+register_exception_handlers(app)
 
 app.include_router(health_router)
 app.include_router(tasks_router)
@@ -175,6 +178,7 @@ app.include_router(crypto_router)
 app.include_router(external_check_router)
 app.include_router(llm_router)
 app.include_router(portfolio_settlement_router)
+app.include_router(stream_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -282,6 +286,10 @@ async def admin_controls_middleware(request: Request, call_next):
     elif path.startswith("/api/strategies"):
         scope = "strategies"
         if path == "/api/strategies/list":
+            action = "list"
+        elif path == "/api/strategies/likes":
+            action = "list"
+        elif path.startswith("/api/strategies/likes/toggle"):
             action = "list"
         elif path == "/api/strategies/params":
             action = "params"
@@ -474,6 +482,7 @@ AUTH_WHITELIST_PREFIX = (
 AUTH_WHITELIST_EXACT = (
     "/api/strategies/leaderboard",
     "/api/strategies/params",
+    "/api/strategies/likes",
 )
 
 # 演示模式：GET 可讀，POST/PUT/PATCH/DELETE 需登錄
@@ -751,6 +760,7 @@ async def get_config():
             "tradingview_enabled": settings.tradingview_enabled,
             "ib_enabled": settings.ib_enabled,
             "local_first_auto_fetch": settings.local_first_auto_fetch,
+            "stock_logo_api_enabled": settings.stock_logo_api_enabled,
             "admin_controls": get_controls(),
         }
 
@@ -1710,6 +1720,47 @@ async def list_strategies_api(user=Depends(get_current_user)):
     return cached_response("api:strategies:list", ttl=120, builder=_build)
 
 
+@app.get("/api/strategies/likes")
+async def strategy_likes_state_api(user=Depends(get_current_user)):
+    """策略點讚：全站計數；登入用戶另返回已點讚列表。"""
+    from src.core.admin_controls import is_allowed
+    from src.core.strategy_likes import get_like_counts, get_user_liked_keys
+
+    if not is_allowed("strategies", "list", user=user):
+        raise HTTPException(403, "策略庫已被管理員關閉")
+
+    counts = get_like_counts()
+    mine: list[str] = []
+    if user:
+        mine = get_user_liked_keys(user.id)
+    return {"success": True, "counts": counts, "mine": mine}
+
+
+@app.post("/api/strategies/likes/toggle")
+async def strategy_likes_toggle_api(body: dict, user=Depends(require_auth)):
+    """切換當前用戶對某策略的點讚。"""
+    from src.core.admin_controls import is_allowed
+    from src.core.strategy_likes import normalize_strategy_key, toggle_like
+
+    if not is_allowed("strategies", "list", user=user):
+        raise HTTPException(403, "策略庫已被管理員關閉")
+
+    raw_key = body.get("key") or body.get("strategy_key") or ""
+    try:
+        key = normalize_strategy_key(str(raw_key))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    try:
+        result = toggle_like(user.id, key)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, f"點讚失敗: {e}") from e
+
+    return {"success": True, **result}
+
+
 @app.post("/api/strategies/upload")
 async def upload_strategy(file: UploadFile = File(...)):
     """上傳用戶策略 .py 文件（AST 白名單沙箱，寫入前校驗）"""
@@ -2505,9 +2556,30 @@ def _serve_static_html(filename: str, *, fallback=None) -> HTMLResponse:
     raise HTTPException(404, f"{filename} not found")
 
 
+@app.get("/manual", response_class=HTMLResponse)
+async def user_manual():
+    """使用手冊（docs/manual/README.md）。"""
+    import html as html_module
+
+    root = Path(__file__).resolve().parents[2]
+    readme = root / "docs" / "manual" / "README.md"
+    if not readme.is_file():
+        raise HTTPException(404, "手冊尚未就緒")
+    body = html_module.escape(readme.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"/>
+<title>StockQ Pro 使用手冊</title>
+<style>body{{font-family:system-ui,sans-serif;background:#0a0b10;color:#eeeef2;
+margin:0;padding:24px 32px;line-height:1.6}} a{{color:#e8b830}}
+pre{{white-space:pre-wrap;font-size:.9rem}}</style></head>
+<body><p><a href="/app">← 工作台</a> · <a href="/">產品介紹</a></p>
+<pre>{body}</pre></body></html>"""
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def site_home():
-    """企業官網式產品首頁（功能介紹、三入口導航）。"""
+    """產品介紹首頁（功能介紹、三入口導航）。"""
     return _serve_static_html("home.html", fallback=_builtin_dashboard)
 
 

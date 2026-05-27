@@ -173,6 +173,7 @@ _tasks: dict[str, dict] = {}
 _lock = threading.RLock()
 _MAX_TASKS = 200
 _cancel_flags: dict[str, bool] = {}
+_cancel_db_cache: dict[str, tuple[float, bool]] = {}
 _dispatched: set[str] = set()  # 已提交線程池、尚未結束
 _executor: Optional[ThreadPoolExecutor] = None
 _executor_lock = threading.Lock()
@@ -425,8 +426,43 @@ def _get_executor() -> ThreadPoolExecutor:
         return _executor
 
 
+def _read_cancel_requested_from_db(task_id: str) -> bool:
+    try:
+        from src.core.db import get_conn
+        with get_conn() as conn:
+            if not _column_exists_conn(conn, "task_log", "meta_json"):
+                return False
+            row = conn.execute(
+                "SELECT meta_json FROM task_log WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        if not row or not row[0]:
+            return False
+        meta = json.loads(row[0])
+        return bool(isinstance(meta, dict) and meta.get("cancel_requested"))
+    except Exception:
+        return False
+
+
 def is_task_cancelled(task_id: str) -> bool:
-    return _cancel_flags.get(task_id, False)
+    if _cancel_flags.get(task_id):
+        return True
+    with _lock:
+        task = _tasks.get(task_id)
+        if task and (task.get("meta") or {}).get("cancel_requested"):
+            _cancel_flags[task_id] = True
+            return True
+    now = time.time()
+    cached = _cancel_db_cache.get(task_id)
+    if cached and (now - cached[0]) < 0.5:
+        if cached[1]:
+            _cancel_flags[task_id] = True
+        return cached[1]
+    db_val = _read_cancel_requested_from_db(task_id)
+    _cancel_db_cache[task_id] = (now, db_val)
+    if db_val:
+        _cancel_flags[task_id] = True
+    return db_val
 
 
 def _count_active() -> int:
@@ -603,11 +639,27 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
     return out
 
 
+def ensure_task_in_memory(task_id: str) -> bool:
+    """跨進程（Celery Worker）從 DB 還原任務至本進程記憶體。"""
+    with _lock:
+        if task_id in _tasks:
+            return True
+        row = _load_task_from_db(task_id)
+        if not row:
+            return False
+        _tasks[task_id] = row
+        return True
+
+
 def _mark_running(task_id: str) -> bool:
     with _lock:
         task = _tasks.get(task_id)
         if not task:
-            return False
+            row = _load_task_from_db(task_id)
+            if not row:
+                return False
+            _tasks[task_id] = row
+            task = row
         if _cancel_flags.get(task_id) or task["status"] == STATUS_CANCELLED:
             return False
         if task["status"] not in (STATUS_PENDING, STATUS_RETRYING):
@@ -982,24 +1034,46 @@ def get_queue_snapshot() -> dict:
 
 
 def cancel_task(task_id: str) -> bool:
+    task_snapshot: dict | None = None
     with _lock:
         task = _tasks.get(task_id)
         if not task:
-            return False
+            task = _load_task_from_db(task_id)
+            if not task:
+                return False
+            _tasks[task_id] = task
+
         if task["status"] not in ACTIVE_STATUSES and task_id not in _dispatched:
             return False
+
         _cancel_flags[task_id] = True
+        meta = task.setdefault("meta", {})
+        meta["cancel_requested"] = True
+
         if task["status"] == STATUS_PENDING:
             task["status"] = STATUS_CANCELLED
             task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             task.pop("_worker_fn", None)
             _dispatched.discard(task_id)
-            _save_task_to_db(task, force=True)
+            task_snapshot = dict(task)
             logger.info(f"任務取消(pending): {task_id}")
             _notify_task_update(task_id, "task_cancelled")
-            return True
-        logger.info(f"任務取消請求(running): {task_id}")
-        return True
+        elif task["status"] == STATUS_RUNNING and task_id not in _dispatched:
+            task["status"] = STATUS_CANCELLED
+            task["error"] = "用戶取消"
+            task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            task.pop("_worker_fn", None)
+            task_snapshot = dict(task)
+            logger.info(f"任務取消(無執行緒): {task_id}")
+            _notify_task_update(task_id, "task_cancelled")
+        else:
+            task_snapshot = dict(task)
+            logger.info(f"任務取消請求(running): {task_id}")
+
+    if task_snapshot:
+        _save_task_to_db(task_snapshot, force=True)
+    _cancel_db_cache.pop(task_id, None)
+    return True
 
 
 def delete_task(task_id: str) -> bool:
@@ -1197,20 +1271,38 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
     try:
         from src.core.db import get_conn
         with get_conn() as conn:
-            row = conn.execute(
-                """SELECT task_id, task_type, params_hash, title, status, progress, error,
-                          created_at, completed_at, params_json
-                   FROM task_log WHERE task_id = ?""",
-                (task_id,),
-            ).fetchone()
+            has_meta = _column_exists_conn(conn, "task_log", "meta_json")
+            if has_meta:
+                row = conn.execute(
+                    """SELECT task_id, task_type, params_hash, title, status, progress, error,
+                              created_at, completed_at, params_json, meta_json
+                       FROM task_log WHERE task_id = ?""",
+                    (task_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT task_id, task_type, params_hash, title, status, progress, error,
+                              created_at, completed_at, params_json
+                       FROM task_log WHERE task_id = ?""",
+                    (task_id,),
+                ).fetchone()
         if not row:
             return None
         params = {}
-        if row[9]:
+        params_idx = 9
+        if row[params_idx]:
             try:
-                params = json.loads(row[9])
+                params = json.loads(row[params_idx])
             except Exception:
                 params = {}
+        meta: dict = {}
+        if has_meta and len(row) > 10 and row[10]:
+            try:
+                parsed = json.loads(row[10])
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except Exception:
+                meta = {}
         return _to_json_safe({
             "task_id": row[0],
             "task_type": row[1],
@@ -1222,6 +1314,7 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
             "created_at": row[7] or "",
             "completed_at": row[8],
             "params": params,
+            "meta": meta,
             "result": None if not include_result else None,
             "from_db": True,
         })

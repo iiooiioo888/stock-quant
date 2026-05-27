@@ -25,7 +25,7 @@ def test_exchange_cross_via_usd():
 
 
 def test_infer_currency():
-    from src.core.portfolio_settlement import infer_currency
+    from src.core.portfolio_currency import infer_currency
 
     assert infer_currency("600519") == "CNY"
     assert infer_currency("0700.HK") == "HKD"

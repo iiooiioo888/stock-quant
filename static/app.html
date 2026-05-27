@@ -7,12 +7,10 @@
   <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/pro.css?v=llm-sse-20260526" />
-  <link rel="stylesheet" href="/static/css/legacy-in-pro.css?v=legacy-pro-20260527" />
-  <script src="/static/vendor/echarts.min.js?v=5.5.0"></script>
-  <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
+  <link rel="preload" href="/static/css/pro.css?v=portfolio-ui-20260527" as="style" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=portfolio-ui-20260527" />
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
     @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
@@ -31,18 +29,19 @@
   </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--nav-compact">
 
   <!-- ═══ TOPBAR ═══ -->
   <header class="topbar" role="banner">
     <div class="topbar-left">
-      <a class="logo" href="/app#/dashboard" data-nav="dashboard" aria-label="StockQ Pro 首頁">
+      <a class="logo" href="/app#/dashboard" data-nav="dashboard" aria-label="StockQ Pro 首頁" fetchpriority="high">
         <span class="logo-icon" aria-hidden="true">Q</span>
         StockQ <span>Pro</span>
       </a>
       <nav class="topbar-links" aria-label="站點入口">
-        <a href="/">官網</a>
-        <a href="/admin">管理後台</a>
+        <a href="/" data-term="nav.product">產品介紹</a>
+        <a href="/manual" data-term="nav.manual" title="使用手冊">使用手冊</a>
+        <a href="/admin" data-term="nav.admin">管理後台</a>
       </nav>
       <div class="ticker-strip" id="topbar-ticker-strip" aria-label="行情跑馬燈">
         <div class="ticker-strip-inner"></div>
@@ -69,133 +68,179 @@
   </header>
 
   <!-- ═══ SIDEBAR ═══ -->
-  <nav class="sidebar" aria-label="主導航">
+  <nav class="sidebar sidebar-compact sidebar--labeled" aria-label="主導航">
+    <details class="nav-group" open data-nav-group="workbench">
+      <summary>工作台</summary>
+      <div class="nav-group-body">
     <button type="button" class="sb on" data-p="dashboard" title="總覽">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-      <span class="tp">總覽</span>
+      <span class="sb-lbl">總覽</span>
+      <small class="desc">帳戶與市場概覽</small>
     </button>
     <button type="button" class="sb" data-p="strategies" title="策略庫">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      <span class="tp">策略庫</span>
+      <span class="sb-lbl">策略庫</span>
+      <small class="desc">策略清單與參數</small>
     </button>
-    <button type="button" class="sb" data-p="backtest" title="回測">
+    <button type="button" class="sb" data-p="backtest" title="策略回測">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
-      <span class="tp">回測</span>
+      <span class="sb-lbl">策略回測</span>
+      <small class="desc">參數掃描與績效評估</small>
     </button>
     <button type="button" class="sb" data-p="assets" title="資產庫">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
-      <span class="tp">資產庫</span>
+      <span class="sb-lbl">資產庫</span>
+      <small class="desc">標的歸檔與標籤</small>
     </button>
     <button type="button" class="sb" data-p="tasks" title="任務中心">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
       <span class="plk" id="task-sb-badge" style="display:none">0</span>
-      <span class="tp">任務中心</span>
+      <span class="sb-lbl">任務中心</span>
     </button>
-    <div class="sd" aria-hidden="true"></div>
+    <button type="button" class="sb" data-p="capitalflow" title="資金與板塊">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12h4l3-7 4 14 3-7h6"/><circle cx="19" cy="5" r="2" fill="currentColor" stroke="none" opacity=".6"/></svg>
+      <span class="sb-lbl">資金流</span>
+    </button>
     <button type="button" class="sb" data-p="compare" title="多股對比">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 16v5h-5"/><path d="M3 16v5h5"/><path d="M21 8 8 21"/><path d="M3 8l13 13"/></svg>
-      <span class="tp">對比</span>
+      <span class="sb-lbl">對比</span>
     </button>
     <button type="button" class="sb" data-p="portfolio" title="組合">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-      <span class="tp">組合</span>
+      <span class="sb-lbl">持倉與淨值</span>
+      <small class="desc">多幣種結算與趨勢</small>
     </button>
     <button type="button" class="sb" data-p="watchlist" title="自選股">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      <span class="tp">自選股</span>
+      <span class="sb-lbl">自選股</span>
+      <small class="desc">關注清單與提醒</small>
     </button>
     <button type="button" class="sb" data-p="scanner" title="選股器">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <span class="tp">選股器</span>
+      <span class="sb-lbl">選股器</span>
+      <small class="desc">條件篩選與池管理</small>
     </button>
     <button type="button" class="sb" data-p="alerts" title="預警">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="tp">預警</span>
+      <span class="sb-lbl">預警</span>
     </button>
-    <button type="button" class="sb" data-p="risk" title="風控">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <span class="tp">風控</span>
-    </button>
-    <button type="button" class="sb" data-p="journal" title="交易日誌">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      <span class="tp">日誌</span>
-    </button>
-    <button type="button" class="sb" data-p="backhistory" title="回測歷史">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span class="tp">回測歷史</span>
-    </button>
-    <div class="sd" aria-hidden="true"></div>
+      </div>
+    </details>
+    <details class="nav-group" data-nav-group="strategy">
+      <summary>策略引擎</summary>
+      <div class="nav-group-body">
     <button type="button" class="sb" data-p="optimize" title="參數優化">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
-      <span class="tp">優化</span>
+      <span class="sb-lbl">參數優化</span>
+      <small class="desc">網格搜索與夏普最大化</small>
     </button>
     <button type="button" class="sb" data-p="walkforward" title="Walk-Forward">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 17l4-5 4 3 6-8"/></svg>
-      <span class="tp">WF</span>
+      <span class="sb-lbl">滾動驗證</span>
+      <small class="desc">樣本外 Walk-Forward</small>
     </button>
     <button type="button" class="sb" data-p="heatmap" title="參數熱力圖">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      <span class="tp">熱力圖</span>
+      <span class="sb-lbl">熱力圖</span>
+      <small class="desc">雙參數績效面</small>
     </button>
-    <button type="button" class="sb" data-p="signals" title="實時信號">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 20h20"/><path d="M5 20V10M10 20V4M15 20v-6M20 20V8"/></svg>
-      <span class="tp">信號</span>
-    </button>
-    <button type="button" class="sb" data-p="data" title="數據中心">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
-      <span class="tp">數據</span>
-    </button>
-    <button type="button" class="sb" data-p="analysis" title="深度分析">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12h4l3-9 4 18 3-9h6"/></svg>
-      <span class="tp">分析</span>
+    <button type="button" class="sb" data-p="backhistory" title="回測歷史">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="sb-lbl">回測歷史</span>
+      <small class="desc">歷次任務結果</small>
     </button>
     <button type="button" class="sb" data-p="reports" title="策略報告">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span class="tp">報告</span>
+      <span class="sb-lbl">策略報告</span>
+      <small class="desc">匯出與摘要</small>
+    </button>
+      </div>
+    </details>
+    <details class="nav-group" data-nav-group="risk">
+      <summary>風控 · 紀錄</summary>
+      <div class="nav-group-body">
+    <button type="button" class="sb" data-p="risk" title="風控">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span class="sb-lbl">風控</span>
+    </button>
+    <button type="button" class="sb" data-p="journal" title="交易日誌">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="sb-lbl">日誌</span>
+    </button>
+      </div>
+    </details>
+    <details class="nav-group" data-nav-group="data">
+      <summary>數據分析</summary>
+      <div class="nav-group-body">
+    <button type="button" class="sb" data-p="data" title="數據中心">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+      <span class="sb-lbl">數據中心</span>
+      <small class="desc">下載與快取管理</small>
+    </button>
+    <button type="button" class="sb" data-p="analysis" title="深度分析">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12h4l3-9 4 18 3-9h6"/></svg>
+      <span class="sb-lbl">深度分析</span>
+      <small class="desc">因子與統計檢視</small>
+    </button>
+    <button type="button" class="sb" data-p="connectivity" title="數據源連線檢查">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M6 12H2"/><path d="M22 12h-4"/></svg>
+      <span class="sb-lbl">數據源</span>
+      <small class="desc">連線健康與條款</small>
+    </button>
+    <button type="button" class="sb" data-p="signals" title="實時信號">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 20h20"/><path d="M5 20V10M10 20V4M15 20v-6M20 20V8"/></svg>
+      <span class="sb-lbl">信號</span>
     </button>
     <button type="button" class="sb" data-p="scheduler" title="定時任務">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span class="tp">調度</span>
+      <span class="sb-lbl">定時</span>
     </button>
     <button type="button" class="sb" data-p="markets" title="多市場">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-      <span class="tp">市場</span>
+      <span class="sb-lbl">市場</span>
     </button>
     <button type="button" class="sb" data-p="crypto" title="加密行情">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"/></svg>
-      <span class="tp">加密</span>
+      <span class="sb-lbl">加密</span>
     </button>
-    <button type="button" class="sb" data-p="connectivity" title="接口檢查">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M6 12H2"/><path d="M22 12h-4"/></svg>
-      <span class="tp">接口</span>
-    </button>
-    <div class="sd" aria-hidden="true"></div>
-    <button type="button" class="sb" data-p="ai" title="AI 智能問答">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 0 6h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1 0-6h1V6a4 4 0 0 1 4-4z"/></svg>
-      <span class="tp">AI</span>
-      <span class="plk">PRO</span>
-    </button>
+      </div>
+    </details>
+    <details class="nav-group" data-nav-group="labs">
+      <summary>實驗 · AI</summary>
+      <div class="nav-group-body">
     <button type="button" class="sb" data-p="factor" title="因子">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      <span class="tp">因子</span>
+      <span class="sb-lbl">因子</span>
     </button>
     <button type="button" class="sb" data-p="seasonal" title="季節性">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/><circle cx="12" cy="12" r="4"/></svg>
-      <span class="tp">季節性</span>
+      <span class="sb-lbl">季節性</span>
     </button>
     <button type="button" class="sb" data-p="regime" title="市場狀態">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 20h20"/><path d="M5 20V10M10 20V4M15 20v-6M20 20V8"/></svg>
-      <span class="tp">市場狀態</span>
+      <span class="sb-lbl">市場狀態</span>
+    </button>
+    <button type="button" class="sb" data-p="ai" title="AI 智能問答">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 0 6h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1 0-6h1V6a4 4 0 0 1 4-4z"/></svg>
+      <span class="sb-lbl">AI</span>
+      <span class="plk">PRO</span>
     </button>
     <button type="button" class="sb" data-p="pricing" title="定價">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      <span class="tp">定價</span>
+      <span class="sb-lbl">定價</span>
     </button>
-    <div class="sd" aria-hidden="true"></div>
+      </div>
+    </details>
+    <details class="nav-group" data-nav-group="system">
+      <summary>系統</summary>
+      <div class="nav-group-body">
     <button type="button" class="sb" data-p="settings" title="設定">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-      <span class="tp">設定</span>
+      <span class="sb-lbl">設定</span>
+      <small class="desc">偏好與帳戶</small>
     </button>
+      </div>
+    </details>
   </nav>
 
   <!-- ═══ MAIN ═══ -->
@@ -229,6 +274,7 @@
             <select id="lib-status" class="sel" aria-label="狀態篩選">
               <option value="">全部狀態</option>
               <option value="implemented">可回測</option>
+              <option value="liked">我的點讚</option>
             </select>
             <select id="lib-view" class="sel" aria-label="檢視模式">
               <option value="grid">網格</option>
@@ -880,6 +926,21 @@
     <div class="pg pro-page" id="pg-optimize"><div class="legacy-mount" aria-label="參數優化"></div></div>
     <div class="pg pro-page" id="pg-walkforward"><div class="legacy-mount" aria-label="Walk-Forward"></div></div>
     <div class="pg pro-page" id="pg-heatmap"><div class="legacy-mount" aria-label="參數熱力圖"></div></div>
+    <div class="pg pro-page" id="pg-capitalflow">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">Capital Flow · 資金與板塊</div>
+          <div class="pa">
+            <span class="badge b-bl" id="cf-days-badge">20D</span>
+            <button type="button" class="btn s" id="cf-refresh-btn" style="margin-left:6px">刷新</button>
+          </div>
+        </div>
+        <div class="pb" id="cf-content">
+          <div id="cf-charts-grid" class="dash-charts-grid" style="margin-bottom:var(--gap)"></div>
+          <div id="cf-heatmap-row" class="dash-heatmap-row"></div>
+        </div>
+      </div>
+    </div>
     <div class="pg pro-page" id="pg-signals"><div class="legacy-mount" aria-label="實時信號"></div></div>
     <div class="pg pro-page" id="pg-data"><div class="legacy-mount" aria-label="數據中心"></div></div>
     <div class="pg pro-page" id="pg-analysis"><div class="legacy-mount" aria-label="深度分析"></div></div>
@@ -887,13 +948,13 @@
     <div class="pg pro-page" id="pg-scheduler"><div class="legacy-mount" aria-label="定時任務"></div></div>
     <div class="pg pro-page" id="pg-markets"><div class="legacy-mount" aria-label="多市場"></div></div>
     <div class="pg pro-page" id="pg-crypto"><div class="legacy-mount" aria-label="加密行情"></div></div>
-    <div class="pg pro-page" id="pg-connectivity"><div class="legacy-mount" aria-label="接口檢查"></div></div>
+    <div class="pg pro-page" id="pg-connectivity"><div class="legacy-mount" aria-label="數據源連線檢查"></div></div>
     </div>
     <div class="pg" id="pg-risk">
-      <div class="pnl"><div class="ph"><div class="pt">風控中心</div></div><div class="pb"><p class="placeholder-msg">風控規則與 VaR 面板開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">風控中心</div></div><div class="pb"><p class="placeholder-msg">風控規則與 VaR 面板規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg" id="pg-journal">
-      <div class="pnl"><div class="ph"><div class="pt">交易日誌</div></div><div class="pb"><p class="placeholder-msg">交易日誌開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">交易日誌</div></div><div class="pb"><p class="placeholder-msg">交易日誌功能規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg pro-page" id="pg-ai">
       <div class="ai-layout">
@@ -922,16 +983,16 @@
       </div>
     </div>
     <div class="pg" id="pg-factor">
-      <div class="pnl"><div class="ph"><div class="pt">因子研究</div></div><div class="pb"><p class="placeholder-msg">因子分析開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">因子研究</div></div><div class="pb"><p class="placeholder-msg">因子分析功能規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg" id="pg-seasonal">
-      <div class="pnl"><div class="ph"><div class="pt">季節性分析</div></div><div class="pb"><p class="placeholder-msg">季節性統計開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">季節性分析</div></div><div class="pb"><p class="placeholder-msg">季節性統計功能規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg" id="pg-regime">
-      <div class="pnl"><div class="ph"><div class="pt">市場狀態</div></div><div class="pb"><p class="placeholder-msg">Regime 識別開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">市場狀態</div></div><div class="pb"><p class="placeholder-msg">市場狀態（Regime）識別規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg" id="pg-pricing">
-      <div class="pnl"><div class="ph"><div class="pt">方案定價</div></div><div class="pb"><p class="placeholder-msg">訂閱方案頁開發中…</p></div></div>
+      <div class="pnl"><div class="ph"><div class="pt">方案定價</div></div><div class="pb"><p class="placeholder-msg">訂閱方案頁規劃中，將於後續版本提供。</p></div></div>
     </div>
 
   </main>
@@ -977,20 +1038,20 @@
 </div>
 
 <!-- ═══ SCRIPTS ═══ -->
-<script src="/static/js/utils.js?v=stockq-pro-v5"></script>
-<script src="/static/js/api.js?v=llm-audit-20260526"></script>
+<script src="/static/js/utils.js?v=stockq-pro-v6"></script>
+<script src="/static/js/pro/terms.js?v=stockq-terms-20260527"></script>
+<script src="/static/js/pro/fetch-stream.js?v=stockq-stream-20260527"></script>
+<script src="/static/js/api.js?v=ws-fix-20260527"></script>
 <script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/user-prefs.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/app-store.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/index.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/dashboard-components.js?v=stockq-pro-v9"></script>
 <script src="/static/js/pro/services/market-ticker.js?v=stockq-pro-v10"></script>
-<script src="/static/js/pro/strategy-catalog.js?v=stockq-pro-v6"></script>
-<script src="/static/js/pro/currency-manager.js?v=stockq-fx-v1"></script>
-<script src="/static/js/pro/modules/dashboard-pro.js?v=stockq-pro-v9"></script>
-<script src="/static/js/pro/modules/tasks-pro.js?v=stockq-pro-v7"></script>
-<script src="/static/js/pro/module-loader.js?v=stockq-pro-lazy-20260527"></script>
-<script src="/static/js/pro/legacy-bridge.js?v=legacy-pro-20260527"></script>
-<script src="/static/js/pro/app.js?v=legacy-pro-lazy-20260527"></script>
+<script src="/static/js/pro/stream-loader.js?v=stream-nav-20260527"></script>
+<script src="/static/js/pro/chart-vendor.js?v=stream-nav-20260527"></script>
+<script src="/static/js/pro/module-loader.js?v=stream-nav-20260527"></script>
+<script src="/static/js/pro/legacy-bridge.js?v=ws-fix-20260527"></script>
+<script src="/static/js/pro/app.js?v=ws-fix-20260527"></script>
 </body>
 </html>

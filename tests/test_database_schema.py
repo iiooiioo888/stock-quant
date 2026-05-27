@@ -51,7 +51,9 @@ def test_init_database_creates_core_tables(isolated_db):
         "fundamentals",
         "stock_universe",
         "paper_trades",
-        "polymarket_market_snapshot",
+        "portfolio_transactions",
+        "portfolio_holdings",
+        "portfolio_snapshots",
         "schema_migrations",
     }
     assert expected.issubset(tables)

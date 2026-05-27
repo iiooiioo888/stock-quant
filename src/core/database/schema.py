@@ -135,6 +135,16 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """
 
+DDL_STRATEGY_LIKES = """
+CREATE TABLE IF NOT EXISTS strategy_likes (
+    user_id         INTEGER NOT NULL,
+    strategy_key    TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    PRIMARY KEY (user_id, strategy_key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 DDL_USER_WATCHLISTS = """
 CREATE TABLE IF NOT EXISTS user_watchlists (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -275,62 +285,6 @@ CREATE TABLE IF NOT EXISTS stock_universe (
 )
 """
 
-# ── Polymarket ────────────────────────────────────────────
-
-DDL_POLYMARKET_MARKET_SNAPSHOT = """
-CREATE TABLE IF NOT EXISTS polymarket_market_snapshot (
-    market_id       TEXT NOT NULL,
-    slug            TEXT,
-    question        TEXT,
-    yes_price       REAL,
-    no_price        REAL,
-    volume          REAL,
-    liquidity       REAL,
-    active          INTEGER,
-    end_date        TEXT,
-    payload_json    TEXT,
-    fetched_at      TEXT NOT NULL,
-    PRIMARY KEY (market_id)
-)
-"""
-
-DDL_POLYMARKET_PRICE_POINT = """
-CREATE TABLE IF NOT EXISTS polymarket_price_point (
-    token_id        TEXT NOT NULL,
-    ts              INTEGER NOT NULL,
-    price           REAL NOT NULL,
-    interval        TEXT DEFAULT '1d',
-    fetched_at      TEXT NOT NULL,
-    PRIMARY KEY (token_id, ts, interval)
-)
-"""
-
-DDL_POLYMARKET_ALERT_RULES = """
-CREATE TABLE IF NOT EXISTS polymarket_alert_rules (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    market_key      TEXT NOT NULL,
-    name            TEXT,
-    question        TEXT,
-    enabled         INTEGER NOT NULL DEFAULT 1,
-    yes_above       REAL,
-    yes_below       REAL,
-    prob_change_pct REAL,
-    notes           TEXT,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL,
-    UNIQUE(market_key)
-)
-"""
-
-DDL_POLYMARKET_PROB_STATE = """
-CREATE TABLE IF NOT EXISTS polymarket_prob_state (
-    market_key      TEXT PRIMARY KEY,
-    yes_price       REAL NOT NULL,
-    no_price        REAL,
-    checked_at      TEXT NOT NULL
-)
-"""
-
 # ── 模擬交易 ──────────────────────────────────────────────
 
 DDL_PAPER_TRADES = """
@@ -412,6 +366,52 @@ CREATE TABLE IF NOT EXISTS task_log (
 )
 """
 
+# ── 用戶資產庫（交易驅動 + 物化持倉） ───────────────────────
+
+DDL_PORTFOLIO_TRANSACTIONS = """
+CREATE TABLE IF NOT EXISTS portfolio_transactions (
+    id              TEXT    PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    symbol          TEXT    NOT NULL,
+    type            TEXT    NOT NULL,
+    quantity        REAL    NOT NULL DEFAULT 0,
+    price           REAL    NOT NULL DEFAULT 0,
+    currency        TEXT    NOT NULL DEFAULT 'MOP',
+    fee             REAL    NOT NULL DEFAULT 0,
+    executed_at     TEXT    NOT NULL,
+    note            TEXT,
+    created_at      TEXT    NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
+DDL_PORTFOLIO_HOLDINGS = """
+CREATE TABLE IF NOT EXISTS portfolio_holdings (
+    user_id         INTEGER NOT NULL,
+    symbol          TEXT    NOT NULL,
+    total_qty       REAL    NOT NULL DEFAULT 0,
+    avg_cost        REAL    NOT NULL DEFAULT 0,
+    currency        TEXT    NOT NULL DEFAULT 'MOP',
+    last_updated    TEXT    NOT NULL,
+    PRIMARY KEY (user_id, symbol),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
+DDL_PORTFOLIO_SNAPSHOTS = """
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    user_id         INTEGER NOT NULL,
+    snapshot_date   TEXT    NOT NULL,
+    currency        TEXT    NOT NULL DEFAULT 'MOP',
+    total_net_worth REAL    NOT NULL DEFAULT 0,
+    daily_pnl       REAL    NOT NULL DEFAULT 0,
+    fx_rate_to_usd  REAL,
+    allocation_json TEXT,
+    PRIMARY KEY (user_id, snapshot_date, currency),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 # ── 匯率（多幣種結算） ─────────────────────────────────────
 
 DDL_FX_RATES_DAILY = """
@@ -438,6 +438,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 # 建表順序（尊重外鍵依賴）
 TABLE_DDL: list[tuple[str, str]] = [
     ("users", DDL_USERS),
+    ("strategy_likes", DDL_STRATEGY_LIKES),
     ("user_watchlists", DDL_USER_WATCHLISTS),
     ("user_alert_rules", DDL_USER_ALERT_RULES),
     ("daily_kline", DDL_DAILY_KLINE),
@@ -453,15 +454,14 @@ TABLE_DDL: list[tuple[str, str]] = [
     ("dragon_tiger", DDL_DRAGON_TIGER),
     ("fundamentals", DDL_FUNDAMENTALS),
     ("stock_universe", DDL_STOCK_UNIVERSE),
-    ("polymarket_market_snapshot", DDL_POLYMARKET_MARKET_SNAPSHOT),
-    ("polymarket_price_point", DDL_POLYMARKET_PRICE_POINT),
-    ("polymarket_alert_rules", DDL_POLYMARKET_ALERT_RULES),
-    ("polymarket_prob_state", DDL_POLYMARKET_PROB_STATE),
     ("paper_trades", DDL_PAPER_TRADES),
     ("paper_sessions", DDL_PAPER_SESSIONS),
     ("paper_positions", DDL_PAPER_POSITIONS),
     ("paper_nav_history", DDL_PAPER_NAV_HISTORY),
     ("fx_rates_daily", DDL_FX_RATES_DAILY),
+    ("portfolio_transactions", DDL_PORTFOLIO_TRANSACTIONS),
+    ("portfolio_holdings", DDL_PORTFOLIO_HOLDINGS),
+    ("portfolio_snapshots", DDL_PORTFOLIO_SNAPSHOTS),
     ("task_log", DDL_TASK_LOG),
     ("schema_migrations", DDL_SCHEMA_MIGRATIONS),
 ]
@@ -481,6 +481,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_minute_period ON minute_kline(period)",
     "CREATE INDEX IF NOT EXISTS idx_user_username ON users(username)",
     "CREATE INDEX IF NOT EXISTS idx_watchlist_user ON user_watchlists(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_strategy_likes_key ON strategy_likes(strategy_key)",
     "CREATE INDEX IF NOT EXISTS idx_alert_user ON user_alert_rules(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)",
     "CREATE INDEX IF NOT EXISTS idx_sector_code ON sector_data(code)",
@@ -496,15 +497,15 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_universe_market ON stock_universe(market)",
     "CREATE INDEX IF NOT EXISTS idx_universe_rank ON stock_universe(rank_mv)",
     "CREATE INDEX IF NOT EXISTS idx_univ_mv ON stock_universe(total_mv DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_pm_snapshot_slug ON polymarket_market_snapshot(slug)",
-    "CREATE INDEX IF NOT EXISTS idx_pm_snapshot_fetched ON polymarket_market_snapshot(fetched_at)",
-    "CREATE INDEX IF NOT EXISTS idx_pm_price_token_ts ON polymarket_price_point(token_id, ts)",
-    "CREATE INDEX IF NOT EXISTS idx_pm_alert_enabled ON polymarket_alert_rules(enabled)",
     "CREATE INDEX IF NOT EXISTS idx_lb_strategy ON strategy_leaderboard(strategy_name)",
     "CREATE INDEX IF NOT EXISTS idx_lb_evaluated ON strategy_leaderboard(evaluated_at)",
     "CREATE INDEX IF NOT EXISTS idx_paper_trades_session ON paper_trades(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_paper_nav_session ON paper_nav_history(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_fx_date ON fx_rates_daily(date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_port_tx_user_sym_time ON portfolio_transactions(user_id, symbol, executed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_port_tx_user_time ON portfolio_transactions(user_id, executed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_port_hold_user ON portfolio_holdings(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_port_snap_user_date ON portfolio_snapshots(user_id, snapshot_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_task_status ON task_log(status)",
     "CREATE INDEX IF NOT EXISTS idx_task_created ON task_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",

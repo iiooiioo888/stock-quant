@@ -4,7 +4,8 @@
 
 ### 核心特性
 
-- **雙前端**：**Pro 工作站**（`/app`，ECharts + 模塊化頁面）與 **Legacy SPA**（`/legacy/`，Chart.js 全功能 Tab）
+- **Pro 工作站**（`/app`）：ECharts + 按頁懶載入模塊，統一量化工作台
+- **資金與板塊**：側欄獨立「資金流」頁（市場資金、北向資金、板塊熱力圖），與總覽分離
 - **異步任務佇列**：回測、優化、組合、Walk-Forward 等提交後立即返回，Web 端輪詢並在「任務中心」查看進度
 - **並行加速**：可配置任務槽位、網格搜索進程/線程池；Windows 自動使用線程池避免 SQLite 多進程問題
 - **結果緩存**：相同參數 + 相同 K 線版本命中緩存，秒級返回；支持本地 LRU 或 Redis（Docker 默認帶 Redis）
@@ -39,9 +40,8 @@ pip install -r requirements.txt
 python main.py serve
 
 # 訪問
-#   http://localhost:8000/        落地頁
-#   http://localhost:8000/app     Pro 工作站（推薦）
-#   http://localhost:8000/legacy/ 舊版全功能 SPA
+#   http://localhost:8000/     落地頁
+#   http://localhost:8000/app  Pro 工作站
 ```
 
 ### 方式二：Docker Compose（推薦）
@@ -162,6 +162,7 @@ python main.py scheduler run incremental_update
 | `/api/data/fundamentals/screen` | POST | 基本面篩選 |
 | `/api/benchmark` | GET | 滬深300基準 |
 | `/api/benchmark/compare` | POST | 基準對比 |
+| `/api/dashboard/market-charts` | GET | 儀表盤/資金流圖表（`?days=5~60`，市場資金、北向、板塊熱力） |
 
 ### 回測端點
 
@@ -299,9 +300,11 @@ stock-quant/
 │   ├── css/pro.css         # Pro 設計系統（表單、膠囊、面板）
 │   ├── js/
 │   │   ├── api.js          # 共享 API 客戶端（Token、任務輪詢、緩存）
-│   │   ├── pro/            # Pro 模塊（app.js、各 *-pro.js）
-│   │   └── …               # Legacy Tab 腳本
-│   └── legacy/index.html   # 舊版 SPA（/legacy/）
+│   │   ├── pro/
+│   │   │   ├── app.js, module-loader.js, legacy-bridge.js
+│   │   │   ├── ui/dashboard-components.js
+│   │   │   └── modules/    # dashboard-pro, capitalflow-pro, backtest-pro, …
+│   │   └── …               # 共享業務腳本（回測、優化、數據中心等）
 ├── data/stock.db
 └── logs/
 ```
@@ -456,32 +459,31 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 
 | 文檔 | 說明 |
 |------|------|
+| [NEXT_PROMPT.md](NEXT_PROMPT.md) | 下一輪優化上下文（給 Agent / 協作者） |
 | [docs/manual/README.md](docs/manual/README.md) | 說明書目錄（概覽、快速開始、架構、API、前端、部署、測試） |
-| [docs/manual/06-前端說明.md](docs/manual/06-前端說明.md) | Pro / Legacy 雙前端路由與模塊 |
+| [docs/manual/06-前端說明.md](docs/manual/06-前端說明.md) | Pro 工作站路由與模塊 |
 | [docs/manual/13-架構設計.md](docs/manual/13-架構設計.md) | 架構與設計決策 |
 | [docs/MCP.md](docs/MCP.md) | MCP Agent 接入 |
 
-## 前端
+## 前端（Pro 工作站 `/app`）
 
-### Pro 工作站（推薦，`/app`）
+深色量化工作台（`static/app.html` + `static/css/pro.css`），ECharts 圖表、Cmd+K 命令面板、統一設計系統（表單 / 膠囊 / 面板）。核心頁面通過 `module-loader.js` 懶載入 `*-pro.js`；組合、優化、Walk-Forward、熱力圖、數據中心等頁在 Pro 殼內以 `legacy-mount` 內嵌掛載（`legacy-bridge.js`），對外僅暴露 `/app` 一個工作台入口。
 
-深色量化工作台（`static/app.html` + `static/css/pro.css`），ECharts 圖表、Cmd+K 命令面板、統一設計系統（表單 / 膠囊 / 面板）。
-
-| 頁面 | 模塊 | 功能摘要 |
+| 側欄 | 模塊 | 功能摘要 |
 |------|------|----------|
-| 總覽 | `dashboard-pro.js` | 指數、行情條、概覽卡片 |
+| 總覽 | `dashboard-pro.js` | 全球掛牌、KPI、多幣種資產結算（不含資金流圖表） |
+| **資金流** | `capitalflow-pro.js` | 市場資金流向、北向資金、板塊熱力（`GET /api/dashboard/market-charts`） |
 | 策略庫 | `strategy-catalog.js` | 分類、搜尋、方案/狀態篩選、策略卡片 |
 | 回測 | `backtest-pro.js` + `backtest-symbol-picker.js` | 標的選擇、進階參數、異步回測、導出 |
-| **對比** | `compare-pro.js` | **多策略**（排行/散點/淨值 Top5）與 **多股票**（區間收益）；標的選擇器；PNG/CSV |
-| 任務中心 | `tasks-pro.js` | 佇列、統計、列表、詳情抽屜、批量操作 |
-| 回測歷史 | `backhistory-pro.js` | 篩選、多選對比、導出 |
-| 自選 / 掃描 / 預警 / 資產庫 / 設定 | `*-pro.js` | 各業務頁 |
+| **對比** | `compare-pro.js` | 多策略（排行/散點/淨值 Top5）與多股票（區間收益）；PNG/CSV |
+| 任務中心 | `tasks-pro.js` | 佇列、統計、列表、詳情、批量操作 |
+| 資產庫 | `assets-pro.js` | 多幣種持倉與結算 |
+| 自選 / 掃描 / 預警 / 回測歷史 / 設定 / AI | `*-pro.js` | 各業務頁 |
+| 組合 / 優化 / WF / 熱力圖 / 信號 / 數據 / … | `legacy-mount` | Pro 內嵌掛載（逐步遷至 `*-pro.js`） |
+
+**UI 約定**：全站隱藏滾動條、由 `.main` 單容器縱向滾動（見 `.cursor/rules/ui-no-scrollbar.mdc`）。
 
 WebSocket（`/ws`）在登錄後推送任務狀態；未登錄時不建立連線（避免 403 刷屏）。
-
-### Legacy SPA（`/legacy/`）
-
-完整 16 Tab 舊版界面（Chart.js、組合、優化、Walk-Forward、熱力圖、數據中心、加密行情、接口檢查等），與 Pro 共用 `static/js/api.js`。
 
 ### 入口一覽
 
@@ -490,7 +492,6 @@ WebSocket（`/ws`）在登錄後推送任務狀態；未登錄時不建立連線
 | `/` | 落地頁 `home.html` |
 | `/app` | Pro 工作站 |
 | `/admin` | 管理後台 |
-| `/legacy/` | 舊版 SPA |
 
 ## 部署
 
@@ -553,11 +554,8 @@ Web 側欄 **接口檢查** Tab，或 API：
 - `GET /api/external/check` — 最近一次全量探測結果
 - `POST /api/external/check/run` — 立即探測（需登錄）
 
-覆蓋東財板塊、Yahoo A 股、Binance、Frankfurter、Polymarket、Redis、Webhook 等。
 
 ### MCP（全項目 Agent 接入）
-
-stock-quant 提供 **項目級** MCP Server（stdio），供 Cursor / Claude Desktop 調用本地只讀能力，Polymarket 僅為其中一個業務域。
 
 ```bash
 pip install -r requirements-mcp.txt
@@ -566,19 +564,29 @@ python -m src.integrations.mcp.server
 
 - 文檔：[docs/MCP.md](docs/MCP.md)
 - 核心 tools：`sq_health`、`sq_list_strategies`、`sq_data_sources` 等
-- 預測市場：`polymarket_list_markets` 等（見 [docs/MCP_POLYMARKET.md](docs/MCP_POLYMARKET.md)）
 
 ### 測試
 
 ```bash
 # CI 與日常開發（推薦）
 SQ_DEMO_MODE=true pytest tests/ -q
+# 當前約 640 用例（59 個 test_*.py）
 
 # 手動全量 API 煙霧（需本機已啟動服務並設置 SQ_DEMO_ADMIN_PASSWORD）
 ./test_all.sh
 ```
 
-`tests/test_smoke_api.py` 覆蓋核心 GET 端點；`tests/test_auth_write_protection.py` 驗證演示模式下寫入保護。
+| 類型 | 代表文件 |
+|------|----------|
+| 煙霧 / API | `test_smoke_api.py`, `test_api.py` |
+| 認證 | `test_auth_flow.py`, `test_auth_write_protection.py` |
+| 回測 / 策略 | `test_backtest.py`, `test_strategies.py` |
+| 組合 / 資產 | `test_portfolio.py`, `test_portfolio_ledger.py`, `test_portfolio_currency.py` |
+| 數據 / 儀表盤 | `test_dashboard_market.py`, `test_capital_flow_aggregate.py`, `test_data_center_api.py` |
+| UI | `test_ui_playwright_smoke.py`, `test_static_onclick.py` |
+| 穩定性 | `test_stability_*.py` |
+
+`tests/test_smoke_api.py` 覆蓋核心 GET；`test_auth_write_protection.py` 驗證演示模式寫入保護。
 
 可選瀏覽器煙霧（需本機已 `python main.py serve`）：
 

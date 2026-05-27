@@ -1,8 +1,7 @@
-/* global Api, echarts */
+/* global Api */
 
 (() => {
   const $id = (id) => document.getElementById(id);
-  const charts = {};
   let mounted = false;
   let unsubTicker = null;
   let loadPromise = null;
@@ -72,53 +71,17 @@
     }
   }
 
-  async function loadChartsBundle() {
-    const D = window.StockQPro?.UI?.Dashboard;
-    if (!D) return;
-    const d = await Api.get('/api/dashboard/market-charts?days=20', { silent: true }).catch(() => null);
-    if (!d) return;
-
-    try {
-      D.renderHeatmapCells('heatmap', d.sector_heatmap || []);
-
-      const mf = Array.isArray(d.market_flow) ? d.market_flow : [];
-      if (mf.length) {
-        D.renderLineChart(
-          'd-eq',
-          '市場資金',
-          mf.map((x) => x.date || x.time || ''),
-          mf.map((x) => Number(x.value ?? x.net_inflow ?? x.net ?? 0)),
-          'rgba(232,184,48,1)',
-          charts,
-        );
-      }
-
-      const nf = Array.isArray(d.north_flow) ? d.north_flow : [];
-      if (nf.length) {
-        D.renderLineChart(
-          'd-dd',
-          '北向資金',
-          nf.map((x) => x.date || x.time || ''),
-          nf.map((x) => Number(x.value ?? x.net_inflow ?? x.net ?? 0)),
-          'rgba(96,165,250,1)',
-          charts,
-        );
-      }
-    } catch (err) {
-      console.warn('儀表盤圖表渲染略過', err);
-    }
-  }
-
   async function load() {
     if (loadPromise) return loadPromise;
 
     loadPromise = (async () => {
+      await window.StockQPro?.charts?.ensureEcharts?.();
       ensureLayout();
       window.StockQPro?.CurrencyManager?.init('currency-toggle');
       const t0 = performance.now();
       const [health, cfg] = await Promise.all([
         Api.get('/api/health', { silent: true }).catch(() => null),
-        Api.get('/api/config', { silent: true }).catch(() => null),
+        Api.getConfig().catch(() => null),
       ]);
       const latencyMs = Math.round(performance.now() - t0);
 
@@ -132,8 +95,6 @@
       renderQuoteBoard(payload || { indices: ticker?.getQuotes?.() || [] });
       renderKpis(health, latencyMs, cfg);
       setUpdatedAt();
-
-      await loadChartsBundle();
     })();
 
     try {
@@ -166,7 +127,6 @@
   function init() {
     ensureLayout();
     bindUiOnce();
-    page._ready = true;
     load().catch((err) => {
       showLoadIssue('部分資料未載入，可點刷新重試');
       console.warn('儀表盤載入失敗', err);
@@ -181,8 +141,6 @@
       load().catch((err) => console.warn('儀表盤刷新失敗', err));
     }
   }
-
-  window.addEventListener('resize', () => Object.values(charts).forEach((c) => c && c.resize()));
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};

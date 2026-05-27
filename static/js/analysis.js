@@ -233,7 +233,7 @@ const Analysis = {
       </span>
     `;
     const img = row.querySelector('img');
-    if (img) Utils.bindStockIcon(img, item.code, item.name);
+    if (img) Utils.bindStockIcon(img, item.code, item.name, item.market || '');
     return row;
   },
 

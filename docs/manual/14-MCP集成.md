@@ -72,16 +72,9 @@ python -m src.integrations.mcp.server
 | `sq_list_tasks` | 列出任務 |
 | `sq_get_task` | 任務詳情 |
 
-### Polymarket 域 (`polymarket_*`)
 
 | Tool | 說明 |
 |------|------|
-| `polymarket_list_markets` | 列出預測市場 |
-| `polymarket_search` | 搜索市場 |
-| `polymarket_get_history` | 獲取價格歷史 |
-| `polymarket_get_orderbook` | 獲取訂單簿 |
-| `polymarket_get_events` | 獲取事件 |
-| `polymarket_get_tags` | 獲取標籤 |
 
 ---
 
@@ -94,7 +87,6 @@ MCP Server (src/integrations/mcp/server.py)
     ↓
 Registry (src/integrations/mcp/registry.py)
     ↓
-Tools (tools_core.py / tools_polymarket.py)
     ↓
 Core Modules (src/core/*)
 ```
@@ -107,7 +99,6 @@ Core Modules (src/core/*)
 | `src/integrations/mcp/protocol.py` | ToolSpec 契約定義 |
 | `src/integrations/mcp/registry.py` | 聚合各域 tools |
 | `src/integrations/mcp/tools_core.py` | 核心域 sq_* tools |
-| `src/integrations/mcp/tools_polymarket.py` | 預測市場域 polymarket_* tools |
 | `src/integrations/mcp/utils.py` | JSON 輸出格式化 |
 
 ---
@@ -148,4 +139,3 @@ Agent 可以直接調用 `sq_run_backtest` tool：
 
 詳細的 MCP 文檔位於：
 - `docs/MCP.md` — 全項目 MCP Server 說明
-- `docs/MCP_POLYMARKET.md` — Polymarket 域 tools 文檔

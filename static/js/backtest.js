@@ -297,7 +297,7 @@ const Backtest = {
     img.width = 28;
     img.height = 28;
     if (typeof Utils !== 'undefined' && Utils.bindStockIcon) {
-      Utils.bindStockIcon(img, item.code, item.name);
+      Utils.bindStockIcon(img, item.code, item.name, item.market || '');
     }
     iconWrap.appendChild(img);
 
@@ -382,7 +382,7 @@ const Backtest = {
     img.width = 44;
     img.height = 44;
     if (typeof Utils !== 'undefined' && Utils.bindStockIcon) {
-      Utils.bindStockIcon(img, item.code, item.name);
+      Utils.bindStockIcon(img, item.code, item.name, item.market || '');
     } else {
       img.src = '';
       img.alt = item.name;

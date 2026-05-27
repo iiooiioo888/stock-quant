@@ -159,7 +159,9 @@
     if (typeof Api !== 'undefined' && Api.clearGetCache) {
       Api.clearGetCache('/api/indices/charts');
     }
-    refreshTopbar().then(() => startPolling());
+    const run = () => refreshTopbar().then(() => startPolling());
+    const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 80));
+    schedule(run);
     window.addEventListener('stockq:prefs-changed', () => {
       if (Api.clearGetCache) Api.clearGetCache('/api/indices/charts');
       state.payload = null;

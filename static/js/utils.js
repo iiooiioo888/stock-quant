@@ -221,18 +221,37 @@ const Utils = {
     return 'a_share';
   },
 
-  /** 是否從伺服器載入已快取的 Logo（預設開啟；設 sq_remote_stock_icons=0 僅顯示本地 SVG） */
+  _stockLogoConfigEnabled: undefined,
+
+  /** 是否請求 /api/stock-logo（預設關閉，僅顯示本地 SVG；設 sq_remote_stock_icons=1 強制開啟） */
   stockLogoRemoteEnabled() {
-    return localStorage.getItem('sq_remote_stock_icons') !== '0';
+    const ls = localStorage.getItem('sq_remote_stock_icons');
+    if (ls === '1') return true;
+    if (ls === '0') return false;
+    if (this._stockLogoConfigEnabled === false) return false;
+    if (this._stockLogoConfigEnabled === true) return true;
+    return false;
+  },
+
+  /** 由 GET /api/config 同步（App 啟動時可呼叫） */
+  applyStockLogoConfig(enabled) {
+    this._stockLogoConfigEnabled = enabled === true;
   },
 
   _iconfontConfig: undefined,
   _iconfontScriptLoaded: false,
   _logoQueue: [],
   _logoActive: 0,
-  _logoMaxConcurrent: 4,
-  _logoMissKeys: new Set(),
+  /** 與 stream-loader 一致：避免列表滾動時打滿 /api/stock-logo */
+  _logoMaxConcurrent: 2,
   _logoPendingKeys: new Set(),
+  /** key -> objectUrl（虛擬列表重繪時重用，不再重複 fetch） */
+  _logoHitUrls: new Map(),
+  /** key -> 毫秒時間戳，在此之前視為 miss 不再請求 */
+  _logoMissUntil: new Map(),
+  _logoRetryTimers: new Map(),
+  _LOGO_HIT_CAP: 400,
+  _LOGO_MISS_TTL_MS: 6 * 60 * 60 * 1000,
 
   /** 載入 [iconfont.cn](https://www.iconfont.cn/) 專案設定與 Symbol JS */
   async loadIconfontConfig() {
@@ -405,14 +424,65 @@ const Utils = {
     }
   },
 
+  _logoCacheState(key) {
+    const hit = this._logoHitUrls.get(key);
+    if (hit) return { kind: 'hit', url: hit };
+    const until = this._logoMissUntil.get(key);
+    if (until && Date.now() < until) return { kind: 'miss' };
+    if (until) this._logoMissUntil.delete(key);
+    return { kind: 'fresh' };
+  },
+
+  _trimLogoHitCache() {
+    while (this._logoHitUrls.size > this._LOGO_HIT_CAP) {
+      const oldest = this._logoHitUrls.keys().next().value;
+      const url = this._logoHitUrls.get(oldest);
+      this._logoHitUrls.delete(oldest);
+      if (url) URL.revokeObjectURL(url);
+    }
+  },
+
+  _rememberLogoHit(key, objUrl) {
+    const prev = this._logoHitUrls.get(key);
+    if (prev && prev !== objUrl) URL.revokeObjectURL(prev);
+    this._logoHitUrls.set(key, objUrl);
+    this._logoMissUntil.delete(key);
+    this._trimLogoHitCache();
+  },
+
+  _applyLogoHit(img, objUrl) {
+    if (!img || !objUrl) return;
+    const letter = img.closest('.stock-code-icon')?.querySelector('.stock-code-letter');
+    const prev = img.dataset.objectUrl;
+    if (prev && prev !== objUrl) URL.revokeObjectURL(prev);
+    img.dataset.objectUrl = objUrl;
+    img.src = objUrl;
+    img.style.display = '';
+    img.style.objectFit = 'contain';
+    if (letter) letter.style.display = 'none';
+  },
+
   _enqueueServerLogo(img, code, name, market) {
+    const key = this._logoCacheKey(code, market);
+    const st = this._logoCacheState(key);
+    if (st.kind === 'hit') {
+      this._applyLogoHit(img, st.url);
+      return;
+    }
+    if (st.kind === 'miss') return;
+    if (this._logoPendingKeys.has(key)) return;
     this._logoQueue.push({ img, code, name, market });
     this._drainLogoQueue();
   },
 
   async _loadServerLogo({ img, code, name, market }) {
     const key = this._logoCacheKey(code, market);
-    if (this._logoMissKeys.has(key) || this._logoPendingKeys.has(key)) return;
+    const st = this._logoCacheState(key);
+    if (st.kind === 'hit') {
+      this._applyLogoHit(img, st.url);
+      return;
+    }
+    if (st.kind === 'miss' || this._logoPendingKeys.has(key)) return;
     const url = this.stockLogoUrl(code, name, market);
     if (!url) return;
 
@@ -421,51 +491,49 @@ const Utils = {
       const letter = img.closest('.stock-code-icon')?.querySelector('.stock-code-letter');
       let ok = false;
       try {
-        const res = await fetch(
-          `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`,
-          { credentials: 'same-origin', cache: 'no-store' },
-        );
+        const res = await fetch(url, { credentials: 'same-origin' });
         if (res.ok) {
           const blob = await res.blob();
           if (blob.size >= 80) {
-            const prev = img.dataset.objectUrl;
-            if (prev) URL.revokeObjectURL(prev);
             const objUrl = URL.createObjectURL(blob);
-            img.dataset.objectUrl = objUrl;
-            img.src = objUrl;
+            this._rememberLogoHit(key, objUrl);
+            this._applyLogoHit(img, objUrl);
             ok = true;
           }
+        } else if (res.status === 404) {
+          const logoStatus = (res.headers.get('X-Logo-Status') || '').toLowerCase();
+          if (logoStatus === 'pending') {
+            const raSec = Math.min(60, Math.max(15, parseInt(res.headers.get('Retry-After') || '30', 10) || 30));
+            this._logoMissUntil.set(key, Date.now() + raSec * 1000);
+            this._scheduleOneLogoRetry(img, code, name, market, key, raSec * 1000);
+          } else {
+            this._logoMissUntil.set(key, Date.now() + this._LOGO_MISS_TTL_MS);
+          }
+        } else {
+          this._logoMissUntil.set(key, Date.now() + this._LOGO_MISS_TTL_MS);
         }
       } catch {
         ok = false;
+        this._logoMissUntil.set(key, Date.now() + 5 * 60 * 1000);
       }
 
-      if (ok) {
-        img.style.display = '';
-        if (letter) letter.style.display = 'none';
-        return;
-      }
-
-      this._logoMissKeys.add(key);
-      setTimeout(() => this._logoMissKeys.delete(key), 45000);
-      if (letter) letter.style.display = '';
-      this._scheduleLogoRetries(img, code, name, market, key);
+      if (!ok && letter) letter.style.display = '';
     } finally {
       this._logoPendingKeys.delete(key);
     }
   },
 
-  /** 背景下載完成後自動再試（股票詳情牆大量卡片） */
-  _scheduleLogoRetries(img, code, name, market, key) {
-    [6000, 15000, 30000].forEach(ms => {
-      setTimeout(() => {
-        if (!img?.isConnected) return;
-        if (!this._logoMissKeys.has(key)) return;
-        this._logoMissKeys.delete(key);
-        img.dataset.logoBound = '0';
-        this._enqueueServerLogo(img, code, name, market);
-      }, ms);
-    });
+  /** 伺服器背景下載中：單次延遲重試（避免 6s/15s/30s 三重風暴） */
+  _scheduleOneLogoRetry(img, code, name, market, key, delayMs) {
+    if (this._logoRetryTimers.has(key)) return;
+    const wait = Math.min(Math.max(delayMs, 15000), 60000);
+    const timer = setTimeout(() => {
+      this._logoRetryTimers.delete(key);
+      this._logoMissUntil.delete(key);
+      if (!img?.isConnected) return;
+      this._enqueueServerLogo(img, code, name, market);
+    }, wait);
+    this._logoRetryTimers.set(key, timer);
   },
 
   _escAttr(s) {
@@ -523,16 +591,9 @@ const Utils = {
     </span>`;
   },
 
-  /** 批次綁定容器內所有股票 Logo */
+  /** 批次綁定容器內股票 Logo（僅可見區，避免全市場列表同時打 API） */
   hydrateStockIcons(root) {
-    const scope = root && root.querySelectorAll ? root : document;
-    scope.querySelectorAll('.stock-code-icon img').forEach(img => {
-      if (img.closest('[data-crypto-icon]')) return;
-      const code = img.dataset.stockCode || img.getAttribute('data-stock-code') || '';
-      if (!code) return;
-      const mkt = img.dataset.stockMarket || this.inferStockMarket(code, '');
-      this.bindStockIcon(img, code, img.dataset.stockName || '', mkt);
-    });
+    this.observeStockIcons(root);
   },
 
   /** 列表懶加載 Logo（索引頁大量卡片時避免同時請求過多） */
@@ -607,7 +668,7 @@ const Utils = {
 
   /**
    * 綁定股票圖標：先顯示本地 SVG，再向伺服器請求已快取的 Logo。
-   * 關閉伺服器 Logo：localStorage.setItem('sq_remote_stock_icons', '0')
+   * 開啟伺服器 Logo：localStorage.setItem('sq_remote_stock_icons', '1')
    */
   bindStockIcon(img, code, name, market = '') {
     if (!img) return;
@@ -654,6 +715,15 @@ const Utils = {
     }
 
     if (!this.stockLogoRemoteEnabled()) return;
+
+    const key = this._logoCacheKey(c, mkt);
+    const st = this._logoCacheState(key);
+    if (st.kind === 'hit') {
+      this._applyLogoHit(img, st.url);
+      return;
+    }
+    if (st.kind === 'miss') return;
+
     this._enqueueServerLogo(img, c, n, mkt);
   },
 

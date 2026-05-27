@@ -19,15 +19,25 @@ def run_registered_task(task_id: str):
         STATUS_FAILED,
     )
 
-    from src.core.task_manager import _mark_running
+    from src.core.task_manager import _mark_running, ensure_task_in_memory
 
     if is_task_cancelled(task_id):
         update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
         return None
 
+    if not ensure_task_in_memory(task_id):
+        update_task(task_id, status=STATUS_FAILED, error="任務不存在或已過期")
+        return None
+
     if not _mark_running(task_id):
         if is_task_cancelled(task_id):
             update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+        else:
+            update_task(
+                task_id,
+                status=STATUS_FAILED,
+                error="無法啟動任務（狀態異常，請取消後重試）",
+            )
         return None
 
     append_task_log(task_id, f"Celery/Worker 開始執行 ({task_id})")

@@ -12,6 +12,7 @@ const LocalStore = {
     recentStocks: [],
     recentMax: 30,
     favorites: [],
+    strategyLikes: [],
     lastTab: 'dashboard',
     lastStockCode: '',
     lastBacktest: { code: '', strategy: 'dual_ma' },
@@ -49,6 +50,7 @@ const LocalStore = {
     next.recentMax = Math.min(50, Math.max(5, Number(next.recentMax) || this.DEFAULTS.recentMax));
     if (!Array.isArray(next.recentStocks)) next.recentStocks = [];
     if (!Array.isArray(next.favorites)) next.favorites = [];
+    if (!Array.isArray(next.strategyLikes)) next.strategyLikes = [];
     if (!Array.isArray(next.compareChips)) next.compareChips = [];
     if (!Array.isArray(next.compareCustomPresets)) next.compareCustomPresets = [];
     if (!next.formDrafts || typeof next.formDrafts !== 'object') next.formDrafts = {};
@@ -140,6 +142,40 @@ const LocalStore = {
 
   isFavorite(code) {
     return (this.get('favorites') || []).includes(String(code || '').trim());
+  },
+
+  /** 策略庫點讚（本機；登入後與伺服器同步） */
+  getStrategyLikes() {
+    return [...(this.get('strategyLikes') || [])];
+  },
+
+  setStrategyLikes(keys) {
+    const list = [...new Set((keys || []).map((k) => String(k || '').trim()).filter(Boolean))];
+    if (list.length > 200) list.length = 200;
+    this.save({ strategyLikes: list });
+    return list;
+  },
+
+  isStrategyLiked(key) {
+    const k = String(key || '').trim();
+    if (!k) return false;
+    return (this.get('strategyLikes') || []).includes(k);
+  },
+
+  toggleStrategyLike(key) {
+    const k = String(key || '').trim();
+    if (!k) return false;
+    let likes = [...(this.get('strategyLikes') || [])];
+    const i = likes.indexOf(k);
+    if (i >= 0) {
+      likes.splice(i, 1);
+      this.save({ strategyLikes: likes });
+      return false;
+    }
+    likes.unshift(k);
+    if (likes.length > 200) likes = likes.slice(0, 200);
+    this.save({ strategyLikes: likes });
+    return true;
   },
 
   /** 表單草稿（如篩選條件） */

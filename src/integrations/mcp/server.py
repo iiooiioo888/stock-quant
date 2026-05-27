@@ -1,7 +1,7 @@
 """
 stock-quant 項目級 MCP Server（stdio）— Cursor / Claude Desktop 接入入口。
 
-暴露全項目只讀 tools：核心域（sq_*）+ 業務域（polymarket_* 等）。
+暴露全項目只讀 tools：核心域（sq_*）+ 其他業務域。
 啟動：python -m src.integrations.mcp.server
 依賴：pip install -r requirements-mcp.txt
 """

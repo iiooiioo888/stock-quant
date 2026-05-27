@@ -137,6 +137,41 @@ def _migration_006_multi_currency(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_007_portfolio_ledger(conn: sqlite3.Connection) -> None:
+    """交易驅動資產庫：流水、物化持倉、日快照。"""
+    from src.core.database.schema import (
+        DDL_PORTFOLIO_HOLDINGS,
+        DDL_PORTFOLIO_SNAPSHOTS,
+        DDL_PORTFOLIO_TRANSACTIONS,
+    )
+
+    conn.execute(DDL_PORTFOLIO_TRANSACTIONS)
+    conn.execute(DDL_PORTFOLIO_HOLDINGS)
+    conn.execute(DDL_PORTFOLIO_SNAPSHOTS)
+    for idx in (
+        "CREATE INDEX IF NOT EXISTS idx_port_tx_user_sym_time ON portfolio_transactions(user_id, symbol, executed_at)",
+        "CREATE INDEX IF NOT EXISTS idx_port_tx_user_time ON portfolio_transactions(user_id, executed_at)",
+        "CREATE INDEX IF NOT EXISTS idx_port_hold_user ON portfolio_holdings(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_port_snap_user_date ON portfolio_snapshots(user_id, snapshot_date DESC)",
+    ):
+        try:
+            conn.execute(idx)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"portfolio 索引跳過: {e}")
+
+
+def _migration_008_strategy_likes(conn: sqlite3.Connection) -> None:
+    from src.core.database.schema import DDL_STRATEGY_LIKES
+
+    conn.execute(DDL_STRATEGY_LIKES)
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_strategy_likes_key ON strategy_likes(strategy_key)"
+        )
+    except sqlite3.OperationalError as e:
+        logger.debug(f"strategy_likes 索引跳過: {e}")
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline_schema", _migration_001_baseline),
     (2, "legacy_column_patches", _migration_002_legacy_columns),
@@ -144,6 +179,8 @@ MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (4, "task_log_pipeline_meta", _migration_004_task_log_meta),
     (5, "performance_indexes", _migration_005_performance_indexes),
     (6, "multi_currency_settlement", _migration_006_multi_currency),
+    (7, "portfolio_transaction_ledger", _migration_007_portfolio_ledger),
+    (8, "strategy_likes", _migration_008_strategy_likes),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

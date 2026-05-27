@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/pro.css?v=stockq-site-v1" />
-  <link rel="stylesheet" href="/static/css/site.css?v=stockq-site-v2" />
+  <link rel="stylesheet" href="/static/css/site.css?v=stockq-site-v4" />
   <style>body{overflow:auto;height:auto}.home-feat{text-decoration:none;color:inherit}</style>
 </head>
 <body>
@@ -16,7 +16,7 @@
   <header class="site-header">
     <div class="site-header-inner">
       <a href="/" class="site-brand"><span class="site-brand-icon">Q</span> StockQ <span>Pro</span></a>
-      <nav class="site-nav" aria-label="官網導航">
+      <nav class="site-nav" aria-label="站點導航">
         <a href="#features">產品能力</a>
         <a href="#strategies">策略庫</a>
         <a href="#portals">入口</a>
@@ -40,7 +40,7 @@
                 <strong>19</strong> 種可回測內建策略；支援異步任務、組合回測、參數優化與風控預警。
               </p>
               <div class="home-cta">
-                <a class="site-btn site-btn-primary" href="/app#/dashboard">進入儀表盤</a>
+                <a class="site-btn site-btn-primary" href="/app#/dashboard">進入工作台</a>
                 <a class="site-btn" href="/app#/backtest">開始回測</a>
                 <a class="site-btn" href="/app#/strategies">瀏覽策略庫</a>
               </div>
@@ -70,7 +70,7 @@
               <div class="home-feat-grid" id="home-feat-grid">
                 <a class="home-feat" href="/app#/dashboard">
                   <div class="home-feat-icon" style="--c:var(--ac)">📊</div>
-                  <h3>市場儀表盤</h3>
+                  <h3>市場總覽</h3>
                   <p>指數行情、板塊熱力圖、資金流向與市場概覽，快速掌握當日環境。</p>
                   <span class="home-feat-link">前往總覽 →</span>
                 </a>
@@ -146,7 +146,7 @@
                   <li><span class="badge b-pu">Redis</span> 可選跨進程結果緩存（Docker）</li>
                   <li><span class="badge">任務隊列</span> 回測 / 優化 / 組合異步執行</li>
                 </ul>
-                <p class="home-note">進階功能（數據中心、Polymarket、調度器、組合回測等）已整合至 <a href="/app">Pro 工作站</a>，可用 Cmd+K 快速跳轉。</p>
+                <p class="home-note">進階功能（數據中心、調度器、組合回測等）已整合至 <a href="/app">Pro 工作站</a>，可用 Cmd+K 快速跳轉。</p>
               </div>
             </div>
           </div>
@@ -170,8 +170,14 @@
           </div>
 
           <div class="home-builtin-row" id="home-builtin-row" hidden>
-            <span class="home-builtin-label">回測引擎已支援</span>
-            <div class="home-builtin-chips" id="home-builtin-chips"></div>
+            <div class="home-builtin-head">
+              <div class="home-builtin-head-text">
+                <span class="home-builtin-label">回測引擎已支援</span>
+                <p class="home-builtin-desc" id="home-builtin-desc">內建策略可直接進入工作台回測</p>
+              </div>
+              <a href="/app#/backtest" class="home-builtin-cta">開始回測</a>
+            </div>
+            <div class="home-builtin-chips" id="home-builtin-chips" role="list"></div>
           </div>
 
           <div class="home-lib-toolbar">
@@ -197,18 +203,18 @@
         <div>
           <span class="site-eyebrow">Access</span>
           <h2 class="site-section-title">系統入口</h2>
-          <p class="site-section-lead">官網、工作台與管理後台分離，各司其職。</p>
+          <p class="site-section-lead">產品介紹頁、量化工作台與管理後台分離，各司其職。</p>
         </div>
       </div>
     <div class="site-portals">
       <div class="portal-card">
-        <h3>官網首頁</h3>
+        <h3>產品介紹頁</h3>
         <p>產品介紹、能力概覽與快速開始指引（當前頁面）。</p>
         <span class="site-btn" style="opacity:.6;cursor:default">您已在這裡</span>
       </div>
       <div class="portal-card">
         <h3>量化工作台</h3>
-        <p>儀表盤、策略庫、回測、自選、預警與風控 — 日常交易分析主界面。</p>
+        <p>總覽、策略庫、回測、自選、預警與風控 — 日常量化分析主界面（/app）。</p>
         <a href="/app" class="site-btn site-btn-primary">打開 /app</a>
       </div>
       <div class="portal-card admin">
@@ -226,12 +232,11 @@
       <div class="site-footer-links">
         <a href="/app">工作台</a>
         <a href="/admin">管理後台</a>
-        <a href="/legacy/">Legacy 完整 UI</a>
-        <a href="/docs" target="_blank" rel="noopener">API</a>
+        <a href="/docs" target="_blank" rel="noopener">API 文檔</a>
       </div>
     </div>
   </footer>
 </div>
-<script src="/static/js/site/home-landing.js?v=stockq-site-v3"></script>
+<script src="/static/js/site/home-landing.js?v=stockq-site-v5"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@ _LOGO_EXTS = {".png", ".svg", ".jpg", ".jpeg", ".webp", ".ico"}
 _fetch_lock = threading.Lock()
 _fetch_inflight: set[str] = set()
 _fetch_negative: dict[str, float] = {}
-_MAX_BG_FETCH = 8
+_MAX_BG_FETCH = 4
 _bg_sem = threading.Semaphore(_MAX_BG_FETCH)
 _NEGATIVE_TTL = 3600.0
 
@@ -334,8 +334,16 @@ def _bg_fetch_worker(code: str, market: str, name: str, key: str) -> None:
             _fetch_inflight.discard(key)
 
 
+def logo_api_enabled() -> bool:
+    from src.config import settings
+
+    return bool(getattr(settings, "stock_logo_api_enabled", False))
+
+
 def schedule_logo_fetch(code: str, market: str = "", name: str = "") -> bool:
     """背景排隊下載（API 未命中時呼叫，避免阻塞請求）。"""
+    if not logo_api_enabled():
+        return False
     c = str(code or "").strip()
     if not c:
         return False

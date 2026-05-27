@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://at.alicdn.com" crossorigin>
 
 <!-- Preload critical JS -->
-<link rel="preload" href="/static/js/utils.js?v=perf-opt-20260522" as="script">
+<link rel="preload" href="/static/js/utils.js?v=stockq-pro-v6" as="script">
 <link rel="preload" href="/static/js/api.js?v=perf-opt-20260522" as="script">
 <link rel="preload" href="/static/js/dashboard.js?v=perf-opt-20260522" as="script">
 <link rel="preload" href="/static/js/app.js?v=perf-opt-20260522" as="script">
@@ -94,8 +94,6 @@
         <button data-tab="data"><span class="nav-icon"><i class="ti ti-database"></i></span><span class="nav-label">數據中心</span></button>
         <button data-tab="analysis"><span class="nav-icon"><i class="ti ti-microscope"></i></span><span class="nav-label">深度分析</span></button>
         <button data-tab="stock-detail"><span class="nav-icon"><i class="ti ti-chart-candle"></i></span><span class="nav-label">股票詳情</span></button>
-        <button data-tab="polymarket"><span class="nav-icon"><i class="ti ti-crystal-ball"></i></span><span class="nav-label">預測市場</span></button>
-
         <div class="nav-section">系統</div>
         <button data-tab="tasks"><span class="nav-icon"><i class="ti ti-list-check"></i></span><span class="nav-label">任務面板</span><span class="nav-badge" id="navBadgeTasks"></span></button>
         <button data-tab="reports"><span class="nav-icon"><i class="ti ti-file-analytics"></i></span><span class="nav-label">策略報告</span></button>
@@ -1040,7 +1038,7 @@
 <div id="tab-connectivity" class="h">
     <div class="sec">
         <h2>🔌 對外接口檢查</h2>
-        <p class="sec-desc">探測東財、Yahoo、Binance、Polymarket、Redis 等外部依賴的連通性與延遲。全量檢測需登錄。</p>
+        <p class="sec-desc">探測東財、Yahoo、Binance、Redis 等外部依賴的連通性與延遲。全量檢測需登錄。</p>
         <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
             <button class="btn" type="button" id="extRunBtn">▶ 立即檢測</button>
             <button class="btn s" type="button" id="extRegistryBtn">📋 僅看註冊表</button>
@@ -1081,7 +1079,7 @@
     <div id="sdIndexView" class="sd-index-view">
         <section class="sd-index-head">
             <h2 class="dash-section-title">股票詳情索引</h2>
-            <p class="sec-desc">每支股票獨立頁：公司簡介、財務與技術快照、策略信號、K 線行情、Polymarket、回測與優化。例如 <code>#/stock/600519</code></p>
+            <p class="sec-desc">每支股票獨立頁：公司簡介、財務與技術快照、策略信號、K 線行情、回測與優化。例如 <code>#/stock/600519</code></p>
             <div class="fr" style="flex-wrap:wrap;gap:8px;margin-top:10px">
                 <input type="search" id="sdIndexSearch" class="input-sm" placeholder="搜尋代碼或名稱…" style="min-width:200px">
                 <button class="btn s" type="button" id="sdIndexReload">🔄 刷新列表</button>
@@ -1191,83 +1189,9 @@
         </article>
         <div id="sdMetrics" class="sd-metrics-grid"></div>
     </section>
-
-    <section class="dash-section">
-        <div class="dash-section-head">
-            <h2 class="dash-section-title">相關預測市場（Polymarket）</h2>
-            <p class="dash-section-meta" id="sdPmHint">依股票名稱與代碼自動搜尋</p>
-        </div>
-        <div class="table-wrap table-wrap-scroll">
-            <table>
-                <thead><tr>
-                    <th>問題</th><th>Yes</th><th>No</th><th>成交量</th><th>流動性</th><th>結束</th><th></th>
-                </tr></thead>
-                <tbody id="sdPmMarketTable"><tr><td colspan="7" class="muted">載入個股後顯示…</td></tr></tbody>
-            </table>
-        </div>
-        <div id="sdPmDetailPanel" class="h mt-sm sd-pm-detail">
-            <h3 id="sdPmDetailTitle" class="dash-section-title">市場詳情</h3>
-            <p id="sdPmDetailMeta" class="sec-desc"></p>
-            <div class="g" style="grid-template-columns:1fr 1fr;gap:12px">
-                <div><h4>訂單簿（Yes token）</h4><div id="sdPmOrderbook"></div></div>
-                <div><h4>價格歷史</h4><div class="cw" style="height:220px"><canvas id="sdPmPriceChart"></canvas></div></div>
-            </div>
-        </div>
-    </section>
-    </div><!-- /sd-panel-overview -->
+</div><!-- /sd-panel-overview -->
 
     <div id="sdPanelsMount" class="sd-panels-mount"></div>
-    </div>
-</div>
-
-<!-- ====== 預測市場 Polymarket ====== -->
-<div id="tab-polymarket" class="h">
-    <div class="sec" id="pmSection">
-        <h2>🔮 預測市場（Polymarket）</h2>
-        <p class="sec-desc">只讀數據 + <strong>概率驅動預警/策略信號</strong>。個股頁面會自動顯示相關市場；此處可全局搜尋。MCP 見 docs/MCP_POLYMARKET.md。</p>
-        <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
-            <div class="fg"><label>搜尋</label><input id="pmSearchQ" placeholder="關鍵字…" class="input-wide"></div>
-            <button class="btn s" type="button" id="pmSearchBtn">🔍 搜尋</button>
-            <div class="fg"><label>標籤</label>
-                <select id="pmTagFilter"><option value="">全部標籤</option></select>
-            </div>
-            <button class="btn s" type="button" id="pmReloadBtn">🔄 刷新</button>
-        </div>
-        <div class="table-wrap table-wrap-scroll">
-            <table>
-                <thead><tr>
-                    <th>問題</th><th>Yes</th><th>No</th><th>成交量</th><th>流動性</th><th>結束</th><th></th>
-                </tr></thead>
-                <tbody id="pmMarketTable"><tr><td colspan="7"><span class="ld"></span> 載入中…</td></tr></tbody>
-            </table>
-        </div>
-        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
-            <h3 class="dash-section-title">📡 概率策略信號</h3>
-            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
-                <button class="btn s" type="button" id="pmSignalsBtn">刷新信號</button>
-            </div>
-            <div id="pmSignalsBox" class="sec-desc">點擊刷新載入…</div>
-        </div>
-        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
-            <h3 class="dash-section-title">🔔 概率預警規則</h3>
-            <p class="sec-desc">選中市場後可一鍵添加；定時任務每 5 分鐘評估（可配置 SQ_POLYMARKET_ALERT_POLL_SEC）。</p>
-            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
-                <div class="fg"><label>Yes ≥</label><input id="pmRuleYesAbove" type="number" step="0.01" min="0" max="1" placeholder="0.75" style="width:72px"></div>
-                <div class="fg"><label>Yes ≤</label><input id="pmRuleYesBelow" type="number" step="0.01" min="0" max="1" placeholder="0.25" style="width:72px"></div>
-                <div class="fg"><label>變動%</label><input id="pmRuleChangePct" type="number" step="1" min="1" placeholder="10" style="width:64px"></div>
-                <button class="btn s" type="button" id="pmAddRuleBtn">➕ 為選中市場添加</button>
-                <button class="btn s" type="button" id="pmEvalAlertsBtn">▶ 立即評估</button>
-            </div>
-            <div id="pmRulesBox" class="sec-desc"></div>
-        </div>
-        <div id="pmDetailPanel" class="h mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
-            <h3 id="pmDetailTitle" class="dash-section-title">市場詳情</h3>
-            <p id="pmDetailMeta" class="sec-desc"></p>
-            <div class="g" style="grid-template-columns:1fr 1fr;gap:12px">
-                <div><h4>訂單簿（Yes token）</h4><div id="pmOrderbook"></div></div>
-                <div><h4>價格歷史</h4><div class="cw" style="height:220px"><canvas id="pmPriceChart"></canvas></div></div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -1453,7 +1377,7 @@
      ============================================================ -->
 <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script defer src="/static/js/utils.js?v=perf-opt-20260522"></script>
+<script defer src="/static/js/utils.js?v=stockq-pro-v6"></script>
 <script defer src="/static/js/local-store.js?v=local-store-20260526"></script>
 <script defer src="/static/js/api.js?v=bt-result-display-20260526"></script>
 <script defer src="/static/js/charts.js?v=perf-opt-20260522"></script>
@@ -1479,7 +1403,6 @@
     '/static/js/analysis.js?v=stock-unify-20260526',
     '/static/js/tasks.js?v=perf-opt-20260522',
     '/static/js/scheduler.js?v=perf-opt-20260522',
-    '/static/js/polymarket.js?v=perf-opt-20260522',
     '/static/js/stock-detail.js?v=stock-unify-20260526',
     '/static/js/crypto.js?v=perf-opt-20260522',
     '/static/js/connectivity.js?v=perf-opt-20260522'

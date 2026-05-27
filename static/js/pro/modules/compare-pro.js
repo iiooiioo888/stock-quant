@@ -40,6 +40,10 @@
     mode: 'strategies',
     chips: [],
     strategyResults: null,
+    strategyResultsByCode: {},
+    strategySessionActive: false,
+    strategyPollToken: 0,
+    strategyEnqueueInFlight: new Set(),
     stockComparison: null,
     correlation: null,
     benchmark: null,
@@ -137,6 +141,128 @@
     });
     saveChips();
     syncCompareHash();
+    if (state.mode === 'strategies') syncStrategyViewForPrimary();
+  }
+
+  function syncStrategyViewForPrimary() {
+    const code = primaryCode();
+    if (!code) {
+      state.strategyResults = null;
+      clearCharts();
+      updateSummaryBadge();
+      return;
+    }
+    const cached = state.strategyResultsByCode[code];
+    if (cached?.length) {
+      state.strategyResults = cached;
+      renderStrategies();
+    } else {
+      state.strategyResults = null;
+      clearCharts();
+    }
+    updateSummaryBadge();
+  }
+
+  function refreshTasksUi() {
+    try {
+      window.StockQPro?.Tasks?.refresh?.(true);
+    } catch (_) { /* ignore */ }
+    try {
+      window.StockQPro?.pages?.tasks?.refreshSidebarBadge?.();
+    } catch (_) { /* ignore */ }
+  }
+
+  async function enqueueStrategyCompare(code, opts = {}) {
+    const c = normalizeCode(code);
+    if (!isValidAshare(c)) return false;
+    if (state.strategyEnqueueInFlight.has(c)) {
+      if (!opts.silent) window.StockQPro?.App?.toast?.(`${c} 任務提交中…`, 'inf');
+      return false;
+    }
+    state.strategyEnqueueInFlight.add(c);
+    try {
+      const d = await Api.runMultiBacktest(c);
+      if (!d?.success) throw new Error(d?.error || d?.detail || '提交失敗');
+      const taskId = d.task_id;
+      if (taskId) {
+        const shortId = String(taskId).slice(0, 8);
+        const hint = d.is_duplicate
+          ? (d.message || `相同多策略對比進行中（#${shortId}…）`)
+          : `已加入任務中心（#${shortId}…）`;
+        if (!opts.silent) window.StockQPro?.App?.toast?.(hint, d.is_duplicate ? 'inf' : 'ok');
+        refreshTasksUi();
+        pollStrategyTaskInBackground(c, taskId);
+      } else {
+        const resolved = await Api.resolveTaskResponse(d, { timeout: 600000 });
+        applyStrategyResultsForCode(c, Api.extractResult(resolved));
+        if (!opts.silent) window.StockQPro?.App?.toast?.(`已完成 ${c} 策略對比`, 'ok');
+      }
+      state.strategySessionActive = true;
+      return true;
+    } catch (e) {
+      if (!opts.silent) window.StockQPro?.App?.toast?.(`加入任務失敗：${e?.message || e}`, 'er');
+      return false;
+    } finally {
+      state.strategyEnqueueInFlight.delete(c);
+    }
+  }
+
+  function applyStrategyResultsForCode(code, raw) {
+    const rows = (Array.isArray(raw) ? raw : [])
+      .map((x) => normalizeStrategyRow(x))
+      .filter(Boolean);
+    if (!rows.length) return false;
+    state.strategyResultsByCode[code] = rows;
+    if (primaryCode() === code) {
+      state.strategyResults = rows;
+      renderStrategies();
+      updateSummaryBadge();
+    }
+    return true;
+  }
+
+  async function pollStrategyTaskInBackground(code, taskId) {
+    const token = ++state.strategyPollToken;
+    const hd = $id('cmp-metric-hd');
+    if (primaryCode() === code && hd) {
+      hd.textContent = `多策略回測執行中（${code}）…`;
+    }
+    try {
+      const task = await Api.pollTask(taskId, {
+        timeout: 600000,
+        onProgress: (t) => {
+          if (token !== state.strategyPollToken || primaryCode() !== code) return;
+          const p = Number(t?.progress);
+          if (hd && Number.isFinite(p) && p > 0) {
+            hd.textContent = `多策略回測 ${code} · ${Math.round(p)}%`;
+          }
+        },
+      });
+      if (token !== state.strategyPollToken) return;
+      if (!task || task.status !== 'completed') {
+        throw new Error(task?.error || '任務未完成');
+      }
+      const ok = applyStrategyResultsForCode(code, task.result);
+      if (primaryCode() === code) {
+        if (ok) window.StockQPro?.App?.toast?.(`已完成 ${code} 的 ${task.result?.length || state.strategyResults?.length || 0} 個策略對比`, 'ok');
+        else window.StockQPro?.App?.toast?.(`任務完成但無有效結果：${code}`, 'er');
+        if (hd) hd.textContent = '';
+      } else if (ok) {
+        window.StockQPro?.App?.toast?.(`${code} 多策略對比已完成，點選該標的可查看`, 'ok');
+      }
+    } catch (e) {
+      if (primaryCode() === code) {
+        state.strategyResults = null;
+        clearCharts();
+        if (hd) hd.textContent = '';
+        window.StockQPro?.App?.toast?.(`對比失敗（${code}）：${e?.message || e}`, 'er');
+      }
+    } finally {
+      if (primaryCode() === code && hd && !state.strategyResults) {
+        hd.textContent = '';
+      }
+      updateSummaryBadge();
+    }
   }
 
   function addChip(code, name = '', opts = {}) {
@@ -146,8 +272,13 @@
       return false;
     }
     const n = name || resolveName(c) || c;
+    const prevPrimary = state.chips[0]?.code;
     if (state.chips.some((x) => x.code === c)) {
-      if (!opts.silent) window.StockQPro?.App?.toast?.(`${c} 已在列表中`, 'inf');
+      if (state.mode === 'strategies' && state.strategySessionActive && !opts.skipEnqueue) {
+        enqueueStrategyCompare(c, { silent: opts.silent });
+      } else if (!opts.silent) {
+        window.StockQPro?.App?.toast?.(`${c} 已在列表中`, 'inf');
+      }
       return false;
     }
     const max = state.mode === 'strategies' ? 1 : MAX_STOCKS;
@@ -162,7 +293,16 @@
       state.chips.push({ code: c, name: n });
     }
     renderChips();
-    if (!opts.silent) window.StockQPro?.App?.toast?.(`已加入 ${c} ${n}`, 'ok');
+    if (!opts.silent) {
+      const switched = state.mode === 'strategies' && prevPrimary && prevPrimary !== c;
+      window.StockQPro?.App?.toast?.(
+        switched ? `已切換為 ${c} ${n}` : `已加入 ${c} ${n}`,
+        'ok',
+      );
+    }
+    if (state.mode === 'strategies' && state.strategySessionActive && c !== prevPrimary && !opts.skipEnqueue) {
+      enqueueStrategyCompare(c, { silent: opts.silent });
+    }
     return true;
   }
 
@@ -174,6 +314,8 @@
 
   function clearChips() {
     state.chips = [];
+    state.strategyPollToken += 1;
+    state.strategyResults = null;
     renderChips();
   }
 
@@ -190,7 +332,7 @@
     if (hint) {
       hint.textContent = state.mode === 'stocks'
         ? `選 2～${MAX_STOCKS} 檔股票，對比區間相對收益走勢`
-        : '選 1 檔股票，對比全部可回測策略表現';
+        : '選 1 檔股票對比全部策略；執行後再點其他股票會加入任務中心';
     }
     document.querySelectorAll('.cmp-ctl-strat').forEach((el) => {
       el.style.display = state.mode === 'strategies' ? '' : 'none';
@@ -383,7 +525,7 @@
     if (!p?.codes?.length) return;
     setMode('stocks');
     state.chips = [];
-    p.codes.forEach((code) => addChip(code, resolveName(code), { silent: true }));
+    p.codes.forEach((code) => addChip(code, resolveName(code), { silent: true, skipEnqueue: true }));
     window.StockQPro?.App?.toast?.(`已載入組合：${p.label}`, 'ok');
     syncCompareHash();
   }
@@ -1137,20 +1279,9 @@
     const btn = $id('cmp-run');
     if (btn) btn.disabled = true;
     state.running = true;
-    const hd = $id('cmp-metric-hd');
-    if (hd) hd.textContent = '多策略回測執行中，請稍候…';
+    state.strategySessionActive = true;
     try {
-      const d = await Api.runMultiBacktest(code);
-      const resolved = await Api.resolveTaskResponse(d, { timeoutMs: 600000 });
-      const r = Api.extractResult(resolved);
-      if (!Array.isArray(r)) throw new Error('未取得對比結果');
-      state.strategyResults = r.map((x) => normalizeStrategyRow(x)).filter(Boolean);
-      renderStrategies();
-      window.StockQPro?.App?.toast?.(`已完成 ${r.length} 個策略對比`, 'ok');
-    } catch (e) {
-      state.strategyResults = null;
-      clearCharts();
-      window.StockQPro?.App?.toast?.(`對比失敗：${e?.message || e}`, 'er');
+      await enqueueStrategyCompare(code);
     } finally {
       state.running = false;
       if (btn) btn.disabled = false;
@@ -1198,7 +1329,14 @@
   }
 
   async function run() {
-    if (state.running) return;
+    if (state.running) {
+      if (state.mode === 'strategies' && primaryCode()) {
+        await enqueueStrategyCompare(primaryCode());
+      } else {
+        window.StockQPro?.App?.toast?.('當前對比仍在提交中，請稍候', 'inf');
+      }
+      return;
+    }
     if (state.mode === 'stocks') await runStocks();
     else await runStrategies();
   }
@@ -1376,7 +1514,7 @@
     const raw = String($id('cmp-code-input')?.value || '').trim();
     const c = normalizeCode(raw);
     if (isValidAshare(c) && raw.length === 6) {
-      addChip(c, resolveName(c), { silent: true });
+      addChip(c, resolveName(c), { silent: true, skipEnqueue: true });
       const sug = $id('cmp-code-suggest');
       if (sug) sug.hidden = true;
       if ($id('cmp-code-input')) $id('cmp-code-input').value = '';
@@ -1449,6 +1587,8 @@
     });
     $id('cmp-clear-chips')?.addEventListener('click', () => {
       clearChips();
+      state.strategyResultsByCode = {};
+      state.strategySessionActive = false;
       state.stockComparison = null;
       state.correlation = null;
       state.excessReturn = null;
@@ -1516,7 +1656,7 @@
     loadChipsFromStorage();
     parseCompareFromHash();
     if (!state.chips.length) {
-      addChip('600519', '貴州茅台', { silent: true });
+      addChip('600519', '貴州茅台', { silent: true, skipEnqueue: true });
     } else {
       renderChips();
     }

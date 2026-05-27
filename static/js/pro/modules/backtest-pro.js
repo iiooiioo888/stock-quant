@@ -580,10 +580,25 @@
   }
 
   function ensureLoggedIn() {
+    if (typeof Api !== 'undefined' && Api.ensureLoggedIn) return Api.ensureLoggedIn();
     if (typeof Api !== 'undefined' && Api.isLoggedIn && Api.isLoggedIn()) return true;
     Api?.showLoginModal?.(false);
     window.StockQPro?.App?.toast?.('請先登錄後再執行回測（點擊頂欄「登錄」）', 'inf');
     return false;
+  }
+
+  function formatBacktestError(err) {
+    let msg = err?.message || String(err || '未知錯誤');
+    if (/無日線數據|所有數據源均失敗|無.*數據/.test(msg)) {
+      msg += '。請確認為有效 A 股代碼（如 600519、000001），或至數據頁下載行情後重試';
+    }
+    if (/任務等待超時|任務不存在|無法啟動任務/.test(msg)) {
+      msg += '。若任務長時間卡在等待：Docker 請確認 SQ_CELERY_ENABLED=false 或已啟動 celery-worker';
+    }
+    if (/Token|未登錄|401/.test(msg)) {
+      msg = '請先登錄後再執行回測';
+    }
+    return msg;
   }
 
   async function run() {
@@ -663,7 +678,17 @@
       }
       if (bar) bar.style.width = '45%';
 
-      const resolved = await Api.resolveTaskResponse(d);
+      const resolved = await Api.resolveTaskResponse(d, {
+        onProgress: (task) => {
+          const p = Number(task?.progress);
+          if (bar && Number.isFinite(p) && p > 0) {
+            bar.style.width = `${Math.min(92, Math.max(25, p))}%`;
+          }
+          if (task?.status === 'running' && task?.error) {
+            logLine(String(task.error).slice(0, 120), '');
+          }
+        },
+      });
       if (resolved?.from_cache && !forceRefresh) {
         logLine('使用緩存結果（參數與 K 線版本未變）', '');
       }
@@ -679,8 +704,9 @@
       logLine('回測完成', 'ok');
       if (bar) bar.style.width = '100%';
     } catch (e) {
-      logLine(`回測失敗：${e?.message || e}`, 'er');
-      window.StockQPro?.App?.toast?.(`回測失敗：${e?.message || e}`, 'er');
+      const msg = formatBacktestError(e);
+      logLine(`回測失敗：${msg}`, 'er');
+      window.StockQPro?.App?.toast?.(`回測失敗：${msg}`, 'er');
     } finally {
       running = false;
       if (btn) btn.disabled = false;

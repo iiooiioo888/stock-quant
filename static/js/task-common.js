@@ -596,6 +596,29 @@ const TaskCommon = {
       ${this.renderQueueCard('recent', q.recent, compact)}`;
   },
 
+  bindQueueActions(root, handlers) {
+    if (!root) return;
+    const h = handlers || {};
+    root.querySelectorAll('[data-tk-queue-action]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = btn.getAttribute('data-tk-queue-action');
+        const id = btn.getAttribute('data-task-id');
+        if (!id) return;
+        if (action === 'cancel' && h.onCancel) h.onCancel(id);
+        else if (action === 'retry' && h.onRetry) h.onRetry(id);
+        else if (action === 'result' && h.onResult) h.onResult(id);
+      });
+    });
+    root.querySelectorAll('[data-tk-goto]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-tk-goto');
+        if (id && h.onGoto) h.onGoto(id);
+      });
+    });
+  },
+
   renderNavigateButton(taskId, label) {
     return `<button type="button" class="btn primary" style="padding:2px 8px;font-size:10px" data-tk-goto="${taskId}">${label || '前往查看'}</button>`;
   },

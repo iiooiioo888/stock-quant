@@ -5,9 +5,12 @@
 
   const App = {
     current: '',
+    _navGen: 0,
     _ws: null,
+    _wsGen: 0,
     _wsRetry: 0,
     _wsMaxRetry: 8,
+    _wsPingTimer: null,
 
     init() {
       // keep existing API init (token, auth UI) if present
@@ -20,9 +23,41 @@
       this._bindKeyboard();
       this._bindLogo();
       this._connectWS();
+      try { window.StockQPro?.Terms?.applyTerms?.(); } catch (_) {}
 
-      // initial render（工作台預設總覽；官網首頁在 /）
+      // initial render（工作台預設總覽；產品介紹頁在 /）
       this.navFromHash() || this.nav('dashboard', { syncHash: true });
+
+      const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
+      schedule(() => {
+        const h = String(location.hash || '');
+        const m = h.match(/^#\/([^/?#]+)/);
+        const warm = m ? m[1] : 'dashboard';
+        window.StockQPro?.modules?.prefetch?.(warm);
+        window.StockQPro?.LegacyBridge?.ensureScripts?.().catch(() => {});
+      });
+    },
+
+    _yieldPaint() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+    },
+
+    _setPageLoading(pageId, on) {
+      const pg = $id(`pg-${pageId}`);
+      if (!pg) return;
+      pg.classList.toggle('is-page-loading', !!on);
+      const mount = pg.querySelector('.legacy-mount');
+      if (mount && on && !mount.querySelector('.legacy-mount__busy')) {
+        const el = document.createElement('div');
+        el.className = 'legacy-mount__busy';
+        el.setAttribute('role', 'status');
+        el.textContent = '載入模組中…';
+        mount.appendChild(el);
+      } else if (mount && !on) {
+        mount.querySelector('.legacy-mount__busy')?.remove();
+      }
     },
 
     reconnectWs() {
@@ -30,11 +65,16 @@
       this._connectWS();
     },
 
+    _disposeWs(sock) {
+      if (!sock) return;
+      sock.onopen = sock.onclose = sock.onmessage = sock.onerror = null;
+      try { sock.close(); } catch (_) {}
+    },
+
     _connectWS() {
-      if (this._ws) {
-        try { this._ws.close(); } catch (_) {}
-        this._ws = null;
-      }
+      this._disposeWs(this._ws);
+      this._ws = null;
+
       const token = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
       const conn = document.getElementById('conn-status');
       if (!token) {
@@ -43,13 +83,17 @@
       }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`;
+      let ws;
       try {
-        this._ws = new WebSocket(wsUrl);
+        ws = new WebSocket(wsUrl);
       } catch (_) {
         return;
       }
+      const gen = ++this._wsGen;
+      this._ws = ws;
 
-      this._ws.onopen = () => {
+      ws.onopen = () => {
+        if (this._ws !== ws || this._wsGen !== gen) return;
         this._wsRetry = 0;
         if (conn) conn.textContent = '已連線';
         try {
@@ -62,7 +106,9 @@
         } catch (_) {}
       };
 
-      this._ws.onclose = () => {
+      ws.onclose = () => {
+        if (this._ws !== ws || this._wsGen !== gen) return;
+        this._ws = null;
         const still = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
         if (!still) {
           if (conn) conn.textContent = '未登錄';
@@ -71,10 +117,13 @@
         this._wsRetry += 1;
         if (this._wsRetry > this._wsMaxRetry) return;
         const delay = Math.min(1000 * Math.pow(2, this._wsRetry), 30000);
-        setTimeout(() => this._connectWS(), delay);
+        setTimeout(() => {
+          if (this._wsGen === gen && !this._ws) this._connectWS();
+        }, delay);
       };
 
-      this._ws.onmessage = (e) => {
+      ws.onmessage = (e) => {
+        if (this._ws !== ws) return;
         try {
           const data = JSON.parse(e.data);
           if (data?.type?.startsWith('task_')) {
@@ -82,6 +131,13 @@
           }
         } catch (_) {}
       };
+
+      if (this._wsPingTimer) clearInterval(this._wsPingTimer);
+      this._wsPingTimer = setInterval(() => {
+        if (this._ws === ws && ws.readyState === 1) {
+          try { ws.send('ping'); } catch (_) {}
+        }
+      }, 25000);
     },
 
     _bindAuth() {
@@ -113,18 +169,50 @@
       });
     },
 
+    _syncNavGroup(pid) {
+      document.querySelectorAll('.sidebar .nav-group').forEach((grp) => {
+        const hit = grp.querySelector(`.sb[data-p="${pid}"]`);
+        grp.open = !!hit;
+      });
+    },
+
     async nav(id, opts = {}) {
       const pid = String(id || '').trim();
       if (!pid) return;
 
+      const prev = this.current;
+      const gen = ++this._navGen;
+
+      // INP：先切換可見分頁，再背景載入腳本
+      document.querySelectorAll('.pg').forEach((p) => p.classList.remove('on'));
+      document.querySelectorAll('.sb').forEach((b) => b.classList.remove('on'));
+      const pg = $id(`pg-${pid}`);
+      if (pg) pg.classList.add('on');
+      const sb = document.querySelector(`.sb[data-p="${pid}"]`);
+      if (sb) sb.classList.add('on');
+      this._syncNavGroup(pid);
+      this.current = pid;
+      if (opts.syncHash) {
+        const want = `#/${pid}`;
+        if (location.hash !== want) location.hash = want;
+      }
+      this._setPageLoading(pid, true);
+      await this._yieldPaint();
+
+      if (gen !== this._navGen) return;
+
       try {
         await window.StockQPro?.modules?.ensurePage?.(pid);
       } catch (e) {
-        this.toast(e?.message || '頁面模組載入失敗', 'er');
+        if (gen === this._navGen) {
+          this._setPageLoading(pid, false);
+          this.toast(e?.message || '頁面模組載入失敗', 'er');
+        }
         return;
       }
 
-      const prev = this.current;
+      if (gen !== this._navGen) return;
+
       if (prev && prev !== pid) {
         try {
           const prevMod = window.StockQPro?.pages?.[prev];
@@ -136,27 +224,19 @@
         window.StockQPro?.Store?.set?.({ page: pid });
       } catch (_) {}
 
-      document.querySelectorAll('.pg').forEach((p) => p.classList.remove('on'));
-      document.querySelectorAll('.sb').forEach((b) => b.classList.remove('on'));
-      const pg = $id(`pg-${pid}`);
-      if (pg) pg.classList.add('on');
-      const sb = document.querySelector(`.sb[data-p="${pid}"]`);
-      if (sb) sb.classList.add('on');
-
-      this.current = pid;
-      if (opts.syncHash) {
-        const want = `#/${pid}`;
-        if (location.hash !== want) location.hash = want;
-      }
-
-      // page hooks：僅在切換分頁時 init；同頁重入走 onShow
       try {
         const mod = window.StockQPro?.pages?.[pid];
         if (mod) {
-          if (prev !== pid && typeof mod.init === 'function') mod.init();
-          else if (typeof mod.onShow === 'function') mod.onShow();
+          if (prev !== pid && typeof mod.init === 'function') {
+            await Promise.resolve(mod.init());
+          } else if (typeof mod.onShow === 'function') {
+            await Promise.resolve(mod.onShow());
+          }
         }
       } catch (_) {}
+      finally {
+        if (gen === this._navGen) this._setPageLoading(pid, false);
+      }
     },
 
     navFromHash() {
@@ -232,13 +312,14 @@
       if (!ov || !input || !list) return;
 
       const pages = [
-        { n: '官網首頁', d: '產品介紹與系統入口', href: '/', k: 'H' },
-        { n: '總覽', d: '儀表板', p: 'dashboard', k: '1' },
+        { n: '產品介紹頁', d: '功能概覽與系統入口', href: '/', k: 'H' },
+        { n: '總覽', d: 'KPI、行情與快捷入口', p: 'dashboard', k: '1' },
+        { n: '資金流', d: '板塊資金與市場圖表', p: 'capitalflow' },
         { n: '策略庫', d: '130+ 策略', p: 'strategies', k: 'S' },
         { n: '回測', d: '策略回測', p: 'backtest', k: '2' },
         { n: '任務中心', d: '回測與數據任務佇列', p: 'tasks', k: 'T' },
         { n: '對比', d: '策略對比', p: 'compare', k: '3' },
-        { n: '持倉', d: '持倉管理', p: 'portfolio', k: '4' },
+        { n: '組合回測', d: '多標的組合與權重', p: 'portfolio', k: '4' },
         { n: '自選股', d: '自選列表', p: 'watchlist', k: '5' },
         { n: '選股器', d: '全市場掃描', p: 'scanner', k: '6' },
         { n: '預警', d: '條件預警', p: 'alerts', k: '7' },
@@ -257,7 +338,7 @@
         { n: '定時任務', d: 'APScheduler', p: 'scheduler' },
         { n: '多市場', d: 'A股 / 美股 / 港股', p: 'markets' },
         { n: '加密行情', d: 'Binance 等', p: 'crypto' },
-        { n: '接口檢查', d: '數據源探測', p: 'connectivity' },
+        { n: '連線檢查', d: '數據源可用性探測', p: 'connectivity' },
         { n: '定價', d: '方案', p: 'pricing' },
         { n: '設定', d: '全局設定', p: 'settings' },
       ];

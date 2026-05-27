@@ -28,7 +28,6 @@
 | 信號 | `Signals.load*` | `_loadingKey`；WS 刷新 1.8s 去抖 |
 | 數據中心 | 子 Tab 自動載入 | `_tabRequestId` 丟棄過期回應 |
 | 市場 | Tab 進入 | `Promise.all` 並行載入 |
-| Polymarket | 搜尋 / 重載 | `_searching` + disabled |
 | 深度分析 | 三鍵分析 | `_analysisRunning` 互斥 |
 | 任務 | 刷新 / 批量 | GET silent + 429 保留 `_lastData` |
 | 登錄 | `Api.doLogin` | `_loginRunning` + `#loginSubmitBtn` |

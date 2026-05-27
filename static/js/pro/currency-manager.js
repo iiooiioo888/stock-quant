@@ -120,35 +120,54 @@
       }
     },
 
+    _renderTrendChart(chartHost, series, replace) {
+      if (!series.length || typeof echarts === 'undefined') return null;
+      let chart = echarts.getInstanceByDom(chartHost);
+      if (!chart) chart = echarts.init(chartHost, null, { renderer: 'canvas' });
+      chart.setOption({
+        grid: { left: 48, right: 16, top: 24, bottom: 28 },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: series.map((x) => x.date) },
+        yAxis: { type: 'value', scale: true },
+        series: [{
+          type: 'line',
+          smooth: true,
+          data: series.map((x) => x.value),
+          areaStyle: { opacity: 0.12 },
+          lineStyle: { width: 2, color: 'var(--ac)' },
+          itemStyle: { color: 'var(--ac)' },
+        }],
+      }, replace);
+      return chart;
+    },
+
     async _loadTrend() {
       const chartHost = document.getElementById('portfolio-trend-chart');
-      if (!chartHost || typeof echarts === 'undefined') return;
+      if (!chartHost) return;
+      chartHost.setAttribute('aria-busy', 'true');
       try {
         const days = Number(window.StockQPro?.Prefs?.get?.('chartDays')) || 90;
-        const data = await Api.get(
-          `/api/portfolio/trend?currency=${this.current}&days=${days}`,
-          { silent: true },
-        );
+        const q = `currency=${encodeURIComponent(this.current)}&days=${days}`;
+        const stream = window.StockQPro?.FetchStream;
+        if (stream?.fetchStream) {
+          const series = [];
+          await stream.fetchStream(
+            `/api/portfolio/trend/stream?${q}`,
+            (chunk) => {
+              if (Array.isArray(chunk)) series.push(...chunk);
+              if (series.length) this._renderTrendChart(chartHost, series, series.length <= 50);
+            },
+          );
+          if (series.length) this._renderTrendChart(chartHost, series, true);
+          return;
+        }
+        const data = await Api.get(`/api/portfolio/trend?${q}`, { silent: true });
         const series = data?.series || [];
-        if (!series.length) return;
-        let chart = echarts.getInstanceByDom(chartHost);
-        if (!chart) chart = echarts.init(chartHost, null, { renderer: 'canvas' });
-        chart.setOption({
-          grid: { left: 48, right: 16, top: 24, bottom: 28 },
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: series.map((x) => x.date) },
-          yAxis: { type: 'value', scale: true },
-          series: [{
-            type: 'line',
-            smooth: true,
-            data: series.map((x) => x.value),
-            areaStyle: { opacity: 0.12 },
-            lineStyle: { width: 2, color: 'var(--ac)' },
-            itemStyle: { color: 'var(--ac)' },
-          }],
-        }, true);
+        this._renderTrendChart(chartHost, series, true);
       } catch (e) {
         console.warn('portfolio trend', e);
+      } finally {
+        chartHost.removeAttribute('aria-busy');
       }
     },
   };

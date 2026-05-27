@@ -242,22 +242,4 @@ register("crypto_history", DataSource("Binance", priority=1, rate_limit=0.5))
 register("crypto_history", DataSource("CoinGecko", priority=2, rate_limit=1.0))
 register("crypto_history", DataSource("Twelve Data", priority=3, rate_limit=8.0, daily_limit=800))
 
-# --- Polymarket 預測市場（只讀） ---
-def _pm_rate() -> float:
-    try:
-        from src.config import settings
-        return settings.polymarket_rate_limit_sec
-    except Exception:
-        return 0.6
-
-
-register(
-    "polymarket_gamma",
-    DataSource("Polymarket Gamma", priority=1, rate_limit=_pm_rate()),
-)
-register(
-    "polymarket_clob",
-    DataSource("Polymarket CLOB", priority=1, rate_limit=_pm_rate()),
-)
-
 logger.info(f"📊 數據源管理器已初始化: {sum(len(v) for v in _registry.values())} 個數據源, {len(_registry)} 個類別")

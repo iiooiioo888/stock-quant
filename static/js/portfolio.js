@@ -61,25 +61,236 @@ const Portfolio = {
   },
 
   _currentMethod: 'basic',
+  _strategyList: null,
 
   init() {
     this._initMethodCards();
+    this._initPortfolioQuickAdd();
+    this._initStrategyPicker();
+  },
+
+  _parseCsv(value) {
+    return String(value || '')
+      .split(/[\s,，;；]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  },
+
+  _dedupePreserve(arr) {
+    const seen = new Set();
+    const out = [];
+    arr.forEach((x) => {
+      const k = String(x || '').trim().toUpperCase();
+      if (!k) return;
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(String(x).trim());
+    });
+    return out;
+  },
+
+  _setCodes(codes) {
+    const input = document.getElementById('pfCodes');
+    const manual = document.querySelector('[data-stock-picker-for="pfCodes"] [data-sp-manual]');
+    const joined = this._dedupePreserve(codes).join(',');
+    if (input) input.value = joined;
+    if (manual) manual.value = joined;
+    if (input) {
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  },
+
+  _setStrategies(strategies) {
+    const input = document.getElementById('pfStrategies');
+    const joined = this._dedupePreserve(strategies).join(',');
+    if (input) {
+      input.value = joined;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  },
+
+  _initPortfolioQuickAdd() {
+    const btnHold = document.getElementById('pfAddHoldings');
+    const btnWatch = document.getElementById('pfAddWatchlist');
+    const btnClear = document.getElementById('pfClearCodes');
+    if (btnHold && !btnHold.dataset.bound) {
+      btnHold.dataset.bound = '1';
+      btnHold.addEventListener('click', async () => {
+        try {
+          const d = await Api.getPortfolioSummary();
+          const codes = (d?.positions || [])
+            .map(p => String(p.code || '').trim())
+            .filter(Boolean);
+          if (!codes.length) return Utils.toast('尚無持有標的（或尚未登錄）', 2500, 'info');
+          const cur = this._parseCsv(document.getElementById('pfCodes')?.value);
+          this._setCodes([...cur, ...codes]);
+          Utils.toast(`已加入持有 ${codes.length} 檔`, 2000, 'success');
+        } catch (e) {
+          Utils.toast('讀取持有失敗：' + (e?.message || e), 2500, 'error');
+        }
+      });
+    }
+    if (btnWatch && !btnWatch.dataset.bound) {
+      btnWatch.dataset.bound = '1';
+      btnWatch.addEventListener('click', async () => {
+        try {
+          const d = await Api.getWatchlist();
+          const codes = (d?.items || []).map(x => String(x.code || '').trim()).filter(Boolean);
+          if (!codes.length) return Utils.toast('自選為空', 2000, 'info');
+          const cur = this._parseCsv(document.getElementById('pfCodes')?.value);
+          this._setCodes([...cur, ...codes]);
+          Utils.toast(`已加入自選 ${codes.length} 檔`, 2000, 'success');
+        } catch (e) {
+          Utils.toast('讀取自選失敗：' + (e?.message || e), 2500, 'error');
+        }
+      });
+    }
+    if (btnClear && !btnClear.dataset.bound) {
+      btnClear.dataset.bound = '1';
+      btnClear.addEventListener('click', () => {
+        this._setCodes([]);
+        Utils.toast('已清空標的', 1500, 'info');
+      });
+    }
+  },
+
+  async _ensureStrategyList() {
+    if (this._strategyList) return this._strategyList;
+    try {
+      const d = await Api.getStrategies();
+      const list = [];
+      (d?.builtin || []).forEach((s) => list.push({ ...s, _group: 'builtin' }));
+      (d?.user || []).forEach((s) => list.push({ ...s, _group: 'user' }));
+      this._strategyList = list.filter(x => x?.name).map(x => ({
+        key: x.backend_key || x.name,
+        name: x.name,
+        display: x.display_name || x.name,
+        group: x._group,
+        status: x.status || '',
+      }));
+    } catch (_) {
+      this._strategyList = [];
+    }
+    return this._strategyList;
+  },
+
+  _renderStrategyChips(query = '') {
+    const host = document.getElementById('pfStratChips');
+    if (!host) return;
+    const q = String(query || '').trim().toLowerCase();
+    const selected = new Set(this._parseCsv(document.getElementById('pfStrategies')?.value).map(s => s.toLowerCase()));
+    const list = (this._strategyList || []).filter((s) => {
+      if (!q) return true;
+      return String(s.name).toLowerCase().includes(q)
+        || String(s.display).toLowerCase().includes(q)
+        || String(s.key).toLowerCase().includes(q);
+    });
+    if (!list.length) {
+      host.innerHTML = '<span style="color:var(--t3);font-size:.66rem">未找到策略</span>';
+      return;
+    }
+    host.innerHTML = list.slice(0, 80).map((s) => {
+      const on = selected.has(String(s.key).toLowerCase()) || selected.has(String(s.name).toLowerCase());
+      const label = s.display || s.name;
+      return `<button type="button" class="pf-strat-chip${on ? ' on' : ''}" data-strat="${String(s.key)}" title="${String(s.name)}">
+        ${String(label)} <code>${String(s.key)}</code>
+      </button>`;
+    }).join('');
+  },
+
+  _initStrategyPicker() {
+    const input = document.getElementById('pfStrategies');
+    const search = document.getElementById('pfStratSearch');
+    const clear = document.getElementById('pfStratClear');
+    const host = document.getElementById('pfStratChips');
+    if (!input || !host) return;
+    if (host.dataset.bound === '1') return;
+    host.dataset.bound = '1';
+
+    const syncFromInput = () => this._renderStrategyChips(search?.value || '');
+    input.addEventListener('input', syncFromInput);
+
+    if (clear) {
+      clear.addEventListener('click', () => {
+        this._setStrategies([]);
+        Utils.toast('已清空策略', 1500, 'info');
+      });
+    }
+
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = '1';
+      const debounced = Utils.debounce(() => this._renderStrategyChips(search.value), 200);
+      search.addEventListener('input', debounced);
+    }
+
+    host.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-strat]');
+      if (!btn) return;
+      const key = btn.dataset.strat || '';
+      if (!key) return;
+      const cur = this._parseCsv(input.value);
+      const upper = String(key).toUpperCase();
+      const idx = cur.findIndex((x) => String(x).toUpperCase() === upper);
+      if (idx >= 0) cur.splice(idx, 1);
+      else cur.push(key);
+      this._setStrategies(cur);
+      this._renderStrategyChips(search?.value || '');
+    });
+
+    this._ensureStrategyList().then(() => {
+      this._renderStrategyChips('');
+    });
   },
 
   _initMethodCards() {
     const grid = document.getElementById('pfMethodGrid');
     if (!grid) return;
 
-    grid.addEventListener('click', e => {
-      const card = e.target.closest('.pf-method-card');
+    const selectCard = (card) => {
       if (!card) return;
-
-      // 更新選中狀態
-      grid.querySelectorAll('.pf-method-card').forEach(c => c.classList.remove('active'));
+      grid.querySelectorAll('.pf-method-card').forEach((c) => {
+        c.classList.remove('active');
+        c.setAttribute('aria-selected', 'false');
+      });
       card.classList.add('active');
-
+      card.setAttribute('aria-selected', 'true');
       this._currentMethod = card.dataset.method;
       this._renderMethodParams();
+    };
+
+    grid.querySelectorAll('.pf-method-card').forEach((card) => {
+      card.setAttribute('role', 'option');
+      card.setAttribute('tabindex', card.classList.contains('active') ? '0' : '-1');
+      card.setAttribute('aria-selected', card.classList.contains('active') ? 'true' : 'false');
+    });
+
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.pf-method-card');
+      if (!card) return;
+      selectCard(card);
+      grid.querySelectorAll('.pf-method-card').forEach((c) => {
+        c.setAttribute('tabindex', c === card ? '0' : '-1');
+      });
+    });
+
+    grid.addEventListener('keydown', (e) => {
+      const cards = [...grid.querySelectorAll('.pf-method-card')];
+      const idx = cards.findIndex((c) => c.classList.contains('active'));
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const card = e.target.closest('.pf-method-card');
+        if (card) selectCard(card);
+        return;
+      }
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const delta = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+      const next = cards[(idx + delta + cards.length) % cards.length];
+      selectCard(next);
+      cards.forEach((c) => c.setAttribute('tabindex', c === next ? '0' : '-1'));
+      next.focus();
     });
   },
 
@@ -90,32 +301,30 @@ const Portfolio = {
     const title = document.getElementById('pfParamsTitle');
 
     if (!params.length) {
-      container.style.display = 'none';
+      container.hidden = true;
       return;
     }
 
-    // 設置標題
     title.textContent = `${this._methodLabels[this._currentMethod] || ''} 參數`;
 
-    // 渲染參數字段
     fields.innerHTML = params.map(p => {
       if (p.type === 'select') {
         const opts = p.options.map(o => `<option value="${o.value}">${o.text}</option>`).join('');
-        return `<div class="fg">
+        return `<div class="fg pf-param-fg">
           <label>${p.label}</label>
-          <select id="${p.id}">${opts}</select>
+          <select class="sel" id="${p.id}">${opts}</select>
           ${p.hint ? `<span class="pf-hint">${p.hint}</span>` : ''}
         </div>`;
       }
       const step = p.step ? `step="${p.step}"` : '';
-      return `<div class="fg">
+      return `<div class="fg pf-param-fg">
         <label>${p.label}</label>
-        <input id="${p.id}" type="number" value="${p.value}" ${step} style="width:90px">
+        <input class="inp pf-param-inp" id="${p.id}" type="number" value="${p.value}" ${step}>
         ${p.hint ? `<span class="pf-hint">${p.hint}</span>` : ''}
       </div>`;
     }).join('');
 
-    container.style.display = 'block';
+    container.hidden = false;
   },
 
   async loadPresets() {
@@ -123,59 +332,85 @@ const Portfolio = {
     if (!d) return;
 
     const p = d.portfolio_presets || {};
-    const riskIcons = {
-      conservative: '🛡️', balanced: '⚖️', aggressive: '🔥',
-      trend_follower: '📈', value_trap_avoider: '📊',
+    const riskMeta = {
+      conservative: { icon: '🛡️', tone: 'safe' },
+      balanced: { icon: '⚖️', tone: 'balanced' },
+      aggressive: { icon: '🔥', tone: 'hot' },
+      trend_follower: { icon: '📈', tone: 'trend' },
+      value_trap_avoider: { icon: '📊', tone: 'volume' },
     };
 
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
     document.getElementById('presetCards').innerHTML = Object.entries(p).map(([k, v]) => {
-      const icon = riskIcons[k] || '💼';
-      const stratTags = (v.allocations || []).slice(0, 3).map(a =>
-        `<span style="display:inline-block;background:var(--accent-bg);color:var(--accent);font-size:9px;padding:1px 5px;border-radius:3px;margin-right:3px">${a.strategy}</span>`
-      ).join('');
-      return `<div class="pc-item" onclick="Portfolio.runPreset('${k}', event)">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-          <span style="font-size:20px">${icon}</span>
-          <h4 style="margin:0">${v.name}</h4>
+      const meta = riskMeta[k] || { icon: '💼', tone: 'default' };
+      const strategies = [...new Set((v.allocations || []).map((a) => a.strategy))].slice(0, 4);
+      const stratTags = strategies.map((s) => `<span class="pc-tag">${esc(s)}</span>`).join('');
+      const rebLabel = v.rebalance === 'periodic' ? '定期再平衡' : '不再平衡';
+      return `<button type="button" class="pc-item" data-risk="${meta.tone}" onclick="Portfolio.runPreset('${k}', event)">
+        <div class="pc-item-top">
+          <span class="pc-icon" aria-hidden="true">${meta.icon}</span>
+          <div class="pc-titles">
+            <h4 class="pc-name">${esc(v.name)}</h4>
+            <p class="pc-desc">${esc(v.desc)}</p>
+          </div>
         </div>
-        <p>${v.desc}</p>
-        <div style="margin-top:6px">${stratTags}</div>
-        <span class="pc-badge">${v.allocations.length} 子策略 · ${v.rebalance === 'periodic' ? '定期再平衡' : '不再平衡'}</span>
-      </div>`;
+        <div class="pc-tags">${stratTags}</div>
+        <div class="pc-foot">
+          <span class="pc-badge">${(v.allocations || []).length} 子策略</span>
+          <span class="pc-badge pc-badge--muted">${rebLabel}</span>
+        </div>
+      </button>`;
     }).join('');
   },
 
   async runPreset(name, evt) {
-    if (this._running) return;
     if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
       Utils.toast('預設組合回測需先登錄', 3000, 'warning');
       Api.showLoginModal();
       return;
     }
-    this._running = true;
     const btn = evt?.target?.closest('.pc-item');
-    if (btn) btn.style.opacity = '0.5';
+    // 單卡片防抖：允許連續點不同模板加入任務
+    if (btn?.dataset?.inflight === '1') return;
+    if (btn) {
+      btn.dataset.inflight = '1';
+      btn.classList.add('is-loading');
+    }
 
     try {
-    const d = await Api.runPresetPortfolio(name);
+      const d = await Api.runPresetPortfolio(name);
 
-    if (!d) return;
-    if (!d.success) return Utils.toast('失敗: ' + (d.detail || ''), 3000, 'error');
-      if (d.async && d.task_id) {
-        Utils.toast('📋 預設組合回測已提交任務', 2000, 'info');
+      if (!d) return;
+      if (!d.success) return Utils.toast('失敗: ' + (d.detail || ''), 3000, 'error');
+
+      // 核心需求：點擊後立即加入任務列表，允許馬上加入下一個任務（不等待完成）
+      if (d.task_id) {
+        const shortId = String(d.task_id).slice(0, 8);
+        const hint = d.is_duplicate
+          ? (d.message || `相同任務已在隊列（#${shortId}…）`)
+          : `已加入任務列表（#${shortId}…）`;
+        Utils.toast(hint, 2200, d.is_duplicate ? 'info' : 'success');
+        try { window.StockQPro?.Tasks?.refresh?.(true); } catch (_) {}
+        try { window.StockQPro?.pages?.tasks?.refreshSidebarBadge?.(); } catch (_) {}
+        return;
       }
-      const resolved = await Api.resolveTaskResponse(d);
-      const r = Api.extractResult(resolved);
-      if (!r || (typeof r === 'object' && r.error)) {
-        return Utils.toast((r && r.error) || '未取得組合回測結果', 3000, 'error');
+
+      // 兼容：若後端返回同步結果，仍照常顯示
+      const r = Api.extractResult(d);
+      if (r && !(typeof r === 'object' && r.error)) {
+        this._showResult(r);
+        Utils.toast((d.preset || '預設組合') + ' 回測完成', 2000, 'success');
+      } else {
+        Utils.toast('已提交', 1800, 'info');
       }
-      this._showResult(r);
-      Utils.toast(d.preset + ' 回測完成');
     } catch (e) {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
     } finally {
-      this._running = false;
-      if (btn) btn.style.opacity = '1';
+      if (btn) {
+        btn.classList.remove('is-loading');
+        delete btn.dataset.inflight;
+      }
     }
   },
 
@@ -261,7 +496,6 @@ const Portfolio = {
   },
 
   async run() {
-    if (this._running) return;
     if (typeof Api !== 'undefined' && !Api.isLoggedIn()) {
       Utils.toast('組合回測需先登錄', 3000, 'warning');
       Api.showLoginModal();
@@ -270,17 +504,25 @@ const Portfolio = {
 
     const method = this._currentMethod;
     const btn = document.getElementById('pfBtn');
-    this._running = true;
+    // 允許連續提交多個自定義組合任務：只在「送出請求中」短暫鎖住按鈕，避免連點重複送同一筆
+    if (btn?.dataset?.inflight === '1') return;
+    if (btn) btn.dataset.inflight = '1';
 
     const allocations = this._buildAllocations();
-    if (!allocations.length) { this._running = false; return Utils.toast('請輸入股票代碼和策略', 3000, 'error'); }
+    if (!allocations.length) {
+      if (btn) delete btn.dataset.inflight;
+      return Utils.toast('請輸入股票代碼和策略', 3000, 'error');
+    }
 
     // 驗證代碼格式
     const codes = document.getElementById('pfCodes').value.split(',').map(s => s.trim()).filter(Boolean);
     const invalid = codes.filter(c => !Utils.isValidCode(c));
-    if (invalid.length) { this._running = false; return Utils.toast('無效代碼: ' + invalid.join(', '), 3000, 'error'); }
+    if (invalid.length) {
+      if (btn) delete btn.dataset.inflight;
+      return Utils.toast('無效代碼: ' + invalid.join(', '), 3000, 'error');
+    }
 
-    Utils.btnLoading(btn, true, '回測中...');
+    if (btn) Utils.btnLoading(btn, true, '已提交…');
     try {
     const cash = undefined;
     let d;
@@ -357,20 +599,33 @@ const Portfolio = {
 
     if (!d) return;
     if (!d.success) return Utils.toast('失敗: ' + (d?.detail || ''), 3000, 'error');
-      if (d.async && d.task_id) {
-        Utils.toast('📋 組合回測已提交', 2000, 'info');
+
+      // 核心需求：像預設模板一樣「立即加入任務列表」，不等待完成
+      if (d.task_id) {
+        const shortId = String(d.task_id).slice(0, 8);
+        const hint = d.is_duplicate
+          ? (d.message || `相同任務已在隊列（#${shortId}…）`)
+          : `已加入任務列表（#${shortId}…）`;
+        Utils.toast(hint, 2200, d.is_duplicate ? 'info' : 'success');
+        try { window.StockQPro?.Tasks?.refresh?.(true); } catch (_) {}
+        try { window.StockQPro?.pages?.tasks?.refreshSidebarBadge?.(); } catch (_) {}
+        return;
       }
-      const resolved = await Api.resolveTaskResponse(d);
-      const r = Api.extractResult(resolved);
-      if (!r || (typeof r === 'object' && r.error)) {
-        return Utils.toast((r && r.error) || '未取得組合回測結果', 3000, 'error');
+
+      // 兼容：同步返回結果（少見），仍可直接顯示
+      const r = Api.extractResult(d);
+      if (r && !(typeof r === 'object' && r.error)) {
+        this._showResult(r, method);
+      } else {
+        Utils.toast('已提交', 1800, 'info');
       }
-      this._showResult(r, method);
     } catch (e) {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
     } finally {
-      this._running = false;
-      Utils.btnLoading(btn, false, '🚀 開始回測');
+      if (btn) {
+        Utils.btnLoading(btn, false, '開始回測');
+        delete btn.dataset.inflight;
+      }
     }
   },
 

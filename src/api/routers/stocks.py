@@ -123,11 +123,19 @@ def _stock_logo_response(code: str, market: str = "", name: str = "") -> Respons
         raise HTTPException(400, "code required")
     hit = read_cached_logo(c, market)
     if not hit:
-        schedule_logo_fetch(c, market, name=name)
+        from src.config import settings
+
+        if settings.stock_logo_api_enabled:
+            schedule_logo_fetch(c, market, name=name)
+            raise HTTPException(
+                404,
+                "logo not cached yet",
+                headers={"Retry-After": "30", "X-Logo-Status": "pending"},
+            )
         raise HTTPException(
             404,
-            "logo not cached yet",
-            headers={"Retry-After": "30", "X-Logo-Status": "pending"},
+            "stock logo fetch disabled",
+            headers={"X-Logo-Status": "disabled"},
         )
     body, media_type = hit
     return Response(

@@ -361,19 +361,6 @@
       UI.h('section', { class: 'dash-section dash-section--tight' },
         UI.h('div', { class: 'dash-kpi-row', id: 'dash-kpi-row' }),
       ),
-      UI.h('section', { class: 'dash-section' },
-        UI.h('div', { class: 'dash-section-head' },
-          UI.h('div', {},
-            UI.h('p', { class: 'dash-eyebrow' }, 'Capital Flow'),
-            UI.h('h2', { class: 'dash-title' }, '資金與板塊'),
-          ),
-        ),
-        UI.h('div', { class: 'dash-charts-grid' },
-          D.ChartTile({ id: 'd-eq', title: '市場資金流向', badge: '20D' }),
-          D.ChartTile({ id: 'd-dd', title: '北向資金', badge: '20D' }),
-        ),
-        UI.h('div', { class: 'dash-heatmap-row' }, D.HeatmapTile({})),
-      ),
     )
   );
 

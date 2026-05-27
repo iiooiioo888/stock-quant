@@ -54,6 +54,21 @@ const Api = {
   },
 
   /**
+   * 重連 WebSocket（Pro 與 legacy 僅保留單一連線）
+   */
+  reconnectWebSocket() {
+    const pro = window.StockQPro?.App;
+    if (pro?.reconnectWs) {
+      pro.reconnectWs();
+      return;
+    }
+    if (typeof App !== 'undefined' && App._connectWS) {
+      App._wsRetry = 0;
+      App._connectWS();
+    }
+  },
+
+  /**
    * 保存 token
    */
   setToken(token) {
@@ -67,13 +82,7 @@ const Api = {
       localStorage.removeItem('sq_token');
     }
     this._updateAuthUI();
-    try {
-      window.StockQPro?.App?.reconnectWs?.();
-    } catch (_) {}
-    if (typeof App !== 'undefined' && App._connectWS) {
-      App._wsRetry = 0;
-      App._connectWS();
-    }
+    this.reconnectWebSocket();
   },
 
   /**
@@ -165,11 +174,7 @@ const Api = {
       Utils.closeModal();
       Utils.toast(`${isRegister ? '註冊' : '登錄'}成功`, 3000, 'success');
 
-      // 重新連接 WebSocket（攜帶新 token）
-      if (typeof App !== 'undefined') {
-        if (App._ws) { App._ws.close(); }
-        App._wsRetry = 0;
-        App._connectWS();
+      if (typeof App !== 'undefined' && App._initQuickStats) {
         App._initQuickStats();
       }
 
@@ -190,12 +195,27 @@ const Api = {
   logout() {
     this.setToken(null);
     Utils.toast('已登出', 3000, 'success');
-    // 斷開 WebSocket（無 token 將被拒絕）
-    if (typeof App !== 'undefined') {
-      if (App._ws) { App._ws.close(); }
-      App._connectWS();
-    }
     if (typeof Dashboard !== 'undefined') Dashboard.load();
+  },
+
+  parseErrorBody(err, status) {
+    if (!err) return 'HTTP ' + status;
+    if (typeof err.msg === 'string') {
+      return err.trace_id ? err.msg + ' (' + err.trace_id + ')' : err.msg;
+    }
+    if (err.detail) {
+      return typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+    }
+    return 'HTTP ' + status;
+  },
+
+  handleApiError(err, status, opts) {
+    opts = opts || {};
+    const msg = this.parseErrorBody(err, status);
+    if (!opts.silent && typeof Utils !== 'undefined') {
+      Utils.toast('請求失敗: ' + msg, 3000, 'error');
+    }
+    return msg;
   },
 
   /**
@@ -231,10 +251,7 @@ const Api = {
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        const msg = err.detail || `HTTP ${resp.status}`;
-        if (!silent) {
-          Utils.toast('請求失敗: ' + msg, 3000, 'error');
-        }
+        this.handleApiError(err, resp.status, { silent });
         return null;
       }
       return await resp.json();
@@ -439,7 +456,13 @@ const Api = {
     return this.request(url, { method: 'POST' });
   },
 
-  async getConfig() { return this.get('/api/config'); },
+  async getConfig() {
+    const d = await this.get('/api/config');
+    if (d && typeof Utils !== 'undefined' && Utils.applyStockLogoConfig) {
+      Utils.applyStockLogoConfig(d.stock_logo_api_enabled);
+    }
+    return d;
+  },
   async getPortfolioPresets() { return this.get('/api/portfolio/presets'); },
 
   async getAlerts(limit = 50, code = null) {
@@ -716,6 +739,16 @@ const Api = {
 
   async getStrategies() { return this.get('/api/strategies/list'); },
 
+  async getStrategyLikes(opts = {}) {
+    return this.get('/api/strategies/likes', opts);
+  },
+
+  async toggleStrategyLike(key) {
+    const data = await this.post('/api/strategies/likes/toggle', { key });
+    if (data?.success) this.clearGetCache('/api/strategies/likes');
+    return data;
+  },
+
   async getLeaderboard(sortBy = 'sharpe', limit = 50) {
     return this.get(`/api/strategies/leaderboard?sort_by=${sortBy}&limit=${limit}`);
   },
@@ -726,6 +759,12 @@ const Api = {
 
   async getAssetsCatalog() {
     return this.get('/api/assets/catalog');
+  },
+
+  async getPortfolioSummary(currency) {
+    let url = '/api/portfolio/summary';
+    if (currency) url += `?currency=${encodeURIComponent(currency)}`;
+    return this.get(url, { silent: true });
   },
 
   async getAssetDetail(symbol, days = 180) {

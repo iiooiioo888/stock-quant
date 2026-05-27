@@ -14,6 +14,10 @@ from src.config import settings
 from src.core.db import get_conn, load_daily_kline
 from src.core.exchange import SUPPORTED_CURRENCIES, get_exchange_service
 from src.core.result_cache import get_cached_compute, set_cached_compute
+from src.core.portfolio_ledger import import_settings_holdings_as_buys, recompute_holdings
+from src.core.portfolio_repo import get_portfolio_repo
+from src.engine.fx.resolver import FXResolver
+from src.engine.portfolio.calculator import HoldingCalc, PortfolioCalculator
 from src.utils.logger import logger
 
 
@@ -30,28 +34,7 @@ class Holding:
         return Decimal(str(self.quantity)) * Decimal(str(self.price or 0))
 
 
-def infer_currency(code: str) -> str:
-    c = (code or "").strip().upper()
-    if c.endswith(".HK"):
-        return "HKD"
-    if c.endswith("=X") or c.endswith("=F"):
-        return "USD"
-    try:
-        from src.core.history import detect_market
-
-        market = detect_market(code)
-        if market in ("hk_stock",):
-            return "HKD"
-        if market in ("us_stock", "global", "crypto", "forex", "forex_yahoo", "commodity", "index"):
-            return "USD"
-        if market in ("forex",):
-            return "USD"
-    except Exception:
-        pass
-    if c.isalpha() and len(c) <= 5 and not c.isdigit():
-        return "USD"
-    return "CNY"
-
+from src.core.portfolio_currency import infer_currency  # noqa: F401 — 對外相容
 
 def _normalize_currency(code: str) -> str:
     c = (code or "MOP").upper()
@@ -120,64 +103,87 @@ def _resolve_paper_session_id(user_id: int, user_settings: dict) -> Optional[str
 
 
 def fetch_holdings(user_id: int) -> list[Holding]:
+    if user_id and user_id > 0:
+        try:
+            import_settings_holdings_as_buys(user_id)
+            mat = get_portfolio_repo().batch_get_holdings(user_id)
+            if mat:
+                ledger_holdings: list[Holding] = []
+                for sym, mh in mat.items():
+                    price = _latest_price(sym)
+                    ledger_holdings.append(
+                        Holding(
+                            code=sym,
+                            quantity=float(mh.total_qty),
+                            currency=mh.currency,
+                            asset_type="ledger",
+                            price=price or float(mh.avg_cost),
+                        )
+                    )
+                if ledger_holdings:
+                    return ledger_holdings
+        except Exception as e:
+            logger.debug(f"物化持倉讀取跳過 user={user_id}: {e}")
+
     holdings: list[Holding] = []
     user_settings: dict = {}
-    with get_conn() as conn:
-        conn.row_factory = sqlite3.Row
-        urow = conn.execute(
-            "SELECT settings FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
-        if urow and urow["settings"]:
-            try:
-                user_settings = json.loads(urow["settings"])
-            except (json.JSONDecodeError, TypeError):
-                user_settings = {}
+    if user_id and user_id > 0:
+        with get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            urow = conn.execute(
+                "SELECT settings FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+            if urow and urow["settings"]:
+                try:
+                    user_settings = json.loads(urow["settings"])
+                except (json.JSONDecodeError, TypeError):
+                    user_settings = {}
 
-        for item in user_settings.get("holdings") or []:
-            if not isinstance(item, dict):
-                continue
-            code = str(item.get("code") or "").strip()
-            if not code:
-                continue
-            qty = float(item.get("quantity") or 0)
-            if qty <= 0:
-                continue
-            curr = _normalize_currency(item.get("currency") or infer_currency(code))
-            holdings.append(
-                Holding(
-                    code=code,
-                    quantity=qty,
-                    currency=curr,
-                    asset_type=str(item.get("asset_type") or "equity"),
-                    price=float(item.get("price") or 0) or _latest_price(code),
-                )
-            )
-
-        session_id = _resolve_paper_session_id(user_id, user_settings)
-        if session_id:
-            rows = conn.execute(
-                """
-                SELECT code, shares, current_price, value
-                FROM paper_positions
-                WHERE session_id = ? AND shares > 0
-                """,
-                (session_id,),
-            ).fetchall()
-            existing = {h.code for h in holdings}
-            for r in rows:
-                code = r["code"]
-                if code in existing:
+            for item in user_settings.get("holdings") or []:
+                if not isinstance(item, dict):
                     continue
-                price = float(r["current_price"] or 0) or _latest_price(code)
+                code = str(item.get("code") or "").strip()
+                if not code:
+                    continue
+                qty = float(item.get("quantity") or 0)
+                if qty <= 0:
+                    continue
+                curr = _normalize_currency(item.get("currency") or infer_currency(code))
                 holdings.append(
                     Holding(
                         code=code,
-                        quantity=float(r["shares"]),
-                        currency=infer_currency(code),
-                        asset_type="paper",
-                        price=price,
+                        quantity=qty,
+                        currency=curr,
+                        asset_type=str(item.get("asset_type") or "equity"),
+                        price=float(item.get("price") or 0) or _latest_price(code),
                     )
                 )
+
+            session_id = _resolve_paper_session_id(user_id, user_settings)
+            if session_id:
+                rows = conn.execute(
+                    """
+                    SELECT code, shares, current_price, value
+                    FROM paper_positions
+                    WHERE session_id = ? AND shares > 0
+                    """,
+                    (session_id,),
+                ).fetchall()
+                existing = {h.code for h in holdings}
+                for r in rows:
+                    code = r["code"]
+                    if code in existing:
+                        continue
+                    price = float(r["current_price"] or 0) or _latest_price(code)
+                    holdings.append(
+                        Holding(
+                            code=code,
+                            quantity=float(r["shares"]),
+                            currency=infer_currency(code),
+                            asset_type="paper",
+                            price=price,
+                        )
+                    )
 
     if not holdings:
         codes = list(settings.watchlist or [])[:8]
@@ -226,17 +232,40 @@ class PortfolioSettlementService:
 
         rates = self.exchange.get_rates()
         holdings = fetch_holdings(user_id)
-        total = Decimal("0")
-        allocation: dict[str, Decimal] = {}
-        positions_out = []
+        fx = FXResolver(self.exchange)
+        display_fx = fx.display_fx_to_usd(target)
 
+        realized = Decimal("0")
+        if user_id and user_id > 0:
+            try:
+                if get_portfolio_repo().has_transactions(user_id):
+                    realized = recompute_holdings(user_id).realized_pnl
+            except Exception as e:
+                logger.debug(f"已實現損益計算跳過: {e}")
+
+        calc_inputs: list[HoldingCalc] = []
+        positions_out = []
         for h in holdings:
             raw_val = h.market_value
             if raw_val <= 0:
                 continue
+            curr = h.currency.upper()
+            rate_curr = Decimal(str(rates.get(curr, self.exchange.FALLBACK.get(curr, 1.0))))
+            fx_to_usd = Decimal("1") if curr == "USD" else (Decimal("1") / rate_curr if rate_curr else Decimal("1"))
+            display_rate = display_fx if curr != target else rate_curr
+            calc_inputs.append(
+                HoldingCalc(
+                    symbol=h.code,
+                    qty=Decimal(str(h.quantity)),
+                    avg_cost=Decimal(str(h.price or 0)),
+                    currency=curr,
+                    current_price=Decimal(str(h.price or 0)),
+                    fx_to_usd=fx_to_usd,
+                    display_fx=display_rate,
+                    asset_type=h.asset_type,
+                )
+            )
             conv_val = self.convert_value(raw_val, h.currency, target, rates=rates)
-            total += conv_val
-            allocation[h.asset_type] = allocation.get(h.asset_type, Decimal("0")) + conv_val
             positions_out.append(
                 {
                     "code": h.code,
@@ -249,18 +278,19 @@ class PortfolioSettlementService:
                 }
             )
 
-        alloc_pct = {}
-        if total > 0:
-            for k, v in allocation.items():
-                alloc_pct[k] = round(float(v / total * 100), 2)
+        calc = PortfolioCalculator.compute(calc_inputs, target, realized_pnl=realized)
+        total_value = calc["total_value"]
+        alloc_pct = calc["allocation"]
 
         daily_pnl = self._calc_daily_pnl(user_id, target, rates)
 
         result = {
             "success": True,
-            "total_value": float(total.quantize(Decimal("0.01"))),
+            "total_value": total_value,
             "currency": target,
             "daily_pnl": float(daily_pnl),
+            "unrealized_pnl": calc.get("unrealized_pnl", 0),
+            "realized_pnl": calc.get("realized_pnl", 0),
             "allocation": alloc_pct,
             "positions": positions_out,
             "rates": {k: rates[k] for k in SUPPORTED_CURRENCIES if k in rates},
@@ -278,6 +308,8 @@ class PortfolioSettlementService:
     def _calc_daily_pnl(
         self, user_id: int, target: str, rates: dict[str, float]
     ) -> Decimal:
+        if not user_id or user_id <= 0:
+            return Decimal("0")
         user_settings: dict = {}
         with get_conn() as conn:
             urow = conn.execute(
@@ -328,7 +360,15 @@ class PortfolioSettlementService:
             session_id = _resolve_paper_session_id(user_id, user_settings)
 
         series = []
-        if session_id:
+        if user_id and user_id > 0:
+            try:
+                snap = get_portfolio_repo().list_snapshots(user_id, target, days=days)
+                if snap:
+                    series = [{"date": s["date"], "value": s["value"]} for s in snap]
+            except Exception as e:
+                logger.debug(f"快照趨勢讀取跳過: {e}")
+
+        if not series and session_id:
             with get_conn() as conn:
                 rows = conn.execute(
                     """

@@ -184,19 +184,9 @@
 
 ---
 
-## 4.14 Polymarket 預測市場 (`/api/polymarket`)
 
 | 方法 | 路徑 | 說明 | 權限 |
 |------|------|------|------|
-| GET | `/api/polymarket/markets` | 市場列表 | 公開 |
-| GET | `/api/polymarket/events` | 事件列表 | 公開 |
-| GET | `/api/polymarket/tags` | 標籤列表 | 公開 |
-| GET | `/api/polymarket/search` | 搜索市場 | 公開 |
-| GET | `/api/polymarket/{id}/history` | 價格歷史 | 公開 |
-| GET | `/api/polymarket/{id}/orderbook` | 訂單簿 | 公開 |
-| POST | `/api/polymarket/sync` | 同步數據 | 登錄 |
-| GET | `/api/polymarket/alerts` | 預警規則 | 登錄 |
-| POST | `/api/polymarket/alerts` | 創建預警 | 登錄 |
 
 ---
 

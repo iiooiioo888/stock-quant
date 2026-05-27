@@ -1,4 +1,4 @@
-/* global fetch, Api */
+/* global fetch, Api, LocalStore */
 
 (() => {
   const $id = (id) => document.getElementById(id);
@@ -16,7 +16,107 @@
     activeCat: '',
     selectedStratId: 1,
     plan: 'pro', // local-only, pricing not wired
+    likedKeys: new Set(),
+    likeCounts: {},
+    likesLoaded: false,
   };
+
+  function stratLikeKey(s) {
+    if (!s) return '';
+    if (s.backend_key) return String(s.backend_key);
+    return `id:${s.id}`;
+  }
+
+  function syncLikesToLocalStore() {
+    if (typeof LocalStore === 'undefined') return;
+    LocalStore.setStrategyLikes([...state.likedKeys]);
+  }
+
+  function hydrateLikesFromLocal() {
+    if (typeof LocalStore === 'undefined') return;
+    state.likedKeys = new Set(LocalStore.getStrategyLikes());
+  }
+
+  async function loadLikeState() {
+    hydrateLikesFromLocal();
+    try {
+      if (typeof Api !== 'undefined' && Api.getStrategyLikes) {
+        const d = await Api.getStrategyLikes({ silent: true });
+        if (d && !d._rateLimited) {
+          if (d.counts && typeof d.counts === 'object') state.likeCounts = { ...d.counts };
+          if (Array.isArray(d.mine) && d.mine.length) {
+            state.likedKeys = new Set(d.mine);
+            syncLikesToLocalStore();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[strategy-catalog] load likes failed', e);
+    }
+    state.likesLoaded = true;
+  }
+
+  function isStratLiked(s) {
+    const key = stratLikeKey(s);
+    return key ? state.likedKeys.has(key) : false;
+  }
+
+  function getStratLikeCount(s) {
+    const key = stratLikeKey(s);
+    if (!key) return 0;
+    return Number(state.likeCounts[key]) || 0;
+  }
+
+  function renderLikeButton(s, { compact } = {}) {
+    const key = stratLikeKey(s);
+    if (!key) return '';
+    const liked = state.likedKeys.has(key);
+    const cnt = getStratLikeCount(s);
+    const cntHtml = cnt > 0 ? `<span class="strat-like-cnt">${cnt}</span>` : '';
+    return `<button type="button" class="strat-like-btn ${liked ? 'on' : ''}" data-like-key="${escapeHtml(key)}" aria-pressed="${liked ? 'true' : 'false'}" aria-label="${liked ? '取消點讚' : '點讚'}" title="${liked ? '取消點讚' : '點讚'}">${compact ? '' : '<span class="strat-like-icon">👍</span>'}${cntHtml}</button>`;
+  }
+
+  async function toggleLikeByKey(key, strat) {
+    if (!key) return;
+    const wasLiked = state.likedKeys.has(key);
+    if (wasLiked) state.likedKeys.delete(key);
+    else state.likedKeys.add(key);
+    if (typeof LocalStore !== 'undefined') LocalStore.toggleStrategyLike(key);
+
+    const toast = window.StockQPro?.App?.toast;
+    let synced = false;
+
+    if (typeof Api !== 'undefined' && Api.isLoggedIn?.() && Api.toggleStrategyLike) {
+      try {
+        const d = await Api.toggleStrategyLike(key);
+        if (d?.success) {
+          synced = true;
+          if (d.liked) state.likedKeys.add(key);
+          else state.likedKeys.delete(key);
+          if (typeof d.count === 'number') state.likeCounts[key] = d.count;
+          syncLikesToLocalStore();
+        } else if (wasLiked) {
+          state.likedKeys.add(key);
+        } else {
+          state.likedKeys.delete(key);
+        }
+      } catch (_) {
+        if (wasLiked) state.likedKeys.add(key);
+        else state.likedKeys.delete(key);
+      }
+    }
+
+    if (toast) {
+      if (synced) toast(wasLiked ? '已取消點讚' : '已點讚', 'ok');
+      else if (!Api?.isLoggedIn?.()) toast(wasLiked ? '已取消本機點讚' : '已點讚（本機）；登入後可同步至帳號', 'inf');
+    }
+
+    if (strat && state.selectedStratId === strat.id) {
+      const likeWrap = document.getElementById('sd-like-wrap');
+      if (likeWrap) likeWrap.innerHTML = renderLikeButton(strat);
+    }
+    renderLibrary();
+  }
 
   const tierBadgeClass = (tier) => {
     if (tier === 'free') return 'tier-free';
@@ -77,15 +177,32 @@
 
   async function loadCatalog() {
     try {
-      const r = await fetch('/static/data/strategy-catalog.json?v=stockq-pro-v6', { cache: 'no-cache' });
-      if (!r.ok) throw new Error(`load catalog failed: ${r.status}`);
+      const r = await fetch('/static/data/strategy-catalog.json?v=stockq-pro-v7', { cache: 'no-cache' });
+      if (!r.ok) throw new Error(`策略目錄檔載入失敗 (${r.status})`);
       const data = await r.json();
-      if (!data?.strats?.length) throw new Error('empty catalog');
+      if (!data?.strats?.length) throw new Error('策略目錄為空');
       return applyCatalog(data);
     } catch (e) {
       console.warn('[strategy-catalog] static JSON failed, using API fallback', e);
       return loadCatalogFromApi();
     }
+  }
+
+  function showCatalogError(msg) {
+    const content = $id('lib-content');
+    const totalEl = $id('lib-total');
+    if (totalEl) totalEl.textContent = '載入失敗';
+    if (!content) return;
+    content.innerHTML =
+      `<div style="text-align:center;padding:48px 24px;color:var(--t2);font-size:.82rem">
+        <div style="font-size:1.4rem;margin-bottom:10px">⚠️</div>
+        <p style="margin:0 0 14px">${escapeHtml(msg)}</p>
+        <button type="button" class="btn s" id="lib-retry-load">重新載入</button>
+      </div>`;
+    document.getElementById('lib-retry-load')?.addEventListener('click', () => {
+      state.catalog = null;
+      init();
+    });
   }
 
   function syncBacktestStrategyInput(backendKey) {
@@ -134,6 +251,7 @@
           <span class="strat-num">#${String(s.id).padStart(3,'0')}</span>
           <span class="strat-status ${runnable ? 'ok' : 'plan'}">${runnable ? '可回測' : '即將推出'}</span>
           <span class="strat-tier ${tierBadgeClass(tier)}">${tier.toUpperCase()}</span>
+          ${renderLikeButton(s)}
         </div>
         <div class="strat-name">${escapeHtml(s.name)}</div>
         <div class="strat-desc">${escapeHtml(s.desc || '')}</div>
@@ -164,6 +282,7 @@
         <div class="sd-meta-item"><div class="sd-meta-label">類別</div><div class="sd-meta-value" style="font-size:.78rem">${escapeHtml(cat.icon)} ${escapeHtml(cat.name)}</div></div>
         <div class="sd-meta-item"><div class="sd-meta-label">策略 ID</div><div class="sd-meta-value" style="font-size:.78rem;font-family:var(--fm)">#${String(s.id).padStart(3,'0')}</div></div>
         <div class="sd-meta-item"><div class="sd-meta-label">狀態</div><div class="sd-meta-value"><span class="strat-status ${runnable ? 'ok' : 'plan'}">${runnable ? '可回測' : '即將推出'}</span></div></div>
+        <div class="sd-meta-item"><div class="sd-meta-label">點讚</div><div class="sd-meta-value" id="sd-like-wrap">${renderLikeButton(s)}</div></div>
       </div>
       ${runnable ? '' : `<div style="font-size:.72rem;color:var(--t3);line-height:1.7;padding:10px 12px;border-radius:var(--r);border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06)">此策略目前僅供瀏覽，回測功能將陸續開放。</div>`}
     `;
@@ -234,9 +353,19 @@
       if (state.activeCat && s.cat !== state.activeCat) return false;
       if (tier && s.tier !== tier) return false;
       if (statusFilter === 'implemented' && !isStratRunnable(s)) return false;
+      if (statusFilter === 'liked' && !isStratLiked(s)) return false;
       if (q && !String(s.name || '').toLowerCase().includes(q) && !String(s.desc || '').toLowerCase().includes(q)) return false;
       return true;
     });
+
+    if (statusFilter !== 'liked') {
+      filtered.sort((a, b) => {
+        const al = isStratLiked(a) ? 1 : 0;
+        const bl = isStratLiked(b) ? 1 : 0;
+        if (al !== bl) return bl - al;
+        return (a.id || 0) - (b.id || 0);
+      });
+    }
 
     const stats = $id('lib-stats');
     if (stats) {
@@ -250,7 +379,8 @@
         `<div class="lib-stat">可回測 <b style="color:var(--gn);margin:0 3px">${runnableShown}</b> / ${runnableTotal}</div>` +
         `<div class="lib-stat">Free: <b style="color:var(--gn);margin:0 3px">${filtered.filter((s) => s.tier === 'free').length}</b></div>` +
         `<div class="lib-stat">Pro: <b style="color:var(--ac);margin:0 3px">${filtered.filter((s) => s.tier === 'pro').length}</b></div>` +
-        `<div class="lib-stat">Ent: <b style="color:var(--pu);margin:0 3px">${filtered.filter((s) => s.tier === 'ent').length}</b></div>`;
+        `<div class="lib-stat">Ent: <b style="color:var(--pu);margin:0 3px">${filtered.filter((s) => s.tier === 'ent').length}</b></div>` +
+        `<div class="lib-stat">點讚 <b style="color:var(--ac);margin:0 3px">${state.likedKeys.size}</b></div>`;
     }
 
     renderCatPills();
@@ -271,17 +401,19 @@
       }).join('');
     } else if (view === 'list') {
       content.innerHTML =
-        `<table class="tbl"><thead><tr><th>#</th><th>名稱</th><th>描述</th><th>狀態</th><th>類別</th><th>等級</th><th></th></tr></thead><tbody>` +
+        `<table class="tbl"><thead><tr><th>#</th><th>名稱</th><th>描述</th><th>狀態</th><th>類別</th><th>等級</th><th>點讚</th><th></th></tr></thead><tbody>` +
         filtered.map((s) => {
           const cat = cats.find((c) => c.id === s.cat) || cats[0];
           const runnable = isStratRunnable(s);
-          return `<tr class="${runnable ? 'strat-row-ready' : 'strat-row-planned'}">
+          const likedRow = isStratLiked(s) ? ' strat-row-liked' : '';
+          return `<tr class="${runnable ? 'strat-row-ready' : 'strat-row-planned'}${likedRow}">
             <td style="color:var(--t3)">${String(s.id).padStart(3,'0')}</td>
             <td class="ac" style="cursor:pointer" data-detail="${s.id}">${escapeHtml(s.name)}</td>
             <td style="color:var(--t2);white-space:normal;max-width:340px">${escapeHtml(s.desc || '')}</td>
             <td><span class="strat-status ${runnable ? 'ok' : 'plan'}">${runnable ? '可回測' : '即將推出'}</span></td>
             <td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:${cat.color}"></span><span style="font-size:.6rem;color:var(--t3)">${escapeHtml(cat.name.slice(0,6))}</span></span></td>
             <td><span class="strat-tier ${tierBadgeClass(s.tier)}">${String(s.tier || 'free').toUpperCase()}</span></td>
+            <td>${renderLikeButton(s, { compact: true })}</td>
             <td><button class="strat-btn ${runnable ? 'strat-btn-ready' : 'strat-btn-planned'}" type="button" data-use="${s.id}" ${runnable ? '' : 'data-planned="1"'}>${runnable ? '使用' : '即將推出'}</button></td>
           </tr>`;
         }).join('') +
@@ -312,13 +444,27 @@
     });
   }
 
-  async function init() {
-    if (!state.catalog) await loadCatalog();
-    window.StockQPro = window.StockQPro || {};
-    window.StockQPro.catalog = state.catalog;
-    window.StockQPro.showStratDetail = showStratDetail;
-    window.StockQPro.ensureDefaultStrategy = ensureDefaultRunnableStrategy;
-    ensureDefaultRunnableStrategy();
+  let _filtersBound = false;
+  let _likeBound = false;
+
+  function bindLikeDelegation() {
+    if (_likeBound) return;
+    const root = document.getElementById('pg-strategies');
+    if (!root) return;
+    _likeBound = true;
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('.strat-like-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      const key = btn.getAttribute('data-like-key');
+      const strat = state.catalog?.strats?.find((x) => stratLikeKey(x) === key);
+      toggleLikeByKey(key, strat);
+    });
+  }
+
+  function bindLibraryFilters() {
+    if (_filtersBound) return;
+    _filtersBound = true;
     const q = $id('lib-search');
     const tier = $id('lib-tier');
     const status = $id('lib-status');
@@ -327,12 +473,39 @@
     tier?.addEventListener('change', () => renderLibrary());
     status?.addEventListener('change', () => renderLibrary());
     view?.addEventListener('change', () => renderLibrary());
-    renderLibrary();
+  }
+
+  async function init() {
+    try {
+      if (!state.catalog) await loadCatalog();
+      await loadLikeState();
+      window.StockQPro = window.StockQPro || {};
+      window.StockQPro.catalog = state.catalog;
+      window.StockQPro.showStratDetail = showStratDetail;
+      window.StockQPro.ensureDefaultStrategy = ensureDefaultRunnableStrategy;
+      bindLibraryFilters();
+      bindLikeDelegation();
+      ensureDefaultRunnableStrategy();
+      renderLibrary();
+    } catch (e) {
+      console.error('[strategy-catalog]', e);
+      const msg = e?.message || '策略庫載入失敗，請確認已登入且後端可連線';
+      showCatalogError(msg);
+    }
+  }
+
+  async function onShow() {
+    if (!state.likesLoaded) await loadLikeState();
+    if (state.catalog) {
+      renderLibrary();
+      return;
+    }
+    await init();
   }
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
-  window.StockQPro.pages.strategies = { init };
+  window.StockQPro.pages.strategies = { init, onShow };
   window.StockQPro.loadStrategyCatalog = loadCatalog;
 })();
 

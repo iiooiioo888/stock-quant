@@ -19,7 +19,6 @@ def handle_sq_health(_args: dict) -> str:
             "app": settings.app_name,
             "version": settings.app_version,
             "database": stats,
-            "polymarket_enabled": settings.polymarket_enabled,
         })
     except Exception as e:
         return error_result(str(e))
@@ -31,7 +30,6 @@ def handle_sq_config_summary(_args: dict) -> str:
         return json_result({
             "summary_text": settings.summary(),
             "demo_mode": settings.demo_mode,
-            "polymarket_enabled": settings.polymarket_enabled,
         })
     except Exception as e:
         return error_result(str(e))
@@ -78,7 +76,7 @@ def handle_sq_list_tasks(args: dict) -> str:
 
 
 def handle_sq_data_sources(_args: dict) -> str:
-    """各類數據源健康狀態（含 Polymarket Gamma/CLOB）。"""
+    """各類數據源健康狀態。"""
     try:
         from src.core.data_sources import health_check
 
@@ -115,7 +113,7 @@ CORE_TOOLS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="sq_list_tasks",
-        description="列出最近異步任務（回測、下載、Polymarket 同步等）。",
+        description="列出最近異步任務（回測、下載等）。",
         input_schema=build_input_schema(
             {"limit": {"type": "integer", "description": "條數，默認 20"}},
         ),
@@ -123,7 +121,7 @@ CORE_TOOLS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="sq_data_sources",
-        description="全項目數據源熔斷與可用性（A 股、加密、外匯、Polymarket 等）。",
+        description="全項目數據源熔斷與可用性（A 股、加密、外匯等）。",
         input_schema=build_input_schema({}),
         handler=handle_sq_data_sources,
     ),

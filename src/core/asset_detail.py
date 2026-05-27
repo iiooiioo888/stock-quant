@@ -766,24 +766,6 @@ def build_asset_detail(symbol: str, days: int = 180) -> Optional[dict]:
 
 
 
-    pm = {}
-
-    if code:
-
-        try:
-
-            from src.core.polymarket.stock_link import search_polymarket_for_stock
-
-
-
-            pm = search_polymarket_for_stock(code, name, limit_per_query=6, max_results=10)
-
-        except Exception as e:
-
-            logger.debug(f"Polymarket {symbol}: {e}")
-
-
-
     links = _external_links(symbol, chart.get("name") or name, tv_symbol, market)
 
 
@@ -819,8 +801,6 @@ def build_asset_detail(symbol: str, days: int = 180) -> Optional[dict]:
         "financials": financials,
 
         "news": news,
-
-        "polymarket": pm,
 
         "links": links,
 

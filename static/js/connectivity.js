@@ -9,7 +9,6 @@ const ConnectivityPage = {
     a_share: 'A股',
     crypto: '加密',
     forex: '外匯',
-    polymarket: 'Polymarket',
     notify: '通知',
     error: '錯誤',
   },

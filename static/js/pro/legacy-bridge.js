@@ -34,7 +34,7 @@
     '/static/js/scheduler.js?v=legacy-pro-20260527',
     '/static/js/crypto.js?v=legacy-pro-20260527',
     '/static/js/connectivity.js?v=legacy-pro-20260527',
-    '/static/js/app.js?v=legacy-pro-20260527',
+    '/static/js/app.js?v=ws-fix-20260527',
   ];
 
   const Bridge = {
@@ -48,7 +48,7 @@
       return Object.prototype.hasOwnProperty.call(PAGE_TO_TAB, pageId);
     },
 
-    _loadScript(src) {
+    _loadScriptDirect(src) {
       return new Promise((resolve, reject) => {
         if (document.querySelector(`script[src="${src}"]`)) {
           resolve();
@@ -63,11 +63,41 @@
       });
     },
 
+    _loadScript(src) {
+      const run = () => this._loadScriptDirect(src);
+      const SL = window.StockQPro?.StreamLoader;
+      return SL ? SL.enqueue(run, 1) : run();
+    },
+
+    _ensureLegacyCss() {
+      if (document.getElementById('legacy-in-pro-css')) return;
+      const link = document.createElement('link');
+      link.id = 'legacy-in-pro-css';
+      link.rel = 'stylesheet';
+      link.href = '/static/css/legacy-in-pro.css?v=legacy-pro-20260527';
+      document.head.appendChild(link);
+    },
+
     ensureScripts() {
       if (this._scriptsReady) return this._scriptsReady;
       this._scriptsReady = (async () => {
-        for (const src of LEGACY_SCRIPTS) {
-          await this._loadScript(src);
+        this._ensureLegacyCss();
+        const charts = window.StockQPro?.charts;
+        const SL = window.StockQPro?.StreamLoader;
+        if (charts) {
+          const chartFns = [
+            () => charts.ensureChartJs(),
+            () => charts.ensureLightweightCharts(),
+          ];
+          if (SL) await SL.runSequential(chartFns);
+          else {
+            for (const fn of chartFns) await fn();
+          }
+        }
+        const scriptFns = LEGACY_SCRIPTS.map((src) => () => this._loadScript(src));
+        if (SL) await SL.runSequential(scriptFns);
+        else {
+          for (const fn of scriptFns) await fn();
         }
         this._patchLegacyApp();
       })();
@@ -76,6 +106,18 @@
 
     _patchLegacyApp() {
       if (typeof App === 'undefined' || App._proPatched) return;
+      const pro = window.StockQPro?.App;
+      if (pro && pro !== App && pro._connectWS) {
+        window.LegacyApp = App;
+        App._connectWS = () => pro.reconnectWs();
+        App.initWebSocket = async () => { pro.reconnectWs(); };
+        App.reconnectWs = () => pro.reconnectWs();
+        Object.defineProperty(App, '_ws', {
+          configurable: true,
+          get() { return pro._ws; },
+          set(v) { pro._ws = v; },
+        });
+      }
       const origLoadTab = App.loadTab?.bind(App);
       App.loadTab = (tab, opts = {}) => {
         const proPage = PAGE_TO_TAB[tab] || tab;
@@ -247,12 +289,12 @@
       let inited = false;
       return {
         init() {
-          if (inited) return;
+          if (inited) return Bridge.activate(pageId);
           inited = true;
-          Bridge.activate(pageId).catch(() => {});
+          return Bridge.activate(pageId);
         },
         onShow() {
-          Bridge.activate(pageId).catch(() => {});
+          return Bridge.activate(pageId);
         },
       };
     },

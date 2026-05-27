@@ -1,6 +1,6 @@
 /**
  * stock-detail.js — 每支股票獨立詳情頁（#/stock/代碼）
- * TradingView K 線牆 + Polymarket 相關市場
+ * TradingView K 線牆 + 技術/信號概覽
  */
 const StockDetail = {
   _code: '',
@@ -187,7 +187,6 @@ const StockDetail = {
     this._renderTechnical(d);
     this._renderSignals(d);
     await this._renderTvWall(d);
-    this._renderPolymarket(d);
     this._overviewRendered = true;
     if (typeof Charts !== 'undefined') {
       requestAnimationFrame(() => Charts.resizeTab('tab-stock-detail'));
@@ -395,7 +394,6 @@ const StockDetail = {
       this.activateSubTab(sub);
       if (sub === 'overview') {
         await this._renderTvWall(d);
-        this._renderPolymarket(d);
         this._overviewRendered = true;
       }
     } catch (e) {
@@ -582,7 +580,6 @@ const StockDetail = {
       </div>`;
   },
 
-  _renderPolymarket() {},
 
   _fmtPrice(value, code) {
     const n = Number(value);

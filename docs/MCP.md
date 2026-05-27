@@ -2,8 +2,6 @@
 
 Model Context Protocol (MCP) 為 **整個 stock-quant 項目** 提供 stdio 工具接入，供 Cursor / Claude Desktop 等 Agent 調用本地量化能力（只讀為主）。
 
-Polymarket 預測市場僅是其中一個業務域，並非獨立 MCP 服務。
-
 ## 架構
 
 ```
@@ -13,7 +11,6 @@ src/integrations/mcp/
 ├── protocol.py        # ToolSpec 契約
 ├── utils.py           # JSON 輸出格式
 ├── tools_core.py      # 核心域 sq_*（健康、策略、任務、數據源）
-└── tools_polymarket.py # 預測市場域 polymarket_*
 ```
 
 擴展新域：新增 `tools_<domain>.py`，在 `registry.py` 的 `ALL_TOOL_MODULES` 註冊。
@@ -42,9 +39,7 @@ python -m src.integrations.mcp.server
       "command": "python",
       "args": ["-m", "src.integrations.mcp.server"],
       "cwd": "E:/Jerry_python/stock-quant",
-      "env": {
-        "SQ_POLYMARKET_ENABLED": "true"
-      }
+      "env": {}
     }
   }
 }
@@ -63,16 +58,6 @@ python -m src.integrations.mcp.server
 | `sq_list_tasks` | 最近異步任務 |
 | `sq_data_sources` | 全項目數據源熔斷狀態 |
 
-### 預測市場域（`polymarket_*`）
-
-| Tool | 說明 |
-|------|------|
-| `polymarket_list_markets` | Polymarket 市場列表 |
-| `polymarket_get_market` | 市場詳情 |
-| `polymarket_get_orderbook` | CLOB 訂單簿 |
-
-詳見 [MCP_POLYMARKET.md](MCP_POLYMARKET.md)。
-
 ## 與 REST API 的關係
 
 - MCP tools 調用 `src.core` 業務層，與 FastAPI `/api/*` 共用邏輯。
@@ -82,5 +67,4 @@ python -m src.integrations.mcp.server
 
 MCP 進程繼承與 Web 相同的 `SQ_*` 配置（見 `.env.example`），例如：
 
-- `SQ_POLYMARKET_ENABLED` — 是否啟用 Polymarket 域 tools
 - `SQ_DB_PATH` — 本地數據庫路徑

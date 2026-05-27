@@ -44,7 +44,7 @@ async def get_asset_detail(
     symbol: str = Query(..., min_length=1, max_length=32),
     days: int = Query(180, ge=30, le=500),
 ):
-    """單資產詳情：K 線、財報、新聞、Polymarket（A股）。"""
+    """單資產詳情：K 線、財報、新聞與外部連結。"""
     from src.core.api_cache import cached_response
     from src.core.asset_detail import build_asset_detail
 

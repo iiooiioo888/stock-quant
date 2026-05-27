@@ -4,6 +4,7 @@
 
 const App = {
   _ws: null,
+  _wsGen: 0,
   _wsRetry: 0,
   _wsMaxRetry: 15,
   _wsAuthRequired: false,
@@ -848,7 +849,17 @@ const App = {
     if (sidebarText && text) sidebarText.textContent = text;
   },
 
+  _disposeWs(sock) {
+    if (!sock) return;
+    sock.onopen = sock.onclose = sock.onmessage = sock.onerror = null;
+    try { sock.close(); } catch (_) {}
+  },
+
   _connectWS() {
+    if (window.StockQPro?.App?._connectWS && window.StockQPro.App !== this) {
+      return window.StockQPro.App._connectWS();
+    }
+
     let token = localStorage.getItem('sq_token') || Api._token;
     if (token && typeof Api.isTokenExpired === 'function' && Api.isTokenExpired(token)) {
       Api.setToken(null);
@@ -864,16 +875,24 @@ const App = {
       return;
     }
 
+    this._disposeWs(this._ws);
+    this._ws = null;
+
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = token
       ? `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`
       : `${proto}//${location.host}/ws`;
-    if (this._ws && (this._ws.readyState === WebSocket.CONNECTING || this._ws.readyState === WebSocket.OPEN)) {
-      try { this._ws.close(); } catch (_) {}
+    let ws;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (_) {
+      return;
     }
-    this._ws = new WebSocket(wsUrl);
+    const gen = ++this._wsGen;
+    this._ws = ws;
 
-    this._ws.onopen = () => {
+    ws.onopen = () => {
+      if (this._ws !== ws || this._wsGen !== gen) return;
       this._setWsStatus(true, '已連接');
       this._wsRetry = 0;
       if (typeof Tasks !== 'undefined' && typeof Tasks.rebindWs === 'function') {
@@ -881,7 +900,9 @@ const App = {
       }
     };
 
-    this._ws.onclose = () => {
+    ws.onclose = () => {
+      if (this._ws !== ws || this._wsGen !== gen) return;
+      this._ws = null;
       this._setWsStatus(false);
 
       const cur = localStorage.getItem('sq_token') || Api._token;
@@ -909,15 +930,17 @@ const App = {
 
       this._setWsStatus(false, '重連中...');
       const delay = Math.min(1000 * Math.pow(2, this._wsRetry), 30000);
-      setTimeout(() => this._connectWS(), delay);
+      setTimeout(() => {
+        if (this._wsGen === gen && !this._ws) this._connectWS();
+      }, delay);
     };
 
-    this._ws.onmessage = e => {
+    ws.onmessage = e => {
+      if (this._ws !== ws) return;
       try {
         const d = JSON.parse(e.data);
         if (d.type === 'quotes') this._updateRealtimeQuotes(d.data);
         if (d.type === 'signals') this._updateRealtimeSignals(d.data);
-        // 任務面板 WS 實時更新
         if (App._taskWsHandler) App._taskWsHandler(e);
       } catch {}
     };
@@ -1677,6 +1700,25 @@ App._initTaskPanel = function() {
     <div id="taskPanelQueue" style="padding:8px;border-bottom:1px solid var(--border-color,#334155)"></div>
     <div id="taskPanelList" style="max-height:220px;overflow-y:auto;padding:8px"></div>`;
   document.body.appendChild(panel);
+  panel.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tk-queue-action]');
+    if (!btn || !panel.contains(btn)) return;
+    e.stopPropagation();
+    const action = btn.getAttribute('data-tk-queue-action');
+    const id = btn.getAttribute('data-task-id');
+    if (!id) return;
+    if (action === 'cancel') App._cancelTask(id);
+    else if (action === 'retry' && typeof Api !== 'undefined' && Api.retryTask) {
+      Api.retryTask(id).then((d) => {
+        if (d?.success) {
+          Utils.toast(d.message || '已提交重試', 2000, 'success');
+          App._refreshTasks();
+        }
+      });
+    } else if (action === 'result' && typeof TaskCommon !== 'undefined') {
+      TaskCommon.navigateToResult(id);
+    }
+  });
   // Header 任務指示器
   const indicator = document.createElement('div');
   indicator.id = 'taskIndicator';
@@ -1821,8 +1863,14 @@ App._cancelTask = async function(taskId) {
   const d = await Api.cancelTask(taskId);
   if (d && d.success) {
     Utils.toast('任務已取消', 2000, 'success');
+    App._pollTasks();
     App._refreshTasks();
+    return;
   }
+  if (d === null && typeof Api !== 'undefined') {
+    return;
+  }
+  Utils.toast('取消失敗，請稍後重試', 2500, 'warning');
 };
 
 App._viewTaskResult = async function(taskId) {
