@@ -22,10 +22,10 @@
     '/static/js/charts.js?v=legacy-pro-20260527',
     '/static/js/chart-pro.js?v=legacy-pro-20260527',
     '/static/js/signal-labels.js?v=legacy-pro-20260527',
-    '/static/js/stock-picker.js?v=legacy-pro-20260527',
+    '/static/js/stock-picker.js?v=pf-grid-20260527',
     '/static/js/backtest.js?v=legacy-pro-20260527',
     '/static/js/optimize.js?v=legacy-pro-20260527',
-    '/static/js/portfolio.js?v=legacy-pro-20260527',
+    '/static/js/portfolio.js?v=pf-method-20260527',
     '/static/js/signals.js?v=legacy-pro-20260527',
     '/static/js/heatmap.js?v=legacy-pro-20260527',
     '/static/js/stock-content.js?v=legacy-pro-20260527',
@@ -195,7 +195,7 @@
         }
       } catch (_) {}
       try {
-        if (['optimize', 'walkforward', 'heatmap', 'portfolio', 'analysis'].includes(tab)
+        if (['optimize', 'walkforward', 'heatmap', 'analysis'].includes(tab)
           && typeof StockPicker !== 'undefined') {
           StockPicker.initAll();
         }
@@ -212,7 +212,14 @@
       if (typeof App === 'undefined') return;
       switch (tab) {
         case 'portfolio':
-          if (typeof Portfolio !== 'undefined') Portfolio.loadPresets?.();
+          if (typeof Portfolio !== 'undefined') {
+            Portfolio.init?.();
+            Portfolio.loadPresets?.();
+            Portfolio.updateSummary?.();
+          }
+          try {
+            if (typeof StockPicker !== 'undefined') StockPicker.initPortfolioLazy?.();
+          } catch (_) {}
           break;
         case 'alerts':
           App.loadAlerts?.();

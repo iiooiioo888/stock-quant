@@ -9,6 +9,8 @@ const StockPicker = {
   _ROW_H: 52,
   _stocks: [],
   _loading: null,
+  _loadingTarget: 0,
+  _loadedCap: 0,
   _MARKET_LABELS: {
     all: '全部',
     a_share: 'A 股',
@@ -41,13 +43,27 @@ const StockPicker = {
 
     singles.forEach(([id, title]) => this.attach(id, { mode: 'single', title }));
     multis.forEach(([id, title]) => this.attach(id, { mode: 'multi', title }));
-    // 組合：多選可 toggle、已選以代碼＋名稱 chips 完整顯示
-    this.attach('pfCodes', {
-      mode: 'multi',
-      title: '選擇組合標的（可多選）',
-      multiToggle: true,
-      chipList: true,
-    });
+  },
+
+  /** 組合頁：延後掛載選股器，避免 chips / 股票庫請求搶走 LCP */
+  initPortfolioLazy() {
+    const run = () => {
+      if (document.getElementById('pfCodes')?.dataset.stockPickerBound) return;
+      this.attach('pfCodes', {
+        mode: 'multi',
+        title: '選擇組合標的',
+        multiToggle: true,
+        chipList: true,
+        hideSelectedPreview: true,
+        lazyChips: true,
+        deferUniverse: true,
+        universeInitial: 400,
+        universeFull: 20000,
+        allowLoadMore: true,
+      });
+    };
+    const ric = window.requestIdleCallback || ((fn) => setTimeout(fn, 80));
+    ric(run, { timeout: 2500 });
   },
 
   attach(inputId, options = {}) {
@@ -65,6 +81,12 @@ const StockPicker = {
       query: '',
       multiToggle: !!options.multiToggle,
       chipList: !!options.chipList,
+      hideSelectedPreview: !!options.hideSelectedPreview,
+      universeInitial: Math.min(this._UNIVERSE_MAX, Math.max(50, Number(options.universeInitial) || 1200)),
+      universeFull: Math.min(this._UNIVERSE_MAX, Math.max(200, Number(options.universeFull) || this._UNIVERSE_MAX)),
+      allowLoadMore: !!options.allowLoadMore,
+      lazyChips: !!options.lazyChips,
+      deferUniverse: !!options.deferUniverse,
     };
 
     input.classList.add('stock-picker-source');
@@ -82,34 +104,88 @@ const StockPicker = {
     state.tabs = shell.querySelector('[data-sp-tabs]');
     state.grid = shell.querySelector('[data-sp-grid]');
     state.hint = shell.querySelector('[data-sp-hint]');
+    state.moreBtn = shell.querySelector('[data-sp-more]');
     state.selectedCode = shell.querySelector('[data-sp-selected-code]');
     state.selectedName = shell.querySelector('[data-sp-selected-name]');
     state.selectedLetter = shell.querySelector('[data-sp-selected-letter]');
     state.selectedIcon = shell.querySelector('[data-sp-selected-icon]');
+    state.chipsHost = shell.querySelector('[data-sp-chips]');
 
     state.manual.value = input.value || '';
     this._bind(state);
     this._syncSelected(state);
-    this._ensureStocks().then(() => {
+    if (state.deferUniverse) {
+      const ric = window.requestIdleCallback || ((fn) => setTimeout(fn, 120));
+      ric(() => this._bootUniverse(state), { timeout: 3000 });
+    } else {
+      this._bootUniverse(state);
+    }
+  },
+
+  _bootUniverse(state) {
+    return this._ensureStocks(state.universeInitial).then(() => {
       this._renderTabs(state);
       this._renderGrid(state);
       this._syncSelected(state);
     });
   },
 
-  async _ensureStocks() {
-    if (this._stocks.length) return this._stocks;
-    if (this._loading) return this._loading;
+  _updateChipCount(state, codes) {
+    const countEl = state.shell?.querySelector('[data-sp-count]');
+    if (countEl) countEl.textContent = `${codes.length} 隻`;
+  },
+
+  _scheduleFullChips(state) {
+    if (!state.lazyChips || state._chipsFull) return;
+    if (state._chipsIdleCancel) {
+      try { state._chipsIdleCancel(); } catch (_) {}
+    }
+    const run = () => {
+      state._chipsFull = true;
+      this._renderChips(state, this._selectedCodes(state));
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      state._chipsIdleCancel = () => window.cancelIdleCallback(state._chipsIdleId);
+      state._chipsIdleId = window.requestIdleCallback(run, { timeout: 2800 });
+    } else {
+      state._chipsIdleTimer = setTimeout(run, 280);
+    }
+  },
+
+  _renderChipsLite(state, codes) {
+    if (!state.chipList || !state.chipsHost) return;
+    const host = state.chipsHost;
+    host.classList.add('stock-picker-chips--lite');
+    host.replaceChildren();
+    this._updateChipCount(state, codes);
+    if (!codes.length) return;
+    const line = document.createElement('span');
+    line.className = 'stock-picker-chips-lite';
+    line.textContent = codes.join(' · ');
+    host.appendChild(line);
+  },
+
+  async _ensureStocks(target = 1200) {
+    const want = Math.min(this._UNIVERSE_MAX, Math.max(1, Number(target) || 1200));
+    if (this._stocks.length >= want) return this._stocks;
+    if (this._loading && this._loadingTarget >= want) return this._loading;
+
+    this._loadingTarget = want;
     this._loading = (async () => {
       try {
-        const data = await Api.getStocks(this._UNIVERSE_MAX);
+        const data = await Api.getStocks(want);
         const stocks = (data?.stocks || [])
           .map((s, idx) => this._normalizeStock(s, idx))
           .filter(Boolean);
-        this._stocks = stocks.length ? stocks : this._DEFAULT_STOCKS;
+        // 若已載入較小集合，再載入更大集合時採用最新結果覆蓋（由後端保證為 TOP N）
+        this._stocks = stocks.length ? stocks : (this._stocks.length ? this._stocks : this._DEFAULT_STOCKS);
+        this._loadedCap = Math.max(this._loadedCap, want, this._stocks.length);
       } catch (err) {
         console.warn('stock picker universe load failed', err);
-        this._stocks = this._DEFAULT_STOCKS;
+        if (!this._stocks.length) this._stocks = this._DEFAULT_STOCKS;
+      } finally {
+        // allow future upgrades
+        this._loading = null;
       }
       return this._stocks;
     })();
@@ -130,14 +206,7 @@ const StockPicker = {
             <p class="stock-picker-chip-hint">點列表列可加入或取消選取；點標籤上的 × 可移除。</p>
           </div>`
       : '';
-    return `
-      <div class="bt-stock-section stock-picker-section">
-        <div class="bt-section-head">
-          <h3>${this._esc(state.title)}</h3>
-          <span class="bt-load-hint" data-sp-hint>載入股票庫...</span>
-        </div>
-        <div class="stock-code-picker">
-          <div class="bt-stock-toolbar">
+    const previewBlock = state.hideSelectedPreview ? '' : `
             <div class="bt-selected-stock" title="當前選中">
               <div class="stock-code-icon bt-selected-icon">
                 <img data-sp-selected-icon width="48" height="48" alt="">
@@ -147,7 +216,20 @@ const StockPicker = {
                 <span class="bt-selected-code" data-sp-selected-code>—</span>
                 <span class="bt-selected-name" data-sp-selected-name>未選擇</span>
               </div>
-            </div>
+            </div>`;
+    const moreBtn = state.allowLoadMore
+      ? `<button type="button" class="btn s stock-picker-more" data-sp-more title="載入更多股票（可能稍慢）">載入更多</button>`
+      : '';
+    return `
+      <div class="bt-stock-section stock-picker-section${state.hideSelectedPreview ? ' stock-picker-section--compact' : ''}">
+        <div class="bt-section-head">
+          <h3>${this._esc(state.title)}</h3>
+          <span class="bt-load-hint" data-sp-hint>載入股票庫...</span>
+          ${moreBtn}
+        </div>
+        <div class="stock-code-picker">
+          <div class="bt-stock-toolbar${state.hideSelectedPreview ? ' bt-stock-toolbar--compact' : ''}">
+            ${previewBlock}
             <input type="text" class="input-sm bt-code-manual stock-picker-manual" data-sp-manual placeholder="${inputLabel}" autocomplete="off">
             <input type="search" class="input-sm bt-code-search" data-sp-search placeholder="搜尋股票庫（代碼 / 名稱）…" autocomplete="off">
           </div>
@@ -198,6 +280,26 @@ const StockPicker = {
       this._renderTabs(state);
       this._renderGrid(state);
     });
+
+    if (state.moreBtn && !state.moreBtn.dataset.bound) {
+      state.moreBtn.dataset.bound = '1';
+      state.moreBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const btn = state.moreBtn;
+        if (btn.dataset.loading === '1') return;
+        btn.dataset.loading = '1';
+        btn.textContent = '載入中…';
+        try {
+          await this._ensureStocks(state.universeFull);
+          this._renderTabs(state);
+          this._renderGrid(state);
+        } finally {
+          btn.textContent = '已載入更多';
+          btn.disabled = true;
+          delete btn.dataset.loading;
+        }
+      });
+    }
 
     state.grid.addEventListener('click', e => {
       const row = e.target.closest('[data-code]');
@@ -301,10 +403,29 @@ const StockPicker = {
     const label = state.mode === 'multi'
       ? (codes.length ? `${codes.length} 隻已選` : '—')
       : (first || '—');
+    if (state.hideSelectedPreview) {
+      try { window.Portfolio?.updateSummary?.(); } catch (_) {}
+    }
+    if (!state.selectedCode) {
+      if (state.chipList) {
+        if (state.lazyChips && !state._chipsFull) {
+          this._renderChipsLite(state, codes);
+          this._scheduleFullChips(state);
+        } else {
+          this._renderChips(state, codes);
+        }
+      }
+      return;
+    }
     state.selectedCode.textContent = label;
     if (state.chipList) {
       state.selectedName.textContent = codes.length ? '已選清單見下方標籤' : '未選擇';
-      this._renderChips(state, codes);
+      if (state.lazyChips && !state._chipsFull) {
+        this._renderChipsLite(state, codes);
+        this._scheduleFullChips(state);
+      } else {
+        this._renderChips(state, codes);
+      }
     } else {
       state.selectedName.textContent = state.mode === 'multi' && codes.length
         ? codes.slice(0, 4).join(', ') + (codes.length > 4 ? '...' : '')
@@ -320,9 +441,10 @@ const StockPicker = {
   _renderChips(state, codes) {
     if (!state.chipList || !state.chipsHost) return;
     const host = state.chipsHost;
+    state._chipsFull = true;
+    host.classList.remove('stock-picker-chips--lite');
     host.replaceChildren();
-    const countEl = state.shell.querySelector('[data-sp-count]');
-    if (countEl) countEl.textContent = `${codes.length} 隻`;
+    this._updateChipCount(state, codes);
 
     codes.forEach(code => {
       const s = this._findStock(code);
@@ -398,7 +520,10 @@ const StockPicker = {
     }
     const list = this._displayList(state);
     const suffix = state.query ? `，篩選 ${list.length} 隻` : '';
-    state.hint.textContent = `已載入 ${this._stocks.length} 隻${suffix}`;
+    const cap = state.universeFull || this._UNIVERSE_MAX;
+    const partial = this._stocks.length < cap;
+    const extra = state.allowLoadMore && partial ? `（${this._stocks.length}/${cap}）` : '';
+    state.hint.textContent = `已載入 ${this._stocks.length} 隻${extra}${suffix}`;
     if (!list.length) {
       state.grid.innerHTML = '<div class="state-empty"><span class="state-icon">🔍</span><span class="state-text">找不到符合條件的股票</span></div>';
       return;
@@ -414,6 +539,22 @@ const StockPicker = {
     viewport._stockPickerList = list;
     viewport.addEventListener('scroll', () => this._paint(viewport), { passive: true });
     this._paint(viewport);
+    this._ensureGridPaint(viewport);
+  },
+
+  _ensureGridPaint(viewport) {
+    if (viewport._gridPaintObs) return;
+    if (typeof ResizeObserver === 'function') {
+      viewport._gridPaintObs = new ResizeObserver(() => this._paint(viewport));
+      viewport._gridPaintObs.observe(viewport);
+      return;
+    }
+    let n = 0;
+    const tick = () => {
+      this._paint(viewport);
+      if (viewport.clientHeight < 4 && ++n < 12) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   },
 
   _paint(viewport) {
@@ -422,6 +563,15 @@ const StockPicker = {
     const spacer = viewport.querySelector('.stock-universe-spacer');
     const rows = viewport.querySelector('.stock-universe-rows');
     if (!state || !spacer || !rows) return;
+
+    if (list.length && viewport.clientHeight < 4) {
+      if ((viewport._paintDefer || 0) < 16) {
+        viewport._paintDefer = (viewport._paintDefer || 0) + 1;
+        requestAnimationFrame(() => this._paint(viewport));
+      }
+      return;
+    }
+    viewport._paintDefer = 0;
 
     spacer.style.height = `${list.length * this._ROW_H}px`;
     const start = Math.max(0, Math.floor(viewport.scrollTop / this._ROW_H) - 4);

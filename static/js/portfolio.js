@@ -61,12 +61,253 @@ const Portfolio = {
   },
 
   _currentMethod: 'basic',
+  _methodFilter: 'all',
   _strategyList: null,
+  _STRAT_PRESETS: {
+    trend: ['dual_ma', 'macd', 'adx_trend', 'momentum', 'breakout'],
+    mean: ['bollinger', 'rsi', 'mean_reversion', 'kdj', 'cci'],
+  },
 
   init() {
-    this._initMethodCards();
+    this._initMethodZone();
     this._initPortfolioQuickAdd();
     this._initStrategyPicker();
+    this._initSummaryBindings();
+    this._initOpenTasks();
+    this.updateSummary();
+  },
+
+  updateSummary() {
+    const codes = this._parseCsv(document.getElementById('pfCodes')?.value);
+    const strategies = this._parseCsv(document.getElementById('pfStrategies')?.value);
+    const nCodes = codes.length;
+    const nStrats = strategies.length;
+    const total = nCodes * nStrats;
+    const methodLabel = this._methodLabels[this._currentMethod] || this._currentMethod;
+
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+
+    set('pfCodesCount', `${nCodes} 檔`);
+    set('pfStratsCount', `${nStrats} 個`);
+    set('pfSummaryCodes', `標的 ${nCodes}`);
+    set('pfSummaryStrats', `策略 ${nStrats}`);
+    set('pfSummaryMethod', methodLabel);
+
+    const eq = document.getElementById('pfSummaryEq');
+    if (eq) {
+      if (!nCodes && !nStrats) {
+        eq.innerHTML = '請選擇標的與策略';
+      } else if (!total) {
+        eq.innerHTML = `${nCodes || 0} × ${nStrats || 0} = <strong>0</strong>`;
+      } else {
+        eq.innerHTML = `${nCodes} × ${nStrats} = <strong>${total}</strong>`;
+      }
+    }
+
+    const hint = document.getElementById('pfSummaryHint');
+    if (hint) {
+      if (!total) {
+        hint.textContent = '至少需 1 檔標的與 1 個策略才能提交';
+        hint.classList.add('pf-summary-hint--warn');
+      } else if (total > 80) {
+        hint.textContent = `子策略較多（${total}），建議分批提交以縮短等待`;
+        hint.classList.add('pf-summary-hint--warn');
+      } else {
+        hint.textContent = '提交後立即進入任務列表，可連續建立多筆回測';
+        hint.classList.remove('pf-summary-hint--warn');
+      }
+    }
+
+    const bar = document.getElementById('pfSummaryBar');
+    if (bar) bar.classList.toggle('pf-summary-bar--empty', total === 0);
+
+    const preview = document.getElementById('pfActionPreview');
+    if (preview) {
+      preview.textContent = total
+        ? `將提交約 ${total} 個子策略 · ${methodLabel}`
+        : '請先完成標的與策略選擇';
+    }
+
+    const btn = document.getElementById('pfBtn');
+    if (btn) btn.disabled = total === 0;
+  },
+
+  _renderSelectedStrategyPills() {
+    const host = document.getElementById('pfStratSelected');
+    if (!host) return;
+    const keys = this._parseCsv(document.getElementById('pfStrategies')?.value);
+    if (!keys.length) {
+      host.innerHTML = '<span class="pf-strat-empty">尚未選擇策略，請點下方標籤</span>';
+      return;
+    }
+    const list = this._strategyList || [];
+    host.innerHTML = keys.map((k) => {
+      const hit = list.find((s) => String(s.key).toLowerCase() === k.toLowerCase()
+        || String(s.name).toLowerCase() === k.toLowerCase());
+      const label = hit?.display || k;
+      return `<button type="button" class="pf-strat-pill" data-strat="${String(hit?.key || k)}" title="${String(k)}">
+        ${String(label)}<span class="pf-strat-pill-x" aria-hidden="true">×</span>
+      </button>`;
+    }).join('');
+  },
+
+  _initSummaryBindings() {
+    const bar = document.getElementById('pfSummaryBar');
+    if (!bar || bar.dataset.bound === '1') return;
+    bar.dataset.bound = '1';
+    const codes = document.getElementById('pfCodes');
+    const strats = document.getElementById('pfStrategies');
+    const onChange = () => {
+      this.updateSummary();
+      this._renderSelectedStrategyPills();
+    };
+    codes?.addEventListener('input', onChange);
+    codes?.addEventListener('change', onChange);
+    strats?.addEventListener('input', onChange);
+    strats?.addEventListener('change', onChange);
+  },
+
+  _initOpenTasks() {
+    const btn = document.getElementById('pfOpenTasks');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => {
+      try {
+        window.StockQPro?.App?.nav?.('tasks', { syncHash: true });
+      } catch (_) {
+        location.hash = '#/tasks';
+      }
+    });
+  },
+
+  _portfolioRoot() {
+    return document.getElementById('tab-portfolio')
+      || document.querySelector('#pg-portfolio .legacy-mount #tab-portfolio')
+      || document.querySelector('#pg-portfolio #tab-portfolio');
+  },
+
+  _initMethodZone() {
+    const root = this._portfolioRoot();
+    if (!root) return;
+
+    this._pfMethodAbort?.abort();
+    this._pfMethodAbort = new AbortController();
+    const { signal } = this._pfMethodAbort;
+
+    const grid = root.querySelector('#pfMethodGrid');
+    const filterHost = root.querySelector('#pfMethodFilter');
+    const filterMeta = root.querySelector('#pfMethodFilterMeta');
+    const emptyEl = root.querySelector('#pfMethodEmpty');
+    const statusName = root.querySelector('#pfMethodStatusName');
+    const statusDesc = root.querySelector('#pfMethodStatusDesc');
+    if (!grid || !filterHost) return;
+
+    const FILTER_LABELS = { all: '全部', basic: '基礎', risk: '風險', adv: '進階' };
+
+    const selectCard = (card) => {
+      if (!card || !card.dataset.method) return;
+      grid.querySelectorAll('.pf-method-card[data-method]').forEach((c) => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      card.classList.add('active');
+      card.setAttribute('aria-pressed', 'true');
+      this._currentMethod = card.dataset.method;
+      const nameEl = card.querySelector('.pf-method-name');
+      const descEl = card.querySelector('.pf-method-desc');
+      if (statusName) statusName.textContent = nameEl?.textContent?.trim() || this._methodLabels[this._currentMethod] || '';
+      if (statusDesc) statusDesc.textContent = descEl?.textContent?.trim() || '';
+      this._renderMethodParams();
+      this.updateSummary();
+    };
+
+    const applyFilter = (cat) => {
+      this._methodFilter = cat || 'all';
+      filterHost.querySelectorAll('[data-pf-filter]').forEach((b) => {
+        const on = b.dataset.pfFilter === this._methodFilter;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+
+      const cards = [...grid.querySelectorAll('.pf-method-card[data-method]')];
+      let visibleCount = 0;
+      cards.forEach((card) => {
+        const c = card.dataset.pfCat || 'basic';
+        const show = this._methodFilter === 'all' || c === this._methodFilter;
+        card.classList.toggle('pf-method-hidden', !show);
+        card.hidden = !show;
+        card.setAttribute('aria-hidden', show ? 'false' : 'true');
+        if (show) visibleCount += 1;
+      });
+
+      if (emptyEl) emptyEl.hidden = visibleCount > 0;
+      if (filterMeta) {
+        const label = FILTER_LABELS[this._methodFilter] || this._methodFilter;
+        filterMeta.textContent = visibleCount
+          ? `${label} · 顯示 ${visibleCount} / ${cards.length} 種`
+          : `${label} · 此分類暫無可用方法`;
+      }
+
+      const active = grid.querySelector('.pf-method-card.active[data-method]');
+      if (!active || active.classList.contains('pf-method-hidden') || active.hidden) {
+        const first = grid.querySelector('.pf-method-card[data-method]:not(.pf-method-hidden):not([hidden])');
+        if (first) selectCard(first);
+      }
+    };
+
+    filterHost.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-pf-filter]');
+      if (!btn) return;
+      e.preventDefault();
+      applyFilter(btn.dataset.pfFilter || 'all');
+    }, { signal });
+
+    grid.querySelectorAll('.pf-method-card[data-method]').forEach((card) => {
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', card.classList.contains('active') ? '0' : '-1');
+      card.setAttribute('aria-pressed', card.classList.contains('active') ? 'true' : 'false');
+    });
+
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.pf-method-card[data-method]');
+      if (!card || card.classList.contains('pf-method-hidden') || card.hidden) return;
+      e.preventDefault();
+      selectCard(card);
+      grid.querySelectorAll('.pf-method-card[data-method]').forEach((c) => {
+        c.setAttribute('tabindex', c === card ? '0' : '-1');
+      });
+    }, { signal });
+
+    grid.addEventListener('keydown', (e) => {
+      const visible = [...grid.querySelectorAll('.pf-method-card[data-method]:not(.pf-method-hidden):not([hidden])')];
+      if (!visible.length) return;
+      let idx = visible.findIndex((c) => c.classList.contains('active'));
+      if (idx < 0) idx = 0;
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        const card = e.target.closest('.pf-method-card[data-method]');
+        if (card && !card.classList.contains('pf-method-hidden')) {
+          e.preventDefault();
+          selectCard(card);
+        }
+        return;
+      }
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const delta = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+      const next = visible[(idx + delta + visible.length) % visible.length];
+      selectCard(next);
+      next.focus();
+    }, { signal });
+
+    const initial = grid.querySelector('.pf-method-card.active[data-method]:not(.pf-method-hidden)')
+      || grid.querySelector('.pf-method-card[data-method]:not(.pf-method-hidden)')
+      || grid.querySelector('.pf-method-card[data-method]');
+    if (initial) selectCard(initial);
+    applyFilter(this._methodFilter || 'all');
   },
 
   _parseCsv(value) {
@@ -99,6 +340,7 @@ const Portfolio = {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    this.updateSummary();
   },
 
   _setStrategies(strategies) {
@@ -109,6 +351,8 @@ const Portfolio = {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    this.updateSummary();
+    this._renderSelectedStrategyPills();
   },
 
   _initPortfolioQuickAdd() {
@@ -191,6 +435,7 @@ const Portfolio = {
       host.innerHTML = '<span style="color:var(--t3);font-size:.66rem">未找到策略</span>';
       return;
     }
+    this._renderSelectedStrategyPills();
     host.innerHTML = list.slice(0, 80).map((s) => {
       const on = selected.has(String(s.key).toLowerCase()) || selected.has(String(s.name).toLowerCase());
       const label = s.display || s.name;
@@ -209,8 +454,44 @@ const Portfolio = {
     if (host.dataset.bound === '1') return;
     host.dataset.bound = '1';
 
-    const syncFromInput = () => this._renderStrategyChips(search?.value || '');
+    const syncFromInput = () => {
+      this._renderStrategyChips(search?.value || '');
+      this.updateSummary();
+    };
     input.addEventListener('input', syncFromInput);
+
+    const presetTrend = document.getElementById('pfStratPresetTrend');
+    const presetMean = document.getElementById('pfStratPresetMean');
+    if (presetTrend && !presetTrend.dataset.bound) {
+      presetTrend.dataset.bound = '1';
+      presetTrend.addEventListener('click', () => {
+        this._setStrategies(this._STRAT_PRESETS.trend);
+        this._renderStrategyChips(search?.value || '');
+        Utils.toast('已套用趨勢策略包', 1500, 'info');
+      });
+    }
+    if (presetMean && !presetMean.dataset.bound) {
+      presetMean.dataset.bound = '1';
+      presetMean.addEventListener('click', () => {
+        this._setStrategies(this._STRAT_PRESETS.mean);
+        this._renderStrategyChips(search?.value || '');
+        Utils.toast('已套用均值策略包', 1500, 'info');
+      });
+    }
+
+    const selectedHost = document.getElementById('pfStratSelected');
+    if (selectedHost && !selectedHost.dataset.bound) {
+      selectedHost.dataset.bound = '1';
+      selectedHost.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pf-strat-pill');
+        if (!pill) return;
+        const key = pill.dataset.strat || '';
+        const cur = this._parseCsv(input.value);
+        const upper = String(key).toUpperCase();
+        this._setStrategies(cur.filter((x) => String(x).toUpperCase() !== upper));
+        this._renderStrategyChips(search?.value || '');
+      });
+    }
 
     if (clear) {
       clear.addEventListener('click', () => {
@@ -241,64 +522,18 @@ const Portfolio = {
 
     this._ensureStrategyList().then(() => {
       this._renderStrategyChips('');
-    });
-  },
-
-  _initMethodCards() {
-    const grid = document.getElementById('pfMethodGrid');
-    if (!grid) return;
-
-    const selectCard = (card) => {
-      if (!card) return;
-      grid.querySelectorAll('.pf-method-card').forEach((c) => {
-        c.classList.remove('active');
-        c.setAttribute('aria-selected', 'false');
-      });
-      card.classList.add('active');
-      card.setAttribute('aria-selected', 'true');
-      this._currentMethod = card.dataset.method;
-      this._renderMethodParams();
-    };
-
-    grid.querySelectorAll('.pf-method-card').forEach((card) => {
-      card.setAttribute('role', 'option');
-      card.setAttribute('tabindex', card.classList.contains('active') ? '0' : '-1');
-      card.setAttribute('aria-selected', card.classList.contains('active') ? 'true' : 'false');
-    });
-
-    grid.addEventListener('click', (e) => {
-      const card = e.target.closest('.pf-method-card');
-      if (!card) return;
-      selectCard(card);
-      grid.querySelectorAll('.pf-method-card').forEach((c) => {
-        c.setAttribute('tabindex', c === card ? '0' : '-1');
-      });
-    });
-
-    grid.addEventListener('keydown', (e) => {
-      const cards = [...grid.querySelectorAll('.pf-method-card')];
-      const idx = cards.findIndex((c) => c.classList.contains('active'));
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        const card = e.target.closest('.pf-method-card');
-        if (card) selectCard(card);
-        return;
-      }
-      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      e.preventDefault();
-      const delta = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
-      const next = cards[(idx + delta + cards.length) % cards.length];
-      selectCard(next);
-      cards.forEach((c) => c.setAttribute('tabindex', c === next ? '0' : '-1'));
-      next.focus();
+      this.updateSummary();
     });
   },
 
   _renderMethodParams() {
+    const root = this._portfolioRoot();
     const params = this._methodParams[this._currentMethod] || [];
-    const container = document.getElementById('pfMethodParams');
-    const fields = document.getElementById('pfParamFields');
-    const title = document.getElementById('pfParamsTitle');
+    const container = root?.querySelector('#pfMethodParams') || document.getElementById('pfMethodParams');
+    const fields = root?.querySelector('#pfParamFields') || document.getElementById('pfParamFields');
+    const title = root?.querySelector('#pfParamsTitle') || document.getElementById('pfParamsTitle');
+
+    if (!container || !fields || !title) return;
 
     if (!params.length) {
       container.hidden = true;
@@ -522,7 +757,7 @@ const Portfolio = {
       return Utils.toast('無效代碼: ' + invalid.join(', '), 3000, 'error');
     }
 
-    if (btn) Utils.btnLoading(btn, true, '已提交…');
+    if (btn) Utils.btnLoading(btn, true, '提交中…');
     try {
     const cash = undefined;
     let d;
@@ -623,7 +858,7 @@ const Portfolio = {
       Utils.toast('組合回測失敗: ' + (e.message || e), 3000, 'error');
     } finally {
       if (btn) {
-        Utils.btnLoading(btn, false, '開始回測');
+        Utils.btnLoading(btn, false, '提交組合回測');
         delete btn.dataset.inflight;
       }
     }
