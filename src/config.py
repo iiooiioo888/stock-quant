@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # ====== 數據庫 ======
     db_path: str = str(DATA_DIR / "stock.db")
+    sqlite_cache_size_kb: int = Field(default=64000, ge=1024, le=512000)
+    sqlite_mmap_size: int = Field(default=268435456, ge=0, le=1073741824)
+    sqlite_busy_timeout_ms: int = Field(default=5000, ge=1000, le=60000)
 
     # ====== 歷史數據 ======
     history_start_date: str = Field(default="20200101", pattern=r"^\d{8}$")
@@ -155,6 +158,27 @@ class Settings(BaseSettings):
     cache_walkforward_ttl: int = Field(default=7200, ge=60, le=86400 * 7)
     cache_heatmap_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
     cache_multi_strategy_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+    cache_lru_max_size: int = Field(default=2048, ge=256, le=16384)
+    cache_warmup_on_startup: bool = False
+    cache_warmup_codes: list[str] = Field(default=[
+        "600519",
+        "000001",
+        "601318",
+    ])
+    cache_warmup_indicators: bool = True
+    numba_enabled: bool = True
+    heatmap_parallel: bool = True
+    heatmap_max_workers: int = Field(default=4, ge=1, le=16)
+
+    # ====== Celery 任務佇列 ======
+    celery_enabled: bool = False
+    celery_broker_url: str = ""
+    celery_result_backend: str = ""
+    db_read_replica_path: str = ""
+    prometheus_enabled: bool = True
+    runtime_gc_interval_sec: float = Field(default=3600.0, ge=300.0, le=86400.0)
+
+
 
     # ====== Redis 緩存 ======
     redis_url: str = "redis://localhost:6379/0"

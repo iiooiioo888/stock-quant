@@ -90,6 +90,12 @@ TASK_REGISTRY: dict[str, dict] = {
         "tab": "optimize",
         "async": True,
     },
+    "target_search": {
+        "label": "目標搜索",
+        "icon": "🎯",
+        "tab": "backtest",
+        "async": True,
+    },
     "stock_universe_sync": {
         "label": "股票庫同步",
         "icon": "📚",
@@ -124,6 +130,12 @@ TASK_REGISTRY: dict[str, dict] = {
         "label": "Polymarket 快照同步",
         "icon": "🔮",
         "tab": "markets",
+        "async": True,
+    },
+    "scheduled_job": {
+        "label": "定時任務",
+        "icon": "⏰",
+        "tab": "tasks",
         "async": True,
     },
     # 同步計算，不經 create_task，僅供緩存命名參考
@@ -683,12 +695,38 @@ def _start_worker(task_id: str, work_fn: Callable):
 
 
 def submit_task(task_id: str, work_fn: Callable) -> None:
+    from src.config import settings
+    from src.core.task_executors import has_executor
+
     with _lock:
         task = _tasks.get(task_id)
         if not task:
             raise ValueError(f"任務不存在: {task_id}")
-        task["_worker_fn"] = work_fn
+        task_type = task.get("task_type") or ""
+        if work_fn is not None:
+            task["_worker_fn"] = work_fn
         task["last_accessed"] = time.time()
+
+    if getattr(settings, "celery_enabled", False) and has_executor(task_type):
+        try:
+            from src.core.celery_tasks import enqueue_celery_task
+            if enqueue_celery_task(task_id):
+                with _lock:
+                    t = _tasks.get(task_id)
+                    if t:
+                        t.pop("_worker_fn", None)
+                return
+        except Exception as e:
+            logger.debug(f"Celery 提交失敗，回退線程池: {e}")
+
+    if work_fn is None and has_executor(task_type):
+        def _registry_work():
+            from src.core.task_worker import run_registered_task
+            return run_registered_task(task_id)
+        with _lock:
+            task = _tasks.get(task_id)
+            if task:
+                task["_worker_fn"] = _registry_work
     _drain_queue()
 
 

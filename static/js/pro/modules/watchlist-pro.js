@@ -4,6 +4,8 @@
   const $id = (id) => document.getElementById(id);
   let chart = null;
   let selectedCode = null;
+  let rtTimer = null;
+  let rtLoading = false;
 
   function normalizeCode(raw) {
     const c = String(raw || '').trim();
@@ -53,8 +55,8 @@
       <tr class="wl-row${sel}" data-code="${it.code}">
         <td class="ac">${it.code}</td>
         <td>${it.name || it.code}</td>
-        <td class="r">${fmtPrice(it.price)}</td>
-        <td class="tbl ${cls === 'up' ? 'pos' : cls === 'down' ? 'neg' : ''}">${fmtPct(it.change_pct)}</td>
+        <td class="r" data-rt-field="price">${fmtPrice(it.price)}</td>
+        <td class="tbl ${cls === 'up' ? 'pos' : cls === 'down' ? 'neg' : ''}" data-rt-field="change_pct">${fmtPct(it.change_pct)}</td>
         <td>${it.price_above != null ? it.price_above : '--'}</td>
         <td>${it.price_below != null ? it.price_below : '--'}</td>
         <td class="wl-actions">
@@ -112,6 +114,83 @@
     });
   }
 
+  function pollMs() {
+    const sec = Number(window.StockQPro?.Prefs?.get?.('marketPollSec'));
+    if (!Number.isFinite(sec) || sec <= 0) return 0;
+    // watchlist 報價更新不要太頻繁；最小 10 秒
+    return Math.max(10, sec) * 1000;
+  }
+
+  function stopRealtime() {
+    if (rtTimer) clearInterval(rtTimer);
+    rtTimer = null;
+  }
+
+  function applyRealtimeMap(rtMap) {
+    if (!rtMap || typeof rtMap !== 'object') return;
+    const tb = $id('wl-tb');
+    if (!tb) return;
+    tb.querySelectorAll('tr.wl-row').forEach((tr) => {
+      const code = tr.getAttribute('data-code');
+      if (!code) return;
+      const rt = rtMap[code];
+      if (!rt) return;
+
+      const priceEl = tr.querySelector('[data-rt-field="price"]');
+      const chgEl = tr.querySelector('[data-rt-field="change_pct"]');
+
+      if (priceEl && rt.price != null) priceEl.textContent = fmtPrice(rt.price);
+      if (chgEl && rt.change_pct != null) {
+        const cls = pctClass(rt.change_pct);
+        chgEl.textContent = fmtPct(rt.change_pct);
+        chgEl.classList.toggle('pos', cls === 'up');
+        chgEl.classList.toggle('neg', cls === 'down');
+      }
+    });
+  }
+
+  async function refreshRealtimeOnce() {
+    if (rtLoading) return;
+    const tb = $id('wl-tb');
+    if (!tb) return;
+
+    const codes = Array.from(tb.querySelectorAll('tr.wl-row'))
+      .map((tr) => tr.getAttribute('data-code'))
+      .filter(Boolean);
+    if (!codes.length) return;
+
+    rtLoading = true;
+    try {
+      const d = await Api.getRealtime(codes.join(',')).catch(() => null);
+      if (Array.isArray(d?.quotes)) {
+        const map = {};
+        d.quotes.forEach((q) => {
+          const c = String(q?.code || q?.symbol || q?.ts_code || '').trim();
+          if (!c) return;
+          map[c] = {
+            price: q.price ?? q.last ?? q.close ?? q.realtime_price,
+            change_pct: q.change_pct ?? q.pct_chg ?? q.realtime_change_pct,
+          };
+        });
+        applyRealtimeMap(map);
+      } else {
+        const rtMap = d?.realtime || d?.data || d;
+        applyRealtimeMap(rtMap);
+      }
+    } finally {
+      rtLoading = false;
+    }
+  }
+
+  function startRealtime() {
+    stopRealtime();
+    const ms = pollMs();
+    if (ms <= 0) return;
+    // 先跑一次，避免要等一個 interval 才看到更新
+    refreshRealtimeOnce().catch(() => {});
+    rtTimer = setInterval(() => refreshRealtimeOnce().catch(() => {}), ms);
+  }
+
   async function selectRow(code) {
     selectedCode = code;
     const rows = Array.from(document.querySelectorAll('.wl-row'));
@@ -166,6 +245,7 @@
     renderTable(items);
     const cnt = $id('wl-count');
     if (cnt) cnt.textContent = `${items.length} 只`;
+    startRealtime();
     if (!selectedCode && items.length) {
       await selectRow(items[0].code);
     } else if (selectedCode && items.some((x) => x.code === selectedCode)) {
@@ -223,5 +303,9 @@
   window.addEventListener('resize', () => chart?.resize());
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
-  window.StockQPro.pages.watchlist = { init, load };
+  window.StockQPro.pages.watchlist = {
+    init,
+    load,
+    unload: () => stopRealtime(),
+  };
 })();

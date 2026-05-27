@@ -1959,6 +1959,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof Utils !== 'undefined' && Utils.loadIconfontConfig) {
     Utils.loadIconfontConfig();
   }
+  // Pro 工作站（/app）由 StockQPro.App 接管導航；legacy 模組僅掛載片段
+  if (window.StockQPro?.App && document.getElementById('pg-dashboard')) {
+    return;
+  }
   App.init();
 });
 

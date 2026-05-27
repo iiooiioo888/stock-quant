@@ -69,6 +69,20 @@ def ensure_daily_kline(
         return df, "fetched"
     if not df.empty:
         return df, "partial"
+
+    try:
+        from src.core.fallback import get_daily_kline_with_fallback
+
+        fdf, fsrc = get_daily_kline_with_fallback(
+            code, start_date=start_date, end_date=end_date, min_bars=min_bars,
+        )
+        if len(fdf) >= min_bars:
+            return fdf, fsrc
+        if not fdf.empty:
+            return fdf, fsrc
+    except Exception as e:
+        logger.debug(f"K 線降級鏈跳過 {code}: {e}")
+
     return df, "empty"
 
 

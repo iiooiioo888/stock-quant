@@ -1,7 +1,9 @@
 """任務管理 API 路由"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
+
+from src.core.auth import get_current_user
 
 router = APIRouter(tags=["tasks"])
 
@@ -24,23 +26,33 @@ class PipelineCreateRequest(BaseModel):
 
 
 @router.get("/api/tasks")
-async def list_tasks_api(task_type: str = None, status: str = None, limit: int = 50):
+async def list_tasks_api(
+    task_type: str = None,
+    status: str = None,
+    limit: int = 50,
+    user=Depends(get_current_user),
+):
     """獲取任務列表"""
     from src.core.task_manager import get_tasks, get_task_stats, get_queue_snapshot
+
     tasks = get_tasks(task_type=task_type, status=status, limit=limit)
     stats = get_task_stats()
     return {"tasks": tasks, "stats": stats, "queue": get_queue_snapshot()}
 
 
 @router.get("/api/tasks/queue")
-async def get_task_queue_api():
+async def get_task_queue_api(
+    user=Depends(get_current_user),
+):
     """獲取執行佇列快照（目前 / 下一個 / 剛完成）"""
     from src.core.task_manager import get_queue_snapshot
     return get_queue_snapshot()
 
 
 @router.get("/api/tasks/types")
-async def list_task_types_api():
+async def list_task_types_api(
+    user=Depends(get_current_user),
+):
     """獲取異步任務類型清單（供篩選器與顯示名稱）"""
     from src.core.task_manager import get_task_types
     return {"types": get_task_types(async_only=True)}

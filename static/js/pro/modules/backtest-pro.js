@@ -761,11 +761,10 @@
 
   function openOptimize() {
     const code = getSelectedCode();
-    const url = code
-      ? `/static/legacy/index.html#optimize&code=${encodeURIComponent(code)}`
-      : '/static/legacy/index.html#optimize';
-    window.open(url, '_blank', 'noopener');
-    window.StockQPro?.App?.toast?.('已開啟參數優化（舊版工作台）', 'ok');
+    window.StockQPro?.App?.nav?.('optimize', { syncHash: true });
+    if (code && window.StockQPro?.LegacyBridge?.activate) {
+      window.StockQPro.LegacyBridge.activate('optimize', { code }).catch(() => {});
+    }
   }
 
   function bindOnce() {

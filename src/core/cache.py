@@ -61,12 +61,17 @@ class CacheManager:
     """
     統一緩存管理器。
     優先使用 Redis，不可用時自動降級到本地 LRU。
+    Redis 命中時回填 L1，避免 Redis 短暫不可用後 L1 全冷。
     """
 
     def __init__(self):
         self._redis_client = None
-        self._lru = LRUCache(max_size=2048)
+        lru_max = int(getattr(settings, "cache_lru_max_size", 2048))
+        self._lru = LRUCache(max_size=max(128, lru_max))
         self._redis_available = False
+        self._hits_l1 = 0
+        self._hits_l2 = 0
+        self._misses = 0
         self._init_redis()
 
     def _init_redis(self):
@@ -102,19 +107,40 @@ class CacheManager:
         獲取緩存值。
         優先嘗試 Redis，失敗則回退到 LRU。
         """
-        # 嘗試 Redis
+        l1 = self._lru.get(key)
+        if l1 is not None:
+            self._hits_l1 += 1
+            try:
+                from src.utils.metrics import record_cache_hit
+                record_cache_hit("l1")
+            except Exception:
+                pass
+            return l1
+
         if self._redis_available:
             try:
                 raw = self._redis_client.get(key)
                 if raw is not None:
-                    return json.loads(raw)
-                return None
+                    value = json.loads(raw)
+                    self._hits_l2 += 1
+                    self._lru.set(key, value, ttl=0)
+                    try:
+                        from src.utils.metrics import record_cache_hit
+                        record_cache_hit("l2")
+                    except Exception:
+                        pass
+                    return value
             except Exception as e:
                 logger.debug(f"Redis GET 失敗: {e}，回退 LRU")
                 self._redis_available = False
 
-        # 回退到 LRU
-        return self._lru.get(key)
+        self._misses += 1
+        try:
+            from src.utils.metrics import record_cache_miss
+            record_cache_miss("l1")
+        except Exception:
+            pass
+        return None
 
     def set(self, key: str, value: Any, ttl: int = 300):
         """
@@ -157,9 +183,15 @@ class CacheManager:
 
     def stats(self) -> dict:
         """獲取緩存統計信息"""
+        total_hits = self._hits_l1 + self._hits_l2
+        lookups = total_hits + self._misses
         stats = {
             "backend": "redis" if self._redis_available else "lru",
             "lru_size": self._lru.size(),
+            "hits_l1": self._hits_l1,
+            "hits_l2": self._hits_l2,
+            "misses": self._misses,
+            "hit_rate": round(total_hits / lookups, 4) if lookups else None,
         }
         if self._redis_available:
             try:
@@ -188,6 +220,54 @@ def get_cache() -> CacheManager:
 # ============================================================
 
 # 緩存 key 前綴
+
+CACHE_INVALIDATION_RULES = {
+    "kline:*": {"trigger": "data_update", "scope": "code_specific"},
+    "backtest:*": {"trigger": "strategy_change", "scope": "param_hash"},
+    "optimize:*": {"trigger": "market_regime_change", "scope": "global"},
+    "sq:compute:*": {"trigger": "data_update", "scope": "code_specific"},
+}
+
+
+def invalidate_by_rule(trigger: str, code: str | None = None) -> int:
+    """按規則觸發失效（L1 + Redis 前綴）。"""
+    removed = 0
+    cache = get_cache()
+    prefixes = [
+        k.replace("*", "")
+        for k, rule in CACHE_INVALIDATION_RULES.items()
+        if rule.get("trigger") == trigger
+    ]
+    for prefix in prefixes:
+        if code and rule_scope_is_code_specific(prefix):
+            pattern = f"{prefix}*{code}*"
+        else:
+            pattern = f"{prefix}*"
+        if cache.is_redis_available:
+            try:
+                cursor = 0
+                while True:
+                    cursor, keys = cache._redis_client.scan(cursor, match=pattern, count=200)
+                    if keys:
+                        cache._redis_client.delete(*keys)
+                        removed += len(keys)
+                    if cursor == 0:
+                        break
+            except Exception:
+                pass
+        for k in list(cache._lru._cache.keys()):
+            if k.startswith(prefix.rstrip(":")) and (code is None or code in k):
+                cache._lru.delete(k)
+                removed += 1
+    return removed
+
+
+def rule_scope_is_code_specific(prefix: str) -> bool:
+    for k, rule in CACHE_INVALIDATION_RULES.items():
+        if k.startswith(prefix):
+            return rule.get("scope") == "code_specific"
+    return False
+
 PREFIX_KLINE = "sq:kline:"
 PREFIX_REALTIME = "sq:rt:"
 PREFIX_BACKTEST = "sq:bt:"

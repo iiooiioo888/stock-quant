@@ -8,6 +8,40 @@ from src.core.optimize import _run_single, _score, PARAM_GRIDS
 from src.utils.logger import logger
 
 
+def _params_valid(params: dict) -> bool:
+    if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
+        return False
+    if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+        return False
+    if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+        return False
+    return True
+
+
+def _eval_heatmap_point(
+    code: str,
+    strategy_name: str,
+    default_params: dict,
+    param_x: str,
+    param_y: str,
+    x_val,
+    y_val,
+    objective: str,
+):
+    params = dict(default_params)
+    params[param_x] = x_val
+    params[param_y] = y_val
+    if not _params_valid(params):
+        return None, None, None
+    try:
+        r = _run_single(code, strategy_name, params)
+        score = _score(r, objective)
+        return round(score, 4), score, {param_x: x_val, param_y: y_val}
+    except Exception as e:
+        logger.debug(f"熱力圖點 ({x_val}, {y_val}) 失敗: {e}")
+        return None, None, None
+
+
 def _get_default_params(strategy_name: str) -> dict:
     """從策略類獲取默認參數"""
     cls = STRATEGIES[strategy_name]
@@ -81,52 +115,58 @@ def param_heatmap(
     x_values = _make_values(x_min, x_max, grid_size)
     y_values = _make_values(y_min, y_max, grid_size)
 
-    # 運行網格
-    matrix = []
+    # 運行網格（可並行）
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.config import settings
+    from src.core.compute_budget import get_thread_workers
+
+    matrix = [[None for _ in x_values] for _ in y_values]
     best_score = float("-inf")
     best_params = {}
-
     total = len(x_values) * len(y_values)
     count = 0
 
-    for y_val in y_values:
-        row = []
-        for x_val in x_values:
-            params = dict(default_params)
-            params[param_x] = x_val
-            params[param_y] = y_val
+    jobs = [
+        (yi, xi, y_val, x_val)
+        for yi, y_val in enumerate(y_values)
+        for xi, x_val in enumerate(x_values)
+    ]
 
-            # 驗證參數
-            valid = True
-            if "fast" in params and "slow" in params:
-                if params["fast"] >= params["slow"]:
-                    valid = False
-            if "entry_period" in params and "exit_period" in params:
-                if params["entry_period"] <= params["exit_period"]:
-                    valid = False
-            if "overbought" in params and "oversold" in params:
-                if params["overbought"] <= params["oversold"]:
-                    valid = False
+    def _run_job(job):
+        yi, xi, y_val, x_val = job
+        cell, score, bp = _eval_heatmap_point(
+            code, strategy_name, default_params, param_x, param_y, x_val, y_val, objective,
+        )
+        return yi, xi, cell, score, bp
 
-            if valid:
-                try:
-                    r = _run_single(code, strategy_name, params)
-                    score = _score(r, objective)
-                    row.append(round(score, 4))
-                    if score > best_score:
-                        best_score = score
-                        best_params = {param_x: x_val, param_y: y_val}
-                except Exception as e:
-                    logger.debug(f"熱力圖點 ({x_val}, {y_val}) 失敗: {e}")
-                    row.append(None)
-            else:
-                row.append(None)
+    parallel = bool(getattr(settings, "heatmap_parallel", True)) and total > 4
+    max_workers = get_thread_workers(
+        getattr(settings, "heatmap_max_workers", 4),
+        min_workers=1,
+    )
 
+    if parallel:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_job, j): j for j in jobs}
+            for fut in as_completed(futures):
+                yi, xi, cell, score, bp = fut.result()
+                matrix[yi][xi] = cell
+                if score is not None and score > best_score:
+                    best_score = score
+                    best_params = bp or {}
+                count += 1
+                if count % 50 == 0:
+                    logger.info(f"  熱力圖進度: {count}/{total}")
+    else:
+        for yi, xi, y_val, x_val in jobs:
+            yi, xi, cell, score, bp = _run_job((yi, xi, y_val, x_val))
+            matrix[yi][xi] = cell
+            if score is not None and score > best_score:
+                best_score = score
+                best_params = bp or {}
             count += 1
             if count % 50 == 0:
                 logger.info(f"  熱力圖進度: {count}/{total}")
-
-        matrix.append(row)
 
     # 替換 None 為 None (JSON null)
     result = {

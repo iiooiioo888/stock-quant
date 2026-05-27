@@ -27,12 +27,14 @@ ASYNC_TASK_TYPES = frozenset({
     "portfolio",
     "walkforward",
     "auto_optimize",
+    "target_search",
     "stock_universe_sync",
     "stock_universe_intro",
     "data_download",
     "data_download_all",
     "data_incremental",
     "polymarket_sync",
+    "scheduled_job",
 })
 
 

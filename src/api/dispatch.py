@@ -35,5 +35,17 @@ def dispatch_async_task(
                 logger.debug(f"緩存寫入跳過: {e}")
         return result
 
+    if cache_namespace and cache_params is not None:
+        from src.core.task_manager import get_task
+        import src.core.task_manager as tm
+        with tm._lock:
+            t = tm._tasks.get(task_id)
+            if t is not None:
+                t["_cache_meta"] = {
+                    "namespace": cache_namespace,
+                    "params": cache_params,
+                    "code": cache_code,
+                }
+
     submit_task(task_id, _work)
     return {"success": True, "task_id": task_id, "async": True}

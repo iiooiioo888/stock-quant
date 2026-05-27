@@ -19,11 +19,13 @@ const TaskCommon = {
     portfolio: '📈 組合回測',
     walkforward: '🔄 滾動窗口驗證',
     auto_optimize: '🤖 自動優化',
+    target_search: '🎯 目標搜索',
     stock_universe_sync: '📚 股票庫同步',
     stock_universe_intro: '📝 股票簡介',
     data_download: '📥 市場數據下載',
     data_download_all: '📥 全市場下載',
     data_incremental: '🔄 增量更新',
+    scheduled_job: '⏰ 定時任務',
   },
 
   STATUS_ICONS: {
@@ -52,11 +54,13 @@ const TaskCommon = {
     portfolio: 'portfolio',
     walkforward: 'walkforward',
     auto_optimize: 'optimize',
+    target_search: 'tasks',
     stock_universe_sync: 'data',
     stock_universe_intro: 'data',
     data_download: 'data',
     data_download_all: 'data',
     data_incremental: 'data',
+    scheduled_job: 'tasks',
   },
 
   async loadTypes() {
@@ -128,7 +132,12 @@ const TaskCommon = {
     if (metrics && (task.status === 'completed' || task.status === 'success')) return metrics;
     if (task.status === 'running' || task.status === 'pending' || task.status === 'retrying') {
       const sub = this.downloadSubtitle(task);
-      if (sub) return sub;
+      if (sub) return `正在：${sub}`;
+      // 對非下載任務：至少顯示當前狀態/進度，避免列表看起來「不知道在做什麼」
+      const p = Number(task.progress) || 0;
+      if (task.status === 'pending') return '正在：排隊中';
+      if (task.status === 'retrying') return `正在：重試中（${p}%）`;
+      return `正在：執行中（${p}%）`;
     }
     if (task.download_summary) {
       const s = task.download_summary;

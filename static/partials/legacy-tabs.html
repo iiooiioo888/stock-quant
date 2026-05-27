@@ -1,0 +1,747 @@
+<!-- Legacy tab fragments for Pro workbench -->
+<!-- optimize -->
+<div id="tab-optimize" class="h">
+    <div class="sec">
+        <h2>⚡ 參數優化</h2>
+        <p class="sec-desc">自動搜索策略最優參數組合</p>
+        <div class="pf-builder-row">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">1</span>
+                <div class="pf-step-content">
+                    <label>股票代碼</label>
+                    <input id="optCode" value="600519" placeholder="輸入股票代碼">
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">2</span>
+                <div class="pf-step-content">
+                    <label>策略</label>
+                    <select id="optStrategy"><option value="all">全部策略</option></select>
+                </div>
+            </div>
+        </div>
+        <div class="pf-builder-row mt-md">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">3</span>
+                <div class="pf-step-content">
+                    <label>優化方法</label>
+                    <div class="pf-method-grid pf-grid-2">
+                        <div class="pf-method-card active" data-opt-method="grid" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectMethod(this)">
+                            <span class="pf-method-icon">🔲</span>
+                            <span class="pf-method-name">網格搜索</span>
+                            <span class="pf-method-desc">遍歷所有參數組合，穩但慢</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-method="optuna" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectMethod(this)">
+                            <span class="pf-method-icon">🧪</span>
+                            <span class="pf-method-name">Optuna</span>
+                            <span class="pf-method-desc">貝葉斯優化，快且智能</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">4</span>
+                <div class="pf-step-content">
+                    <label>優化目標</label>
+                    <div class="pf-method-grid pf-grid-3">
+                        <div class="pf-method-card active" data-opt-obj="sharpe" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">📊</span>
+                            <span class="pf-method-name">夏普比率</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-obj="return" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">💰</span>
+                            <span class="pf-method-name">收益率</span>
+                        </div>
+                        <div class="pf-method-card" data-opt-obj="calmar" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" onclick="Optimize.selectObjective(this)">
+                            <span class="pf-method-icon">🛡️</span>
+                            <span class="pf-method-name">Calmar</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="pf-action-row">
+            <div></div>
+            <div class="btn-group">
+                <button class="btn pf-run-btn" onclick="runOptimize()" id="optBtn">🔍 開始優化</button>
+                <button class="btn s" onclick="runAutoOptimize()" id="autoOptBtn">⚡ 全自動優化</button>
+            </div>
+        </div>
+    </div>
+    <div id="optResult" class="h"><div class="sec"><h2>優化結果</h2><div id="optOutput"></div></div></div>
+    <div id="autoOptResult" class="h"><div class="sec"><h2>全自動優化結果</h2><pre class="rpt" id="autoOptOutput"></pre></div></div>
+</div>
+
+<!-- ====== 組合 ====== -->
+
+<!-- portfolio -->
+<div id="tab-portfolio" class="h">
+    <!-- Step 1: 預設模板 -->
+    <div class="sec">
+        <h2>📋 預設組合模板</h2>
+        <p class="sec-desc">一鍵回測經過調優的組合策略</p>
+        <div class="pc" id="presetCards"></div>
+    </div>
+
+    <!-- Step 2: 自定義組合 -->
+    <div class="sec">
+        <h2>🔧 自定義組合</h2>
+
+        <!-- 標的選擇 -->
+        <div class="pf-builder-row">
+            <div class="pf-builder-step">
+                <span class="pf-step-num">1</span>
+                <div class="pf-step-content">
+                    <label>選擇標的</label>
+                    <input id="pfCodes" value="000001,600519,000858" placeholder="輸入股票代碼，逗號分隔">
+                    <span class="pf-hint">與策略回測相同列表多選；已選代碼與名稱顯示於下方標籤，亦可手動貼上逗號列表。</span>
+                </div>
+            </div>
+            <div class="pf-builder-step">
+                <span class="pf-step-num">2</span>
+                <div class="pf-step-content">
+                    <label>選擇策略</label>
+                    <input id="pfStrategies" value="dual_ma,macd,bollinger,momentum,adx_trend" placeholder="輸入策略名稱，逗號分隔">
+                    <span class="pf-hint">組合數 = 標的 × 策略（如 3×5=15 個子策略）</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 方法選擇（分類標籤） -->
+        <div class="pf-builder-step mt-lg">
+            <span class="pf-step-num">3</span>
+            <div class="pf-step-content">
+                <label>選擇配置方法</label>
+                <div class="pf-method-grid" id="pfMethodGrid">
+                    <div class="pf-method-card active" data-method="basic">
+                        <span class="pf-method-icon">⚖️</span>
+                        <span class="pf-method-name">基礎等權</span>
+                        <span class="pf-method-desc">所有子策略等權重分配</span>
+                    </div>
+                    <div class="pf-method-card" data-method="risk_parity">
+                        <span class="pf-method-icon">🎯</span>
+                        <span class="pf-method-name">風險平價</span>
+                        <span class="pf-method-desc">每個策略對總風險貢獻相等</span>
+                    </div>
+                    <div class="pf-method-card" data-method="mvo">
+                        <span class="pf-method-icon">📐</span>
+                        <span class="pf-method-name">均值方差</span>
+                        <span class="pf-method-desc">Markowitz 最優權重</span>
+                    </div>
+                    <div class="pf-method-card" data-method="vol_target">
+                        <span class="pf-method-icon">📊</span>
+                        <span class="pf-method-name">波動率目標</span>
+                        <span class="pf-method-desc">根據已實現波動率動態調整倉位</span>
+                    </div>
+                    <div class="pf-method-card" data-method="max_diversification">
+                        <span class="pf-method-icon">🌐</span>
+                        <span class="pf-method-name">最大分散</span>
+                        <span class="pf-method-desc">最大化分散化比率</span>
+                    </div>
+                    <div class="pf-method-card" data-method="anti_correlation">
+                        <span class="pf-method-icon">🔗</span>
+                        <span class="pf-method-name">低相關</span>
+                        <span class="pf-method-desc">最小化策略間總相關性</span>
+                    </div>
+                    <div class="pf-method-card" data-method="regime_switch">
+                        <span class="pf-method-icon">🔄</span>
+                        <span class="pf-method-name">狀態切換</span>
+                        <span class="pf-method-desc">根據市場狀態動態調整</span>
+                    </div>
+                    <div class="pf-method-card" data-method="dynamic">
+                        <span class="pf-method-icon">⚡</span>
+                        <span class="pf-method-name">動態組合</span>
+                        <span class="pf-method-desc">滾動夏普自動調整權重</span>
+                    </div>
+                    <div class="pf-method-card" data-method="kelly">
+                        <span class="pf-method-icon">🎰</span>
+                        <span class="pf-method-name">Kelly</span>
+                        <span class="pf-method-desc">Kelly 公式計算最優倉位</span>
+                    </div>
+                    <div class="pf-method-card" data-method="degradation">
+                        <span class="pf-method-icon">📉</span>
+                        <span class="pf-method-name">衰減分析</span>
+                        <span class="pf-method-desc">檢測策略是否連續跑輸</span>
+                    </div>
+                    <div class="pf-method-card" data-method="arbitrate">
+                        <span class="pf-method-icon">⚔️</span>
+                        <span class="pf-method-name">信號仲裁</span>
+                        <span class="pf-method-desc">多策略矛盾信號加權投票</span>
+                    </div>
+                    <div class="pf-method-card" data-method="frontier">
+                        <span class="pf-method-icon">📈</span>
+                        <span class="pf-method-name">有效前沿</span>
+                        <span class="pf-method-desc">風險-收益最優邊界</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 方法參數（動態顯示） -->
+        <div id="pfMethodParams" class="pf-params-panel" style="display:none">
+            <div class="pf-params-header">
+                <span class="pf-params-title" id="pfParamsTitle">參數設置</span>
+            </div>
+            <div id="pfParamFields" class="pf-params-fields"></div>
+        </div>
+
+        <!-- 再平衡 + 啟動按鈕 -->
+        <div class="pf-action-row">
+            <div class="pf-rebalance">
+                <label>再平衡</label>
+                <select id="pfRebalance">
+                    <option value="none">不調整</option>
+                    <option value="periodic">定期調整</option>
+                </select>
+            </div>
+            <button class="btn pf-run-btn" onclick="runPortfolio()" id="pfBtn">🚀 開始回測</button>
+        </div>
+    </div>
+
+    <!-- 結果 -->
+    <div id="pfResult" class="h">
+        <div class="g" id="pfStats"></div>
+        <div class="sec"><h2>子策略表現</h2><div class="table-wrap"><table><thead><tr><th>策略</th><th>股票</th><th>權重</th><th>收益率</th><th>夏普</th><th>回撤</th></tr></thead><tbody id="pfTable"></tbody></table></div></div>
+        <div class="sec"><h2>淨值曲線</h2><div class="cw"><canvas id="pfChart"></canvas></div></div>
+        <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+            <div class="sec"><h2>🍩 策略權重分配</h2><div class="cw"><canvas id="pfWeightPie"></canvas></div></div>
+            <div class="sec"><h2>📊 子策略對比</h2><div class="cw"><canvas id="pfSubBars"></canvas></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 對比 ====== -->
+
+<!-- walkforward -->
+<div id="tab-walkforward" class="h">
+    <div class="sec">
+        <h2>🔄 Walk-Forward 分析</h2>
+        <p class="sec-desc">滾動窗口訓練+測試，檢測策略是否過擬合</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="wfCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="wfStrategy"></select></div>
+            <div class="fg"><label>訓練天數</label><input id="wfTrain" value="750" type="number"></div>
+            <div class="fg"><label>測試天數</label><input id="wfTest" value="250" type="number"></div>
+            <div class="fg"><label>試驗次數</label><input id="wfTrials" value="30" type="number"></div>
+            <button class="btn" onclick="runWalkForward()" id="wfBtn">🔄 開始分析</button>
+        </div>
+    </div>
+    <div id="wfResult" class="h">
+        <div class="g" id="wfStats"></div>
+        <div class="sec"><h2>窗口結果</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>訓練期</th><th>測試期</th><th>測試收益</th><th>測試夏普</th><th>測試回撤</th><th>交易</th><th>參數</th></tr></thead><tbody id="wfTable"></tbody></table></div></div>
+        <div class="sec chart-grid-pro wf-charts">
+            <div class="chart-panel"><h3>各窗口 OOS 收益</h3><div class="cw"><canvas id="wfChart"></canvas></div></div>
+            <div class="chart-panel"><h3>累積 OOS 收益</h3><div class="cw"><canvas id="wfCumChart"></canvas></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 熱力圖 ====== -->
+
+<!-- heatmap -->
+<div id="tab-heatmap" class="h">
+    <div class="sec">
+        <h2>🌡️ 策略參數敏感性分析</h2>
+        <p class="sec-desc">可視化兩個參數的不同組合對策略表現的影響</p>
+        <div class="fr">
+            <div class="fg"><label>股票</label><input id="hmCode" value="600519"></div>
+            <div class="fg"><label>策略</label><select id="hmStrategy"><option value="dual_ma">雙均線</option></select></div>
+            <div class="fg"><label>參數 X</label><select id="hmParamX"><option value="fast">fast</option><option value="slow">slow</option></select></div>
+            <div class="fg"><label>參數 Y</label><select id="hmParamY"><option value="fast">fast</option><option value="slow" selected>slow</option></select></div>
+            <div class="fg"><label>網格大小</label><input id="hmGrid" value="8" type="number" class="input-narrow"></div>
+            <button class="btn" onclick="runHeatmap()" id="hmBtn">🌡️ 生成熱力圖</button>
+        </div>
+    </div>
+    <div id="hmResult" class="h">
+        <div class="g" id="hmStats"></div>
+        <div class="sec"><h2>熱力圖</h2><div class="heatmap-container"><canvas id="hmCanvas" width="600" height="500"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 篩選器 ====== -->
+
+<!-- signals -->
+<div id="tab-signals" class="h">
+    <div class="data-tabs" id="signalsTabs">
+        <button class="a" data-stab="current">📡 當前信號</button>
+        <button data-stab="history">📜 歷史信號</button>
+        <button data-stab="strength">💪 強度評分</button>
+    </div>
+    <div id="stab-current" class="mt-md">
+        <div class="sec"><h2>實時交易信號</h2><button class="btn mb-md" onclick="Signals.loadCurrent()">🔄 刷新</button><div id="currentSignals"><div class="state-empty"><span class="state-icon">📡</span><span class="state-text">切換到此頁將自動載入；策略名稱與買賣說明為中文</span></div></div></div>
+    </div>
+    <div id="stab-history" class="h mt-md">
+        <div class="sec"><h2>歷史信號記錄</h2><button class="btn mb-md" onclick="Signals.loadHistory()">📜 載入</button><div id="historySignals"></div></div>
+        <div class="sec"><h2>📊 信號時間線</h2><div class="cw"><canvas id="signalsTimelineChart"></canvas></div></div>
+    </div>
+    <div id="stab-strength" class="h mt-md">
+        <div class="sec">
+            <h2>信號強度評分</h2>
+            <div class="fr">
+                <div class="fg"><label>股票</label><input id="sigCodes" value="000001,600519" class="input-wide"></div>
+                <button class="btn" onclick="Signals.loadStrength()">💪 評分</button>
+            </div>
+            <div id="strengthSignals"></div>
+        </div>
+        <div class="sec"><h2>強度雷達對比</h2><div class="cw"><canvas id="sigStrengthRadar"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 數據 ====== -->
+
+<!-- data -->
+<div id="tab-data" class="h">
+    <div class="data-tabs" id="dataTabs">
+        <button class="a" data-dtab="download">📥 下載入庫</button>
+        <button data-dtab="universe">📚 股票庫</button>
+        <button data-dtab="sectors">🏭 板塊行情</button>
+        <button data-dtab="rotation">🔄 板塊輪動</button>
+        <button data-dtab="heatmap">🗺️ 全景圖</button>
+        <button data-dtab="capital">💰 資金流向</button>
+        <button data-dtab="north">🧭 北向資金</button>
+        <button data-dtab="dragon">🐉 龍虎榜</button>
+        <button data-dtab="fundamental">📊 基本面</button>
+        <button data-dtab="basics">📋 基本數據</button>
+    </div>
+
+    <div id="dtab-download" class="mt-md">
+        <div class="sec">
+            <h2>📥 爬取數據並寫入本地庫</h2>
+            <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>，之後回測、對比、K 線查詢一律讀庫。手動「下載」用於批量預載；「增量更新」用於補最新交易日。</p>
+            <div class="g" id="dbStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+                <div class="c"><h3>標的數</h3><div class="v" id="dbStatStocks">-</div></div>
+                <div class="c"><h3>K 線條數</h3><div class="v" id="dbStatKlines">-</div></div>
+                <div class="c"><h3>庫大小</h3><div class="v" id="dbStatSize">-</div></div>
+            </div>
+            <div class="fr flex-wrap" style="align-items:flex-end">
+                <div class="fg" style="flex:1;min-width:280px">
+                    <label>A 股代碼（逗號或換行，留空=配置默認 watchlist）</label>
+                    <textarea id="dbDownloadCodes" rows="3" class="input-wide" placeholder="000001,600519,000858"></textarea>
+                </div>
+                <div class="btn-group">
+                    <button class="btn" type="button" onclick="Data.downloadToDb()" id="dbDownloadBtn">📥 下載日 K</button>
+                    <button class="btn s" type="button" onclick="Data.incrementalToDb()" id="dbIncrementalBtn">🔄 增量更新</button>
+                    <button class="btn s" type="button" onclick="Data.refreshDbStats()">📊 刷新統計</button>
+                </div>
+            </div>
+            <label class="scr-filter-item mt-sm">
+                <input type="checkbox" id="dbForceUpdate">
+                <span class="scr-filter-label">強制全量重下（增量更新時）</span>
+            </label>
+            <div id="dbDownloadResult" class="mt-md"></div>
+            <p class="sec-desc mt-sm">多市場（美股、指數、加密等）請到側欄 <strong>市場</strong> Tab，或儀表盤「下載數據」一鍵下載。</p>
+            <button class="btn s mt-sm" type="button" onclick="App.loadTab('markets')">🌐 前往多市場下載</button>
+        </div>
+    </div>
+
+    <div id="dtab-universe" class="h mt-md">
+        <div class="sec">
+            <h2>📚 股票庫（按市值排名）</h2>
+            <p class="sec-desc">從 A 股、港股、美股實時行情拉取基本資料，按總市值排序後入庫（默認前 2 萬）。同步後可用於查詢、篩選與批量下載代碼參考。</p>
+            <div class="g data-universe-stats" id="universeStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px">
+                <div class="c"><h3>入庫數量</h3><div class="v" id="univStatTotal">-</div></div>
+                <div class="c"><h3>更新時間</h3><div class="v univ-stat-sm" id="univStatUpdated">-</div></div>
+                <div class="c"><h3>A 股</h3><div class="v" id="univStatAshare">-</div></div>
+                <div class="c"><h3>港股</h3><div class="v" id="univStatHk">-</div></div>
+                <div class="c"><h3>美股</h3><div class="v" id="univStatUs">-</div></div>
+            </div>
+            <div class="fr flex-wrap" style="align-items:flex-end;margin-bottom:12px">
+                <button class="btn" type="button" id="univSyncBtn" onclick="Data.syncStockUniverse()">⚡ 一鍵同步股票庫</button>
+                <button class="btn s" type="button" id="univIntroBtn" onclick="Data.enrichUniverseIntros()" title="每次約 500 檔，可多次點擊直到補齊">📝 補充簡介</button>
+                <button class="btn s" type="button" onclick="Data.loadUniverseStats()">📊 刷新統計</button>
+                <span id="univSyncHint" class="sec-desc" style="margin:0;flex:1;min-width:200px"></span>
+            </div>
+            <div id="univSyncResult" class="mb-md"></div>
+            <div class="fr flex-wrap data-universe-filters">
+                <div class="fg">
+                    <label>市場</label>
+                    <select id="univMarket" class="input-sm">
+                        <option value="all">全部</option>
+                        <option value="a_share">A 股</option>
+                        <option value="hk_stock">港股</option>
+                        <option value="us_stock">美股</option>
+                    </select>
+                </div>
+                <div class="fg" style="flex:1;min-width:160px">
+                    <label>代碼 / 名稱 / 簡介</label>
+                    <input id="univKeyword" class="input-sm input-wide" placeholder="000001、茅台、白酒">
+                </div>
+                <div class="fg">
+                    <label>每頁</label>
+                    <input id="univLimit" type="number" value="50" min="10" max="200" class="input-xs">
+                </div>
+                <button class="btn s" type="button" onclick="Data.searchUniverse(0)">🔍 查詢</button>
+                <button class="btn s" type="button" onclick="Data.fillDownloadFromUniverse()" title="將當前頁代碼填入「下載入庫」">📥 填入下載列表</button>
+            </div>
+            <div id="univTableWrap" class="mt-sm">
+                <p style="color:var(--text-dim)">點「刷新統計」或「查詢」載入列表；若為空請先執行「一鍵同步」。</p>
+            </div>
+            <div class="fr mt-sm" id="univPager" style="display:none">
+                <button class="btn s" type="button" id="univPrevBtn" onclick="Data.universePrevPage()">上一頁</button>
+                <span id="univPageInfo" class="sec-desc" style="margin:0 12px"></span>
+                <button class="btn s" type="button" id="univNextBtn" onclick="Data.universeNextPage()">下一頁</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="dtab-sectors" class="h mt-md">
+        <div class="sec"><h2>行業板塊行情</h2><button class="btn mb-md" onclick="Data.loadSectors()">🔄 載入</button><div id="sectorData"></div></div>
+        <div class="sec"><h2>📊 板塊漲跌排行</h2><div class="cw"><canvas id="dataSectorChart"></canvas></div></div>
+    </div>
+    <div id="dtab-rotation" class="h mt-md">
+        <div class="sec"><h2>板塊輪動分析</h2><div class="fr"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn" onclick="Data.loadSectorRotation()">🔄 分析</button></div><div class="chart-grid-pro"><div class="chart-panel"><h3>排名變化</h3><div class="cw"><canvas id="rotationChart"></canvas></div></div></div><div id="rotationData"></div></div>
+    </div>
+    <div id="dtab-heatmap" class="h mt-md">
+        <div class="sec"><h2>板塊全景熱力圖</h2><button class="btn mb-md" onclick="Data.loadSectorHeatmap()">🔄 載入</button><div id="heatmapData"></div></div>
+    </div>
+    <div id="dtab-capital" class="h mt-md">
+        <div class="sec"><h2>個股資金流向</h2><div class="fr"><div class="fg"><label>股票</label><input id="cfCode" value="000001"></div><button class="btn" onclick="Data.loadCapitalFlow()">🔍 查詢</button></div>
+        <div class="chart-grid-pro">
+            <div class="chart-panel"><h3>主力淨流入</h3><div class="cw"><canvas id="cfNetChart"></canvas></div></div>
+            <div class="chart-panel"><h3>分單資金結構</h3><div class="cw"><canvas id="cfStackChart"></canvas></div></div>
+        </div>
+        <div class="sec chart-grid-pro" style="margin-top:14px">
+            <div class="chart-panel"><h3>板塊主力 Top</h3><div class="cw"><canvas id="dataCapitalSectorChart"></canvas></div></div>
+            <div class="chart-panel"><h3>漲跌×資金</h3><div class="cw"><canvas id="dataSectorScatterChart"></canvas></div></div>
+        </div>
+        <div id="capitalFlowData" class="mt-md"></div></div>
+    </div>
+    <div id="dtab-north" class="h mt-md">
+        <div class="sec"><h2>北向資金流入</h2><button class="btn mb-md" onclick="Data.loadNorthFlow()">🔄 載入</button>
+        <div class="chart-grid-pro">
+            <div class="chart-panel"><h3>滬深股通</h3><div class="cw"><canvas id="northStackChart"></canvas></div></div>
+            <div class="chart-panel"><h3>北向合計</h3><div class="cw"><canvas id="northTotalChart"></canvas></div></div>
+            <div class="chart-panel"><h3>北向趨勢</h3><div class="cw"><canvas id="dataNorthTrendChart"></canvas></div></div>
+        </div>
+        <div id="northFlowData" class="mt-md"></div></div>
+    </div>
+    <div id="dtab-dragon" class="h mt-md">
+        <div class="sec"><h2>龍虎榜數據</h2><button class="btn mb-md" onclick="Data.loadDragonTiger()">🔄 載入</button><div id="dragonTigerData"></div></div>
+    </div>
+    <div id="dtab-fundamental" class="h mt-md">
+        <div class="sec"><h2>基本面篩選</h2>
+        <div class="fr flex-wrap">
+            <div class="fg"><label>PE ≤</label><input id="fundPE" value="20" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>PE ≥</label><input id="fundPEMin" placeholder="可選" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>PB ≤</label><input id="fundPB" value="3" type="number" class="input-xs" step="0.1"></div>
+            <div class="fg"><label>ROE ≥%</label><input id="fundROE" value="15" type="number" class="input-xs"></div>
+            <div class="fg"><label>EPS ≥</label><input id="fundEPS" placeholder="可選" type="number" class="input-xs" step="0.01"></div>
+            <div class="fg"><label>毛利率 ≥%</label><input id="fundGross" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>淨利率 ≥%</label><input id="fundNet" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>負債率 ≤%</label><input id="fundDebt" placeholder="可選" type="number" class="input-xs"></div>
+            <div class="fg"><label>市值 ≥億</label><input id="fundMV" placeholder="可選" type="number" class="input-xs"></div>
+            <button class="btn" onclick="Data.screenFundamentals()">🔍 篩選</button>
+        </div>
+        <div id="fundamentalData"></div></div>
+    </div>
+    <div id="dtab-basics" class="h mt-md">
+        <div class="sec"><h2>單股基本數據</h2>
+        <p class="sec-desc">彙總本地日 K 技術指標與基本面摘要（需先下載歷史數據）</p>
+        <div class="fr">
+            <div class="fg"><label>股票代碼</label><input id="basicsCode" value="000001" class="input-sm"></div>
+            <div class="fg"><label>回看天數</label><input id="basicsLookback" value="250" type="number" class="input-xs" min="20" max="500"></div>
+            <button class="btn" onclick="Data.loadStockBasics()">🔍 查詢</button>
+        </div>
+        <div id="basicsData" class="mt-md"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 深度分析 ====== -->
+
+<!-- analysis -->
+<div id="tab-analysis" class="h">
+    <div class="sec bt-panel">
+        <h2>🔬 深度分析工具</h2>
+        <p class="sec-desc">選股後可預覽與詳情頁同源的技術/基本面快照，並對回測結果做多維度分析</p>
+
+        <section class="bt-stock-section an-stock-snapshot-section">
+            <div class="bt-section-head">
+                <h3>① 選擇分析標的</h3>
+                <span id="anStockLoadHint" class="bt-load-hint"></span>
+            </div>
+            <div id="anStockSnapshot" class="sc-analysis-snapshot">
+                <p class="muted">選擇股票後顯示技術面與基本面快照（與詳情頁同源數據）</p>
+            </div>
+            <div class="stock-code-picker">
+                <input type="hidden" id="anCode" value="600519">
+                <div class="bt-stock-toolbar">
+                    <div id="anSelectedStock" class="bt-selected-stock" title="當前選中">
+                        <div class="stock-code-icon bt-selected-icon">
+                            <img id="anSelectedIcon" width="48" height="48" alt="">
+                            <span class="stock-code-letter" id="anSelectedLetter">貴</span>
+                        </div>
+                        <div class="bt-selected-meta">
+                            <span class="bt-selected-code" id="anSelectedCode">600519</span>
+                            <span class="bt-selected-name" id="anSelectedName">貴州茅台</span>
+                        </div>
+                    </div>
+                    <input type="text" id="anCodeManual" class="input-sm bt-code-manual" value="600519" placeholder="6 位代碼" maxlength="12" inputmode="text">
+                    <input type="search" id="anCodeSearch" class="input-sm bt-code-search" placeholder="搜尋股票庫（代碼 / 名稱）…" autocomplete="off">
+                </div>
+                <div id="anMarketTabs" class="bt-market-tabs" role="tablist" aria-label="分析股票市場分類"></div>
+                <div id="anCodeGrid" class="stock-code-grid" role="listbox" aria-label="選擇分析股票"></div>
+            </div>
+        </section>
+
+        <section class="bt-config-section">
+            <div class="bt-section-head">
+                <h3>② 分析策略與類型</h3>
+            </div>
+            <div class="bt-params-grid bt-analysis-grid">
+                <div class="fg bt-fg-strategy"><label>策略</label><select id="anStrategy" title="分析策略" aria-label="分析策略"></select></div>
+                <div class="btn-group bt-analysis-actions">
+                    <button class="btn" id="anTradeBtn" onclick="Analysis.tradeAnalysis()">📊 交易分析</button>
+                    <button class="btn" id="anMcBtn" onclick="Analysis.monteCarlo()">🎲 蒙特卡羅</button>
+                    <button class="btn" id="anRollingBtn" onclick="Analysis.rollingMetrics()">📉 滾動指標</button>
+                </div>
+            </div>
+        </section>
+    </div>
+    <div id="anResult" class="h">
+        <div class="g" id="anStats"></div>
+        <div class="sec h"><h2>收益分佈</h2><div class="cw"><canvas id="anDistChart"></canvas></div></div>
+        <div class="sec h"><h2>蒙特卡羅模擬</h2><div class="cw"><canvas id="anMcChart"></canvas></div></div>
+        <div class="sec h"><h2>滾動夏普</h2><div class="cw"><canvas id="anRollingChart"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ====== 定時任務（APScheduler） ====== -->
+
+<!-- scheduler -->
+<div id="tab-scheduler" class="h">
+    <div class="sec">
+        <h2>⏰ 定時任務</h2>
+        <p class="sec-desc">APScheduler 背景排程（Asia/Shanghai）。定時增量更新等作業<strong>不經</strong>下方「任務面板」佇列，僅在此管理。</p>
+        <div class="btn-group" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button class="btn" type="button" id="schedSetupBtn" onclick="SchedulerTab.setupAll()">⏰ 註冊默認任務</button>
+            <button class="btn s" type="button" onclick="SchedulerTab.disableAll()">禁用全部</button>
+            <button class="btn s" type="button" onclick="App.loadTab('reports')">📄 策略報告</button>
+        </div>
+        <div id="schedLoading" class="sched-loading" style="display:none"><span class="ld"></span> 載入中…</div>
+        <div class="g" id="schedStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
+        <div class="sec" style="margin-top:8px">
+            <h3 style="font-size:14px;margin-bottom:8px">已註冊任務</h3>
+            <div id="schedActiveList" class="sched-active-list"></div>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>任務目錄</h2>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>任務</th><th>排程</th><th>說明</th><th>狀態</th><th>下次執行</th><th>操作</th>
+                </tr></thead>
+                <tbody id="schedTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:24px">載入中…</td></tr></tbody>
+            </table>
+        </div>
+        <p class="sched-foot-hint">啟動時可設 <code>SQ_SCHEDULER_AUTO_REGISTER=true</code> 自動註冊默認任務。</p>
+    </div>
+</div>
+
+<!-- ====== 報告 ====== -->
+
+<!-- reports -->
+<div id="tab-reports" class="h">
+    <div class="sec">
+        <h2>📋 每日策略報告</h2>
+        <p class="sec-desc">生成策略表現報告，可設置每日自動執行</p>
+        <div class="btn-group">
+            <button class="btn" onclick="generateReport()" id="rptBtn">📊 生成報告</button>
+            <button class="btn s" onclick="enableScheduler()">⏰ 啟用每日自動 (15:30)</button>
+            <button class="btn s" onclick="disableScheduler()">禁用自動</button>
+            <button class="btn s" onclick="listSchedulerJobs()">📋 定時任務管理</button>
+        </div>
+    </div>
+    <div id="rptResult" class="h"><div class="sec"><h2>策略表現概覽</h2><div class="cw"><canvas id="rptPerfChart"></canvas></div></div><div class="sec"><h2>報告內容</h2><pre class="rpt" id="rptContent"></pre></div></div>
+    <div id="schedulerJobs" class="h"><div class="sec"><h2>調度任務</h2><div id="jobsList"></div></div></div>
+</div>
+
+<!-- ====== 對外接口檢查 ====== -->
+
+<!-- connectivity -->
+<div id="tab-connectivity" class="h">
+    <div class="sec">
+        <h2>🔌 對外接口檢查</h2>
+        <p class="sec-desc">探測東財、Yahoo、Binance、Polymarket、Redis 等外部依賴的連通性與延遲。全量檢測需登錄。</p>
+        <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button class="btn" type="button" id="extRunBtn">▶ 立即檢測</button>
+            <button class="btn s" type="button" id="extRegistryBtn">📋 僅看註冊表</button>
+            <span class="sec-desc" id="extSummaryMeta"></span>
+        </div>
+        <div class="g" id="extSummaryCards" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
+    </div>
+    <div class="sec">
+        <h2>探測結果</h2>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>狀態</th><th>名稱</th><th>類別</th><th>延遲</th><th>說明</th><th>端點</th>
+                </tr></thead>
+                <tbody id="extProbeTable"><tr><td colspan="6"><span class="ld"></span> 載入註冊表…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>數據源註冊表</h2>
+        <div id="extRegistryBox" class="sec-desc"></div>
+    </div>
+</div>
+
+<!-- ====== 預警 ====== -->
+
+<!-- alerts -->
+<div id="tab-alerts" class="h">
+    <div class="sec">
+        <h2>通知渠道</h2>
+        <div id="notifyChannels"><div class="state-loading"><span class="ld"></span> 載入中...</div></div>
+        <div class="mt-sm"><button class="btn" onclick="testNotify()" id="testNotifyBtn">🔔 測試所有渠道</button></div>
+    </div>
+    <div class="sec"><h2>預警趨勢</h2><div class="cw"><canvas id="alertTrendChart"></canvas></div></div>
+    <div class="sec"><h2>預警歷史</h2><div id="alertList"><div class="state-loading"><span class="ld"></span> 載入中...</div></div></div>
+</div>
+
+<!-- ====== 個股分析（每支股票獨立頁 #/stock/代碼） ====== -->
+
+<!-- polymarket -->
+<div id="tab-polymarket" class="h">
+    <div class="sec" id="pmSection">
+        <h2>🔮 預測市場（Polymarket）</h2>
+        <p class="sec-desc">只讀數據 + <strong>概率驅動預警/策略信號</strong>。個股頁面會自動顯示相關市場；此處可全局搜尋。MCP 見 docs/MCP_POLYMARKET.md。</p>
+        <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <div class="fg"><label>搜尋</label><input id="pmSearchQ" placeholder="關鍵字…" class="input-wide"></div>
+            <button class="btn s" type="button" id="pmSearchBtn">🔍 搜尋</button>
+            <div class="fg"><label>標籤</label>
+                <select id="pmTagFilter"><option value="">全部標籤</option></select>
+            </div>
+            <button class="btn s" type="button" id="pmReloadBtn">🔄 刷新</button>
+        </div>
+        <div class="table-wrap table-wrap-scroll">
+            <table>
+                <thead><tr>
+                    <th>問題</th><th>Yes</th><th>No</th><th>成交量</th><th>流動性</th><th>結束</th><th></th>
+                </tr></thead>
+                <tbody id="pmMarketTable"><tr><td colspan="7"><span class="ld"></span> 載入中…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 class="dash-section-title">📡 概率策略信號</h3>
+            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <button class="btn s" type="button" id="pmSignalsBtn">刷新信號</button>
+            </div>
+            <div id="pmSignalsBox" class="sec-desc">點擊刷新載入…</div>
+        </div>
+        <div class="sec mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 class="dash-section-title">🔔 概率預警規則</h3>
+            <p class="sec-desc">選中市場後可一鍵添加；定時任務每 5 分鐘評估（可配置 SQ_POLYMARKET_ALERT_POLL_SEC）。</p>
+            <div class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <div class="fg"><label>Yes ≥</label><input id="pmRuleYesAbove" type="number" step="0.01" min="0" max="1" placeholder="0.75" style="width:72px"></div>
+                <div class="fg"><label>Yes ≤</label><input id="pmRuleYesBelow" type="number" step="0.01" min="0" max="1" placeholder="0.25" style="width:72px"></div>
+                <div class="fg"><label>變動%</label><input id="pmRuleChangePct" type="number" step="1" min="1" placeholder="10" style="width:64px"></div>
+                <button class="btn s" type="button" id="pmAddRuleBtn">➕ 為選中市場添加</button>
+                <button class="btn s" type="button" id="pmEvalAlertsBtn">▶ 立即評估</button>
+            </div>
+            <div id="pmRulesBox" class="sec-desc"></div>
+        </div>
+        <div id="pmDetailPanel" class="h mt-sm" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <h3 id="pmDetailTitle" class="dash-section-title">市場詳情</h3>
+            <p id="pmDetailMeta" class="sec-desc"></p>
+            <div class="g" style="grid-template-columns:1fr 1fr;gap:12px">
+                <div><h4>訂單簿（Yes token）</h4><div id="pmOrderbook"></div></div>
+                <div><h4>價格歷史</h4><div class="cw" style="height:220px"><canvas id="pmPriceChart"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 加密行情 ====== -->
+
+<!-- crypto -->
+<div id="tab-crypto" class="h">
+    <div class="sec">
+        <h2>₿ 加密貨幣行情</h2>
+        <p class="sec-desc">Binance 實時報價（多源降級），點擊行查看 K 線圖 · API <code>/api/crypto/*</code></p>
+        <div class="crypto-market-toolbar">
+            <button class="btn s" type="button" id="cryptoRefreshBtn">🔄 刷新</button>
+        </div>
+        <div id="cryptoMarketTable" class="dash-table-card">
+            <div class="state-loading"><span class="ld"></span> 載入中…</div>
+        </div>
+        <div id="cryptoKlinePanel" class="h" style="margin-top:16px">
+            <div class="dash-section-head">
+                <h3 class="dash-section-title" id="cryptoKlineTitle">K 線圖</h3>
+                <div class="btn-group">
+                    <button class="btn s a" data-crypto-period="7">7D</button>
+                    <button class="btn s" data-crypto-period="30">30D</button>
+                    <button class="btn s" data-crypto-period="90">90D</button>
+                    <button class="btn s" data-crypto-period="180">180D</button>
+                </div>
+            </div>
+            <div class="cw cw-dash-tall"><canvas id="cryptoKlineChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- ====== 市場 ====== -->
+
+<!-- markets -->
+<div id="tab-markets" class="h">
+    <div class="sec">
+        <h2>🌐 多市場支持</h2>
+        <div id="marketCards" class="g" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+            <div class="state-loading"><span class="ld"></span> 載入中...</div>
+        </div>
+    </div>
+
+    <div class="sec">
+        <h2>📥 下載數據</h2>
+        <p class="sec-desc">下載指定市場的歷史數據到本地數據庫</p>
+        <div class="fr">
+            <div class="fg"><label>市場</label>
+                <select id="dlMarket">
+                    <option value="us_stock">🇺🇸 美股</option>
+                    <option value="hk_stock">🇭🇰 港股</option>
+                    <option value="index">📈 全球指數</option>
+                    <option value="etf">📦 ETF</option>
+                    <option value="crypto">₿ 加密貨幣</option>
+                    <option value="forex">💱 外匯</option>
+                    <option value="commodity">🛢️ 商品期貨</option>
+                    <option value="a_share">🇨🇳 A股</option>
+                </select>
+            </div>
+            <div class="fg"><label>標的</label><input id="dlSymbols" placeholder="留空=使用默認列表" class="input-wide"></div>
+            <button class="btn" onclick="downloadMarket()" id="dlMarketBtn">📥 下載</button>
+            <button class="btn s" onclick="downloadAllMarkets()" id="dlAllBtn">🚀 一鍵下載全部</button>
+        </div>
+        <div id="dlMarketResult" class="mt-sm"></div>
+        <div id="dlAllProgress" class="mt-sm" style="display:none">
+            <div class="status-row">
+                <span class="ld"></span>
+                <span id="dlAllStatus" style="font-size:12px;color:var(--text-muted)">下載中...</span>
+            </div>
+            <div class="progress-bar-wrap">
+                <div id="dlAllBar" class="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+    <div class="sec">
+        <h2>📊 實時行情</h2>
+        <div class="fr">
+            <div class="fg"><label>市場</label>
+                <select id="rtMarket" onchange="loadMarketRealtime()">
+                    <option value="us_stock">🇺🇸 美股</option>
+                    <option value="hk_stock">🇭🇰 港股</option>
+                    <option value="index">📈 全球指數</option>
+                    <option value="etf">📦 ETF</option>
+                    <option value="crypto">₿ 加密貨幣</option>
+                    <option value="forex">💱 外匯</option>
+                    <option value="commodity">🛢️ 商品期貨</option>
+                </select>
+            </div>
+        </div>
+        <div class="sec"><h2>漲跌幅排行</h2><div class="cw"><canvas id="rtMoversChart"></canvas></div></div>
+        <div id="rtMarketData" class="mt-sm"><div class="state-empty"><span class="state-icon">📊</span><span class="state-text">選擇市場查看實時行情</span></div></div>
+    </div>
+</div>
+
+<!-- ====== 任務面板 ====== -->

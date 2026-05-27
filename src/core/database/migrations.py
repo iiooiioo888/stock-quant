@@ -74,6 +74,20 @@ def _migration_003_post_startup(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_005_performance_indexes(conn: sqlite3.Connection) -> None:
+    """查詢加速：回測複合索引、任務狀態複合/部分索引。"""
+    extra = [
+        "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy_created ON backtest_results(code, strategy, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_task_active ON task_log(created_at DESC) WHERE status IN ('pending', 'running')",
+    ]
+    for idx in extra:
+        try:
+            conn.execute(idx)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"索引跳過（可能已存在）: {e}")
+
+
 def _migration_004_task_log_meta(conn: sqlite3.Connection) -> None:
     """任務日誌擴展欄位：管道、父任務、meta 快照。"""
     if not _table_exists(conn, "task_log"):
@@ -95,6 +109,7 @@ MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (2, "legacy_column_patches", _migration_002_legacy_columns),
     (3, "recover_stale_tasks", _migration_003_post_startup),
     (4, "task_log_pipeline_meta", _migration_004_task_log_meta),
+    (5, "performance_indexes", _migration_005_performance_indexes),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

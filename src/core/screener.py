@@ -131,11 +131,12 @@ def _check_stock(code: str, filters: dict) -> dict | None:
     # MA 多頭排列
     if "ma_bullish" in filters and filters["ma_bullish"]:
         if len(df) >= 60:
-            closes = df["close"].astype(float)
-            ma5 = closes.rolling(5).mean().iloc[-1]
-            ma10 = closes.rolling(10).mean().iloc[-1]
-            ma20 = closes.rolling(20).mean().iloc[-1]
-            ma60 = closes.rolling(60).mean().iloc[-1]
+            from src.core.indicators.fast_indicators import compute_sma
+            closes = df["close"].astype(float).to_numpy()
+            ma5 = float(compute_sma(closes, 5)[-1])
+            ma10 = float(compute_sma(closes, 10)[-1])
+            ma20 = float(compute_sma(closes, 20)[-1])
+            ma60 = float(compute_sma(closes, 60)[-1])
 
             if ma5 > ma10 > ma20 > ma60:
                 passed_filters.append("ma_bullish: MA5>MA10>MA20>MA60")
@@ -153,8 +154,9 @@ def _check_stock(code: str, filters: dict) -> dict | None:
         cfg = filters["above_ma"]
         period = cfg.get("period", 20)
         if len(df) >= period:
-            closes = df["close"].astype(float)
-            ma = closes.rolling(period).mean().iloc[-1]
+            from src.core.indicators.fast_indicators import compute_sma
+            closes = df["close"].astype(float).to_numpy()
+            ma = float(compute_sma(closes, period)[-1])
             current_price = float(df.iloc[-1]["close"])
             data_info[f"ma{period}"] = round(float(ma), 2)
             data_info["current_price"] = round(current_price, 2)

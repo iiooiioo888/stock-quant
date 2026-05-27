@@ -2,7 +2,7 @@
 import time
 import shutil
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from src.config import settings
 from src.core.db import get_db_stats
@@ -119,3 +119,12 @@ async def health_detailed():
         result["memory"] = {"status": "unavailable"}
 
     return result
+
+
+@router.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus 指標（需安裝 prometheus-client）。"""
+    from src.utils.metrics import metrics_payload
+
+    body, content_type = metrics_payload()
+    return Response(content=body, media_type=content_type)

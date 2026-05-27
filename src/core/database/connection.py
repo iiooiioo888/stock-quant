@@ -11,14 +11,25 @@ from src.config import settings
 
 _thread_local = threading.local()
 
+# SQLite 頁大小默認 4KB；負數 cache_size 表示 KB（例：-64000 ≈ 64MB）
+_DEFAULT_CACHE_PAGES_KB = -64000
+_DEFAULT_MMAP_BYTES = 268435456  # 256MB
+_DEFAULT_BUSY_TIMEOUT_MS = 5000
+
 
 def _configure_connection(conn: sqlite3.Connection) -> None:
+    cache_kb = int(getattr(settings, "sqlite_cache_size_kb", abs(_DEFAULT_CACHE_PAGES_KB)))
+    if cache_kb > 0:
+        cache_kb = -cache_kb
+    mmap = int(getattr(settings, "sqlite_mmap_size", _DEFAULT_MMAP_BYTES))
+    busy_ms = int(getattr(settings, "sqlite_busy_timeout_ms", _DEFAULT_BUSY_TIMEOUT_MS))
+
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-32000")
+    conn.execute(f"PRAGMA cache_size={cache_kb}")
     conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA mmap_size=268435456")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(f"PRAGMA mmap_size={mmap}")
+    conn.execute(f"PRAGMA busy_timeout={busy_ms}")
     conn.execute("PRAGMA foreign_keys=ON")
 
 

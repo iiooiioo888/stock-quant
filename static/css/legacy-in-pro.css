@@ -1,0 +1,83 @@
+/**
+ * Legacy tab content mounted inside Pro workbench (.legacy-mount)
+ * Maps legacy CSS variables to Pro design tokens.
+ */
+.legacy-mount {
+  --bg-primary: var(--bg1, #12141a);
+  --bg-secondary: var(--bg0, #0d0f14);
+  --bg-card: var(--bg2, #181b24);
+  --border-color: var(--bd, rgba(255, 255, 255, 0.08));
+  --text-primary: var(--t1, #e8eaef);
+  --text-dim: var(--t3, #8b919e);
+  --accent: var(--ac, #c9a227);
+  --accent-hover: var(--ac2, #e0bc4a);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.legacy-mount .h {
+  display: none !important;
+}
+
+.legacy-mount > [id^="tab-"] {
+  display: block !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.legacy-mount .fg input,
+.legacy-mount .fg select,
+.legacy-mount .fg textarea,
+.legacy-mount .input-sm,
+.legacy-mount .input-wide,
+.legacy-mount .input-xs,
+.legacy-mount .input-narrow {
+  background: var(--bg0);
+  border: 1px solid var(--bd);
+  border-radius: var(--rs, 6px);
+  color: var(--t1);
+  padding: 6px 10px;
+  font-size: 0.72rem;
+}
+
+.legacy-mount .btn,
+.legacy-mount button.btn {
+  border-radius: var(--rs, 6px);
+}
+
+.legacy-mount table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.legacy-mount table th,
+.legacy-mount table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--bd);
+  text-align: left;
+}
+
+.legacy-mount .chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  border: 1px solid var(--bd);
+}
+
+.legacy-mount .chip.on { color: var(--gn, #22c55e); border-color: rgba(34, 197, 94, 0.35); }
+.legacy-mount .chip.off { color: var(--t3); }
+.legacy-mount .chip.cfg { color: var(--ac); }
+
+.legacy-mount .cw,
+.legacy-mount .cw-tall,
+.legacy-mount .chart-placeholder {
+  min-height: 120px;
+}
+
+.legacy-mount .state-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--t3);
+}

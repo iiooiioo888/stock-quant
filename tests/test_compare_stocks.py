@@ -2,20 +2,34 @@
 import pytest
 
 
+@pytest.fixture
+def auth_headers(client):
+    """註冊並登錄，返回 Authorization header"""
+    import uuid
+    pw = "test_compare_stocks_pw_2026"
+    username = f"comparetester_{uuid.uuid4().hex[:8]}"
+    client.post("/api/auth/register", json={"username": username, "password": pw})
+    resp = client.post("/api/auth/login", json={"username": username, "password": pw})
+    assert resp.status_code == 200
+    token = resp.json().get("token")
+    assert token
+    return {"Authorization": f"Bearer {token}"}
+
+
 class TestCompareStocks:
-    def test_compare_requires_codes(self, client):
-        r = client.post("/api/stocks/compare", json={})
+    def test_compare_requires_codes(self, client, auth_headers):
+        r = client.post("/api/stocks/compare", json={}, headers=auth_headers)
         assert r.status_code == 400
 
-    def test_compare_indexes_list(self, client):
-        r = client.get("/api/stocks/compare/indexes")
+    def test_compare_indexes_list(self, client, auth_headers):
+        r = client.get("/api/stocks/compare/indexes", headers=auth_headers)
         assert r.status_code == 200
         data = r.json()
         assert data.get("indexes")
         codes = {x["code"] for x in data["indexes"]}
         assert "000300" in codes
 
-    def test_compare_response_shape(self, client, monkeypatch):
+    def test_compare_response_shape(self, client, auth_headers, monkeypatch):
         import pandas as pd
 
         def fake_ensure(code, start_date=None, min_bars=2):
@@ -46,6 +60,7 @@ class TestCompareStocks:
         r = client.post(
             "/api/stocks/compare",
             json={"codes": ["600519", "600036"], "days": 20, "benchmark": "600519", "index": "000300"},
+            headers=auth_headers,
         )
         assert r.status_code == 200
         data = r.json()

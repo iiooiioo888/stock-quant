@@ -309,3 +309,24 @@ async def admin_delete_user(target_user_id: int, user = Depends(require_admin)):
     if not success:
         raise HTTPException(404, "用戶不存在")
     return {"success": True, "message": "用戶已刪除"}
+
+
+# ====== 管理員控制開關 ======
+
+@router.get("/api/admin/controls")
+async def admin_get_controls(user = Depends(require_admin)):
+    """獲取管理員全域控制開關（僅管理員）"""
+    from src.core.admin_controls import get_controls
+    return {"success": True, "controls": get_controls()}
+
+
+@router.put("/api/admin/controls")
+async def admin_update_controls(body: dict, user = Depends(require_admin)):
+    """更新管理員全域控制開關（僅管理員）"""
+    from src.core.admin_controls import set_controls, get_controls
+    controls = body.get("controls") if isinstance(body, dict) else None
+    if not isinstance(controls, dict):
+        raise HTTPException(400, "請提供 controls（dict）")
+    prev = get_controls()
+    updated = set_controls(controls)
+    return {"success": True, "controls": updated, "previous": prev}

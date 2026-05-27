@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 
 from src.config import settings
 from src.core.db import init_db, get_db_stats, get_alert_logs, get_conn
-from src.core.auth import require_auth, require_admin
+from src.core.auth import require_auth, require_admin, get_current_user
 from src.utils.logger import logger
 
 from src.api.constants import STOCK_NAMES
@@ -31,6 +31,7 @@ from src.api.routers.dashboard_market import router as dashboard_market_router
 from src.api.routers.auth import router as auth_router
 from src.api.routers.stocks import router as stocks_router
 from src.api.routers.backtest import router as backtest_router
+from src.api.routers.target_search import router as target_search_router
 from src.api.routers.alerts import router as alerts_router
 from src.api.routers.data_center import router as data_center_router
 from src.api.routers.polymarket import router as polymarket_router
@@ -82,6 +83,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug(f"用戶策略發現跳過: {e}")
 
+    # 載入管理員控制開關（功能/策略/任務可見性）
+    try:
+        from src.core.admin_controls import apply_controls_on_startup
+        apply_controls_on_startup()
+    except Exception as e:
+        logger.debug(f"管理員控制開關載入跳過: {e}")
+
     # 啟動定時任務調度器
     try:
         from src.core.scheduler import start_scheduler
@@ -109,6 +117,14 @@ async def lifespan(app: FastAPI):
         start_task_watchdog()
     except Exception as e:
         logger.debug(f"任務自癒/看門狗啟動跳過: {e}")
+
+    if settings.cache_warmup_on_startup:
+        try:
+            import asyncio
+            from src.core.cache_warmup import warmup_cache_async
+            asyncio.create_task(warmup_cache_async())
+        except Exception as e:
+            logger.debug(f"緩存預熱跳過: {e}")
 
     yield
 
@@ -147,6 +163,7 @@ app.include_router(ws_router)
 app.include_router(auth_router)
 app.include_router(stocks_router)
 app.include_router(backtest_router)
+app.include_router(target_search_router)
 app.include_router(alerts_router)
 app.include_router(data_center_router)
 app.include_router(polymarket_router)
@@ -175,7 +192,25 @@ app.add_middleware(
 )
 
 # API / 靜態資源 GZip（減少傳輸體積）
-app.add_middleware(GZipMiddleware, minimum_size=512)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def api_timing_middleware(request: Request, call_next):
+    """Add X-Response-Time-Ms header for /api routes."""
+    path = request.url.path or ""
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    ms = int((time.perf_counter() - t0) * 1000)
+    response.headers["X-Response-Time-Ms"] = str(ms)
+    try:
+        from src.utils.metrics import observe_request
+        observe_request(request.method, path, response.status_code, (time.perf_counter() - t0))
+    except Exception:
+        pass
+    return response
 
 
 @app.middleware("http")
@@ -189,6 +224,112 @@ async def static_cache_middleware(request: Request, call_next):
         elif path.endswith((".png", ".jpg", ".ico", ".svg", ".woff2")):
             response.headers["Cache-Control"] = "public, max-age=604800"
     return response
+
+
+@app.middleware("http")
+async def admin_controls_middleware(request: Request, call_next):
+    """
+    管理員全域控制開關：
+    - 可一鍵控制 功能/策略/任務中心 是否對一般用戶可用
+    - admin 一律放行
+    """
+    path = request.url.path or ""
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    # scope/action 判定（越靠前越精準，避免誤攔）
+    scope = None
+    action = None
+    if path.startswith("/api/tasks"):
+        scope = "tasks"
+        if path == "/api/tasks":
+            action = "list"
+        elif path == "/api/tasks/queue":
+            action = "queue"
+        elif path == "/api/tasks/types":
+            action = "types"
+        elif path == "/api/tasks/stats":
+            action = "stats"
+        elif path.endswith("/cancel"):
+            action = "cancel"
+        elif path.endswith("/retry"):
+            action = "retry"
+        elif path.startswith("/api/tasks/batch/cancel"):
+            action = "batch_cancel"
+        elif path.startswith("/api/tasks/batch/delete"):
+            action = "batch_delete"
+        elif path.startswith("/api/tasks/cancel-pending"):
+            action = "cancel_pending"
+        elif path.startswith("/api/tasks/clear-completed"):
+            action = "clear_completed"
+        elif path.startswith("/api/tasks/cleanup"):
+            action = "cleanup"
+        elif path.endswith("/logs"):
+            action = "logs"
+        elif path.endswith("/params"):
+            action = "params"
+        elif path.endswith("/full"):
+            action = "full"
+        elif path.startswith("/api/tasks/pipeline"):
+            action = "pipeline"
+        elif path.startswith("/api/tasks/") and path.count("/") >= 3:
+            action = "detail"
+    elif path.startswith("/api/strategies"):
+        scope = "strategies"
+        if path == "/api/strategies/list":
+            action = "list"
+        elif path == "/api/strategies/params":
+            action = "params"
+        elif path == "/api/strategies/create":
+            action = "create"
+    elif path.startswith("/api/backtest/target-search"):
+        scope = "features"
+        action = "target_search"
+    elif path.startswith("/api/backtest/advanced"):
+        scope = "features"
+        action = "backtest_advanced"
+    elif path.startswith("/api/backtest/multi"):
+        scope = "features"
+        action = "backtest_multi"
+    elif path.startswith("/api/backtest"):
+        scope = "features"
+        action = "backtest"
+    elif path.startswith("/api/optimize") or path.startswith("/api/auto-optimize"):
+        scope = "features"
+        action = "optimize" if path.startswith("/api/optimize") else "auto_optimize"
+    elif path.startswith("/api/portfolio") or path.startswith("/api/walkforward"):
+        scope = "features"
+        action = "portfolio" if path.startswith("/api/portfolio") else "walkforward"
+
+    if not scope:
+        return await call_next(request)
+
+    # 取得 user（可選）：若無 token → 視為非 admin
+    user = None
+    try:
+        auth = request.headers.get("Authorization") or ""
+        if auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1].strip()
+            from src.core.auth import verify_token, get_user_by_id
+            payload = verify_token(token)
+            if payload:
+                user = get_user_by_id(payload.get("user_id"))
+    except Exception:
+        user = None
+
+    try:
+        from src.core.admin_controls import is_allowed
+        if not is_allowed(scope, action, user=user):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "此功能已被管理員關閉（僅管理員可用）", "scope": scope, "action": action},
+            )
+    except Exception:
+        # 保守策略：控制開關異常時不阻擋
+        pass
+
+    return await call_next(request)
 
 
 # ============================================================
@@ -547,12 +688,15 @@ async def run_scheduler_job_now(job_id: str):
     """立即執行一次定時任務"""
     from src.core.scheduler import run_job_now
     try:
-        run_job_now(job_id)
+        task_id = run_job_now(job_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(500, str(e))
-    return {"success": True, "message": f"任務 {job_id} 已觸發執行"}
+    out = {"success": True, "message": f"任務 {job_id} 已觸發執行", "async": True}
+    if task_id:
+        out["task_id"] = task_id
+    return out
 
 
 # ====== 通知渠道 ======
@@ -581,6 +725,7 @@ async def get_config():
     from src.core.optimize import PARAM_GRIDS, PARAM_RANGES
 
     def _build():
+        from src.core.admin_controls import get_controls
         return {
             "watchlist": settings.watchlist,
             "crypto_watchlist": settings.crypto_watchlist,
@@ -603,6 +748,7 @@ async def get_config():
             "tradingview_enabled": settings.tradingview_enabled,
             "ib_enabled": settings.ib_enabled,
             "local_first_auto_fetch": settings.local_first_auto_fetch,
+            "admin_controls": get_controls(),
         }
 
     return cached_response("api:config", ttl=60, builder=_build)
@@ -1503,16 +1649,30 @@ async def create_strategy(body: dict):
 
 
 @app.get("/api/strategies/list")
-async def list_strategies_api():
+async def list_strategies_api(user=Depends(get_current_user)):
     """列出所有策略（內置 + 用戶）"""
     from src.core.api_cache import cached_response
     from src.core.backtest import STRATEGIES, STRATEGY_NAMES
     from src.core.strategy_base import list_user_strategies
+    from src.core.admin_controls import is_allowed
+
+    if not is_allowed("strategies", "list", user=user):
+        raise HTTPException(403, "策略庫已被管理員關閉（僅管理員可用）")
 
     def _build():
         # 內置策略
         builtin = []
+        controls = None
+        try:
+            from src.core.admin_controls import get_controls
+            controls = (get_controls().get("scopes") or {}).get("strategies") or {}
+        except Exception:
+            controls = {}
         for name, cls in STRATEGIES.items():
+            if controls and controls.get("builtin_enabled") is False:
+                continue
+            if controls and not is_allowed("strategies", None, user=user, name=name):
+                continue
             display = STRATEGY_NAMES.get(name, name)
             desc = (cls.__doc__ or "").strip().split("\n")[0]
             builtin.append({
@@ -1524,9 +1684,13 @@ async def list_strategies_api():
             })
 
         user_strategies = list_user_strategies()
-        user = []
+        user_list = []
         for s in user_strategies:
-            user.append({
+            if controls and controls.get("user_enabled") is False:
+                continue
+            if controls and not is_allowed("strategies", None, user=user, name=s.get("name")):
+                continue
+            user_list.append({
                 "name": s["name"],
                 "source": "user",
                 "description": s["description"],
@@ -1536,8 +1700,8 @@ async def list_strategies_api():
 
         return {
             "builtin": builtin,
-            "user": user,
-            "total": len(builtin) + len(user),
+            "user": user_list,
+            "total": len(builtin) + len(user_list),
         }
 
     return cached_response("api:strategies:list", ttl=120, builder=_build)
@@ -2360,6 +2524,13 @@ async def admin_console():
 async def panel_alias():
     """工作台別名（與 /app 相同）。"""
     return await app_workbench()
+
+
+@app.get("/legacy/", response_class=HTMLResponse)
+@app.get("/legacy", response_class=HTMLResponse)
+async def legacy_spa():
+    """舊版完整 SPA（Legacy 工作台）。"""
+    return _serve_static_html("legacy/index.html", fallback=_builtin_dashboard)
 
 
 def _builtin_dashboard() -> str:

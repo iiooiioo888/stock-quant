@@ -48,3 +48,26 @@ class TestSchedulerRegistry:
         from src.core.scheduler import run_job_now
         with pytest.raises(ValueError, match="未知任務"):
             run_job_now("not_a_real_job")
+
+    def test_scheduled_run_registers_task(self):
+        import time
+        from src.core.scheduler import _run_scheduled_as_task
+        from src.core.task_manager import get_task
+
+        task_id = _run_scheduled_as_task(
+            "test_scheduled",
+            "測試定時",
+            lambda: {"ok": True},
+        )
+        assert task_id
+        task = get_task(task_id)
+        assert task is not None
+        assert task["task_type"] == "scheduled_job"
+        assert "定時·測試定時" in (task.get("title") or "")
+
+        for _ in range(100):
+            t = get_task(task_id)
+            if t["status"] in ("completed", "failed", "cancelled"):
+                break
+            time.sleep(0.05)
+        assert get_task(task_id)["status"] == "completed"

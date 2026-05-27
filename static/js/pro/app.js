@@ -113,9 +113,16 @@
       });
     },
 
-    nav(id, opts = {}) {
+    async nav(id, opts = {}) {
       const pid = String(id || '').trim();
       if (!pid) return;
+
+      try {
+        await window.StockQPro?.modules?.ensurePage?.(pid);
+      } catch (e) {
+        this.toast(e?.message || '頁面模組載入失敗', 'er');
+        return;
+      }
 
       const prev = this.current;
       if (prev && prev !== pid) {
@@ -239,9 +246,21 @@
         { n: '日誌', d: '交易紀錄', p: 'journal', k: '9' },
         { n: '歷史', d: '回測歷史', p: 'backhistory' },
         { n: 'AI 問答', d: '查詢數據、整合北向/板塊/個股', p: 'ai', k: 'A' },
+
+        { n: '參數優化', d: 'Grid / Optuna', p: 'optimize' },
+        { n: 'Walk-Forward', d: '滾動窗口驗證', p: 'walkforward' },
+        { n: '參數熱力圖', d: '敏感性分析', p: 'heatmap' },
+        { n: '實時信號', d: '當前 / 歷史 / 強度', p: 'signals' },
+        { n: '數據中心', d: '下載 / 板塊 / 資金流', p: 'data' },
+        { n: '深度分析', d: '技術 + 基本面', p: 'analysis' },
+        { n: '預測市場', d: 'Polymarket', p: 'polymarket' },
+        { n: '策略報告', d: '日報生成', p: 'reports' },
+        { n: '定時任務', d: 'APScheduler', p: 'scheduler' },
+        { n: '多市場', d: 'A股 / 美股 / 港股', p: 'markets' },
+        { n: '加密行情', d: 'Binance 等', p: 'crypto' },
+        { n: '接口檢查', d: '數據源探測', p: 'connectivity' },
         { n: '定價', d: '方案', p: 'pricing' },
         { n: '設定', d: '全局設定', p: 'settings' },
-        { n: '進階（舊版）', d: 'Polymarket / 任務 / 數據中心', p: '__legacy__' },
       ];
 
       const getExtraItems = (q) => {
@@ -340,10 +359,6 @@
         const p = item.getAttribute('data-cmd');
         if (!p) return;
         close();
-        if (p === '__legacy__') {
-          window.open('/static/legacy/index.html', '_blank', 'noopener');
-          return;
-        }
         this.nav(p, { syncHash: true });
       });
 
@@ -382,7 +397,6 @@
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.App = App;
   window.StockQApp = App;
-  window.App = App;
   window.StockQPro.pages = window.StockQPro.pages || {};
 
   window.addEventListener('DOMContentLoaded', () => App.init());

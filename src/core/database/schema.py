@@ -460,6 +460,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_daily_market ON daily_kline(market)",
     "CREATE INDEX IF NOT EXISTS idx_bt_code ON backtest_results(code)",
     "CREATE INDEX IF NOT EXISTS idx_bt_created ON backtest_results(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy_created ON backtest_results(code, strategy, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_sig_code ON signal_log(code)",
     "CREATE INDEX IF NOT EXISTS idx_sig_triggered ON signal_log(triggered_at)",
     "CREATE INDEX IF NOT EXISTS idx_sig_strategy ON signal_log(strategy)",
@@ -492,4 +493,6 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_paper_nav_session ON paper_nav_history(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_task_status ON task_log(status)",
     "CREATE INDEX IF NOT EXISTS idx_task_created ON task_log(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_task_active ON task_log(created_at DESC) WHERE status IN ('pending', 'running')",
 ]

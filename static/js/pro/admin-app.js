@@ -23,6 +23,7 @@
           const panel = $id(`panel-${id}`);
           if (panel) panel.classList.add('on');
           if (id === 'users') this.loadUsers();
+          if (id === 'controls') this.loadControls();
           if (id === 'system') this.loadSystem();
         });
       });
@@ -140,6 +141,119 @@
       grid.innerHTML = items.map(([l, v]) => `
         <div class="admin-stat"><div class="v">${escapeHtml(String(v))}</div><div class="l">${escapeHtml(l)}</div></div>
       `).join('');
+    },
+
+    async loadControls() {
+      const s = $id('ctl-status');
+      const setStatus = (msg) => { if (s) s.textContent = msg || ''; };
+      setStatus('載入中…');
+      const data = await Api.get('/api/admin/controls', { silent: true }).catch(() => null);
+      const c = data?.controls || {};
+      const scopes = c.scopes || {};
+      const feat = scopes.features || {};
+      const strat = scopes.strategies || {};
+      const tasks = scopes.tasks || {};
+      const $pub = $id('ctl-public-enabled');
+      const $feat = $id('ctl-features-enabled');
+      const $strat = $id('ctl-strategies-enabled');
+      const $tasks = $id('ctl-tasks-enabled');
+      if ($pub) $pub.checked = !!c.public_enabled;
+      if ($feat) $feat.checked = !!(feat.enabled ?? c.features_enabled);
+      if ($strat) $strat.checked = !!(strat.enabled ?? c.strategies_enabled);
+      if ($tasks) $tasks.checked = !!(tasks.enabled ?? c.tasks_enabled);
+
+      // features
+      if ($id('ctl-feat-backtest')) $id('ctl-feat-backtest').checked = !!feat.backtest;
+      if ($id('ctl-feat-backtest-adv')) $id('ctl-feat-backtest-adv').checked = !!feat.backtest_advanced;
+      if ($id('ctl-feat-backtest-multi')) $id('ctl-feat-backtest-multi').checked = !!feat.backtest_multi;
+      if ($id('ctl-feat-optimize')) $id('ctl-feat-optimize').checked = !!feat.optimize;
+      if ($id('ctl-feat-portfolio')) $id('ctl-feat-portfolio').checked = !!feat.portfolio;
+      if ($id('ctl-feat-walkforward')) $id('ctl-feat-walkforward').checked = !!feat.walkforward;
+      if ($id('ctl-feat-auto-optimize')) $id('ctl-feat-auto-optimize').checked = !!feat.auto_optimize;
+      if ($id('ctl-feat-target-search')) $id('ctl-feat-target-search').checked = !!feat.target_search;
+
+      // strategies
+      if ($id('ctl-strat-list')) $id('ctl-strat-list').checked = !!strat.list;
+      if ($id('ctl-strat-params')) $id('ctl-strat-params').checked = !!strat.params;
+      if ($id('ctl-strat-create')) $id('ctl-strat-create').checked = !!strat.create;
+      if ($id('ctl-strat-builtin')) $id('ctl-strat-builtin').checked = !!strat.builtin_enabled;
+      if ($id('ctl-strat-user')) $id('ctl-strat-user').checked = !!strat.user_enabled;
+      if ($id('ctl-strat-allowed')) $id('ctl-strat-allowed').value = Array.isArray(strat.allowed_names) ? strat.allowed_names.join(',') : '';
+      if ($id('ctl-strat-blocked')) $id('ctl-strat-blocked').value = Array.isArray(strat.blocked_names) ? strat.blocked_names.join(',') : '';
+
+      // tasks
+      if ($id('ctl-task-list')) $id('ctl-task-list').checked = !!tasks.list;
+      if ($id('ctl-task-queue')) $id('ctl-task-queue').checked = !!tasks.queue;
+      if ($id('ctl-task-types')) $id('ctl-task-types').checked = !!tasks.types;
+      if ($id('ctl-task-detail')) $id('ctl-task-detail').checked = !!tasks.detail;
+      if ($id('ctl-task-logs')) $id('ctl-task-logs').checked = !!tasks.logs;
+      if ($id('ctl-task-cancel')) $id('ctl-task-cancel').checked = !!tasks.cancel;
+      if ($id('ctl-task-delete')) $id('ctl-task-delete').checked = !!tasks.delete;
+      if ($id('ctl-task-retry')) $id('ctl-task-retry').checked = !!tasks.retry;
+      setStatus('已載入');
+
+      const reloadBtn = $id('ctl-reload-btn');
+      const saveBtn = $id('ctl-save-btn');
+      if (reloadBtn) reloadBtn.onclick = () => this.loadControls();
+      if (!saveBtn) return;
+      saveBtn.onclick = async () => {
+        setStatus('保存中…');
+        const parseList = (id) => {
+          const v = String($id(id)?.value || '').trim();
+          if (!v) return [];
+          return v.split(',').map(s => s.trim()).filter(Boolean);
+        };
+        const controls = {
+          public_enabled: !!$pub?.checked,
+          // v1 fallback（保留）
+          features_enabled: !!$feat?.checked,
+          strategies_enabled: !!$strat?.checked,
+          tasks_enabled: !!$tasks?.checked,
+          // v2 scopes
+          scopes: {
+            features: {
+              enabled: !!$feat?.checked,
+              backtest: !!$id('ctl-feat-backtest')?.checked,
+              backtest_advanced: !!$id('ctl-feat-backtest-adv')?.checked,
+              backtest_multi: !!$id('ctl-feat-backtest-multi')?.checked,
+              optimize: !!$id('ctl-feat-optimize')?.checked,
+              portfolio: !!$id('ctl-feat-portfolio')?.checked,
+              walkforward: !!$id('ctl-feat-walkforward')?.checked,
+              auto_optimize: !!$id('ctl-feat-auto-optimize')?.checked,
+              target_search: !!$id('ctl-feat-target-search')?.checked,
+            },
+            strategies: {
+              enabled: !!$strat?.checked,
+              list: !!$id('ctl-strat-list')?.checked,
+              params: !!$id('ctl-strat-params')?.checked,
+              create: !!$id('ctl-strat-create')?.checked,
+              builtin_enabled: !!$id('ctl-strat-builtin')?.checked,
+              user_enabled: !!$id('ctl-strat-user')?.checked,
+              allowed_names: parseList('ctl-strat-allowed'),
+              blocked_names: parseList('ctl-strat-blocked'),
+            },
+            tasks: {
+              enabled: !!$tasks?.checked,
+              list: !!$id('ctl-task-list')?.checked,
+              queue: !!$id('ctl-task-queue')?.checked,
+              types: !!$id('ctl-task-types')?.checked,
+              detail: !!$id('ctl-task-detail')?.checked,
+              logs: !!$id('ctl-task-logs')?.checked,
+              cancel: !!$id('ctl-task-cancel')?.checked,
+              delete: !!$id('ctl-task-delete')?.checked,
+              retry: !!$id('ctl-task-retry')?.checked,
+            },
+          },
+        };
+        try {
+          await Api.put('/api/admin/controls', { controls });
+          Utils.toast?.('已保存', 2000, 'success');
+          setStatus('已保存');
+        } catch (e) {
+          Utils.toast?.(e.message || '保存失敗', 3000, 'error');
+          setStatus('保存失敗');
+        }
+      };
     },
   };
 

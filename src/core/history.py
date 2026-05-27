@@ -87,13 +87,21 @@ def download_one(code: str, start_date: str = None, market: str = None) -> int:
         market = detect_market(code)
 
     if market == "crypto":
-        return _download_crypto(code, start_date)
+        count = _download_crypto(code, start_date)
     elif market == "forex":
-        return _download_forex(code, start_date)
+        count = _download_forex(code, start_date)
     elif market == "global":
-        return _download_global(code, start_date)
+        count = _download_global(code, start_date)
     else:
-        return _download_a_share(code, start_date)
+        count = _download_a_share(code, start_date)
+
+    if count > 0:
+        try:
+            from src.core.cache import invalidate_by_rule
+            invalidate_by_rule("data_update", code=code)
+        except Exception:
+            pass
+    return count
 
 
 def _download_crypto(code: str, start_date: str = None) -> int:
@@ -585,3 +593,11 @@ def download_minute_batch(codes: list[str], period: str = "5m", adjust: str = "q
     
     logger.info(f"分鐘K線下載完成: {success} 成功, {failed} 失敗, 共 {total} 條")
     return result
+
+async def preload_kline_range(code: str, start_date: str = None, end_date: str = None) -> int:
+    """異步預載 K 線至 LRU（不阻塞事件循環）。"""
+    import asyncio
+    from src.core.db import preload_kline_range as _sync_preload
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sync_preload, code, start_date, end_date)
+

@@ -579,21 +579,8 @@ def calculate_atr(code: str, period: int = 14) -> float:
         最新 ATR 值（如計算失敗返回 0）
     """
     try:
-        df = load_daily_kline(code)
-        if df.empty or len(df) < period + 1:
-            return 0.0
-
-        df = df.tail(period + 20).copy()
-
-        # 計算 True Range
-        df["tr1"] = df["high"] - df["low"]
-        df["tr2"] = abs(df["high"] - df["close"].shift(1))
-        df["tr3"] = abs(df["low"] - df["close"].shift(1))
-        df["tr"] = df[["tr1", "tr2", "tr3"]].max(axis=1)
-
-        # 計算 ATR（簡單移動平均）
-        atr = df["tr"].tail(period).mean()
-        return round(float(atr), 4)
+        from src.core.indicator_cache import cached_latest_atr
+        return cached_latest_atr(code, period=period)
     except Exception as e:
         logger.debug(f"計算 ATR 失敗 {code}: {e}")
         return 0.0

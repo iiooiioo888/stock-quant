@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from fastapi.responses import Response
 from src.config import settings
-from src.core.auth import require_auth, require_admin
+from src.core.auth import require_auth, require_admin, get_current_user
 from src.core.db import get_conn
 from src.utils.logger import logger
 from src.api.constants import STOCK_NAMES
@@ -708,10 +708,14 @@ async def get_stock_analysis_page(
 
 
 @router.get("/api/strategies/params")
-async def get_all_strategy_params_api():
+async def get_all_strategy_params_api(user=Depends(get_current_user)):
     """全部策略默認參數與優化網格"""
     from src.core.api_cache import cached_response
     from src.core.strategy_params_meta import get_all_strategy_params
+    from src.core.admin_controls import is_allowed
+
+    if not is_allowed("strategies", "params", user=user):
+        raise HTTPException(403, "策略庫已被管理員關閉（僅管理員可用）")
 
     return cached_response(
         "api:strategies:params",

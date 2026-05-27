@@ -298,13 +298,25 @@ async def backtest_history(
     strategy: str = None,
     limit: int = 50,
     offset: int = 0,
+    page_size: int = None,
 ):
-    """查詢回測歷史"""
-    from src.core.db import get_backtest_history
+    """查詢回測歷史（limit/offset 或 page_size 分頁）"""
+    from src.core.db import count_backtest_history, get_backtest_history
+
+    page_limit = page_size if page_size is not None else limit
+    page_limit = max(1, min(int(page_limit), 100))
+    page_offset = max(0, int(offset))
+    total = count_backtest_history(code=code, strategy=strategy)
     results = get_backtest_history(
-        code=code, strategy=strategy, limit=limit, offset=offset,
+        code=code, strategy=strategy, limit=page_limit, offset=page_offset,
     )
-    return {"results": results, "total": len(results), "limit": limit, "offset": offset}
+    return {
+        "results": results,
+        "total": total,
+        "limit": page_limit,
+        "offset": page_offset,
+        "has_more": page_offset + len(results) < total,
+    }
 
 
 @router.get("/api/backtest/compare")

@@ -298,6 +298,21 @@ def save_backtest_result(result: dict):
         )
 
 
+def count_backtest_history(code: str = None, strategy: str = None) -> int:
+    """回測歷史總筆數（分頁用）。"""
+    sql = "SELECT COUNT(*) FROM backtest_results WHERE 1=1"
+    params: list = []
+    if code:
+        sql += " AND code = ?"
+        params.append(code)
+    if strategy:
+        sql += " AND strategy = ?"
+        params.append(strategy)
+    with get_conn() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row[0] if row else 0)
+
+
 def get_backtest_history(
     code: str = None,
     strategy: str = None,
@@ -327,6 +342,15 @@ def get_backtest_history(
         _attach_strategy_display_name(d)
         results.append(d)
     return results
+
+
+def preload_kline_range(code: str, start_date: str = None, end_date: str = None) -> int:
+    """
+    預載日 K 至進程 LRU（不觸發外網下載）。
+    用於啟動預熱或腳本 warmup_cache。
+    """
+    rows, _cols = _load_daily_kline_cached(code, start_date, end_date)
+    return len(rows)
 
 
 def _attach_strategy_display_name(row: dict) -> None:

@@ -9,7 +9,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/pro.css?v=llm-sse-20260526" />
+  <link rel="stylesheet" href="/static/css/legacy-in-pro.css?v=legacy-pro-20260527" />
   <script src="/static/vendor/echarts.min.js?v=5.5.0"></script>
+  <script defer src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
     @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
@@ -120,6 +123,55 @@
     <button type="button" class="sb" data-p="backhistory" title="回測歷史">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span class="tp">回測歷史</span>
+    </button>
+    <div class="sd" aria-hidden="true"></div>
+    <button type="button" class="sb" data-p="optimize" title="參數優化">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+      <span class="tp">優化</span>
+    </button>
+    <button type="button" class="sb" data-p="walkforward" title="Walk-Forward">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 17l4-5 4 3 6-8"/></svg>
+      <span class="tp">WF</span>
+    </button>
+    <button type="button" class="sb" data-p="heatmap" title="參數熱力圖">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span class="tp">熱力圖</span>
+    </button>
+    <button type="button" class="sb" data-p="signals" title="實時信號">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 20h20"/><path d="M5 20V10M10 20V4M15 20v-6M20 20V8"/></svg>
+      <span class="tp">信號</span>
+    </button>
+    <button type="button" class="sb" data-p="data" title="數據中心">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+      <span class="tp">數據</span>
+    </button>
+    <button type="button" class="sb" data-p="analysis" title="深度分析">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12h4l3-9 4 18 3-9h6"/></svg>
+      <span class="tp">分析</span>
+    </button>
+    <button type="button" class="sb" data-p="polymarket" title="預測市場">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <span class="tp">預測</span>
+    </button>
+    <button type="button" class="sb" data-p="reports" title="策略報告">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="tp">報告</span>
+    </button>
+    <button type="button" class="sb" data-p="scheduler" title="定時任務">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="tp">調度</span>
+    </button>
+    <button type="button" class="sb" data-p="markets" title="多市場">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span class="tp">市場</span>
+    </button>
+    <button type="button" class="sb" data-p="crypto" title="加密行情">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"/></svg>
+      <span class="tp">加密</span>
+    </button>
+    <button type="button" class="sb" data-p="connectivity" title="接口檢查">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M6 12H2"/><path d="M22 12h-4"/></svg>
+      <span class="tp">接口</span>
     </button>
     <div class="sd" aria-hidden="true"></div>
     <button type="button" class="sb" data-p="ai" title="AI 智能問答">
@@ -666,24 +718,7 @@
     </div>
 
     <!-- 8. Alerts -->
-    <div class="pg pro-page" id="pg-alerts">
-      <div class="pnl">
-        <div class="ph">
-          <div class="pt">🔔 預警規則</div>
-          <div class="pa"><button type="button" class="btn s" id="al-reload">刷新</button></div>
-        </div>
-        <div class="pb no-pad">
-          <div class="table-wrap">
-            <table class="tbl">
-              <thead>
-                <tr><th>名稱</th><th>標的</th><th>條件</th><th>狀態</th><th>操作</th></tr>
-              </thead>
-              <tbody id="al-tb"><tr><td colspan="5" style="padding:24px;text-align:center;color:var(--t3)">載入中…</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div class="pg pro-page" id="pg-alerts"><div class="legacy-mount" aria-label="預警規則"></div></div>
 
     <!-- 9. Back history -->
     <div class="pg pro-page" id="pg-backhistory">
@@ -844,9 +879,20 @@
       </div>
     </div>
 
-    <!-- Placeholder pages -->
-    <div class="pg" id="pg-portfolio">
-      <div class="pnl"><div class="ph"><div class="pt">組合回測</div></div><div class="pb"><p class="placeholder-msg">組合分析模組開發中…</p><p style="font-size:.72rem;color:var(--t3);margin-top:8px">完整組合回測請暫用 <a href="/static/legacy/index.html" target="_blank" rel="noopener">舊版工作台</a></p></div></div>
+    <!-- Legacy-backed pages (mounted via legacy-bridge.js) -->
+    <div class="pg pro-page" id="pg-portfolio"><div class="legacy-mount" aria-label="組合回測"></div></div>
+    <div class="pg pro-page" id="pg-optimize"><div class="legacy-mount" aria-label="參數優化"></div></div>
+    <div class="pg pro-page" id="pg-walkforward"><div class="legacy-mount" aria-label="Walk-Forward"></div></div>
+    <div class="pg pro-page" id="pg-heatmap"><div class="legacy-mount" aria-label="參數熱力圖"></div></div>
+    <div class="pg pro-page" id="pg-signals"><div class="legacy-mount" aria-label="實時信號"></div></div>
+    <div class="pg pro-page" id="pg-data"><div class="legacy-mount" aria-label="數據中心"></div></div>
+    <div class="pg pro-page" id="pg-analysis"><div class="legacy-mount" aria-label="深度分析"></div></div>
+    <div class="pg pro-page" id="pg-polymarket"><div class="legacy-mount" aria-label="預測市場"></div></div>
+    <div class="pg pro-page" id="pg-reports"><div class="legacy-mount" aria-label="策略報告"></div></div>
+    <div class="pg pro-page" id="pg-scheduler"><div class="legacy-mount" aria-label="定時任務"></div></div>
+    <div class="pg pro-page" id="pg-markets"><div class="legacy-mount" aria-label="多市場"></div></div>
+    <div class="pg pro-page" id="pg-crypto"><div class="legacy-mount" aria-label="加密行情"></div></div>
+    <div class="pg pro-page" id="pg-connectivity"><div class="legacy-mount" aria-label="接口檢查"></div></div>
     </div>
     <div class="pg" id="pg-risk">
       <div class="pnl"><div class="ph"><div class="pt">風控中心</div></div><div class="pb"><p class="placeholder-msg">風控規則與 VaR 面板開發中…</p></div></div>
@@ -946,18 +992,9 @@
 <script src="/static/js/pro/services/market-ticker.js?v=stockq-pro-v10"></script>
 <script src="/static/js/pro/strategy-catalog.js?v=stockq-pro-v6"></script>
 <script src="/static/js/pro/modules/dashboard-pro.js?v=stockq-pro-v8"></script>
-<script src="/static/js/pro/stock-pick-data.js?v=20260526"></script>
-<script src="/static/js/pro/modules/backtest-symbol-picker.js?v=stock-pick-20260526"></script>
-<script src="/static/js/pro/modules/backtest-pro.js?v=bt-cache-fix-20260526b"></script>
-<script src="/static/js/pro/modules/compare-pro.js?v=cmp-index-heat-custom-20260527"></script>
-<script src="/static/js/pro/modules/watchlist-pro.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/scanner-pro.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/alerts-pro.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/backhistory-pro.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/modules/assets-pro.js?v=stockq-pro-v7"></script>
-<script src="/static/js/pro/modules/ai-assistant.js?v=llm-audit-20260526"></script>
-<script src="/static/js/pro/modules/settings-pro.js?v=llm-audit-20260526"></script>
 <script src="/static/js/pro/modules/tasks-pro.js?v=stockq-pro-v7"></script>
-<script src="/static/js/pro/app.js?v=stockq-pro-v9"></script>
+<script src="/static/js/pro/module-loader.js?v=stockq-pro-lazy-20260527"></script>
+<script src="/static/js/pro/legacy-bridge.js?v=legacy-pro-20260527"></script>
+<script src="/static/js/pro/app.js?v=legacy-pro-lazy-20260527"></script>
 </body>
 </html>

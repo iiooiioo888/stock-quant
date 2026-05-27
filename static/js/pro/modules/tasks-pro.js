@@ -140,6 +140,7 @@
             return;
           }
           if (!data.type.startsWith('task_')) return;
+          if (data.type === 'task_progress' && this._patchTaskFromWs(data)) return;
           this._pollCount = 0;
           this.refresh(true);
         } catch (_) {}
@@ -159,6 +160,30 @@
     rebindWs() {
       if (!this._bound) return;
       this._bindWsEvents();
+    },
+
+
+    _patchTaskFromWs(data) {
+      if (!data?.task_id || !this._lastData?.tasks) return false;
+      const idx = this._lastData.tasks.findIndex((t) => t.task_id === data.task_id);
+      if (idx < 0) return false;
+      const cur = this._lastData.tasks[idx];
+      const next = {
+        ...cur,
+        status: data.status ?? cur.status,
+        progress: data.progress ?? cur.progress,
+        error: data.error ?? cur.error,
+      };
+      this._lastData.tasks[idx] = next;
+      const card = document.querySelector(`[data-task-id="${data.task_id}"]`);
+      if (card) {
+        const fill = card.querySelector('.tk-card-progress-fill');
+        const pct = card.querySelector('.tk-pct');
+        if (fill) fill.style.width = `${next.progress || 0}%`;
+        if (pct) pct.textContent = `${next.progress || 0}%`;
+      }
+      if (this._detailId === data.task_id) this._renderDetail(next);
+      return true;
     },
 
     _getFilters() {
