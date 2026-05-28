@@ -78,6 +78,13 @@
       link.rel = 'stylesheet';
       link.href = '/static/css/legacy-in-pro.css?v=data-ui-ib-20260528';
       document.head.appendChild(link);
+
+      // Hotfix layer loaded AFTER legacy-in-pro.css to override safely.
+      const hotfix = document.createElement('link');
+      hotfix.id = 'legacy-hotfix-css';
+      hotfix.rel = 'stylesheet';
+      hotfix.href = '/static/css/legacy-hotfix.css?v=20260528';
+      document.head.appendChild(hotfix);
     },
 
     ensureScripts() {

@@ -447,6 +447,395 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
    DASHBOARD — 組件化掛牌 / 儀表盤
    ══════════════════════════════════════ */
 
+/* ══════════════════════════════════════
+   UI polish — Legacy pages inside Pro
+   原則：避免「內層垂直捲動」，由 .main 統一滾動
+   但表格可保留水平捲動（捲軸隱藏）
+   ══════════════════════════════════════ */
+.legacy-mount .data-page,
+.legacy-mount #tab-analysis,
+.legacy-mount #tab-signals,
+.legacy-mount #tab-scheduler,
+.legacy-mount #tab-connectivity,
+.legacy-mount #tab-markets,
+.legacy-mount #tab-crypto{
+  width:100%;
+  margin:0 auto;
+}
+
+/* table-wrap-scroll：移除 max-height（避免第二根垂直捲動），保留水平捲動以免表格爆版 */
+.legacy-mount .table-wrap-scroll{
+  max-height:none;
+  overflow-x:auto;
+  overflow-y:visible;
+}
+
+/* 少數頁面本來就不該產生內層捲動：保持一致 */
+.legacy-mount #tab-scheduler .table-wrap-scroll,
+.legacy-mount #tab-connectivity .table-wrap-scroll{
+  overflow-x:auto;
+  overflow-y:visible;
+}
+
+/* 表格爆版/被切：table-wrap 允許水平捲動，table 以 max-content 佈局 */
+.legacy-mount .table-wrap{
+  overflow-x:auto;
+  overflow-y:hidden;
+}
+.legacy-mount .table-wrap table{
+  width:max-content;
+  min-width:100%;
+}
+
+/* 深度分析：版心 + 卡片間距一致（避免看起來擠/散） */
+.legacy-mount #tab-analysis{
+  width:100%;
+  margin:0 auto;
+}
+.legacy-mount #tab-analysis .sec,
+.legacy-mount #tab-analysis .bt-panel{
+  width:100%;
+}
+.legacy-mount #tab-analysis .bt-analysis-grid{
+  gap:14px;
+}
+
+/* 市場：下載區塊避免擠在一起（自動換行/網格化） */
+.legacy-mount #tab-markets .sec .fr{
+  flex-wrap:wrap;
+  align-items:flex-end;
+}
+.legacy-mount #tab-markets .sec .fg{
+  min-width:180px;
+}
+.legacy-mount #tab-markets #dlSymbols{
+  min-width:220px;
+}
+
+/* 深度分析快照（StockContent.renderAnalysisSnapshot） */
+.legacy-mount .sc-analysis-snapshot{
+  border:1px solid var(--bd);
+  border-radius:var(--rl);
+  background:rgba(14,16,24,.35);
+  padding:12px 14px;
+}
+.legacy-mount .sc-snapshot-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px 12px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.legacy-mount .sc-snapshot-title{
+  font-family:var(--fd);
+  font-size:.92rem;
+  font-weight:700;
+  letter-spacing:-.02em;
+  color:var(--tx);
+  display:block;
+}
+.legacy-mount .sc-snapshot-code{
+  display:inline-flex;
+  margin-top:3px;
+  font-family:var(--fm);
+  font-size:.62rem;
+  color:var(--t3);
+}
+.legacy-mount .sc-snapshot-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+@media(max-width:900px){
+  .legacy-mount .sc-snapshot-grid{grid-template-columns:1fr}
+}
+.legacy-mount .sc-snapshot-block{
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:var(--rl);
+  background:linear-gradient(180deg,rgba(22,25,38,.65),rgba(14,16,24,.25));
+  padding:10px 12px;
+  min-width:0;
+}
+.legacy-mount .sc-snapshot-block h4{
+  margin:0 0 8px;
+  font-family:var(--fm);
+  font-size:.62rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--t3);
+}
+.legacy-mount .sd-finance-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 10px;
+}
+.legacy-mount .sd-finance-item{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 8px;
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:10px;
+  background:rgba(10,11,16,.25);
+  min-width:0;
+}
+.legacy-mount .sd-finance-label{
+  font-family:var(--fm);
+  font-size:.58rem;
+  color:var(--t4);
+  white-space:nowrap;
+}
+.legacy-mount .sd-finance-val{
+  font-family:var(--fm);
+  font-size:.66rem;
+  color:var(--tx);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:70%;
+  text-align:right;
+}
+.legacy-mount .sd-finance-val.up{color:var(--quote-up)}
+.legacy-mount .sd-finance-val.down{color:var(--quote-down)}
+
+.legacy-mount .sc-snapshot-signals{
+  margin-top:10px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.legacy-mount .sd-signal-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid var(--bd);
+  background:rgba(14,16,24,.25);
+  font-family:var(--fm);
+  font-size:.62rem;
+  color:var(--t2);
+  max-width:100%;
+}
+.legacy-mount .sd-signal-chip strong{
+  font-weight:700;
+  color:var(--tx);
+}
+.legacy-mount .sd-signal-chip em{
+  font-style:normal;
+  font-weight:700;
+}
+.legacy-mount .sd-signal-chip.buy{
+  border-color:var(--quote-up-border);
+  background:var(--quote-up-bg);
+}
+.legacy-mount .sd-signal-chip.buy em{color:var(--quote-up)}
+.legacy-mount .sd-signal-chip.sell{
+  border-color:var(--quote-down-border);
+  background:var(--quote-down-bg);
+}
+.legacy-mount .sd-signal-chip.sell em{color:var(--quote-down)}
+
+/* 深度分析頁：更像 Pro 的排版（左選股 / 右快照） */
+.legacy-mount #tab-analysis .bt-panel{
+  padding:18px 18px;
+}
+.legacy-mount #tab-analysis .bt-panel > h2{
+  font-size:1.06rem;
+  margin:0 0 6px;
+}
+.legacy-mount #tab-analysis .bt-panel > .sec-desc{
+  max-width:72ch;
+}
+
+/* ① 選擇分析標的：寬螢幕雙欄，窄螢幕自動堆疊 */
+.legacy-mount #tab-analysis .an-stock-snapshot-section{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns:minmax(360px, 1fr) minmax(420px, 1.1fr);
+  gap:14px;
+}
+.legacy-mount #tab-analysis .an-stock-snapshot-section > .bt-section-head{
+  grid-column:1/-1;
+  margin-bottom:0;
+}
+.legacy-mount #tab-analysis #anStockSnapshot{
+  grid-column:2;
+  margin:0;
+  align-self:start;
+}
+.legacy-mount #tab-analysis .stock-code-picker{
+  grid-column:1;
+  min-width:0;
+}
+@media(max-width:1100px){
+  .legacy-mount #tab-analysis .an-stock-snapshot-section{grid-template-columns:1fr}
+  .legacy-mount #tab-analysis #anStockSnapshot{grid-column:1}
+  .legacy-mount #tab-analysis .stock-code-picker{grid-column:1}
+}
+
+/* 選股工具列：更一致的卡片感 */
+.legacy-mount #tab-analysis .bt-stock-toolbar{
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:var(--rl);
+  background:linear-gradient(180deg,rgba(22,25,38,.55),rgba(14,16,24,.25));
+  padding:10px 12px;
+  margin:0 0 10px;
+}
+.legacy-mount #tab-analysis .bt-code-manual,
+.legacy-mount #tab-analysis .bt-code-search{
+  height:38px;
+}
+.legacy-mount #tab-analysis #anSelectedStock{
+  border-color:rgba(255,255,255,.08);
+  background:rgba(10,11,16,.25);
+}
+
+/* 市場 tabs：更緊湊一致 */
+.legacy-mount #tab-analysis .bt-market-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin:0 0 10px;
+}
+.legacy-mount #tab-analysis .bt-market-tab{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid var(--bd);
+  background:rgba(14,16,24,.25);
+  color:var(--t2);
+  font-family:var(--fm);
+  font-size:.64rem;
+  cursor:pointer;
+  transition:border-color .15s,background .15s,color .15s,transform .15s;
+}
+.legacy-mount #tab-analysis .bt-market-tab:hover{
+  border-color:var(--bf);
+  background:rgba(22,25,38,.5);
+  color:var(--tx);
+  transform:translateY(-1px);
+}
+.legacy-mount #tab-analysis .bt-market-tab.a{
+  border-color:rgba(232,184,48,.55);
+  background:rgba(232,184,48,.12);
+  color:var(--ac);
+}
+.legacy-mount #tab-analysis .bt-market-tab strong{
+  font-family:var(--fd);
+  font-size:.72rem;
+  color:inherit;
+}
+
+/* 股票清單容器（虛擬列表 viewport） */
+.legacy-mount #tab-analysis #anCodeGrid .stock-universe-viewport{
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:var(--rl);
+  background:rgba(10,11,16,.18);
+  overflow:auto;
+}
+.legacy-mount #tab-analysis #anCodeGrid .stock-code-row{
+  width:100%;
+  border:none;
+  background:transparent;
+  color:var(--t2);
+  text-align:left;
+  padding:10px 12px;
+  display:grid;
+  grid-template-columns:44px 34px 74px 1fr;
+  gap:10px;
+  align-items:center;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.legacy-mount #tab-analysis #anCodeGrid .stock-code-row:hover{
+  background:rgba(22,25,38,.45);
+  color:var(--tx);
+}
+.legacy-mount #tab-analysis #anCodeGrid .stock-code-row.a{
+  background:rgba(232,184,48,.10);
+  color:var(--ac);
+}
+.legacy-mount #tab-analysis #anCodeGrid .stock-code-row-name{
+  font-weight:700;
+  color:inherit;
+}
+.legacy-mount #tab-analysis #anCodeGrid .stock-code-row-intro{
+  margin-top:2px;
+  display:block;
+  font-size:.6rem;
+  color:var(--t3);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
+}
+
+/* 深度分析：點擊「分析」後（#anResult） */
+.legacy-mount #tab-analysis #anResult{
+  width:100%;
+  max-width:1120px;
+  margin:0 auto;
+  display:grid;
+  gap:14px;
+  align-content:start;
+}
+
+.legacy-mount #tab-analysis #anStats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:10px;
+}
+.legacy-mount #tab-analysis #anStats .c{
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:var(--rl);
+  background:linear-gradient(180deg,rgba(22,25,38,.75),rgba(14,16,24,.25));
+  padding:12px 14px;
+  min-width:0;
+}
+.legacy-mount #tab-analysis #anStats .c h3{
+  margin:0;
+  font-family:var(--fm);
+  font-size:.58rem;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  color:var(--t3);
+}
+.legacy-mount #tab-analysis #anStats .c .v{
+  margin-top:6px;
+  font-family:var(--fd);
+  font-size:1.05rem;
+  font-weight:800;
+  letter-spacing:-.02em;
+  color:var(--tx);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.legacy-mount #tab-analysis #anStats .c .v.gn{color:var(--quote-up)}
+.legacy-mount #tab-analysis #anStats .c .v.rd{color:var(--quote-down)}
+
+/* 分析結果圖表區塊：統一面板質感 */
+.legacy-mount #tab-analysis #anResult > .sec{
+  margin:0;
+}
+.legacy-mount #tab-analysis #anResult > .sec h2{
+  margin:0 0 10px;
+  font-family:var(--fd);
+  font-size:.96rem;
+  font-weight:800;
+  letter-spacing:-.02em;
+}
+.legacy-mount #tab-analysis #anResult > .sec .cw{
+  min-height:260px;
+}
+
 /* 頂欄掛牌帶 */
 .ticker-strip{
   flex:1;min-width:0;max-width:min(720px,52vw);margin-left:4px;

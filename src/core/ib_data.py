@@ -9,6 +9,7 @@ Interactive Brokers 行情 — 可選 ib_insync + TWS / IB Gateway
 """
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from datetime import datetime, timedelta
@@ -23,6 +24,13 @@ _ib = None
 _last_connect_attempt = 0.0
 _CONNECT_COOLDOWN = 60.0
 _connected = False
+
+# Windows + uvicorn 下 ib_insync 容易遇到「不同 event loop」問題；
+# 改為在專用背景執行緒內持有單一 asyncio loop 與 IB 實例。
+_ib_thread: threading.Thread | None = None
+_ib_loop: asyncio.AbstractEventLoop | None = None
+_ib_thread_ready = threading.Event()
+_ib_thread_stop = threading.Event()
 
 
 def _settings():
@@ -101,16 +109,21 @@ def _contract_from_spec(spec: dict[str, Any]):
 
 
 def _get_ib():
-    """懶連線單例；失敗後冷卻重試。"""
+    """懶連線單例；失敗後冷卻重試（IB 僅在專用執行緒操作）。"""
     global _ib, _last_connect_attempt, _connected
 
     if not ib_available():
         return None
 
     with _lock:
-        if _ib is not None and _ib.isConnected():
-            _connected = True
-            return _ib
+        _ensure_ib_thread()
+        if _ib is not None:
+            try:
+                if _ib.isConnected():
+                    _connected = True
+                    return _ib
+            except Exception:
+                pass
 
         now = time.time()
         if now - _last_connect_attempt < _CONNECT_COOLDOWN:
@@ -118,25 +131,119 @@ def _get_ib():
         _last_connect_attempt = now
 
         try:
-            from ib_insync import IB
-
             s = _settings()
-            ib = IB()
-            ib.connect(
-                getattr(s, "ib_host", "127.0.0.1"),
-                int(getattr(s, "ib_port", 7497)),
-                clientId=int(getattr(s, "ib_client_id", 10)),
-                timeout=5,
-            )
-            _ib = ib
-            _connected = True
-            logger.info("IB TWS/Gateway 已連接")
-            return _ib
+            host = getattr(s, "ib_host", "127.0.0.1")
+            port = int(getattr(s, "ib_port", 7497))
+            cid = int(getattr(s, "ib_client_id", 10))
+
+            ok = _ib_connect_threadsafe(host, port, cid, timeout=5)
+            if ok and _ib is not None and _ib.isConnected():
+                _connected = True
+                logger.info("IB TWS/Gateway 已連接")
+                return _ib
+            _connected = False
+            return None
         except Exception as e:
             _connected = False
-            _ib = None
             logger.debug(f"IB 連接失敗: {e}")
             return None
+
+
+def _ensure_ib_thread() -> None:
+    global _ib_thread, _ib_loop, _ib
+    if _ib_thread and _ib_loop and _ib_thread.is_alive():
+        return
+
+    _ib_thread_ready.clear()
+    _ib_thread_stop.clear()
+
+    def _runner():
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _ib_loop_local = loop
+            # store
+            globals()["_ib_loop"] = _ib_loop_local
+            from ib_insync import IB
+            globals()["_ib"] = IB()
+            _ib_thread_ready.set()
+            # run until stop
+            while not _ib_thread_stop.is_set():
+                loop.run_until_complete(asyncio.sleep(0.1))
+            # graceful cleanup
+            try:
+                if globals().get("_ib") and globals()["_ib"].isConnected():
+                    globals()["_ib"].disconnect()
+            except Exception:
+                pass
+            try:
+                loop.stop()
+            except Exception:
+                pass
+            try:
+                loop.close()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"IB loop thread failed: {e}")
+            _ib_thread_ready.set()
+
+    t = threading.Thread(target=_runner, name="ib-loop", daemon=True)
+    _ib_thread = t
+    t.start()
+    _ib_thread_ready.wait(timeout=3)
+
+
+def _ib_connect_threadsafe(host: str, port: int, client_id: int, timeout: int = 5) -> bool:
+    """在 IB 專用 loop 內執行 connectAsync，避免跨 loop future。"""
+    if _ib_loop is None or _ib is None:
+        return False
+    if _ib.isConnected():
+        return True
+
+    async def _coro():
+        try:
+            await _ib.connectAsync(host, port, clientId=client_id, timeout=timeout)
+            return True
+        except Exception as e:
+            logger.debug(f"IB connectAsync failed: {e}")
+            try:
+                _ib.disconnect()
+            except Exception:
+                pass
+            return False
+
+    fut = asyncio.run_coroutine_threadsafe(_coro(), _ib_loop)
+    try:
+        return bool(fut.result(timeout=timeout + 1))
+    except Exception as e:
+        logger.debug(f"IB connect future failed: {e}")
+        return False
+
+
+def _ib_call(fn, *args, **kwargs):
+    """在 IB 專用執行緒執行阻塞 ib_insync 操作。"""
+    if _ib_loop is None:
+        raise RuntimeError("IB loop not ready")
+    done = threading.Event()
+    out = {"ok": False, "value": None, "err": None}
+
+    def _run():
+        try:
+            out["value"] = fn(*args, **kwargs)
+            out["ok"] = True
+        except Exception as e:
+            out["err"] = e
+        finally:
+            done.set()
+
+    _ib_loop.call_soon_threadsafe(_run)
+    done.wait(timeout=15)
+    if not out["ok"]:
+        if out["err"] is not None:
+            raise out["err"]
+        raise TimeoutError("IB call timeout")
+    return out["value"]
 
 
 def fetch_ib_quote(spec: dict[str, Any]) -> dict:
@@ -147,8 +254,8 @@ def fetch_ib_quote(spec: dict[str, Any]) -> dict:
 
     try:
         contract = _contract_from_spec(spec)
-        ib.qualifyContracts(contract)
-        tickers = ib.reqTickers(contract)
+        _ib_call(ib.qualifyContracts, contract)
+        tickers = _ib_call(ib.reqTickers, contract)
         if not tickers:
             return {}
 
@@ -185,8 +292,9 @@ def fetch_ib_history(spec: dict[str, Any], days: int = 90) -> pd.DataFrame:
     duration = f"{min(days + 30, 365)} D"
     try:
         contract = _contract_from_spec(spec)
-        ib.qualifyContracts(contract)
-        bars = ib.reqHistoricalData(
+        _ib_call(ib.qualifyContracts, contract)
+        bars = _ib_call(
+            ib.reqHistoricalData,
             contract,
             endDateTime="",
             durationStr=duration,
@@ -234,12 +342,13 @@ def fetch_ib_bundle(
 
 
 def disconnect_ib():
-    global _ib, _connected
+    global _ib, _connected, _ib_thread, _ib_loop
     with _lock:
-        if _ib and _ib.isConnected():
-            try:
-                _ib.disconnect()
-            except Exception:
-                pass
-        _ib = None
+        try:
+            _ib_thread_stop.set()
+        except Exception:
+            pass
         _connected = False
+        _ib = None
+        _ib_loop = None
+        _ib_thread = None
