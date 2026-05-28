@@ -5,23 +5,34 @@ stock-quant 核心 MCP Tools — 系統、策略、股票池、任務（只讀�
 """
 from src.config import settings
 from src.integrations.mcp.protocol import ToolSpec, build_input_schema
-from src.integrations.mcp.utils import error_result, json_result
+from src.integrations.mcp.utils import ERR_INTERNAL, error_result, json_result
 
 
 def handle_sq_health(_args: dict) -> str:
     """系統健康與數據庫概況。"""
     try:
         from src.core.db import get_db_stats
+        from src.core.database.index_audit import audit_indexes
+        from src.core.pipeline_observability import get_pipeline_metrics
 
         stats = get_db_stats()
+        index_audit = audit_indexes()
+        pipeline = get_pipeline_metrics()
         return json_result({
             "status": "ok",
             "app": settings.app_name,
             "version": settings.app_version,
             "database": stats,
+            "index_audit": {
+                "ok": index_audit.get("ok"),
+                "present_count": index_audit.get("present_count"),
+                "expected_count": index_audit.get("expected_count"),
+                "missing_count": len(index_audit.get("missing") or []),
+            },
+            "pipeline_metrics": pipeline,
         })
     except Exception as e:
-        return error_result(str(e))
+        return error_result(str(e), code=ERR_INTERNAL)
 
 
 def handle_sq_config_summary(_args: dict) -> str:

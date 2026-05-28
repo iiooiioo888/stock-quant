@@ -44,8 +44,8 @@ def ib_available() -> bool:
         return False
 
 
-def ib_status() -> dict:
-    """連線狀態摘要（供 API / UI）。"""
+def ib_status(*, probe: bool = False) -> dict:
+    """連線狀態摘要（供 API / UI）。probe=True 時嘗試連接 TWS/Gateway。"""
     s = _settings()
     enabled = getattr(s, "ib_enabled", False)
     try:
@@ -54,21 +54,32 @@ def ib_status() -> dict:
     except ImportError:
         lib_ok = False
 
+    connected = _connected
+    if probe and enabled and lib_ok:
+        ib = _get_ib()
+        connected = bool(ib and ib.isConnected())
+
     st = {
         "enabled": enabled,
         "library": lib_ok,
-        "connected": _connected,
+        "connected": connected,
+        "ok": connected,
         "host": getattr(s, "ib_host", "127.0.0.1"),
         "port": getattr(s, "ib_port", 7497),
+        "client_id": int(getattr(s, "ib_client_id", 10)),
     }
     if not enabled:
         st["reason"] = "disabled"
+        st["ok"] = False
     elif not lib_ok:
         st["reason"] = "ib_insync_not_installed"
-    elif not _connected:
+        st["ok"] = False
+    elif not connected:
         st["reason"] = "not_connected"
+        st["ok"] = False
     else:
         st["reason"] = "ok"
+        st["ok"] = True
     return st
 
 

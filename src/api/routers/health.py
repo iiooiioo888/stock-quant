@@ -67,6 +67,18 @@ async def health_detailed():
         result["database"] = {"status": "error", "error": str(e)}
         result["status"] = "degraded"
 
+    # ---- 數據管線 / 索引 ----
+    try:
+        from src.core.pipeline_observability import get_pipeline_metrics
+        from src.core.database.index_audit import audit_indexes
+
+        result["pipeline_metrics"] = get_pipeline_metrics()
+        result["index_audit"] = audit_indexes()
+        if not result["index_audit"].get("ok"):
+            result["status"] = "degraded"
+    except Exception as e:
+        result["pipeline_metrics"] = {"error": str(e)}
+
     # ---- Redis 狀態 ----
     try:
         from src.core.cache import get_cache

@@ -28,6 +28,15 @@ target/
 *.swp
 *.swo
 
+# Local databases / state
+*.db
+*.db-wal
+*.db-shm
+
+# Project runtime artifacts
+data/.admin_password
+data/.jwt_secret
+
 # Environment
 .env
 .env.local

@@ -11,31 +11,37 @@
 const Signals = {
   _currentTab: 'current',
   _loadingKey: null,
+  _tabsCtl: null,
 
   init() {
     const tabs = document.getElementById('signalsTabs');
-    if (!tabs || tabs.dataset.signalsBound) return;
-    tabs.dataset.signalsBound = '1';
-    tabs.addEventListener('click', e => {
-      const btn = e.target.closest('button[data-stab]');
-      if (!btn) return;
-      tabs.querySelectorAll('button').forEach(b => b.classList.remove('a'));
-      btn.classList.add('a');
-      this._currentTab = btn.dataset.stab;
+    if (!tabs || this._tabsCtl) return;
+    if (typeof Utils !== 'undefined' && Utils.bindTabs) {
+      this._tabsCtl = Utils.bindTabs({
+        tabsEl: tabs,
+        btnSelector: 'button[data-stab]',
+        keyAttr: 'stab',
+        panelPrefix: 'stab-',
+        defaultKey: this._currentTab || 'current',
+        onTab: (key) => {
+          this._currentTab = key;
+          this._loadActiveSubTab();
+        },
+      });
+    }
+  },
+
+  load() {
+    if (!this._tabsCtl) this.init();
+    if (this._tabsCtl) {
+      this._tabsCtl.setKey(this._currentTab || this._tabsCtl.getKey() || 'current', { initial: true });
+    } else {
       ['current', 'history', 'strength'].forEach(t => {
         const el = document.getElementById('stab-' + t);
         if (el) el.classList.toggle('h', t !== this._currentTab);
       });
       this._loadActiveSubTab();
-    });
-  },
-
-  load() {
-    ['current', 'history', 'strength'].forEach(t => {
-      const el = document.getElementById('stab-' + t);
-      if (el) el.classList.toggle('h', t !== this._currentTab);
-    });
-    this._loadActiveSubTab();
+    }
   },
 
   _loadActiveSubTab() {
@@ -49,17 +55,29 @@ const Signals = {
     if (!container) return;
     if (this._loadingKey === 'current') return;
     this._loadingKey = 'current';
-    container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
+    if (typeof Utils !== 'undefined' && Utils.setState) {
+      Utils.setState(container, { kind: 'loading', title: '載入中…' });
+    } else {
+      container.innerHTML = '<p style="color:var(--text-dim)"><span class="ld"></span> 載入中...</p>';
+    }
 
     try {
       const d = await Api.getCurrentSignals();
       if (!d || !d.success) {
-        container.innerHTML = '<p style="color:var(--text-dim)">暫無信號</p>';
+        if (typeof Utils !== 'undefined' && Utils.setState) {
+          Utils.setState(container, { kind: 'empty', title: '暫無信號' });
+        } else {
+          container.innerHTML = '<p style="color:var(--text-dim)">暫無信號</p>';
+        }
         return;
       }
       const signals = d.signals || [];
       if (!signals.length) {
-        container.innerHTML = '<p style="color:var(--text-dim)">當前無活躍信號（可能非交易時段）</p>';
+        if (typeof Utils !== 'undefined' && Utils.setState) {
+          Utils.setState(container, { kind: 'empty', title: '當前無活躍信號', detail: '可能非交易時段' });
+        } else {
+          container.innerHTML = '<p style="color:var(--text-dim)">當前無活躍信號（可能非交易時段）</p>';
+        }
         return;
       }
       const SL = typeof SignalLabels !== 'undefined' ? SignalLabels : null;
@@ -78,6 +96,13 @@ const Signals = {
       }).join('');
       if (typeof Utils !== 'undefined' && Utils.hydrateStockIcons) {
         Utils.hydrateStockIcons(container);
+      }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (typeof Utils !== 'undefined' && Utils.setState) {
+        Utils.setState(container, { kind: 'error', title: '載入實時信號失敗', detail: msg });
+      } else {
+        container.innerHTML = `<p style="color:var(--text-dim)">載入失敗：${msg}</p>`;
       }
     } finally {
       if (this._loadingKey === 'current') this._loadingKey = null;

@@ -16,6 +16,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from src.integrations.mcp.registry import get_all_tools, get_tool_by_name, tool_domains
+from src.integrations.mcp.utils import ERR_UNKNOWN_TOOL, error_result
 
 
 def _run_stdio():
@@ -45,10 +46,12 @@ def _run_stdio():
             domains = tool_domains()
             return [TextContent(
                 type="text",
-                text=json.dumps({
-                    "error": f"未知 tool: {name}",
-                    "available_domains": domains,
-                }, ensure_ascii=False),
+                text=error_result(
+                    f"未知 tool: {name}",
+                    code=ERR_UNKNOWN_TOOL,
+                    tool=name,
+                    available_domains=domains,
+                ),
             )]
         text = spec.handler(arguments or {})
         return [TextContent(type="text", text=text)]

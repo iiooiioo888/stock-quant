@@ -3,7 +3,10 @@
 (() => {
   const $id = (id) => document.getElementById(id);
   const Prefs = () => window.StockQPro?.Prefs;
+  const UI = () => window.StockQPro?.UI;
   let _healthTimer = null;
+  let _topbarModalMounted = false;
+  let _topbarCatalogCache = null;
 
   function updatePreview() {
     const box = $id('set-color-preview');
@@ -34,6 +37,222 @@
     if ($id('set-poll-sec')) $id('set-poll-sec').value = String(p.marketPollSec ?? 90);
     if ($id('set-compact-topbar')) $id('set-compact-topbar').checked = p.compactTopbar !== false;
     updatePreview();
+  }
+
+  async function loadIndicesCatalog() {
+    if (_topbarCatalogCache) return _topbarCatalogCache;
+    const d = await Api.get('/api/indices/catalog', { silent: true, timeout: 12000, retries: 1 }).catch(() => null);
+    const instruments = Array.isArray(d?.instruments) ? d.instruments : [];
+    const group_order = Array.isArray(d?.group_order) ? d.group_order : [];
+    const group_labels = (d?.group_labels && typeof d.group_labels === 'object') ? d.group_labels : {};
+    _topbarCatalogCache = { instruments, group_order, group_labels };
+    return _topbarCatalogCache;
+  }
+
+  function ensureTopbarModal() {
+    const ui = UI();
+    if (!ui || _topbarModalMounted) return;
+    const modal = ui.Modal({
+      id: 'm-topbar-indices',
+      title: '頂欄指數 · 加入 / 移走',
+      width: 'min(860px,92vw)',
+      body: [
+        ui.h('div', { style: { display: 'grid', gap: '10px' } },
+          ui.h('div', { class: 'pro-toolbar pro-toolbar--row', style: { margin: '0' } },
+            ui.h('input', { id: 'topbar-q', class: 'inp', type: 'search', placeholder: '搜尋：名稱 / 代碼（例如 SPX、BTC、上證）', style: { minWidth: '220px', flex: '1' } }),
+            ui.h('button', { class: 'btn s', type: 'button', id: 'topbar-reset' }, '恢復預設'),
+            ui.h('button', { class: 'btn btn-ac', type: 'button', id: 'topbar-save' }, '保存'),
+          ),
+          ui.h('div', { id: 'topbar-picked', class: 'pro-meta-bar', style: { margin: '0' } }, '已選 0 個'),
+          ui.h('div', { id: 'topbar-groups', style: { display: 'grid', gap: '12px' } }),
+        ),
+      ],
+      footer: [
+        ui.h('div', { style: { fontSize: '.66rem', color: 'var(--t3)', lineHeight: '1.6' } },
+          '提示：頂欄顯示數量建議 8–18 個（太多會變擁擠）。此設定只保存到本機瀏覽器。',
+        ),
+        ui.h('span', { style: { flex: '1' } }),
+        ui.h('button', { class: 'btn s', type: 'button', 'data-close': 'm-topbar-indices' }, '關閉'),
+      ],
+    });
+    document.body.appendChild(modal);
+    ui.init();
+    _topbarModalMounted = true;
+  }
+
+  function renderTopbarGroups(catalog, selectedSyms, q) {
+    const ui = UI();
+    const host = $id('topbar-groups');
+    if (!ui || !host) return;
+    const query = String(q || '').trim().toLowerCase();
+    const items = (catalog?.instruments || []).map((i) => ({
+      symbol: String(i.symbol || '').toUpperCase(),
+      name: String(i.name || ''),
+      group: String(i.group || ''),
+      asset_class: String(i.asset_class || ''),
+      topbar: i.topbar !== false,
+    })).filter((i) => i.symbol);
+
+    const match = (it) => {
+      if (!query) return true;
+      return it.symbol.toLowerCase().includes(query) || it.name.toLowerCase().includes(query);
+    };
+
+    const groupOrder = Array.isArray(catalog?.group_order) ? catalog.group_order : [];
+    const groupLabels = catalog?.group_labels || {};
+
+    const byGroup = new Map();
+    items.filter(match).forEach((it) => {
+      const gid = it.group || 'other';
+      if (!byGroup.has(gid)) byGroup.set(gid, []);
+      byGroup.get(gid).push(it);
+    });
+
+    const groups = groupOrder.length ? groupOrder : Array.from(byGroup.keys()).sort();
+
+    UI().clear(host);
+    const sections = [];
+    groups.forEach((gid) => {
+      const list = byGroup.get(gid) || [];
+      if (!list.length) return;
+      list.sort((a, b) => {
+        const ao = selectedSyms.has(a.symbol) ? 0 : 1;
+        const bo = selectedSyms.has(b.symbol) ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return a.name.localeCompare(b.name);
+      });
+      const title = groupLabels[gid] || gid;
+      const grid = ui.h('div', {
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+          gap: '10px',
+        },
+      },
+      ...list.map((it) => {
+        const id = `tb-${gid}-${it.symbol}`.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
+        const checked = selectedSyms.has(it.symbol);
+        const row = ui.h('label', {
+          class: 'pnl',
+          style: {
+            padding: '10px 12px',
+            cursor: 'pointer',
+            borderColor: checked ? 'var(--bf)' : 'var(--bd)',
+            background: checked ? 'linear-gradient(165deg,rgba(122,162,247,.10),var(--bg0))' : 'linear-gradient(165deg,rgba(255,255,255,.03),var(--bg0))',
+          },
+        },
+        ui.h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '10px' } },
+          ui.h('input', {
+            type: 'checkbox',
+            id,
+            checked: checked ? 'checked' : null,
+            dataset: { sym: it.symbol },
+            style: { marginTop: '2px' },
+          }),
+          ui.h('div', { style: { minWidth: '0', flex: '1' } },
+            ui.h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' } },
+              ui.h('strong', { style: { fontSize: '.76rem' } }, it.name || it.symbol),
+              ui.h('span', { class: 'badge b-bl', style: { fontSize: '.58rem' } }, it.symbol),
+            ),
+            ui.h('div', { style: { marginTop: '4px', fontSize: '.64rem', color: 'var(--t3)' } },
+              it.asset_class ? `類別：${it.asset_class}` : '—',
+              it.topbar ? '' : ' · 非預設頂欄',
+            ),
+          ),
+        ));
+        return row;
+      }));
+
+      sections.push(
+        ui.h('section', {},
+          ui.h('div', { class: 'ph', style: { padding: '0 2px', marginBottom: '6px' } },
+            ui.h('div', { class: 'pt', style: { fontSize: '.78rem' } }, title),
+            ui.h('div', { class: 'pa', style: { fontSize: '.66rem', color: 'var(--t3)' } }, `${list.length} 檔`),
+          ),
+          grid,
+        ),
+      );
+    });
+    sections.forEach((s) => host.appendChild(s));
+  }
+
+  function topbarSelectedFromPrefs() {
+    const p = Prefs()?.load?.() || {};
+    const list = Array.isArray(p.topbarSymbols) ? p.topbarSymbols : [];
+    return list.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean);
+  }
+
+  async function openTopbarEditor() {
+    ensureTopbarModal();
+    const ui = UI();
+    if (!ui) return;
+    ui.modalOpen('m-topbar-indices');
+
+    const pickedEl = $id('topbar-picked');
+    const qEl = $id('topbar-q');
+    const resetBtn = $id('topbar-reset');
+    const saveBtn = $id('topbar-save');
+
+    const catalog = await loadIndicesCatalog().catch(() => null);
+    if (!catalog) {
+      window.StockQPro?.App?.toast?.('載入指數目錄失敗', 'er');
+      return;
+    }
+
+    let selected = new Set(topbarSelectedFromPrefs());
+
+    const syncPicked = () => {
+      const n = selected.size;
+      if (pickedEl) pickedEl.textContent = `已選 ${n} 個` + (n ? ` · ${Array.from(selected).slice(0, 10).join(', ')}${n > 10 ? '…' : ''}` : '（使用預設）');
+    };
+
+    const rerender = () => {
+      renderTopbarGroups(catalog, selected, qEl?.value);
+      syncPicked();
+    };
+
+    rerender();
+
+    const groupsHost = $id('topbar-groups');
+    if (groupsHost && !groupsHost.dataset.bound) {
+      groupsHost.dataset.bound = '1';
+      groupsHost.addEventListener('change', (e) => {
+        const cb = e.target?.closest?.('input[type="checkbox"][data-sym]');
+        if (!cb) return;
+        const sym = String(cb.dataset.sym || '').toUpperCase();
+        if (!sym) return;
+        if (cb.checked) selected.add(sym);
+        else selected.delete(sym);
+        syncPicked();
+      });
+    }
+
+    if (qEl && !qEl.dataset.bound) {
+      qEl.dataset.bound = '1';
+      qEl.addEventListener('input', () => rerender());
+    } else if (qEl) {
+      qEl.value = '';
+    }
+
+    if (resetBtn && !resetBtn.dataset.bound) {
+      resetBtn.dataset.bound = '1';
+      resetBtn.addEventListener('click', () => {
+        selected = new Set(); // empty -> default backend topbar
+        if (qEl) qEl.value = '';
+        rerender();
+      });
+    }
+
+    if (saveBtn && !saveBtn.dataset.bound) {
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', () => {
+        const list = Array.from(selected);
+        Prefs()?.save?.({ topbarSymbols: list });
+        window.StockQPro?.MarketTicker?.refreshTopbar?.();
+        window.StockQPro?.App?.toast?.('頂欄指數已保存', 'ok');
+        ui.modalClose('m-topbar-indices');
+      });
+    }
   }
 
   function fillLlmForm(settings, defaults = {}) {
@@ -310,6 +529,12 @@
           .catch(() => window.StockQPro?.App?.toast?.('數據源檢測失敗', 'er'));
       });
       bindSchemePreview();
+    }
+    if ($id('set-topbar-edit') && !$id('set-topbar-edit').dataset.bound) {
+      $id('set-topbar-edit').dataset.bound = '1';
+      $id('set-topbar-edit').addEventListener('click', () => {
+        openTopbarEditor().catch(() => window.StockQPro?.App?.toast?.('頂欄編輯器打開失敗', 'er'));
+      });
     }
     load().catch(() => window.StockQPro?.App?.toast?.('載入設定失敗', 'er'));
   }

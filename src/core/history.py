@@ -140,6 +140,11 @@ def _download_global(code: str, start_date: str = None) -> int:
     try:
         df = download_global_symbol(symbol=code, start_date=start_date)
         if df.empty:
+            try:
+                from src.core.data_sources import record_outcome
+                record_outcome("global_history", "Yahoo Finance", ok=False)
+            except Exception:
+                pass
             return 0
         market = "global"
         # 細分市場
@@ -155,9 +160,19 @@ def _download_global(code: str, start_date: str = None) -> int:
             market = "us_stock"
         count = save_daily_kline(df, code, market=market)
         logger.info(f"全球標的 {code}: {count} 條記錄 (market={market})")
+        try:
+            from src.core.data_sources import record_outcome
+            record_outcome("global_history", "Yahoo Finance", ok=True)
+        except Exception:
+            pass
         return count
     except Exception as e:
         logger.error(f"全球標的 {code} 下載失敗: {e}")
+        try:
+            from src.core.data_sources import record_outcome
+            record_outcome("global_history", "Yahoo Finance", ok=False)
+        except Exception:
+            pass
         return 0
 
 
@@ -179,8 +194,19 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             if not df.empty:
                 count = save_daily_kline(df, code)
                 logger.info(f"{code}: {count} 條記錄 (Yahoo)")
+                try:
+                    from src.core.data_sources import record_outcome
+                    record_outcome("a_share_history", "Yahoo Finance", ok=True)
+                except Exception:
+                    pass
                 return count
             logger.warning(f"{code}: Yahoo 無數據")
+            try:
+                from src.core.data_sources import record_outcome
+                # 無數據多半等價於「該標的不支援/不存在」：視作 404 降分
+                record_outcome("a_share_history", "Yahoo Finance", ok=False, status_code=404)
+            except Exception:
+                pass
             break
         except Exception as e:
             if attempt < MAX_RETRIES:
@@ -190,6 +216,11 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             else:
                 logger.warning(f"{code}: Yahoo 全部失敗，嘗試 AKShare 備選... ({e})")
                 time.sleep(random.uniform(1.0, 2.0))
+                try:
+                    from src.core.data_sources import record_outcome
+                    record_outcome("a_share_history", "Yahoo Finance", ok=False)
+                except Exception:
+                    pass
 
     # 備選：東方財富 (ak.stock_zh_a_hist)
     for attempt in range(1, MAX_RETRIES + 1):
@@ -212,6 +243,11 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             df = df.rename(columns=col_map)
             count = save_daily_kline(df, code)
             logger.info(f"{code}: {count} 條記錄 (東財 AKShare)")
+            try:
+                from src.core.data_sources import record_outcome
+                record_outcome("a_share_history", "東方財富", ok=True)
+            except Exception:
+                pass
             return count
 
         except Exception as e:
@@ -222,6 +258,11 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             else:
                 logger.warning(f"{code}: 東財全部失敗，嘗試其他備選...")
                 time.sleep(random.uniform(3.0, 6.0))
+                try:
+                    from src.core.data_sources import record_outcome
+                    record_outcome("a_share_history", "東方財富", ok=False)
+                except Exception:
+                    pass
 
     # 備選接口 1：新浪 (ak.stock_zh_a_daily)
     try:

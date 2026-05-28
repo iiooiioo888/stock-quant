@@ -25,6 +25,10 @@ class DataSource:
         self._daily_reset = 0.0
         self._fail_count = 0
         self._circuit_open_until = 0.0    # 熔斷恢復時間
+        # 可用性打分：用於「首次取得數據」時的動態排隊（越高越優先）
+        # 以 priority 作為初始偏好，但允許隨成功/404/失敗動態調整。
+        self._score = max(0.0, 100.0 - float(priority) * 2.0)
+        self._score_updated_at = 0.0
 
     @property
     def available(self) -> bool:
@@ -38,14 +42,41 @@ class DataSource:
             return False
         return True
 
+    @property
+    def score(self) -> float:
+        return float(self._score or 0.0)
+
+    def _bump_score(self, delta: float) -> None:
+        now = time.time()
+        self._score = max(0.0, min(200.0, float(self._score or 0.0) + float(delta)))
+        self._score_updated_at = now
+
     def record_success(self):
-        """記錄成功（含可達但 404 等客戶端錯誤），並解除熔斷"""
+        """記錄成功，並解除熔斷"""
         self._fail_count = 0
         self._circuit_open_until = 0.0
+        self._bump_score(+2.0)
+
+    def record_http_404(self):
+        """記錄 404：代表可達但該標的不支援/不存在，應降分但不熔斷。"""
+        self._bump_score(-3.0)
+
+    def record_http_client_error(self, status_code: int):
+        """記錄 4xx（非 404）：降分，避免過度熔斷。"""
+        sc = int(status_code or 400)
+        if sc == 404:
+            self.record_http_404()
+            return
+        self._bump_score(-5.0)
+
+    def record_soft_failure(self):
+        """記錄軟失敗（例如返回 None）：小幅降分，不立即熔斷。"""
+        self._bump_score(-1.0)
 
     def record_failure(self):
         """記錄失敗，連續 5 次熔斷 5 分鐘"""
         self._fail_count += 1
+        self._bump_score(-8.0)
         if self._fail_count >= 5:
             self._circuit_open_until = time.time() + 300
             logger.warning(f"數據源 {self.name} 連續失敗 {self._fail_count} 次，熔斷 5 分鐘")
@@ -106,7 +137,43 @@ def register(category: str, source: DataSource):
 def get_sources(category: str) -> list[DataSource]:
     """獲取指定類別的所有可用數據源（按優先級排序）"""
     sources = _registry.get(category, [])
-    return [s for s in sources if s.available]
+    available = [s for s in sources if s.available]
+    # 動態排隊：分數高者優先；同分時按 priority（越小越前）
+    available.sort(key=lambda s: (-float(getattr(s, "score", 0.0)), s.priority))
+    return available
+
+
+def _find_source(category: str, name: str) -> Optional[DataSource]:
+    nm = str(name or "").strip()
+    if not nm:
+        return None
+    for s in _registry.get(category, []) or []:
+        if s.name == nm:
+            return s
+    return None
+
+
+def record_outcome(category: str, source_name: str, *, ok: bool, status_code: int | None = None) -> None:
+    """
+    供非 execute_with_fallback 路徑回報結果：
+    - ok=True：加分
+    - status_code=404：減分（不熔斷）
+    - 其餘 ok=False：減分 + 記一次失敗（可能熔斷）
+    """
+    s = _find_source(category, source_name)
+    if not s:
+        return
+    if ok:
+        s.record_success()
+        return
+    sc = int(status_code or 0)
+    if sc == 404:
+        s.record_http_404()
+        return
+    if 400 <= sc < 500:
+        s.record_http_client_error(sc)
+        return
+    s.record_failure()
 
 
 def get_all_sources() -> dict[str, list[dict]]:
@@ -119,6 +186,7 @@ def get_all_sources() -> dict[str, list[dict]]:
                 "name": s.name,
                 "priority": s.priority,
                 "available": s.available,
+                "score": getattr(s, "score", 0.0),
                 "fail_count": s._fail_count,
                 "daily_count": s._daily_count,
                 "daily_limit": s.daily_limit,
@@ -153,8 +221,28 @@ def execute_with_fallback(category: str, func_name: str, *args, **kwargs):
             if result is not None:
                 source.record_success()
                 return result
+            # 返回 None：視作軟失敗（不熔斷），讓其他源繼續嘗試
+            source.record_soft_failure()
         except Exception as e:
-            source.record_failure()
+            # requests 的 HTTPError：可根據 status code 做更細緻打分（404 只降分不熔斷）
+            if isinstance(e, requests.HTTPError) and getattr(e, "response", None) is not None:
+                try:
+                    sc = int(e.response.status_code)
+                except Exception:
+                    sc = 0
+                if sc == 404:
+                    source.record_http_404()
+                    last_error = e
+                    logger.debug(f"{source.name}.{func_name} 404: {e}")
+                    continue
+                if 400 <= sc < 500:
+                    source.record_http_client_error(sc)
+                    last_error = e
+                    logger.debug(f"{source.name}.{func_name} HTTP {sc}: {e}")
+                    continue
+                source.record_failure()
+            else:
+                source.record_failure()
             last_error = e
             logger.debug(f"{source.name}.{func_name} 失敗: {e}")
 
@@ -186,7 +274,46 @@ def health_check() -> dict:
                 for s in sources
             ],
         }
+    _enrich_ib_health(result)
     return result
+
+
+def _enrich_ib_health(result: dict) -> None:
+    """將 dashboard_quote 中的 IB 與實際 TWS 連線狀態對齊。"""
+    try:
+        from src.core.ib_data import ib_status
+
+        ib = ib_status(probe=True)
+    except Exception:
+        return
+
+    cat = result.get("dashboard_quote")
+    if not cat:
+        return
+
+    for row in cat.get("sources", []):
+        if row.get("name") != "Interactive Brokers":
+            continue
+        if not ib.get("enabled"):
+            row["ok"] = False
+            row["ib"] = ib
+            continue
+        if not ib.get("library"):
+            row["ok"] = False
+            row["ib"] = ib
+            continue
+        row["ok"] = bool(ib.get("connected"))
+        row["ib"] = ib
+
+    connected = bool(ib.get("connected"))
+    enabled = bool(ib.get("enabled"))
+    if enabled:
+        cat["ib"] = ib
+        if connected:
+            cat["available"] = max(cat.get("available", 0), 1)
+            cat["status"] = "ok"
+        elif cat.get("available", 0) <= 0:
+            cat["status"] = "degraded"
 
 
 # ============================================================

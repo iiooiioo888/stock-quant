@@ -1,0 +1,22 @@
+---
+description: SQLite（WAL）與快取/清理規範（效能與一致性）
+globs:
+  - src/core/data_pipeline.py
+  - src/core/local_kline.py
+  - src/core/market_fetch.py
+  - src/core/fundamental.py
+alwaysApply: false
+---
+
+# SQLite（WAL）與快取規範
+
+## SQLite/WAL
+
+- 使用 WAL 時（`*.db-wal`/`*.db-shm`），任何批量流程要避免頻繁開關連線與高頻寫入造成鎖競爭。
+- 對於高頻查詢欄位（symbol/date 等）優先評估索引；新增索引要同時評估寫入成本。
+
+## 快取清理（與既有規範一致）
+
+- 外網成功後寫庫：由上游流程在適當時機清理快取，避免在單筆寫入內部「邊寫邊清」造成刷屏與性能抖動。
+- 批量流程應使用 deferred/flush 的方式合併清理（參考 `data-fetch-pipeline.mdc` 的規範）。
+

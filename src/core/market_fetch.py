@@ -27,6 +27,15 @@ from src.utils.logger import logger
 _HTTP = get_session("market_fetch")
 
 
+def _record_kline_fetch(source: str) -> None:
+    try:
+        from src.core.pipeline_observability import record_kline_fetch
+
+        record_kline_fetch(source)
+    except Exception:
+        pass
+
+
 def days_to_yahoo_range(days: int) -> str:
     if days <= 30:
         return "1mo"
@@ -136,20 +145,21 @@ def _fetch_eastmoney_kline(symbol: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def fetch_history_df(symbol: str, days: int = 90) -> tuple[pd.DataFrame, str]:
+def fetch_history_df(
+    symbol: str,
+    days: int = 90,
+    *,
+    skip_catalog: bool = False,
+) -> tuple[pd.DataFrame, str]:
     """
     拉取日 K 線（多源降級）。
+    順序：目錄 IB → TV → 本地庫 → Yahoo → 東財 → global（與 data-fetch-pipeline 一致）。
     返回 (DataFrame, source_name)；失敗時為空 DataFrame 與空字串。
+
+    skip_catalog: 為 True 時跳過目錄 IB/TV（避免 build_index_chart_item 重複請求）。
     """
     symbol = symbol.strip()
     days = max(2, int(days))
-
-    # 1. 本地庫（有則不再請求外網）
-    df = _fetch_local_kline(symbol, days)
-    if not df.empty:
-        return df, "local_db"
-
-    code = symbol_to_a_share_code(symbol)
 
     def _return_online(df: pd.DataFrame, source: str) -> tuple[pd.DataFrame, str]:
         if df.empty or len(df) < 2:
@@ -157,7 +167,24 @@ def fetch_history_df(symbol: str, days: int = 90) -> tuple[pd.DataFrame, str]:
         from src.core.local_kline import persist_kline_df
 
         persist_kline_df(symbol, df)
+        _record_kline_fetch(source)
         return df, source
+
+    # 0. 目錄 IB → TradingView（需 SQ_IB_ENABLED / TV 配置）
+    if not skip_catalog:
+        df_cat, _, src_cat = _fetch_catalog_primary(symbol, days)
+        if not df_cat.empty and len(df_cat) >= 2:
+            out, src = _return_online(df_cat, src_cat or "catalog")
+            if not out.empty:
+                return out, src
+
+    # 1. 本地庫（有則不再請求外網）
+    df = _fetch_local_kline(symbol, days)
+    if not df.empty:
+        _record_kline_fetch("local_db")
+        return df, "local_db"
+
+    code = symbol_to_a_share_code(symbol)
 
     # 2. Yahoo Finance
     yahoo_sym = a_share_to_yahoo(symbol) if code else symbol
@@ -320,7 +347,7 @@ def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
     quote_source = primary_source
 
     if df.empty or len(df) < 2:
-        df, hist_source = fetch_history_df(symbol, days)
+        df, hist_source = fetch_history_df(symbol, days, skip_catalog=True)
         if df.empty or len(df) < 2:
             return None
 

@@ -17,10 +17,21 @@ from src.utils.logger import logger
 _deferred_cache_clears: int = 0
 
 
+def get_deferred_cache_clear_count() -> int:
+    """當前待 flush 的快取清理批次数（觀測用）。"""
+    return _deferred_cache_clears
+
+
 def defer_data_cache_clear() -> None:
     """標記需要刷新進程內 K 線 LRU（不立即執行）。"""
     global _deferred_cache_clears
     _deferred_cache_clears += 1
+    try:
+        from src.core.pipeline_observability import record_cache_defer
+
+        record_cache_defer()
+    except Exception:
+        pass
 
 
 def flush_deferred_data_cache_clear() -> bool:
@@ -33,6 +44,12 @@ def flush_deferred_data_cache_clear() -> bool:
     from src.core.db import clear_data_cache
 
     clear_data_cache(quiet=True, reason=f"batch_kline_persist×{n}")
+    try:
+        from src.core.pipeline_observability import record_cache_flush
+
+        record_cache_flush(n)
+    except Exception:
+        pass
     return True
 
 
@@ -86,7 +103,28 @@ def resolve_financials(
     if row:
         fin = fundamentals_row_to_fin(row)
         if fin.get("has_data"):
+            if not allow_fetch:
+                _record_resolve("db_only")
+            else:
+                src = str(row.get("source") or "")
+                if "stale" in src:
+                    _record_resolve("stale_fallback")
+                elif src == "fundamentals_db":
+                    _record_resolve("db_fresh")
+                else:
+                    _record_resolve("fetched")
             return fin
 
     # DB / 在線仍不足時，用 universe + snapshot 兜底（不發外網）
-    return load_stock_financials(code, allow_fetch=False) or {}
+    fallback = load_stock_financials(code, allow_fetch=False) or {}
+    _record_resolve("universe_fallback" if fallback.get("has_data") else "empty")
+    return fallback
+
+
+def _record_resolve(path: str) -> None:
+    try:
+        from src.core.pipeline_observability import record_financials_resolve
+
+        record_financials_resolve(path)
+    except Exception:
+        pass

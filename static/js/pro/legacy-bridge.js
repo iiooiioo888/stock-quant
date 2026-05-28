@@ -17,6 +17,8 @@
     markets: 'markets',
   };
 
+  const LEGACY_FRAGMENTS_V = 'data-ui-ib-20260528';
+
   const LEGACY_SCRIPTS = [
     '/static/js/local-store.js?v=legacy-pro-20260527',
     '/static/js/charts.js?v=legacy-pro-20260527',
@@ -29,7 +31,7 @@
     '/static/js/signals.js?v=legacy-pro-20260527',
     '/static/js/heatmap.js?v=legacy-pro-20260527',
     '/static/js/stock-content.js?v=legacy-pro-20260527',
-    '/static/js/data.js?v=legacy-pro-20260527',
+    '/static/js/data.js?v=data-ui-ib-20260528',
     '/static/js/analysis.js?v=legacy-pro-20260527',
     '/static/js/scheduler.js?v=legacy-pro-20260527',
     '/static/js/crypto.js?v=legacy-pro-20260527',
@@ -74,7 +76,7 @@
       const link = document.createElement('link');
       link.id = 'legacy-in-pro-css';
       link.rel = 'stylesheet';
-      link.href = '/static/css/legacy-in-pro.css?v=legacy-pro-20260527';
+      link.href = '/static/css/legacy-in-pro.css?v=data-ui-ib-20260528';
       document.head.appendChild(link);
     },
 
@@ -140,8 +142,11 @@
     },
 
     async ensureFragments() {
-      if (this._fragments) return this._fragments;
-      const res = await fetch('/static/partials/legacy-tabs.html', { cache: 'no-cache' });
+      if (this._fragments && this._fragmentsVersion === LEGACY_FRAGMENTS_V) {
+        return this._fragments;
+      }
+      this._fragments = null;
+      const res = await fetch(`/static/partials/legacy-tabs.html?v=${LEGACY_FRAGMENTS_V}`, { cache: 'no-cache' });
       if (!res.ok) throw new Error('無法載入 legacy 片段');
       const html = await res.text();
       const wrap = document.createElement('div');
@@ -151,6 +156,7 @@
         const key = el.id.replace(/^tab-/, '');
         this._fragments[key] = el;
       });
+      this._fragmentsVersion = LEGACY_FRAGMENTS_V;
       return this._fragments;
     },
 
@@ -173,6 +179,7 @@
       if (!src) return false;
 
       this._clearMounts(pageId);
+      if (tabKey === 'data') this._initedTabs.delete('data');
       const node = src.cloneNode(true);
       node.classList.remove('h');
       node.style.display = '';
@@ -187,7 +194,12 @@
       if (this._initedTabs.has(tab)) return;
       try { if (tab === 'portfolio' && typeof Portfolio !== 'undefined') Portfolio.init(); } catch (_) {}
       try { if (tab === 'signals' && typeof Signals !== 'undefined') Signals.init(); } catch (_) {}
-      try { if (tab === 'data' && typeof Data !== 'undefined') Data.init(); } catch (_) {}
+      try {
+        if (tab === 'data' && typeof Data !== 'undefined') {
+          Data.init();
+          Data.load?.();
+        }
+      } catch (_) {}
       try { if (tab === 'analysis' && typeof Analysis !== 'undefined') Analysis.init(); } catch (_) {}
       try {
         if (['optimize', 'walkforward', 'heatmap'].includes(tab) && typeof Backtest !== 'undefined') {

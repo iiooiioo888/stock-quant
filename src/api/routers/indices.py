@@ -24,6 +24,7 @@ HOME_INDICES = [(i.symbol, i.name) for i in MARKET_INSTRUMENTS]
 async def get_indices_charts(
     days: int = Query(90, ge=1, le=365),
     scope: str = Query("all"),
+    symbols: str | None = Query(None, description="custom scope symbols, comma-separated"),
 ):
     """
     全球掛牌：IB → TradingView → Yahoo / 東財 / Twelve Data。
@@ -33,7 +34,7 @@ async def get_indices_charts(
     if scope not in VALID_SCOPES:
         raise HTTPException(400, detail=f"invalid scope; use one of: {sorted(VALID_SCOPES)}")
 
-    if scope == "topbar":
+    if scope in ("topbar", "custom"):
         days = min(max(days, 1), 14)
     else:
         days = max(days, 30)
@@ -43,6 +44,24 @@ async def get_indices_charts(
     def _pick_instruments():
         if scope == "topbar":
             return TOPBAR_INSTRUMENTS
+        if scope == "custom":
+            from src.core.market_catalog import lookup_instrument
+
+            raw = (symbols or "").strip()
+            if not raw:
+                return TOPBAR_INSTRUMENTS
+            picked = []
+            seen = set()
+            for sym in raw.split(","):
+                s = sym.strip().upper()
+                if not s or s in seen:
+                    continue
+                seen.add(s)
+                inst = lookup_instrument(s)
+                if inst:
+                    picked.append(inst)
+            # safety: never return empty -> fallback
+            return picked or TOPBAR_INSTRUMENTS
         if scope != "all":
             return [i for i in MARKET_INSTRUMENTS if i.group == scope]
         return MARKET_INSTRUMENTS
@@ -127,7 +146,7 @@ def _provider_status(indices: list) -> dict:
     try:
         from src.core.ib_data import ib_status
 
-        ib_st = ib_status()
+        ib_st = ib_status(probe=True)
         ib_st["quotes"] = ib_count
     except Exception:
         ib_st = {"ok": False, "reason": "error"}
@@ -156,7 +175,7 @@ async def get_indices_providers():
     try:
         from src.core.ib_data import ib_status
 
-        ib = ib_status()
+        ib = ib_status(probe=True)
     except Exception:
         pass
 

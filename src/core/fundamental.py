@@ -112,17 +112,30 @@ def get_fundamentals(code: str, max_age_days: int = 7, force_refresh: bool = Fal
         cached = load_fundamentals_db(code)
         if cached and not is_stale(cached.get("update_date"), max_age_days):
             cached.setdefault("source", "fundamentals_db")
+            _record_financials("db_hit")
             return cached
 
     online = fetch_fundamentals_online(code)
     if online:
+        _record_financials("online_fetch")
         return online
 
     cached = load_fundamentals_db(code)
     if cached:
         cached.setdefault("source", "fundamentals_db_stale")
+        _record_financials("stale_fallback")
         return cached
+    _record_financials("empty")
     return {}
+
+
+def _record_financials(outcome: str) -> None:
+    try:
+        from src.core.pipeline_observability import record_financials
+
+        record_financials(outcome)
+    except Exception:
+        pass
 
 
 def fetch_fundamentals_online(code: str) -> dict:

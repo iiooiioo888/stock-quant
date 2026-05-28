@@ -12,6 +12,8 @@
     chartDays: 90,
     marketPollSec: 90,
     compactTopbar: true,
+    /** 頂欄掛牌：自訂 symbols（空/未設置 = 使用後端預設 topbar） */
+    topbarSymbols: [],
     /** 資產庫進入詳情時預設分頁 */
     assetDetailTab: 'chart',
     /** HKD | MOP | USD | CNY */
@@ -45,6 +47,11 @@
     }
     cache.chartDays = Math.min(365, Math.max(30, Number(cache.chartDays) || DEFAULTS.chartDays));
     cache.marketPollSec = Math.max(0, Number(cache.marketPollSec) ?? DEFAULTS.marketPollSec);
+    if (!Array.isArray(cache.topbarSymbols)) cache.topbarSymbols = [];
+    cache.topbarSymbols = cache.topbarSymbols
+      .map((s) => String(s || '').trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 36);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
     apply();
     dispatchChange();

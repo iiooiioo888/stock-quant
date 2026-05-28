@@ -19,7 +19,7 @@
   display: none !important;
 }
 
-.legacy-mount > [id^="tab-"] {
+.legacy-mount > [id^="tab-"]:not(.h) {
   display: block !important;
   opacity: 1 !important;
   transform: none !important;
@@ -80,4 +80,1009 @@
   text-align: center;
   padding: 24px;
   color: var(--t3);
+}
+
+/* ═══ 數據中心 (#tab-data) ═══════════════════════════════════════ */
+.legacy-mount .data-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1120px;
+}
+
+.legacy-mount .data-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 4px 2px 0;
+}
+
+.legacy-mount .data-page-title {
+  margin: 0;
+  font-family: var(--fd, 'Space Grotesk', system-ui, sans-serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--t1);
+}
+
+.legacy-mount .data-page-desc {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: var(--t3);
+  line-height: 1.55;
+  max-width: 52ch;
+}
+
+.legacy-mount .data-page-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 分組子 Tab：flex-wrap，無橫向滾動條 */
+.legacy-mount .data-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: linear-gradient(180deg, rgba(22, 25, 38, 0.55) 0%, var(--bg0, #0d0f14) 100%);
+}
+
+.legacy-mount .data-tabs-group-label {
+  flex: 0 0 100%;
+  width: 100%;
+  font-family: var(--fm, 'JetBrains Mono', monospace);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin: 4px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--bd);
+}
+
+.legacy-mount .data-tabs-group-label:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.legacy-mount .data-tabs button {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--t3);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.legacy-mount .data-tabs button:hover {
+  color: var(--t2);
+  background: var(--bg2, #181b24);
+  border-color: var(--bd);
+}
+
+.legacy-mount .data-tabs button.a,
+.legacy-mount .data-tabs button[aria-selected="true"] {
+  color: var(--ac, #e8b830);
+  background: rgba(232, 184, 48, 0.12);
+  border-color: rgba(232, 184, 48, 0.45);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(232, 184, 48, 0.12);
+}
+
+.legacy-mount .data-panel {
+  animation: dataPanelIn 0.22s ease-out;
+}
+
+@keyframes dataPanelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.legacy-mount .sec {
+  background: linear-gradient(180deg, rgba(22, 25, 38, 0.92) 0%, var(--bg1, #12141a) 100%);
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  padding: 16px 18px;
+  margin: 0 0 12px;
+}
+
+.legacy-mount .sec:last-child {
+  margin-bottom: 0;
+}
+
+.legacy-mount .data-sec-primary {
+  border-color: rgba(232, 184, 48, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+}
+
+.legacy-mount .data-sec-head {
+  margin-bottom: 14px;
+}
+
+.legacy-mount .data-sec-head h2,
+.legacy-mount .sec h2 {
+  margin: 0 0 8px;
+  font-family: var(--fd, 'Space Grotesk', system-ui, sans-serif);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--t1);
+}
+
+.legacy-mount .sec-desc {
+  margin: 0;
+  color: var(--t3);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+
+.legacy-mount .sec-desc code {
+  font-family: var(--fm, monospace);
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg0);
+  border: 1px solid var(--bd);
+  color: var(--ac);
+}
+
+.legacy-mount .data-ib-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--rl, 12px);
+  border: 1px solid var(--bd);
+  background: rgba(14, 16, 24, 0.4);
+}
+
+.legacy-mount .data-ib-strip.is-ok {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.legacy-mount .data-ib-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--t3);
+  flex-shrink: 0;
+}
+
+.legacy-mount .data-ib-dot.on { background: var(--gn, #22c55e); box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+.legacy-mount .data-ib-dot.warn { background: var(--ac, #e8b830); }
+.legacy-mount .data-ib-dot.off { background: var(--t3); }
+
+.legacy-mount .data-ib-meta {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legacy-mount .data-ib-meta strong {
+  font-size: 0.78rem;
+  color: var(--t1);
+}
+
+.legacy-mount .data-ib-meta .sec-desc {
+  margin: 0;
+  font-size: 0.66rem;
+}
+
+.legacy-mount .data-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.legacy-mount .data-stat-card {
+  position: relative;
+  padding: 14px 14px 12px 42px;
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.45);
+  border: 1px solid var(--bd);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.legacy-mount .data-stat-card:hover {
+  border-color: rgba(232, 184, 48, 0.35);
+  transform: translateY(-1px);
+}
+
+.legacy-mount .data-stat-card.is-loading .v {
+  opacity: 0.35;
+}
+
+.legacy-mount .data-stat-icon {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  font-size: 0.75rem;
+  color: var(--ac);
+  opacity: 0.85;
+}
+
+.legacy-mount .data-stat-card h3 {
+  margin: 0;
+  font-family: var(--fm, monospace);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--t3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.legacy-mount .data-stat-card .v {
+  margin-top: 8px;
+  font-family: var(--fd, 'Space Grotesk', system-ui, sans-serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--t1);
+  letter-spacing: -0.02em;
+}
+
+.legacy-mount .data-dl-layout {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 240px);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .legacy-mount .data-dl-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.legacy-mount .data-dl-form .fg label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.68rem;
+  color: var(--t3);
+}
+
+.legacy-mount .data-dl-form textarea {
+  min-height: 100px;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.legacy-mount .data-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.68rem;
+  color: var(--t2);
+  cursor: pointer;
+}
+
+.legacy-mount .data-check-row input {
+  accent-color: var(--ac);
+}
+
+.legacy-mount .data-dl-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--rl, 12px);
+  border: 1px solid var(--bd);
+  background: rgba(14, 16, 24, 0.35);
+}
+
+.legacy-mount .data-dl-actions .btn {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+.legacy-mount .data-btn-primary {
+  background: linear-gradient(165deg, rgba(232, 184, 48, 0.22), rgba(232, 184, 48, 0.08));
+  border-color: rgba(232, 184, 48, 0.5);
+  color: var(--ac);
+  font-weight: 600;
+}
+
+.legacy-mount .data-btn-primary:hover {
+  border-color: var(--ac);
+  box-shadow: 0 4px 20px rgba(232, 184, 48, 0.15);
+}
+
+.legacy-mount .data-result-slot {
+  margin-top: 14px;
+  min-height: 0;
+}
+
+.legacy-mount .data-result-slot:empty {
+  display: none;
+}
+
+.legacy-mount .data-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--bd);
+}
+
+.legacy-mount .data-footnote .sec-desc {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+}
+
+.legacy-mount .data-toolbar-sec .data-sec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.legacy-mount .data-toolbar-sec .data-sec-head h2 {
+  margin: 0;
+}
+
+.legacy-mount .data-toolbar {
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.legacy-mount .data-universe-stats {
+  margin-bottom: 14px;
+}
+
+.legacy-mount .data-universe-filters {
+  padding: 12px;
+  border-radius: var(--rl, 12px);
+  border: 1px solid var(--bd);
+  background: rgba(14, 16, 24, 0.25);
+  margin-bottom: 12px;
+}
+
+.legacy-mount .univ-stat-sm {
+  font-size: 0.72rem !important;
+}
+
+.legacy-mount .table-wrap {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  overflow: hidden;
+  background: var(--bg0);
+}
+
+.legacy-mount .table-wrap-scroll {
+  max-height: min(52vh, 480px);
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.legacy-mount .table-wrap-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.legacy-mount .chart-grid-pro {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.legacy-mount .chart-panel {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  padding: 12px;
+  background: rgba(14, 16, 24, 0.3);
+}
+
+.legacy-mount .chart-panel h3 {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  color: var(--t2);
+}
+
+.legacy-mount .cw {
+  min-height: 220px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legacy-mount .data-panel {
+    animation: none;
+  }
+}
+
+/* ═══ 通用：Legacy Tab 容器一致性（analysis / signals / scheduler / connectivity / markets / crypto） ═══ */
+.legacy-mount #tab-analysis,
+.legacy-mount #tab-signals,
+.legacy-mount #tab-scheduler,
+.legacy-mount #tab-connectivity,
+.legacy-mount #tab-markets,
+.legacy-mount #tab-crypto {
+  max-width: 1120px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.legacy-mount #tab-analysis > .sec,
+.legacy-mount #tab-signals > .sec,
+.legacy-mount #tab-scheduler > .sec,
+.legacy-mount #tab-connectivity > .sec,
+.legacy-mount #tab-markets > .sec,
+.legacy-mount #tab-crypto > .sec {
+  margin-bottom: 0;
+}
+
+.legacy-mount .btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 避免內層捲動：表格容器改由整頁滾動承擔（仍保留 table-wrap 樣式） */
+.legacy-mount #tab-scheduler .table-wrap-scroll,
+.legacy-mount #tab-connectivity .table-wrap-scroll {
+  max-height: none;
+  overflow: hidden;
+}
+
+/* ═══ 深度分析（#tab-analysis） ═══ */
+.legacy-mount #tab-analysis .bt-panel {
+  padding: 18px 18px;
+}
+
+.legacy-mount #tab-analysis .bt-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.legacy-mount #tab-analysis .bt-section-head h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--t2);
+}
+
+.legacy-mount #tab-analysis .bt-load-hint {
+  font-size: 0.66rem;
+  color: var(--t3);
+}
+
+.legacy-mount #tab-analysis .sc-analysis-snapshot {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+.legacy-mount #tab-analysis .bt-stock-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) minmax(200px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0 8px;
+}
+
+.legacy-mount #tab-analysis .bt-selected-stock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+  min-width: 0;
+}
+
+.legacy-mount #tab-analysis .bt-selected-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.legacy-mount #tab-analysis .bt-selected-code {
+  font-family: var(--fm, monospace);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ac);
+}
+
+.legacy-mount #tab-analysis .bt-selected-name {
+  font-size: 0.7rem;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legacy-mount #tab-analysis .bt-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 10px 12px;
+  align-items: end;
+}
+
+.legacy-mount #tab-analysis .bt-analysis-actions {
+  justify-content: flex-start;
+}
+
+.legacy-mount #tab-analysis #anStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.legacy-mount #tab-analysis #anStats .c {
+  padding: 12px 14px;
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+}
+
+.legacy-mount #tab-analysis #anStats .c h3 {
+  margin: 0;
+  font-size: 0.58rem;
+  font-family: var(--fm, monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+
+.legacy-mount #tab-analysis #anStats .c .v {
+  margin-top: 6px;
+  font-size: 1rem;
+  font-family: var(--fd, system-ui, sans-serif);
+  font-weight: 700;
+  color: var(--t1);
+}
+
+@media (max-width: 900px) {
+  .legacy-mount #tab-analysis .bt-stock-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .legacy-mount #tab-analysis .bt-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ═══ 信號（#tab-signals） ═══ */
+.legacy-mount #tab-signals .data-tabs {
+  margin-top: 2px;
+}
+
+.legacy-mount .sig-stock-card {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+  padding: 12px 14px;
+  margin: 0 0 10px;
+}
+
+.legacy-mount .sig-stock-card strong {
+  color: var(--t1);
+}
+
+.legacy-mount #tab-signals #currentSignals,
+.legacy-mount #tab-signals #strengthSignals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.legacy-mount #tab-signals #currentSignals .sig-stock-card,
+.legacy-mount #tab-signals #strengthSignals .sig-stock-card {
+  margin: 0;
+}
+
+.legacy-mount #tab-signals #historySignals .table-wrap table td {
+  vertical-align: top;
+}
+
+.legacy-mount #tab-signals #historySignals td {
+  word-break: break-word;
+}
+
+/* SignalLabels.renderStockCard 需要的卡片內部結構 */
+.legacy-mount .sig-stock-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.legacy-mount .sig-stock-head--link{
+  cursor:pointer;
+  border-radius:10px;
+  padding:8px 10px;
+  margin:-8px -10px 8px;
+  transition:background .15s,border-color .15s;
+  border:1px solid transparent;
+}
+.legacy-mount .sig-stock-head--link:hover{
+  background:rgba(255,255,255,.03);
+  border-color:rgba(232,184,48,.20);
+}
+.legacy-mount .sig-stock-identity{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.legacy-mount .sig-stock-titles{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.legacy-mount .sig-stock-code{
+  font-family:var(--fm, monospace);
+  font-weight:800;
+  color:var(--t1);
+  font-size:.82rem;
+  line-height:1.1;
+}
+.legacy-mount .sig-stock-name{
+  font-size:.66rem;
+  color:var(--t3);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:52ch;
+}
+.legacy-mount .sig-strength-val{
+  /* 強制成「膠囊 badge」，避免被其他全局樣式放大撐爆卡片 */
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-family:var(--fm, monospace);
+  font-size:.72rem;
+  font-weight:900;
+  line-height:1;
+  padding:4px 10px;
+  min-width:56px;
+  border-radius:999px;
+  border:1px solid var(--bd);
+  background:rgba(14,16,24,.35);
+}
+
+/* #tab-signals 內的 .b（badge）統一小尺寸，避免出現巨大數字 */
+.legacy-mount #tab-signals .b{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:.66rem;
+  font-weight:800;
+  letter-spacing:.02em;
+  line-height:1;
+  border:1px solid var(--bd);
+  background:rgba(14,16,24,.35);
+}
+.legacy-mount #tab-signals .b.gn{
+  color:var(--gn, #22c55e);
+  border-color:rgba(34,197,94,.35);
+  background:rgba(34,197,94,.12);
+}
+.legacy-mount #tab-signals .b.rd{
+  color:var(--rd, #ef4444);
+  border-color:rgba(239,68,68,.35);
+  background:rgba(239,68,68,.12);
+}
+.legacy-mount #tab-signals .b.bl{
+  color:var(--bl, #38bdf8);
+  border-color:rgba(56,189,248,.35);
+  background:rgba(56,189,248,.10);
+}
+.legacy-mount .sig-strength-line{
+  margin:6px 0 0;
+  color:var(--t2);
+  font-size:.68rem;
+  line-height:1.45;
+}
+.legacy-mount .sig-explain{
+  margin:6px 0 0;
+  color:var(--t3);
+  font-size:.64rem;
+  line-height:1.55;
+}
+.legacy-mount .sig-time{
+  margin:8px 0 0;
+  color:var(--t4, var(--t3));
+  font-size:.6rem;
+  font-family:var(--fm, monospace);
+}
+.legacy-mount .sig-chip-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.legacy-mount .sig-empty{
+  color:var(--t3);
+  font-size:.66rem;
+  padding:10px 12px;
+  border:1px dashed var(--bd);
+  border-radius:10px;
+  background:rgba(14,16,24,.25);
+}
+.legacy-mount .sig-chip{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid var(--bd);
+  background:rgba(14,16,24,.35);
+  min-height:74px;
+}
+.legacy-mount .sig-chip-top{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:8px;
+}
+.legacy-mount .sig-chip-top strong{
+  font-size:.7rem;
+  color:var(--t1);
+  font-weight:800;
+}
+.legacy-mount .sig-chip-top em{
+  font-style:normal;
+  font-size:.62rem;
+  font-family:var(--fm, monospace);
+  color:var(--t3);
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid var(--bd);
+  background:rgba(255,255,255,.02);
+}
+.legacy-mount .sig-chip-hint{
+  font-size:.62rem;
+  color:var(--t3);
+  line-height:1.45;
+}
+.legacy-mount .sig-chip.on{
+  border-color:rgba(34,197,94,.35);
+  background:linear-gradient(165deg,rgba(34,197,94,.12),rgba(14,16,24,.35));
+}
+.legacy-mount .sig-chip.on .sig-chip-top em{
+  color:rgba(34,197,94,.95);
+  border-color:rgba(34,197,94,.35);
+  background:rgba(34,197,94,.10);
+}
+.legacy-mount .sig-chip.off{
+  border-color:rgba(239,68,68,.35);
+  background:linear-gradient(165deg,rgba(239,68,68,.10),rgba(14,16,24,.35));
+}
+.legacy-mount .sig-chip.off .sig-chip-top em{
+  color:rgba(239,68,68,.95);
+  border-color:rgba(239,68,68,.35);
+  background:rgba(239,68,68,.08);
+}
+
+/* ═══ 定時任務（#tab-scheduler） ═══ */
+.legacy-mount #tab-scheduler .sched-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--t3);
+  margin: 8px 0 10px;
+}
+
+.legacy-mount #tab-scheduler .sched-active-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.legacy-mount #tab-scheduler .sched-active-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bd);
+  background: rgba(14, 16, 24, 0.35);
+  font-size: 0.66rem;
+  color: var(--t2);
+}
+
+.legacy-mount #tab-scheduler .sched-chip-time {
+  font-size: 0.6rem;
+  color: var(--t3);
+}
+
+.legacy-mount #tab-scheduler .sched-job-name {
+  font-weight: 700;
+  color: var(--t1);
+  font-size: 0.72rem;
+}
+
+.legacy-mount #tab-scheduler .sched-job-id {
+  font-family: var(--fm, monospace);
+  font-size: 0.6rem;
+  color: var(--t3);
+  margin-top: 2px;
+}
+
+.legacy-mount #tab-scheduler .sched-actions {
+  white-space: nowrap;
+}
+
+.legacy-mount #tab-scheduler .sched-actions .btn {
+  margin-right: 6px;
+}
+
+.legacy-mount #tab-scheduler .sched-foot-hint {
+  margin-top: 10px;
+  font-size: 0.66rem;
+  color: var(--t3);
+}
+
+/* ═══ 數據源 / 對外接口檢查（#tab-connectivity） ═══ */
+.legacy-mount #tab-connectivity #extSummaryMeta {
+  flex: 1;
+  min-width: 220px;
+}
+
+.legacy-mount #tab-connectivity #extRegistryBox {
+  background: rgba(14, 16, 24, 0.35);
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
+.legacy-mount #tab-connectivity #extRegistryBox code {
+  font-family: var(--fm, monospace);
+  font-size: 0.62rem;
+}
+
+/* ═══ 市場（#tab-markets） ═══ */
+.legacy-mount #tab-markets #marketCards > div {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.legacy-mount #tab-markets #marketCards > div:hover {
+  border-color: rgba(232, 184, 48, 0.35);
+  transform: translateY(-1px);
+}
+
+.legacy-mount #tab-markets #dlMarketResult {
+  margin-top: 10px;
+}
+
+.legacy-mount #tab-markets #rtMarketData table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.legacy-mount #tab-markets #rtMarketData th,
+.legacy-mount #tab-markets #rtMarketData td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--bd);
+  text-align: left;
+}
+
+/* ═══ 加密（#tab-crypto） ═══ */
+.legacy-mount #tab-crypto .crypto-market-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 8px 0 12px;
+}
+
+.legacy-mount #tab-crypto .dash-table-card {
+  border: 1px solid var(--bd);
+  border-radius: var(--rl, 12px);
+  background: rgba(14, 16, 24, 0.35);
+  overflow: hidden;
+}
+
+.legacy-mount #tab-crypto .dash-watchlist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.legacy-mount #tab-crypto .dash-watchlist-table th,
+.legacy-mount #tab-crypto .dash-watchlist-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bd);
+  text-align: left;
+}
+
+.legacy-mount #tab-crypto .dash-watchlist-table th {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t3);
+  background: rgba(14, 16, 24, 0.2);
+}
+
+.legacy-mount #tab-crypto .dash-watchlist-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.legacy-mount #tab-crypto .crypto-tbl-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: rgba(232, 184, 48, 0.10);
+  color: var(--ac);
+  margin-right: 6px;
+  font-size: 0.78rem;
+}
+
+.legacy-mount #tab-crypto .crypto-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--bd);
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--fm, monospace);
+}
+
+.legacy-mount #tab-crypto .crypto-badge.up {
+  color: var(--gn, #22c55e);
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.legacy-mount #tab-crypto .crypto-badge.down {
+  color: var(--rd, #ef4444);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.legacy-mount #tab-crypto .crypto-badge.flat {
+  color: var(--t2);
+  background: rgba(148, 163, 184, 0.08);
 }

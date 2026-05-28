@@ -401,52 +401,94 @@
 
 <!-- data -->
 <div id="tab-data" class="h">
-    <div class="data-tabs" id="dataTabs">
-        <button class="a" data-dtab="download">📥 下載入庫</button>
-        <button data-dtab="universe">📚 股票庫</button>
-        <button data-dtab="sectors">🏭 板塊行情</button>
-        <button data-dtab="rotation">🔄 板塊輪動</button>
-        <button data-dtab="heatmap">🗺️ 全景圖</button>
-        <button data-dtab="capital">💰 資金流向</button>
-        <button data-dtab="north">🧭 北向資金</button>
-        <button data-dtab="dragon">🐉 龍虎榜</button>
-        <button data-dtab="fundamental">📊 基本面</button>
-        <button data-dtab="basics">📋 基本數據</button>
-    </div>
+    <div class="data-page">
+        <header class="data-page-head">
+            <div class="data-page-head-main">
+                <h1 class="data-page-title">數據中心</h1>
+                <p class="data-page-desc">本地庫優先 · 下載入庫、股票庫同步與板塊/資金/基本面分析</p>
+            </div>
+            <div class="data-page-head-actions">
+                <button class="btn s" type="button" onclick="Data.refreshDbStats()" title="刷新庫統計">刷新庫統計</button>
+            </div>
+        </header>
 
-    <div id="dtab-download" class="mt-md">
-        <div class="sec">
-            <h2>📥 爬取數據並寫入本地庫</h2>
-            <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>，之後回測、對比、K 線查詢一律讀庫。手動「下載」用於批量預載；「增量更新」用於補最新交易日。</p>
-            <div class="g" id="dbStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
-                <div class="c"><h3>標的數</h3><div class="v" id="dbStatStocks">-</div></div>
-                <div class="c"><h3>K 線條數</h3><div class="v" id="dbStatKlines">-</div></div>
-                <div class="c"><h3>庫大小</h3><div class="v" id="dbStatSize">-</div></div>
+        <nav class="data-tabs" id="dataTabs" role="tablist" aria-label="數據中心分頁">
+            <span class="data-tabs-group-label">入庫</span>
+            <button type="button" class="a" data-dtab="download" role="tab" aria-selected="true">下載入庫</button>
+            <button type="button" data-dtab="universe" role="tab">股票庫</button>
+            <button type="button" data-dtab="market" role="tab">市場分類</button>
+            <span class="data-tabs-group-label">板塊</span>
+            <button type="button" data-dtab="sectors" role="tab">板塊行情</button>
+            <button type="button" data-dtab="rotation" role="tab">板塊輪動</button>
+            <button type="button" data-dtab="heatmap" role="tab">全景圖</button>
+            <span class="data-tabs-group-label">資金</span>
+            <button type="button" data-dtab="capital" role="tab">資金流向</button>
+            <button type="button" data-dtab="north" role="tab">北向資金</button>
+            <button type="button" data-dtab="dragon" role="tab">龍虎榜</button>
+            <span class="data-tabs-group-label">個股</span>
+            <button type="button" data-dtab="fundamental" role="tab">基本面</button>
+            <button type="button" data-dtab="basics" role="tab">基本數據</button>
+        </nav>
+
+    <div id="dtab-download" class="data-panel">
+        <div class="sec data-sec-primary">
+            <div class="data-sec-head">
+                <h2>爬取數據並寫入本地庫</h2>
+                <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>；手動下載用於批量預載，增量更新補最新交易日。</p>
             </div>
-            <div class="fr flex-wrap" style="align-items:flex-end">
-                <div class="fg" style="flex:1;min-width:280px">
-                    <label>A 股代碼（逗號或換行，留空=配置默認 watchlist）</label>
-                    <textarea id="dbDownloadCodes" rows="3" class="input-wide" placeholder="000001,600519,000858"></textarea>
+            <div class="data-ib-strip" id="ibStatusCard" aria-live="polite">
+                <span class="data-ib-dot" id="ibStatusDot" aria-hidden="true"></span>
+                <div class="data-ib-meta">
+                    <strong id="ibStatusTitle">Interactive Brokers</strong>
+                    <span class="sec-desc" id="ibStatusText">檢測中…</span>
                 </div>
-                <div class="btn-group">
-                    <button class="btn" type="button" onclick="Data.downloadToDb()" id="dbDownloadBtn">📥 下載日 K</button>
-                    <button class="btn s" type="button" onclick="Data.incrementalToDb()" id="dbIncrementalBtn">🔄 增量更新</button>
-                    <button class="btn s" type="button" onclick="Data.refreshDbStats()">📊 刷新統計</button>
+                <button class="btn s" type="button" onclick="App.loadTab('connectivity')">連線檢查</button>
+            </div>
+            <div class="g data-stat-grid" id="dbStatsGrid">
+                <div class="c data-stat-card">
+                    <span class="data-stat-icon" aria-hidden="true">◆</span>
+                    <h3>標的數</h3>
+                    <div class="v" id="dbStatStocks">—</div>
+                </div>
+                <div class="c data-stat-card">
+                    <span class="data-stat-icon" aria-hidden="true">▤</span>
+                    <h3>K 線條數</h3>
+                    <div class="v" id="dbStatKlines">—</div>
+                </div>
+                <div class="c data-stat-card">
+                    <span class="data-stat-icon" aria-hidden="true">▣</span>
+                    <h3>庫大小</h3>
+                    <div class="v" id="dbStatSize">—</div>
                 </div>
             </div>
-            <label class="scr-filter-item mt-sm">
-                <input type="checkbox" id="dbForceUpdate">
-                <span class="scr-filter-label">強制全量重下（增量更新時）</span>
-            </label>
-            <div id="dbDownloadResult" class="mt-md"></div>
-            <p class="sec-desc mt-sm">多市場（美股、指數、加密等）請到側欄 <strong>市場</strong> Tab，或儀表盤「下載數據」一鍵下載。</p>
-            <button class="btn s mt-sm" type="button" onclick="App.loadTab('markets')">🌐 前往多市場下載</button>
+            <div class="data-dl-layout">
+                <div class="data-dl-form">
+                    <div class="fg">
+                        <label for="dbDownloadCodes">A 股代碼（逗號或換行，留空＝預設 watchlist）</label>
+                        <textarea id="dbDownloadCodes" rows="4" class="input-wide" placeholder="000001,600519,000858"></textarea>
+                    </div>
+                    <label class="data-check-row">
+                        <input type="checkbox" id="dbForceUpdate">
+                        <span>強制全量重下（僅增量更新時）</span>
+                    </label>
+                </div>
+                <div class="data-dl-actions">
+                    <button class="btn data-btn-primary" type="button" onclick="Data.downloadToDb()" id="dbDownloadBtn">下載日 K</button>
+                    <button class="btn s" type="button" onclick="Data.incrementalToDb()" id="dbIncrementalBtn">增量更新</button>
+                    <button class="btn s" type="button" onclick="Data.refreshDbStats()">刷新統計</button>
+                </div>
+            </div>
+            <div id="dbDownloadResult" class="data-result-slot" aria-live="polite"></div>
+            <footer class="data-footnote">
+                <p class="sec-desc">美股、指數、加密等多市場請至側欄「市場」，或儀表盤一鍵下載。</p>
+                <button class="btn s" type="button" onclick="App.loadTab('markets')">前往多市場下載</button>
+            </footer>
         </div>
     </div>
 
-    <div id="dtab-universe" class="h mt-md">
+    <div id="dtab-universe" class="h data-panel">
         <div class="sec">
-            <h2>📚 股票庫（按市值排名）</h2>
+            <h2>股票庫（按市值排名）</h2>
             <p class="sec-desc">從 A 股、港股、美股實時行情拉取基本資料，按總市值排序後入庫（默認前 2 萬）。同步後可用於查詢、篩選與批量下載代碼參考。</p>
             <div class="g data-universe-stats" id="universeStatsGrid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px">
                 <div class="c"><h3>入庫數量</h3><div class="v" id="univStatTotal">-</div></div>
@@ -494,18 +536,86 @@
         </div>
     </div>
 
-    <div id="dtab-sectors" class="h mt-md">
-        <div class="sec"><h2>行業板塊行情</h2><button class="btn mb-md" onclick="Data.loadSectors()">🔄 載入</button><div id="sectorData"></div></div>
-        <div class="sec"><h2>📊 板塊漲跌排行</h2><div class="cw"><canvas id="dataSectorChart"></canvas></div></div>
+    <div id="dtab-market" class="h data-panel">
+        <div class="sec">
+            <h2>市場分類（2026）</h2>
+            <p class="sec-desc">依監管與交易場所彙總常見金融產品，用於數據中心的「市場」視角（股票庫目前覆蓋 A/HK/US；其他市場的歷史下載請至側欄「市場」）。</p>
+            <div class="g" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+                <div class="pnl"><div class="ph"><div class="pt">📊 證券類（交易所交易）</div></div>
+                    <div class="pb">
+                        <div class="sec-desc"><strong>股票</strong>：A股（SSE/SZSE/BSE）、科創板、創業板、北交所、B股、CDR</div>
+                        <div class="sec-desc mt-sm"><strong>債券</strong>：國債、地方債、政策性金融債、公司債、企業債、中票/短融、可轉債/可交換債</div>
+                        <div class="sec-desc mt-sm"><strong>基金（公募）</strong>：股票/債券/混合/貨幣、ETF/LOF/QDII/FOF、商品基金、公募 REITs</div>
+                        <div class="sec-desc mt-sm"><strong>衍生品（場內）</strong>：股指期貨/期權、國債期貨、商品期貨/期權</div>
+                        <div class="fr mt-sm" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <a class="btn s" href="https://www.sse.com.cn/" target="_blank" rel="noopener">上交所</a>
+                            <a class="btn s" href="https://www.szse.cn/" target="_blank" rel="noopener">深交所</a>
+                            <a class="btn s" href="https://www.bse.cn/" target="_blank" rel="noopener">北交所</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="pnl"><div class="ph"><div class="pt">🏦 銀行類（金融監管總局）</div></div>
+                    <div class="pb">
+                        <div class="sec-desc"><strong>存款</strong>：活期/定期、大額存單、結構性存款</div>
+                        <div class="sec-desc mt-sm"><strong>理財</strong>：現金管理/固收/權益/混合/商品及衍生品；保本/非保本；人民幣/外幣；開放/封閉/定開</div>
+                        <div class="sec-desc mt-sm"><strong>銀行間（機構）</strong>：現券/回購/借貸、同業拆借/同業存單、IRS/FRA、CDS</div>
+                        <div class="fr mt-sm" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <a class="btn s" href="https://www.chinawealth.com.cn/" target="_blank" rel="noopener">中國理財網</a>
+                            <a class="btn s" href="https://www.chinamoney.com.cn/" target="_blank" rel="noopener">中國貨幣網</a>
+                            <a class="btn s" href="https://www.chinabond.com.cn/" target="_blank" rel="noopener">中債信息網</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="pnl"><div class="ph"><div class="pt">🛡️ 保險類（金融監管總局）</div></div>
+                    <div class="pb">
+                        <div class="sec-desc">壽險/年金/萬能/投連/健康險/財產險等；投連/萬能結算利率以保險公司信息披露為準。</div>
+                        <div class="fr mt-sm" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <a class="btn s" href="https://www.iachina.cn/" target="_blank" rel="noopener">保險行協</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="pnl"><div class="ph"><div class="pt">🏢 信託 / 私募（合格投資者）</div></div>
+                    <div class="pb">
+                        <div class="sec-desc"><strong>信託</strong>：固收/權益/事務管理（信息披露多面向委託人）</div>
+                        <div class="sec-desc mt-sm"><strong>私募</strong>：私募證券/股權創投/資產配置/其他；淨值通常需合格投資者認證後查閱</div>
+                        <div class="fr mt-sm" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <a class="btn s" href="https://www.amac.org.cn/" target="_blank" rel="noopener">中基協 AMAC</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="pnl"><div class="ph"><div class="pt">🌐 外匯 / 貴金屬</div></div>
+                    <div class="pb">
+                        <div class="sec-desc"><strong>外匯</strong>：個人結售匯、外匯理財、遠期/期權（合格個人/機構）</div>
+                        <div class="sec-desc mt-sm"><strong>貴金屬</strong>：實物/紙黃金、黃金 ETF、黃金期貨/期權、上海金基準價</div>
+                        <div class="fr mt-sm" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <a class="btn s" href="https://www.sge.com.cn/" target="_blank" rel="noopener">上金所</a>
+                            <a class="btn s" href="https://www.shfe.com.cn/" target="_blank" rel="noopener">上期所</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="fr mt-md" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                <button class="btn s" type="button" onclick="App.loadTab('markets')">前往多市場下載</button>
+                <button class="btn s" type="button" onclick="App.loadTab('connectivity')">檢查數據源可用性</button>
+            </div>
+        </div>
     </div>
-    <div id="dtab-rotation" class="h mt-md">
-        <div class="sec"><h2>板塊輪動分析</h2><div class="fr"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn" onclick="Data.loadSectorRotation()">🔄 分析</button></div><div class="chart-grid-pro"><div class="chart-panel"><h3>排名變化</h3><div class="cw"><canvas id="rotationChart"></canvas></div></div></div><div id="rotationData"></div></div>
+
+    <div id="dtab-sectors" class="h data-panel">
+        <div class="sec data-toolbar-sec">
+            <div class="data-sec-head"><h2>行業板塊行情</h2><button class="btn s" type="button" onclick="Data.loadSectors()">載入</button></div>
+            <div id="sectorData"></div>
+        </div>
+        <div class="sec"><h2>板塊漲跌排行</h2><div class="cw"><canvas id="dataSectorChart"></canvas></div></div>
     </div>
-    <div id="dtab-heatmap" class="h mt-md">
-        <div class="sec"><h2>板塊全景熱力圖</h2><button class="btn mb-md" onclick="Data.loadSectorHeatmap()">🔄 載入</button><div id="heatmapData"></div></div>
+    <div id="dtab-rotation" class="h data-panel">
+        <div class="sec"><h2>板塊輪動分析</h2><div class="fr data-toolbar"><div class="fg"><label>天數</label><input id="rotationDays" value="10" type="number" class="input-xs"></div><button class="btn s" type="button" onclick="Data.loadSectorRotation()">分析</button></div><div class="chart-grid-pro"><div class="chart-panel"><h3>排名變化</h3><div class="cw"><canvas id="rotationChart"></canvas></div></div></div><div id="rotationData"></div></div>
     </div>
-    <div id="dtab-capital" class="h mt-md">
-        <div class="sec"><h2>個股資金流向</h2><div class="fr"><div class="fg"><label>股票</label><input id="cfCode" value="000001"></div><button class="btn" onclick="Data.loadCapitalFlow()">🔍 查詢</button></div>
+    <div id="dtab-heatmap" class="h data-panel">
+        <div class="sec data-toolbar-sec"><div class="data-sec-head"><h2>板塊全景熱力圖</h2><button class="btn s" type="button" onclick="Data.loadSectorHeatmap()">載入</button></div><div id="heatmapData"></div></div>
+    </div>
+    <div id="dtab-capital" class="h data-panel">
+        <div class="sec"><h2>個股資金流向</h2><div class="fr data-toolbar"><div class="fg"><label>股票</label><input id="cfCode" value="000001" class="input-sm"></div><button class="btn s" type="button" onclick="Data.loadCapitalFlow()">查詢</button></div>
         <div class="chart-grid-pro">
             <div class="chart-panel"><h3>主力淨流入</h3><div class="cw"><canvas id="cfNetChart"></canvas></div></div>
             <div class="chart-panel"><h3>分單資金結構</h3><div class="cw"><canvas id="cfStackChart"></canvas></div></div>
@@ -516,8 +626,8 @@
         </div>
         <div id="capitalFlowData" class="mt-md"></div></div>
     </div>
-    <div id="dtab-north" class="h mt-md">
-        <div class="sec"><h2>北向資金流入</h2><button class="btn mb-md" onclick="Data.loadNorthFlow()">🔄 載入</button>
+    <div id="dtab-north" class="h data-panel">
+        <div class="sec data-toolbar-sec"><div class="data-sec-head"><h2>北向資金流入</h2><button class="btn s" type="button" onclick="Data.loadNorthFlow()">載入</button></div>
         <div class="chart-grid-pro">
             <div class="chart-panel"><h3>滬深股通</h3><div class="cw"><canvas id="northStackChart"></canvas></div></div>
             <div class="chart-panel"><h3>北向合計</h3><div class="cw"><canvas id="northTotalChart"></canvas></div></div>
@@ -525,10 +635,10 @@
         </div>
         <div id="northFlowData" class="mt-md"></div></div>
     </div>
-    <div id="dtab-dragon" class="h mt-md">
-        <div class="sec"><h2>龍虎榜數據</h2><button class="btn mb-md" onclick="Data.loadDragonTiger()">🔄 載入</button><div id="dragonTigerData"></div></div>
+    <div id="dtab-dragon" class="h data-panel">
+        <div class="sec data-toolbar-sec"><div class="data-sec-head"><h2>龍虎榜數據</h2><button class="btn s" type="button" onclick="Data.loadDragonTiger()">載入</button></div><div id="dragonTigerData"></div></div>
     </div>
-    <div id="dtab-fundamental" class="h mt-md">
+    <div id="dtab-fundamental" class="h data-panel">
         <div class="sec"><h2>基本面篩選</h2>
         <div class="fr flex-wrap">
             <div class="fg"><label>PE ≤</label><input id="fundPE" value="20" type="number" class="input-xs" step="0.1"></div>
@@ -540,21 +650,22 @@
             <div class="fg"><label>淨利率 ≥%</label><input id="fundNet" placeholder="可選" type="number" class="input-xs"></div>
             <div class="fg"><label>負債率 ≤%</label><input id="fundDebt" placeholder="可選" type="number" class="input-xs"></div>
             <div class="fg"><label>市值 ≥億</label><input id="fundMV" placeholder="可選" type="number" class="input-xs"></div>
-            <button class="btn" onclick="Data.screenFundamentals()">🔍 篩選</button>
+            <button class="btn s" type="button" onclick="Data.screenFundamentals()">篩選</button>
         </div>
         <div id="fundamentalData"></div></div>
     </div>
-    <div id="dtab-basics" class="h mt-md">
+    <div id="dtab-basics" class="h data-panel">
         <div class="sec"><h2>單股基本數據</h2>
         <p class="sec-desc">彙總本地日 K 技術指標與基本面摘要（需先下載歷史數據）</p>
-        <div class="fr">
+        <div class="fr data-toolbar">
             <div class="fg"><label>股票代碼</label><input id="basicsCode" value="000001" class="input-sm"></div>
             <div class="fg"><label>回看天數</label><input id="basicsLookback" value="250" type="number" class="input-xs" min="20" max="500"></div>
-            <button class="btn" onclick="Data.loadStockBasics()">🔍 查詢</button>
+            <button class="btn s" type="button" onclick="Data.loadStockBasics()">查詢</button>
         </div>
         <div id="basicsData" class="mt-md"></div>
         </div>
     </div>
+    </div><!-- .data-page -->
 </div>
 
 <!-- ====== 深度分析 ====== -->

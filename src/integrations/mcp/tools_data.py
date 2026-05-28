@@ -2,7 +2,7 @@
 數據查詢 MCP Tools — 供 LLM / MCP 調用，與 REST 共用 src.core。
 """
 from src.integrations.mcp.protocol import ToolSpec, build_input_schema
-from src.integrations.mcp.utils import error_result, json_result
+from src.integrations.mcp.utils import ERR_NOT_FOUND, ERR_VALIDATION, error_result, json_result
 
 
 def _trim_list(items: list, limit: int = 20) -> list:
@@ -41,7 +41,7 @@ def handle_sq_stock_overview(args: dict) -> str:
         code = str(args.get("code") or "").strip()
         lookback = int(args.get("lookback") or 120)
         if not code:
-            return error_result("請提供 code")
+            return error_result("請提供 code", code=ERR_VALIDATION)
         overview = build_stock_overview(code, lookback=min(max(lookback, 20), 250))
         return json_result({"overview": overview})
     except Exception as e:
@@ -55,7 +55,7 @@ def handle_sq_stock_fundamentals(args: dict) -> str:
 
         code = str(args.get("code") or "").strip()
         if not code:
-            return error_result("請提供 code")
+            return error_result("請提供 code", code=ERR_VALIDATION)
         data = get_fundamentals(code)
         return json_result({"code": code, "fundamentals": data or {}})
     except Exception as e:
@@ -166,7 +166,7 @@ def handle_sq_stock_capital_flow(args: dict) -> str:
         code = str(args.get("code") or "").strip()
         days = int(args.get("days") or 15)
         if not code:
-            return error_result("請提供 code")
+            return error_result("請提供 code", code=ERR_VALIDATION)
         flows = get_capital_flow(code, days=min(max(days, 5), 40))
         return json_result({"code": code, "flows": _trim_list(flows, days), "total": len(flows)})
     except Exception as e:

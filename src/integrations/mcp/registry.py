@@ -10,11 +10,14 @@ from src.integrations.mcp.protocol import ToolSpec
 from src.integrations.mcp.tools_backtest import BACKTEST_TOOLS
 from src.integrations.mcp.tools_core import CORE_TOOLS
 from src.integrations.mcp.tools_data import DATA_TOOLS
+from src.integrations.mcp.tools_observability import OBSERVABILITY_TOOLS
+from src.integrations.mcp.utils import safe_handler
 
 ALL_TOOL_MODULES: list[list[ToolSpec]] = [
     CORE_TOOLS,
     DATA_TOOLS,
     BACKTEST_TOOLS,
+    OBSERVABILITY_TOOLS,
 ]
 
 # 啟動時扁平化；禁止重名
@@ -34,7 +37,14 @@ def get_all_tools() -> list[ToolSpec]:
             if spec.name in seen:
                 raise ValueError(f"MCP tool 名稱衝突: {spec.name}")
             seen.add(spec.name)
-            merged.append(spec)
+            merged.append(
+                ToolSpec(
+                    name=spec.name,
+                    description=spec.description,
+                    input_schema=spec.input_schema,
+                    handler=safe_handler(spec.name, spec.handler),
+                )
+            )
     _ALL_TOOLS = merged
     return _ALL_TOOLS
 

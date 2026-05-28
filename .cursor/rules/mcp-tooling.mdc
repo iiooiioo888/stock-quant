@@ -1,0 +1,25 @@
+---
+description: MCP 工具擴充與相容性規範（stock-quant）
+globs:
+  - src/integrations/mcp/*.py
+alwaysApply: false
+---
+
+# MCP 工具擴充規範
+
+## 結構與註冊
+
+- 新增新域工具時，建立 `src/integrations/mcp/tools_<domain>.py`，並在 `registry.py` 的 `ALL_TOOL_MODULES` 註冊。
+- Tool 的輸入/輸出必須符合 `protocol.py` 契約；回傳 JSON 必須使用 `utils.py` 的統一格式。
+
+## 相容性與穩定性
+
+- **禁止**修改既有 tool 的參數名稱/型別/語意（等同 breaking change）。若必須調整，新增新 tool 或新增可選參數並保留舊行為。
+- Tool 回傳資料必須可序列化；錯誤使用 `utils.error_result`（`ok: false` + `error_code` + `tool`），禁止把 traceback 直接塞回。
+- 穩定錯誤碼：`VALIDATION_ERROR`、`NOT_FOUND`、`INTERNAL_ERROR`、`UNKNOWN_TOOL`。
+- 所有 handler 經 `registry.safe_handler` 包裝，未捕獲異常自動轉 `INTERNAL_ERROR`。
+
+## 與 REST API 共用邏輯
+
+- MCP tools 與 `/api/*` 共用 `src.core` 邏輯；新增能力時優先落在 Service/核心層，再分別掛 REST 與 MCP。
+

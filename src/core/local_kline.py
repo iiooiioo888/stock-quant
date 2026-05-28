@@ -101,6 +101,12 @@ def persist_kline_df(symbol: str, df: pd.DataFrame) -> int:
     market = detect_market(code)
     n = save_daily_kline(out, code, market=market)
     if n > 0:
+        try:
+            from src.core.pipeline_observability import record_kline_persist
+
+            record_kline_persist(n)
+        except Exception:
+            pass
         from src.core.data_pipeline import defer_data_cache_clear
         defer_data_cache_clear()
     return n

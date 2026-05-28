@@ -144,7 +144,7 @@ GROUP_ORDER: list[str] = [
     "forex", "crypto", "commodities", "utilities", "etf", "rates",
 ]
 
-VALID_SCOPES = frozenset(["all", "topbar", *GROUP_ORDER])
+VALID_SCOPES = frozenset(["all", "topbar", "custom", *GROUP_ORDER])
 
 
 def _hk_tv(symbol: str) -> str:
@@ -172,6 +172,14 @@ def _crypto_tv(symbol: str) -> str:
 def _ib_stock(symbol: str, currency: str = "USD", exchange: str = "SMART") -> dict:
     sym = symbol.split(".")[0].upper()
     return {"secType": "STK", "symbol": sym, "exchange": exchange, "currency": currency}
+
+
+def _ib_a_share(sym: str) -> dict:
+    """A 股 IB 合約（滬深）。"""
+    code = sym.split(".")[0]
+    if sym.upper().endswith(".SS"):
+        return {"secType": "STK", "symbol": code, "exchange": "SSE", "currency": "CNY"}
+    return {"secType": "STK", "symbol": code, "exchange": "SZSE", "currency": "CNY"}
 
 
 def _ib_forex(pair: str) -> dict:
@@ -255,7 +263,12 @@ def _build_catalog() -> list[MarketInstrument]:
     for sym, name in A_SHARE_LEADERS.items():
         code = sym.split(".")[0]
         exch = "SSE" if sym.endswith(".SS") else "SZSE"
-        add(_make(sym, name, "a_share", tv=f"{exch}:{code}", scanner="china", asset_class="stock"))
+        add(_make(
+            sym, name, "a_share",
+            tv=f"{exch}:{code}", scanner="china",
+            ib=_ib_a_share(sym),
+            asset_class="stock",
+        ))
 
     # --- 港股 ---
     for sym, name in HK_STOCKS.items():

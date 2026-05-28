@@ -92,6 +92,109 @@ const Utils = {
   },
 
   /**
+   * 統一 Tabs / 子Tabs 操作邏輯
+   *
+   * - tabsEl：tab 按鈕容器
+   * - btnSelector：按鈕 selector（需帶 data-* key）
+   * - keyAttr：data attribute key（例如 'dtab' / 'stab'）
+   * - panelPrefix：面板 id 前綴（例如 'dtab-' / 'stab-'）
+   * - activeClass：啟用樣式 class（預設 'a'）
+   * - hiddenClass：隱藏樣式 class（預設 'h'）
+   * - onTab：tab 切換後回呼 (key, { initial })
+   *
+   * 回傳 controller：{ getKey, setKey, refresh }
+   */
+  bindTabs({
+    tabsEl,
+    btnSelector = 'button',
+    keyAttr,
+    panelPrefix = '',
+    activeClass = 'a',
+    hiddenClass = 'h',
+    defaultKey = '',
+    onTab = null,
+  }) {
+    if (!tabsEl || !keyAttr) return null;
+    if (tabsEl.dataset.tabBound === '1') return tabsEl._tabController || null;
+    tabsEl.dataset.tabBound = '1';
+
+    const getButtons = () => [...tabsEl.querySelectorAll(btnSelector)]
+      .filter(b => b && b.dataset && b.dataset[keyAttr] != null);
+
+    const setActiveBtn = (key) => {
+      getButtons().forEach(b => {
+        const on = String(b.dataset[keyAttr]) === String(key);
+        b.classList.toggle(activeClass, on);
+        if (b.hasAttribute('role')) {
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        }
+      });
+    };
+
+    const applyPanels = (key) => {
+      if (!panelPrefix) return;
+      const panels = document.querySelectorAll(`[id^="${panelPrefix}"]`);
+      panels.forEach(p => {
+        const pKey = String(p.id || '').replace(panelPrefix, '');
+        p.classList.toggle(hiddenClass, pKey !== String(key));
+      });
+    };
+
+    const controller = {
+      _key: defaultKey,
+      getKey() { return this._key; },
+      setKey(key, { initial = false } = {}) {
+        const k = String(key || '').trim() || defaultKey;
+        if (!k) return;
+        this._key = k;
+        setActiveBtn(k);
+        applyPanels(k);
+        if (typeof onTab === 'function') onTab(k, { initial });
+      },
+      refresh() {
+        this.setKey(this._key || defaultKey, { initial: true });
+      },
+    };
+
+    // initial key: 優先取目前已標記 activeClass 的按鈕，否則 defaultKey，否則第一個
+    const btns = getButtons();
+    const activeBtn = btns.find(b => b.classList.contains(activeClass));
+    const initKey = activeBtn?.dataset?.[keyAttr] || defaultKey || btns[0]?.dataset?.[keyAttr] || '';
+    controller._key = String(initKey || '').trim();
+
+    tabsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest(btnSelector);
+      if (!btn || btn.dataset[keyAttr] == null) return;
+      controller.setKey(btn.dataset[keyAttr], { initial: false });
+    });
+
+    tabsEl._tabController = controller;
+    controller.refresh();
+    return controller;
+  },
+
+  /**
+   * 統一容器狀態輸出：loading / empty / error
+   */
+  setState(container, { kind, title, detail } = {}) {
+    if (!container) return;
+    const t = title ? String(title) : '';
+    const d = detail ? String(detail) : '';
+    if (kind === 'loading') {
+      container.innerHTML = `<div class="state-loading"><span class="ld"></span> ${t || '載入中…'}</div>`;
+      return;
+    }
+    if (kind === 'empty') {
+      container.innerHTML = `<div class="state-empty"><span class="state-icon">📭</span><span class="state-text">${t || '暫無資料'}</span>${d ? `<div class="state-sub">${d}</div>` : ''}</div>`;
+      return;
+    }
+    if (kind === 'error') {
+      container.innerHTML = `<div class="state-empty"><span class="state-icon">❌</span><span class="state-text">${t || '載入失敗'}</span>${d ? `<div class="state-sub">${d}</div>` : ''}</div>`;
+      return;
+    }
+  },
+
+  /**
    * 關閉 Modal
    */
   closeModal() {

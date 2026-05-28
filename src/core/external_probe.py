@@ -120,6 +120,18 @@ PROBE_CATALOG: list[dict] = [
     {"id": "yahoo_a_share", "name": "Yahoo A股行情", "category": "a_share", "active": True},
     {"id": "binance_ping", "name": "Binance Ping", "category": "crypto", "active": True},
     {"id": "frankfurter", "name": "Frankfurter 匯率", "category": "forex", "active": True},
+    {"id": "ib_tws", "name": "Interactive Brokers", "category": "system", "active": True},
+    # 官方/持牌/權威渠道（以可達性探測為主，不抓取/解析行情）
+    {"id": "sse_home", "name": "上交所 SSE", "category": "exchange", "active": True},
+    {"id": "szse_home", "name": "深交所 SZSE", "category": "exchange", "active": True},
+    {"id": "bse_home", "name": "北交所 BSE", "category": "exchange", "active": True},
+    {"id": "chinamoney_home", "name": "中國貨幣網", "category": "bond_fx", "active": True},
+    {"id": "chinabond_home", "name": "中國債券信息網", "category": "bond_fx", "active": True},
+    {"id": "chinawealth_home", "name": "中國理財網", "category": "wealth", "active": True},
+    {"id": "amac_home", "name": "基金業協會 AMAC", "category": "fund", "active": True},
+    {"id": "iachina_home", "name": "保險行業協會", "category": "insurance", "active": True},
+    {"id": "sge_home", "name": "上金所 SGE", "category": "metals", "active": True},
+    {"id": "shfe_home", "name": "上期所 SHFE", "category": "futures", "active": True},
 ]
 
 
@@ -183,12 +195,105 @@ def probe_frankfurter() -> dict:
     )
 
 
+def _site_probe(probe_id: str, name: str, category: str, url: str) -> dict:
+    return _http_get_probe(
+        probe_id,
+        name,
+        category,
+        url,
+        expect_json=False,
+        ok_status=(200, 301, 302, 303, 307, 308),
+    )
+
+
+def probe_sse_home() -> dict:
+    return _site_probe("sse_home", "上交所 SSE", "exchange", "https://www.sse.com.cn/")
+
+
+def probe_szse_home() -> dict:
+    return _site_probe("szse_home", "深交所 SZSE", "exchange", "https://www.szse.cn/")
+
+
+def probe_bse_home() -> dict:
+    return _site_probe("bse_home", "北交所 BSE", "exchange", "https://www.bse.cn/")
+
+
+def probe_chinamoney_home() -> dict:
+    return _site_probe("chinamoney_home", "中國貨幣網", "bond_fx", "https://www.chinamoney.com.cn/")
+
+
+def probe_chinabond_home() -> dict:
+    return _site_probe("chinabond_home", "中國債券信息網", "bond_fx", "https://www.chinabond.com.cn/")
+
+
+def probe_chinawealth_home() -> dict:
+    return _site_probe("chinawealth_home", "中國理財網", "wealth", "https://www.chinawealth.com.cn/")
+
+
+def probe_amac_home() -> dict:
+    return _site_probe("amac_home", "基金業協會 AMAC", "fund", "https://www.amac.org.cn/")
+
+
+def probe_iachina_home() -> dict:
+    return _site_probe("iachina_home", "保險行業協會", "insurance", "https://www.iachina.cn/")
+
+
+def probe_sge_home() -> dict:
+    return _site_probe("sge_home", "上金所 SGE", "metals", "https://www.sge.com.cn/")
+
+
+def probe_shfe_home() -> dict:
+    return _site_probe("shfe_home", "上期所 SHFE", "futures", "https://www.shfe.com.cn/")
+
+
+def probe_ib_tws() -> dict:
+    """IB TWS / Gateway（需 SQ_IB_ENABLED + ib_insync + 本地 TWS）。"""
+    t0 = time.perf_counter()
+    try:
+        from src.core.ib_data import ib_status
+
+        st = ib_status(probe=True)
+        elapsed = (time.perf_counter() - t0) * 1000
+        ok = bool(st.get("connected"))
+        if not st.get("enabled"):
+            msg = "未啟用（設 SQ_IB_ENABLED=true）"
+        elif not st.get("library"):
+            msg = "缺少 ib_insync（pip install ib_insync）"
+        elif ok:
+            msg = f"已連接 {st.get('host')}:{st.get('port')}"
+        else:
+            msg = "未連接 TWS/Gateway"
+        return _probe_row(
+            "ib_tws",
+            "Interactive Brokers",
+            "system",
+            ok,
+            elapsed,
+            msg,
+            detail=st,
+        )
+    except Exception as e:
+        elapsed = (time.perf_counter() - t0) * 1000
+        return _probe_row("ib_tws", "Interactive Brokers", "system", False, elapsed, str(e)[:300])
+
+
 _PROBE_FUNCS: dict[str, Callable[[], dict]] = {
     "registry": probe_registry,
     "eastmoney_sector": probe_eastmoney_sector,
     "yahoo_a_share": probe_yahoo_a_share,
     "binance_ping": probe_binance_ping,
     "frankfurter": probe_frankfurter,
+    "ib_tws": probe_ib_tws,
+    "sse_home": probe_sse_home,
+    "szse_home": probe_szse_home,
+    "bse_home": probe_bse_home,
+    "chinamoney_home": probe_chinamoney_home,
+    "chinabond_home": probe_chinabond_home,
+    "chinawealth_home": probe_chinawealth_home,
+    "amac_home": probe_amac_home,
+    "iachina_home": probe_iachina_home,
+    "sge_home": probe_sge_home,
+    "shfe_home": probe_shfe_home,
 }
 
 

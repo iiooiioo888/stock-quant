@@ -12,18 +12,41 @@
 const Data = {
   _currentTab: 'download',
   _tabRequestId: 0,
-  _SUB_TABS: ['download', 'universe', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
+  _SUB_TABS: ['download', 'universe', 'market', 'sectors', 'rotation', 'heatmap', 'capital', 'north', 'dragon', 'fundamental', 'basics'],
   _universeOffset: 0,
   _universeTotal: 0,
+  _tabsCtl: null,
 
   init() {
     const tabs = document.getElementById('dataTabs');
     if (!tabs) return;
+    if (typeof Utils !== 'undefined' && Utils.bindTabs) {
+      this._tabsCtl = Utils.bindTabs({
+        tabsEl: tabs,
+        btnSelector: 'button[data-dtab]',
+        keyAttr: 'dtab',
+        panelPrefix: 'dtab-',
+        defaultKey: this._currentTab || 'download',
+        onTab: (key) => {
+          this._currentTab = key;
+          this._onTabActivated(this._currentTab);
+        },
+      });
+      return;
+    }
+
+    // fallback：保留舊行為
+    if (tabs.dataset.bound === '1') return;
+    tabs.dataset.bound = '1';
     tabs.addEventListener('click', e => {
       const btn = e.target.closest('button[data-dtab]');
       if (!btn) return;
-      tabs.querySelectorAll('button').forEach(b => b.classList.remove('a'));
+      tabs.querySelectorAll('button[data-dtab]').forEach(b => {
+        b.classList.remove('a');
+        b.setAttribute('aria-selected', 'false');
+      });
       btn.classList.add('a');
+      btn.setAttribute('aria-selected', 'true');
       this._currentTab = btn.dataset.dtab;
       this._applyTabVisibility();
       this._onTabActivated(this._currentTab);
@@ -33,6 +56,8 @@ const Data = {
   },
 
   _applyTabVisibility() {
+    // 若使用 Utils.bindTabs，面板顯示由 controller 接管
+    if (this._tabsCtl) return;
     this._SUB_TABS.forEach(t => {
       const el = document.getElementById('dtab-' + t);
       if (el) el.classList.toggle('h', t !== this._currentTab);
@@ -59,7 +84,10 @@ const Data = {
 
   _onTabActivated(tab) {
     const reqId = ++this._tabRequestId;
-    if (tab === 'download') this.refreshDbStats();
+    if (tab === 'download') {
+      this.refreshDbStats();
+      this.refreshIbStatus();
+    }
     if (tab === 'universe') {
       this.loadUniverseStats();
       if (this._universeTotal > 0) this.searchUniverse(this._universeOffset);
@@ -130,8 +158,44 @@ const Data = {
     return raw.split(/[,，\s\n]+/).map(s => s.trim()).filter(Boolean);
   },
 
+  async refreshIbStatus() {
+    const dot = document.getElementById('ibStatusDot');
+    const text = document.getElementById('ibStatusText');
+    const card = document.getElementById('ibStatusCard');
+    if (!text) return;
+    try {
+      const d = await Api.get('/api/indices/providers', { silent: true });
+      const ib = d?.ib || {};
+      if (!ib.enabled) {
+        if (dot) dot.className = 'data-ib-dot off';
+        text.textContent = '未啟用 · 在 .env 設 SQ_IB_ENABLED=true 並安裝 requirements-ib.txt';
+        return;
+      }
+      if (!ib.library) {
+        if (dot) dot.className = 'data-ib-dot warn';
+        text.textContent = '已啟用但未安裝 ib_insync（pip install -r requirements-ib.txt）';
+        return;
+      }
+      if (ib.connected) {
+        if (dot) dot.className = 'data-ib-dot on';
+        text.textContent = `已連接 ${ib.host}:${ib.port} · 目錄標的 K 線可寫入本地庫`;
+        if (card) card.classList.add('is-ok');
+        return;
+      }
+      if (dot) dot.className = 'data-ib-dot warn';
+      text.textContent = `未連接 TWS/Gateway（${ib.host}:${ib.port}）· 請啟動 IB 並允許 API`;
+      if (card) card.classList.remove('is-ok');
+    } catch (_) {
+      if (dot) dot.className = 'data-ib-dot off';
+      text.textContent = '無法取得 IB 狀態';
+    }
+  },
+
   async refreshDbStats() {
+    const cards = document.querySelectorAll('#dbStatsGrid .data-stat-card');
+    cards.forEach(c => c.classList.add('is-loading'));
     const d = await Api.getHealth();
+    cards.forEach(c => c.classList.remove('is-loading'));
     if (!d) return;
     const fmt = n => (n ?? 0).toLocaleString();
     const elStocks = document.getElementById('dbStatStocks');

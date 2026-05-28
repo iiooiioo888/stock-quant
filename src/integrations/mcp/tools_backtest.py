@@ -2,7 +2,7 @@
 回測任務 MCP Tools — 供 LLM 提交與查詢異步回測。
 """
 from src.integrations.mcp.protocol import ToolSpec, build_input_schema
-from src.integrations.mcp.utils import error_result, json_result
+from src.integrations.mcp.utils import ERR_NOT_FOUND, ERR_VALIDATION, error_result, json_result
 
 
 def _task_summary(task: dict) -> dict:
@@ -46,15 +46,15 @@ def handle_sq_run_backtest(args: dict) -> str:
         code = str(args.get("code") or "").strip()
         strategy = str(args.get("strategy") or "dual_ma").strip()
         if not code:
-            return error_result("請提供 code")
+            return error_result("請提供 code", code=ERR_VALIDATION)
         if strategy not in STRATEGIES:
-            return error_result(f"未知策略: {strategy}")
+            return error_result(f"未知策略: {strategy}", code=ERR_VALIDATION)
 
         timeframe = str(args.get("timeframe") or "1d").strip()
         try:
             timeframe = normalize_timeframe(timeframe)
         except ValueError as e:
-            return error_result(str(e))
+            return error_result(str(e), code=ERR_VALIDATION)
 
         cash = args.get("cash")
         commission = args.get("commission")
@@ -147,7 +147,7 @@ def handle_sq_run_multi_backtest(args: dict) -> str:
 
         code = str(args.get("code") or "").strip()
         if not code:
-            return error_result("請提供 code")
+            return error_result("請提供 code", code=ERR_VALIDATION)
 
         task_params = {"code": code}
         task = create_task("backtest_multi", task_params, title=f"AI 多策略 {code}")
@@ -191,10 +191,10 @@ def handle_sq_get_task(args: dict) -> str:
 
         task_id = str(args.get("task_id") or "").strip()
         if not task_id:
-            return error_result("請提供 task_id")
+            return error_result("請提供 task_id", code=ERR_VALIDATION)
         task = get_task(task_id)
         if not task:
-            return error_result(f"任務不存在: {task_id}")
+            return error_result(f"任務不存在: {task_id}", code=ERR_NOT_FOUND)
         return json_result(_task_summary(task))
     except Exception as e:
         return error_result(str(e))

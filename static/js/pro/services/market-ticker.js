@@ -48,8 +48,14 @@
   }
 
   async function fetchTopbarQuotes() {
+    const prefs = window.StockQPro?.Prefs?.load?.() || {};
+    const syms = Array.isArray(prefs.topbarSymbols) ? prefs.topbarSymbols : [];
+    const custom = syms.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean);
+    const url = custom.length
+      ? `/api/indices/charts?days=${TOPBAR_DAYS}&scope=custom&symbols=${encodeURIComponent(custom.join(','))}`
+      : `/api/indices/charts?days=${TOPBAR_DAYS}&scope=topbar`;
     const data = await Api.get(
-      `/api/indices/charts?days=${TOPBAR_DAYS}&scope=topbar`,
+      url,
       { silent: true },
     ).catch(() => null);
     return Array.isArray(data?.indices) ? data.indices : [];
@@ -59,9 +65,17 @@
     const D = window.StockQPro?.UI?.Dashboard;
     const root = document.getElementById(TOPBAR_ID);
     if (!D || !root) return;
-    const list = state.quotes.length
+    const prefs = window.StockQPro?.Prefs?.load?.() || {};
+    const custom = Array.isArray(prefs.topbarSymbols)
+      ? prefs.topbarSymbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+
+    const listBase = state.quotes.length
       ? state.quotes
-      : (state.payload?.indices || []).filter((q) => q.topbar !== false);
+      : (state.payload?.indices || []);
+    const list = custom.length
+      ? listBase.filter((q) => custom.includes(String(q.symbol || '').toUpperCase()))
+      : listBase.filter((q) => q.topbar !== false);
     D.updateTickerStrip(root, list, {
       compact: true,
       topbar: true,
