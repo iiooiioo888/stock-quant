@@ -429,12 +429,17 @@
       dlRow('月勝率', `${fmtNum(r.monthly_win_rate, 1)}%`, ''),
       dlRow('水下時間占比', ea.underwater_pct != null ? `${fmtNum(ea.underwater_pct, 1)}%` : '--', ''),
     ].join('');
+    const rc = r.risk_control || {};
+    const cb = rc.circuit_breaker || {};
     const riskRows = [
       dlRow('最大回撤', `-${fmtNum(r.max_drawdown_pct)}%`, 'neg'),
       dlRow('年化波動', `${fmtNum(r.annual_volatility)}%`, ''),
       dlRow('VaR (95%)', `${fmtNum(r.var_95)}%`, 'neg'),
       dlRow('CVaR (95%)', `${fmtNum(r.cvar_95)}%`, 'neg'),
       dlRow('最大水下天數', ea.max_underwater_days != null ? `${ea.max_underwater_days} 天` : '--', ''),
+      rc.circuit_breaker_dd != null
+        ? dlRow('熔斷閾值', `${fmtNum(rc.circuit_breaker_dd)}% · 觸發 ${cb.total_triggers ?? 0} 次`, cb.would_stop_trading ? 'neg' : '')
+        : '',
     ].join('');
     const tradeRowsList = [
       dlRow('交易次數', String(r.total_trades ?? '--'), ''),
@@ -636,6 +641,9 @@
     const timeframe = String($id('bt-timeframe')?.value || '1d').trim() || '1d';
 
     const forceRefresh = !!$id('bt-force')?.checked;
+    const stopLoss = Number($id('bt-stop-loss')?.value);
+    const circuitDd = Number($id('bt-circuit-dd')?.value);
+    const maxPos = Number($id('bt-max-pos')?.value);
 
     const body = {
       code,
@@ -650,6 +658,9 @@
       benchmark: false,
       force_refresh: forceRefresh,
     };
+    if (Number.isFinite(stopLoss) && stopLoss > 0) body.stop_loss_pct = stopLoss;
+    if (Number.isFinite(circuitDd) && circuitDd > 0) body.circuit_breaker_dd = circuitDd;
+    if (Number.isFinite(maxPos) && maxPos > 0 && maxPos <= 1) body.max_position_pct = maxPos;
 
     try {
       logLine(`提交任務：${backendKey} · ${timeframe}`, 'ok');
@@ -830,8 +841,26 @@
     window.StockQPro?.backtestSymbol?.init?.().catch(() => {});
   }
 
+  function repaintLastResult() {
+    if (!lastResult) return;
+    const curve = buildEquityCurve(lastResult);
+    toggleDataPanel(true);
+    if (curve.length) {
+      renderEquityChart(curve);
+      renderDrawdownChart(curve);
+    }
+    renderKlineChart(lastResult);
+    resizeCharts();
+  }
+
   function onShow() {
-    requestAnimationFrame(() => resizeCharts());
+    requestAnimationFrame(() => {
+      resizeCharts();
+      if (!lastResult) return;
+      repaintLastResult();
+      setTimeout(repaintLastResult, 120);
+      setTimeout(resizeCharts, 320);
+    });
   }
 
   /** 從任務中心跳轉時展示已有回測結果 */

@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     # ====== 任務並行 ======
     task_max_workers: int = Field(default=0, ge=0, le=32)  # 0 = 自動 min(4, CPU-1)
     task_parallel_grid: bool = True
+    optimize_parallel_backend: str = "auto"  # auto | joblib | futures（網格搜索並行後端）
     task_grid_workers: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
     optuna_n_jobs: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
     multi_strategy_workers: int = Field(default=4, ge=1, le=16)

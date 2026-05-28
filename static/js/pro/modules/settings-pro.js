@@ -3,6 +3,7 @@
 (() => {
   const $id = (id) => document.getElementById(id);
   const Prefs = () => window.StockQPro?.Prefs;
+  let _healthTimer = null;
 
   function updatePreview() {
     const box = $id('set-color-preview');
@@ -53,8 +54,9 @@
   function updateLlmStatusLine(text, ok) {
     const el = $id('set-llm-status');
     if (!el) return;
-    el.textContent = text;
-    el.style.color = ok ? 'var(--quote-down)' : 'var(--t3)';
+    el.textContent = text.startsWith('狀態') ? text : `狀態：${text}`;
+    el.style.color = ok ? 'var(--quote-up)' : 'var(--t3)';
+    syncLlmSourceDot();
   }
 
   async function loadLlmSettings() {
@@ -147,6 +149,84 @@
     await loadLlmSettings();
   }
 
+  function setSourceRow(dotId, statusId, ok, text) {
+    const dot = $id(dotId);
+    const st = $id(statusId);
+    if (dot) {
+      dot.classList.remove('ok', 'warn', 'err', 'pending');
+      dot.classList.add(ok === true ? 'ok' : ok === false ? 'err' : ok === 'warn' ? 'warn' : 'pending');
+    }
+    if (st && text != null) st.textContent = text;
+  }
+
+  function syncLlmSourceDot() {
+    const llmLine = $id('set-llm-status');
+    const hint = $id('set-src-llm-hint');
+    if (!llmLine) return;
+    const txt = llmLine.textContent || '';
+    const ready = /已就緒|本機 Key|環境變量/.test(txt);
+    const fail = /失敗|未配置/.test(txt);
+    if (hint) hint.textContent = txt.replace(/^狀態：?/, '').trim() || txt;
+    setSourceRow('set-src-llm-dot', null, ready ? true : fail ? false : 'warn', null);
+  }
+
+  async function loadDataSourceHealth() {
+    setSourceRow('set-src-tv-dot', 'set-src-tv', 'pending', '檢測中…');
+    setSourceRow('set-src-ib-dot', 'set-src-ib', 'pending', '檢測中…');
+
+    const cfg = await Api.getConfig().catch(() => ({}));
+    if (cfg?.tradingview_enabled === false) {
+      setSourceRow('set-src-tv-dot', 'set-src-tv', 'warn', '伺服器已關閉 TV 行情');
+    }
+    if (cfg && !cfg.ib_enabled) {
+      setSourceRow('set-src-ib-dot', 'set-src-ib', 'warn', '未啟用 IB 整合');
+    }
+
+    let providers = null;
+    try {
+      providers = await Api.get('/api/indices/providers', { silent: true, timeout: 8000, retries: 2 });
+    } catch (_) {
+      providers = null;
+    }
+
+    if (cfg?.tradingview_enabled !== false) {
+      if (providers?.tradingview) {
+        const tv = providers.tradingview;
+        const ok = !!tv.ok;
+        const reason = tv.reason || tv.probe?.reason || '';
+        const quotes = tv.quotes != null ? ` · ${tv.quotes} 檔` : '';
+        setSourceRow(
+          'set-src-tv-dot',
+          'set-src-tv',
+          ok,
+          ok ? `在線${quotes}` : (reason ? `離線（${reason}）` : '離線'),
+        );
+      } else {
+        setSourceRow('set-src-tv-dot', 'set-src-tv', false, '探測失敗，請稍後重試');
+      }
+    }
+
+    if (providers?.ib && cfg?.ib_enabled !== false) {
+      const ib = providers.ib;
+      const connected = !!(ib.connected || ib.ok);
+      const enabled = ib.enabled !== false;
+      if (!enabled) {
+        setSourceRow('set-src-ib-dot', 'set-src-ib', 'warn', '未啟用');
+      } else if (connected) {
+        const q = ib.quotes != null ? ` · ${ib.quotes} 檔` : '';
+        setSourceRow('set-src-ib-dot', 'set-src-ib', true, `已連線${q}`);
+      } else {
+        const reason = ib.reason || '未連線';
+        setSourceRow('set-src-ib-dot', 'set-src-ib', 'warn', reason);
+      }
+    } else if (cfg?.ib_enabled) {
+      setSourceRow('set-src-ib-dot', 'set-src-ib', false, '探測失敗');
+    }
+
+    syncLlmSourceDot();
+    return { cfg, providers };
+  }
+
   async function loadServerConfig() {
     const cfg = await Api.getConfig().catch(() => ({}));
     if (cfg && typeof cfg === 'object') {
@@ -156,12 +236,23 @@
       if (cfg.task_max_workers != null && $id('set-max-parallel')) {
         $id('set-max-parallel').value = Number(cfg.task_max_workers);
       }
-      const tv = $id('set-src-tv');
-      const ib = $id('set-src-ib');
-      if (tv) tv.textContent = cfg.tradingview_enabled === false ? '關閉' : '啟用';
-      if (ib) ib.textContent = cfg.ib_enabled ? '已連線配置' : '未啟用';
     }
+    await loadDataSourceHealth();
     return cfg;
+  }
+
+  function startHealthPolling() {
+    stopHealthPolling();
+    _healthTimer = setInterval(() => {
+      loadDataSourceHealth().catch(() => {});
+    }, 30000);
+  }
+
+  function stopHealthPolling() {
+    if (_healthTimer) {
+      clearInterval(_healthTimer);
+      _healthTimer = null;
+    }
   }
 
   function load() {
@@ -213,12 +304,34 @@
       });
       $id('set-llm-save')?.addEventListener('click', () => saveLlmSettings());
       $id('set-llm-clear')?.addEventListener('click', () => clearLlmKey());
+      $id('set-src-refresh')?.addEventListener('click', () => {
+        loadDataSourceHealth()
+          .then(() => window.StockQPro?.App?.toast?.('已更新數據源狀態', 'ok'))
+          .catch(() => window.StockQPro?.App?.toast?.('數據源檢測失敗', 'er'));
+      });
       bindSchemePreview();
     }
     load().catch(() => window.StockQPro?.App?.toast?.('載入設定失敗', 'er'));
   }
 
+  function onShow() {
+    startHealthPolling();
+    loadDataSourceHealth().catch(() => {});
+  }
+
+  function onUnload() {
+    stopHealthPolling();
+  }
+
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
-  window.StockQPro.pages.settings = { init, load, save, loadLlmSettings };
+  window.StockQPro.pages.settings = {
+    init,
+    load,
+    save,
+    loadLlmSettings,
+    loadDataSourceHealth,
+    onShow,
+    onUnload,
+  };
 })();

@@ -1,7 +1,7 @@
 """回測與優化"""
 import json
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request, Body
 from src.config import settings
 from src.core.auth import require_auth, require_admin
 from src.core.db import get_conn
@@ -113,6 +113,8 @@ async def run_advanced_backtest_api(body: dict):
     enable_t1 = body.get("enable_t1", True)
     enable_limit = body.get("enable_limit", True)
     timeframe = body.get("timeframe", "1d")
+    circuit_breaker_dd = body.get("circuit_breaker_dd")
+    max_position_pct = body.get("max_position_pct")
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
@@ -135,6 +137,8 @@ async def run_advanced_backtest_api(body: dict):
         "benchmark": benchmark,
         "slippage_pct": slippage_pct, "enable_t1": enable_t1, "enable_limit": enable_limit,
         "timeframe": timeframe,
+        "circuit_breaker_dd": circuit_breaker_dd,
+        "max_position_pct": max_position_pct,
     }
     if force_refresh:
         from src.core.result_cache import drop_cached_compute
@@ -158,6 +162,8 @@ async def run_advanced_backtest_api(body: dict):
             enable_t1=enable_t1, enable_limit=enable_limit,
             timeframe=timeframe,
             task_id=task_id,
+            circuit_breaker_dd=circuit_breaker_dd,
+            max_position_pct=max_position_pct,
         )
 
     return dispatch_async_task(
@@ -201,15 +207,44 @@ async def run_optimize_api(
     objective: str = "sharpe",
     n_trials: int = 100,
     top_n: int = 10,
+    stop_loss_pct: float = None,
+    take_profit_pct: float = None,
+    trailing_stop_pct: float = None,
+    circuit_breaker_dd: float = None,
+    max_position_pct: float = None,
+    slippage_pct: float = None,
+    body: dict = Body(default=None),
 ):
-    """參數優化（自動加入任務列表）"""
+    """
+    參數優化（自動加入任務列表）。
+    查詢參數與 JSON body 可並用；風控亦可嵌套 risk: { ... }。
+    """
     from src.core.optimize import grid_search, optuna_search, optimize_all
+    from src.core.risk_backtest import parse_risk_params
     from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
 
-    task_params = {"code": code, "strategy": strategy, "method": method, "objective": objective, "n_trials": n_trials}
+    merged = {
+        "code": code,
+        "strategy": strategy,
+        "method": method,
+        "objective": objective,
+        "n_trials": n_trials,
+        "top_n": top_n,
+        "stop_loss_pct": stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+        "trailing_stop_pct": trailing_stop_pct,
+        "circuit_breaker_dd": circuit_breaker_dd,
+        "max_position_pct": max_position_pct,
+        "slippage_pct": slippage_pct,
+    }
+    if body:
+        merged.update({k: v for k, v in body.items() if v is not None})
+
+    risk_cfg = parse_risk_params(merged)
+    task_params = {**merged, **risk_cfg.to_dict()}
     display_strategy = strategy if strategy != "all" else "全部策略"
     task = create_task("optimize", task_params, title=f"參數優化 {code}/{display_strategy}")
     if task.get("is_duplicate"):
@@ -217,22 +252,28 @@ async def run_optimize_api(
                 "message": "相同優化正在執行中，請等待完成", "async": True}
 
     task_id = task["task_id"]
+    run_ctx = risk_cfg.to_dict()
 
     def _work():
         if strategy == "all":
             results = optimize_all(
                 code, objective=objective, method=method,
-                n_trials=n_trials, top_n=top_n, task_id=task_id,
+                n_trials=n_trials, top_n=top_n, task_id=task_id, run_ctx=run_ctx,
             )
             serialized = {}
             for name, res_list in results.items():
                 serialized[name] = [{k: v for k, v in r.items()} for r in res_list]
             return serialized
         if method == "optuna":
-            return optuna_search(code, strategy, objective=objective, n_trials=n_trials, task_id=task_id)
-        return grid_search(code, strategy, objective=objective, top_n=top_n, task_id=task_id)
+            return optuna_search(
+                code, strategy, objective=objective, n_trials=n_trials,
+                task_id=task_id, run_ctx=run_ctx,
+            )
+        return grid_search(
+            code, strategy, objective=objective, top_n=top_n,
+            task_id=task_id, run_ctx=run_ctx,
+        )
 
-    task_params["top_n"] = top_n
     return dispatch_async_task(
         task_id, _work,
         cache_namespace="optimize", cache_params=task_params, cache_code=code,

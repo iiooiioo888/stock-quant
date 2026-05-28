@@ -370,6 +370,18 @@
                 <label class="fg" for="bt-comm">佣金 %</label>
                 <input type="number" id="bt-comm" class="inp" value="0.03" min="0" step="0.01" />
               </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-stop-loss">止損 %</label>
+                <input type="number" id="bt-stop-loss" class="inp" min="0" max="50" step="0.5" placeholder="可選" />
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-circuit-dd">熔斷回撤 %</label>
+                <input type="number" id="bt-circuit-dd" class="inp" min="0" max="80" step="1" placeholder="如 20" title="回測結果標註熔斷觸發點" />
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-max-pos">單筆倉位上限</label>
+                <input type="number" id="bt-max-pos" class="inp" min="0.05" max="1" step="0.05" placeholder="0.3" />
+              </div>
               <div class="fg-row fg-checks">
                 <label><input type="checkbox" id="bt-t1" checked /> T+1</label>
                 <label><input type="checkbox" id="bt-limit" checked /> 漲跌停</label>
@@ -904,10 +916,28 @@
               </div>
             </section>
             <section class="pnl">
-              <div class="ph"><div class="pt">數據源狀態</div></div>
-              <div class="pb" style="font-size:.72rem;color:var(--t2);line-height:1.8">
-                <div>TradingView：<span id="set-src-tv">--</span></div>
-                <div>Interactive Brokers：<span id="set-src-ib">--</span></div>
+              <div class="ph">
+                <div class="pt">數據源狀態</div>
+                <div class="pa">
+                  <button type="button" class="btn s" id="set-src-refresh" title="重新檢測連線">重新檢測</button>
+                </div>
+              </div>
+              <div class="pb set-src-grid" id="set-src-grid">
+                <div class="set-src-row" data-src="tv">
+                  <span class="set-src-dot" id="set-src-tv-dot" aria-hidden="true"></span>
+                  <span class="set-src-name">TradingView</span>
+                  <span class="set-src-status" id="set-src-tv">檢測中…</span>
+                </div>
+                <div class="set-src-row" data-src="ib">
+                  <span class="set-src-dot" id="set-src-ib-dot" aria-hidden="true"></span>
+                  <span class="set-src-name">Interactive Brokers</span>
+                  <span class="set-src-status" id="set-src-ib">檢測中…</span>
+                </div>
+                <div class="set-src-row" data-src="llm">
+                  <span class="set-src-dot set-src-dot--llm" id="set-src-llm-dot" aria-hidden="true"></span>
+                  <span class="set-src-name">LLM</span>
+                  <span class="set-src-status" id="set-src-llm-hint">見上方 LLM 區塊</span>
+                </div>
               </div>
             </section>
           </div>

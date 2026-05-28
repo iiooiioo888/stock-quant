@@ -229,7 +229,8 @@
         if (mod) {
           if (prev !== pid && typeof mod.init === 'function') {
             await Promise.resolve(mod.init());
-          } else if (typeof mod.onShow === 'function') {
+          }
+          if (typeof mod.onShow === 'function') {
             await Promise.resolve(mod.onShow());
           }
         }

@@ -219,12 +219,44 @@ const Api = {
   },
 
   /**
+   * 帶超時與指數退避重試的 fetch（用於關鍵 API）
+   */
+  async fetchWithRetry(url, options = {}) {
+    const {
+      retries = 3,
+      timeout = 8000,
+      retryDelayMs = 1000,
+      silent = false,
+      ...fetchOpts
+    } = options;
+    let lastErr;
+    for (let i = 0; i < retries; i += 1) {
+      try {
+        const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+          ? AbortSignal.timeout(timeout)
+          : undefined;
+        const resp = await fetch(url, { ...fetchOpts, signal });
+        return resp;
+      } catch (e) {
+        lastErr = e;
+        if (i >= retries - 1) break;
+        await new Promise((r) => setTimeout(r, retryDelayMs * (i + 1)));
+      }
+    }
+    throw lastErr;
+  },
+
+  /**
    * 通用 GET/POST 請求
    */
   async request(path, options = null) {
     const silent = !!(options && options.silent);
     const opts = options ? { ...options } : {};
+    const retries = opts.retries != null ? opts.retries : 3;
+    const timeout = opts.timeout != null ? opts.timeout : 15000;
     delete opts.silent;
+    delete opts.retries;
+    delete opts.timeout;
     try {
       const headers = {};
       if (this._token) {
@@ -234,7 +266,13 @@ const Api = {
         Object.assign(headers, opts.headers);
       }
 
-      const resp = await fetch(API_BASE + path, { ...opts, headers });
+      const resp = await this.fetchWithRetry(API_BASE + path, {
+        ...opts,
+        headers,
+        retries,
+        timeout,
+        silent,
+      });
 
       if (resp.status === 401) {
         this.setToken(null);
@@ -443,8 +481,39 @@ const Api = {
   async runMultiBacktest(code) { return this.post(`/api/backtest/multi?code=${code}`); },
 
   async runOptimize(params) {
-    let url = `/api/optimize?code=${params.code}&strategy=${params.strategy}&method=${params.method}&objective=${params.objective}&n_trials=${params.n_trials || 50}`;
-    return this.request(url, { method: 'POST' });
+    const {
+      code,
+      strategy,
+      method,
+      objective,
+      n_trials = 50,
+      top_n,
+      stop_loss_pct,
+      take_profit_pct,
+      trailing_stop_pct,
+      circuit_breaker_dd,
+      max_position_pct,
+      slippage_pct,
+      risk,
+    } = params || {};
+    let url = `/api/optimize?code=${encodeURIComponent(code)}&strategy=${encodeURIComponent(strategy)}&method=${encodeURIComponent(method)}&objective=${encodeURIComponent(objective)}&n_trials=${n_trials}`;
+    if (top_n != null) url += `&top_n=${top_n}`;
+    const q = (k, v) => {
+      if (v != null && v !== '') url += `&${k}=${encodeURIComponent(v)}`;
+    };
+    q('stop_loss_pct', stop_loss_pct);
+    q('take_profit_pct', take_profit_pct);
+    q('trailing_stop_pct', trailing_stop_pct);
+    q('circuit_breaker_dd', circuit_breaker_dd);
+    q('max_position_pct', max_position_pct);
+    q('slippage_pct', slippage_pct);
+    const body = {};
+    if (risk && typeof risk === 'object') body.risk = risk;
+    return this.request(url, {
+      method: 'POST',
+      headers: Object.keys(body).length ? { 'Content-Type': 'application/json' } : {},
+      body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+    });
   },
 
   async runAutoOptimize(body = {}) { return this.post('/api/auto-optimize', body); },

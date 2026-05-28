@@ -55,6 +55,8 @@ def _register_defaults() -> None:
             benchmark=bool(p.get("benchmark")),
             timeframe=p.get("timeframe", "1d"),
             task_id=task_id,
+            circuit_breaker_dd=p.get("circuit_breaker_dd"),
+            max_position_pct=p.get("max_position_pct"),
         )
 
     def _backtest_advanced(p: dict, task_id: str):
@@ -76,6 +78,8 @@ def _register_defaults() -> None:
             enable_limit=bool(p.get("enable_limit", True)),
             timeframe=p.get("timeframe", "1d"),
             task_id=task_id,
+            circuit_breaker_dd=p.get("circuit_breaker_dd"),
+            max_position_pct=p.get("max_position_pct"),
         )
 
     def _backtest_multi(p: dict, task_id: str):
@@ -84,6 +88,7 @@ def _register_defaults() -> None:
 
     def _optimize(p: dict, task_id: str):
         from src.core.optimize import grid_search, optuna_search, optimize_all
+        from src.core.risk_backtest import parse_risk_params
 
         code = p["code"]
         strategy = p.get("strategy", "dual_ma")
@@ -91,6 +96,7 @@ def _register_defaults() -> None:
         objective = p.get("objective", "sharpe")
         n_trials = int(p.get("n_trials", 100))
         top_n = int(p.get("top_n", 10))
+        run_ctx = parse_risk_params(p).to_dict()
         if strategy == "all":
             results = optimize_all(
                 code,
@@ -99,6 +105,7 @@ def _register_defaults() -> None:
                 n_trials=n_trials,
                 top_n=top_n,
                 task_id=task_id,
+                run_ctx=run_ctx,
             )
             return {
                 name: [{k: v for k, v in r.items()} for r in res_list]
@@ -106,9 +113,13 @@ def _register_defaults() -> None:
             }
         if method == "optuna":
             return optuna_search(
-                code, strategy, objective=objective, n_trials=n_trials, task_id=task_id,
+                code, strategy, objective=objective, n_trials=n_trials,
+                task_id=task_id, run_ctx=run_ctx,
             )
-        return grid_search(code, strategy, objective=objective, top_n=top_n, task_id=task_id)
+        return grid_search(
+            code, strategy, objective=objective, top_n=top_n,
+            task_id=task_id, run_ctx=run_ctx,
+        )
 
     def _portfolio(p: dict, task_id: str):
         from src.core.portfolio import run_portfolio

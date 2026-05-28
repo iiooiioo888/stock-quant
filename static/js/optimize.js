@@ -6,6 +6,22 @@ const Optimize = {
   _method: 'grid',
   _objective: 'sharpe',
 
+  collectRiskParams() {
+    const num = (id) => {
+      const v = parseFloat(document.getElementById(id)?.value);
+      return Number.isFinite(v) && v > 0 ? v : undefined;
+    };
+    const out = {
+      stop_loss_pct: num('optStopLoss'),
+      take_profit_pct: num('optTakeProfit'),
+      trailing_stop_pct: num('optTrailStop'),
+      circuit_breaker_dd: num('optCircuitDd'),
+      max_position_pct: num('optMaxPos'),
+      slippage_pct: num('optSlippage'),
+    };
+    return Object.fromEntries(Object.entries(out).filter(([, v]) => v != null));
+  },
+
   selectMethod(el) {
     document.querySelectorAll('[data-opt-method]').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
@@ -30,7 +46,15 @@ const Optimize = {
 
     Utils.btnLoading(btn, true, '優化中...');
     try {
-    const d = await Api.runOptimize({ code, strategy, method, objective, n_trials: 50 });
+    const risk = this.collectRiskParams();
+    const d = await Api.runOptimize({
+      code,
+      strategy,
+      method,
+      objective,
+      n_trials: 50,
+      ...risk,
+    });
 
     if (!d || !d.success) return;
 
@@ -80,9 +104,12 @@ const Optimize = {
     } else {
       h = '<div class="table-wrap"><table><thead><tr><th>#</th><th>評分</th><th>收益率</th><th>夏普</th><th>回撤</th><th>勝率</th><th>參數</th></tr></thead><tbody>';
       results.forEach((r, i) => {
+        const riskHint = r.risk?.circuit_breaker_hit
+          ? ' <span title="觸發熔斷懲罰" style="color:var(--quote-down)">⚡</span>'
+          : '';
         h += `<tr>
           <td>${i + 1}</td>
-          <td class="r">${Utils.formatNum(r.score, 4)}</td>
+          <td class="r">${Utils.formatNum(r.score, 4)}${riskHint}</td>
           <td class="r"><span class="b ${Utils.badgeClass(r.total_return_pct)}">${Utils.formatPct(r.total_return_pct)}</span></td>
           <td class="r">${Utils.formatNum(r.sharpe_ratio, 2)}</td>
           <td class="r">${Utils.formatPct(-r.max_drawdown_pct)}</td>

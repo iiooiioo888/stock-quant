@@ -707,7 +707,7 @@ const TaskCommon = {
     const backtestTypes = ['backtest', 'backtest_advanced', 'backtest_multi'];
 
     if (backtestTypes.includes(tt)) {
-      App.nav('backtest', { syncHash: true });
+      await App.nav('backtest', { syncHash: true });
       if (window.StockQPro?.pages?.backtest?.showResult) {
         window.StockQPro.pages.backtest.showResult(r, task);
       } else {
@@ -720,7 +720,7 @@ const TaskCommon = {
     const tab = this.tabForTaskType(tt);
     const proPages = ['compare', 'watchlist', 'scanner', 'alerts', 'backhistory', 'settings'];
     if (proPages.includes(tab)) {
-      App.nav(tab, { syncHash: true });
+      await App.nav(tab, { syncHash: true });
     }
     const T = window.StockQPro?.Tasks || window.Tasks;
     if (T?.viewResult) T.viewResult(task.task_id);

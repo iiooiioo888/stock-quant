@@ -301,9 +301,22 @@
       }
     },
 
+    _skeletonHtml(count = 5) {
+      return Array.from({ length: count }, () => `
+        <div class="tk-card tk-card--skeleton" aria-hidden="true">
+          <div class="tk-skel-line tk-skel-title skeleton"></div>
+          <div class="tk-skel-line tk-skel-meta skeleton"></div>
+          <div class="tk-skel-bar skeleton"></div>
+        </div>`).join('');
+    },
+
     _setLoading(loading) {
       const el = document.getElementById('taskLoadingIndicator');
-      if (el) el.style.display = loading ? 'flex' : 'none';
+      if (el) el.style.display = 'none';
+      const list = document.getElementById('tkTaskList');
+      if (loading && !this._lastData && list) {
+        list.innerHTML = this._skeletonHtml(5);
+      }
     },
 
     _renderQueue(snapshot) {
@@ -928,7 +941,7 @@
         if (!data?.type?.startsWith('task_')) return;
         if (proApp()?.current === 'tasks') {
           if (data.type === 'task_created' || data.type === 'task_started') {
-            window.StockQPro?.Tasks?.refresh?.(true);
+            Tasks.refresh(true);
           }
         }
         if (proApp()?.current !== 'tasks') return;

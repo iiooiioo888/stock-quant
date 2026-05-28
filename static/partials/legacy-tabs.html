@@ -60,6 +60,35 @@
                 </div>
             </div>
         </div>
+        <div class="pf-builder-row mt-md">
+            <div class="pf-builder-step" style="grid-column:1/-1">
+                <span class="pf-step-num">5</span>
+                <div class="pf-step-content">
+                    <label>風控（與回測一致，納入優化評分）</label>
+                    <div class="pf-risk-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:6px">
+                        <label class="fg-row" style="font-size:.72rem">止損 %
+                            <input type="number" id="optStopLoss" class="inp" min="0" max="50" step="0.5" placeholder="如 8" />
+                        </label>
+                        <label class="fg-row" style="font-size:.72rem">止盈 %
+                            <input type="number" id="optTakeProfit" class="inp" min="0" max="100" step="0.5" placeholder="可選" />
+                        </label>
+                        <label class="fg-row" style="font-size:.72rem">移動止損 %
+                            <input type="number" id="optTrailStop" class="inp" min="0" max="30" step="0.5" placeholder="可選" />
+                        </label>
+                        <label class="fg-row" style="font-size:.72rem">熔斷回撤 %
+                            <input type="number" id="optCircuitDd" class="inp" min="0" max="80" step="1" placeholder="如 20" title="超過則降低優化評分" />
+                        </label>
+                        <label class="fg-row" style="font-size:.72rem">單筆倉位上限
+                            <input type="number" id="optMaxPos" class="inp" min="0.05" max="1" step="0.05" placeholder="0.3" />
+                        </label>
+                        <label class="fg-row" style="font-size:.72rem">滑點 %
+                            <input type="number" id="optSlippage" class="inp" min="0" max="5" step="0.01" placeholder="0" />
+                        </label>
+                    </div>
+                    <p class="sec-desc" style="margin:6px 0 0;font-size:.68rem">網格搜索預設並行（Linux 可用 joblib）；熔斷僅影響評分排序，不中止單次回測。</p>
+                </div>
+            </div>
+        </div>
         <div class="pf-action-row">
             <div></div>
             <div class="btn-group">

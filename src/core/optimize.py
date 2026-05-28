@@ -88,9 +88,18 @@ PARAM_RANGES = {
 }
 
 
-def _run_single(code: str, strategy_name: str, params: dict) -> dict:
-    """用指定參數跑一次回測"""
+def _run_single(
+    code: str,
+    strategy_name: str,
+    params: dict,
+    run_ctx: dict | None = None,
+) -> dict:
+    """用指定參數跑一次回測（可選風控上下文）。"""
+    from src.core.risk_backtest import RiskRunConfig, attach_risk_to_cerebro
+
     strategy_cls = STRATEGIES[strategy_name]
+    risk_cfg = RiskRunConfig.from_dict(run_ctx) if run_ctx else RiskRunConfig()
+
     cerebro = bt.Cerebro()
     cerebro.addstrategy(strategy_cls, **params)
 
@@ -98,7 +107,7 @@ def _run_single(code: str, strategy_name: str, params: dict) -> dict:
     cerebro.adddata(data)
 
     cerebro.broker.setcash(settings.backtest_cash)
-    cerebro.broker.setcommission(commission=settings.backtest_commission)
+    attach_risk_to_cerebro(cerebro, risk_cfg)
 
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", riskfreerate=0.03)
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
@@ -107,6 +116,7 @@ def _run_single(code: str, strategy_name: str, params: dict) -> dict:
     from src.core.backtest_runtime import dispose_cerebro
 
     initial_value = cerebro.broker.getvalue()
+    results = None
     try:
         results = cerebro.run()
         final_value = cerebro.broker.getvalue()
@@ -125,7 +135,7 @@ def _run_single(code: str, strategy_name: str, params: dict) -> dict:
     win_rate = (won / total_trades * 100) if total_trades > 0 else 0
     sharpe_val = sharpe.get("sharperatio")
 
-    return {
+    out = {
         "params": params,
         "total_return_pct": round(total_return, 4),
         "sharpe_ratio": sharpe_val if sharpe_val is not None else 0.0,
@@ -134,6 +144,9 @@ def _run_single(code: str, strategy_name: str, params: dict) -> dict:
         "win_rate_pct": round(win_rate, 2),
         "final_value": final_value,
     }
+    if risk_cfg.has_sltp() or risk_cfg.circuit_breaker_dd or risk_cfg.max_position_pct:
+        out["risk_enabled"] = True
+    return out
 
 
 def _score(result: dict, objective: str = "sharpe") -> float:
@@ -153,6 +166,38 @@ def _score(result: dict, objective: str = "sharpe") -> float:
     elif objective == "win_rate":
         return result["win_rate_pct"]
     return result["sharpe_ratio"]
+
+
+def _score_and_risk(
+    result: dict,
+    objective: str,
+    run_ctx: dict | None = None,
+) -> dict:
+    """計算評分並套用風控熔斷懲罰。"""
+    from src.core.risk_backtest import RiskRunConfig, apply_risk_score_adjustment
+
+    result["score"] = _score(result, objective)
+    cfg = RiskRunConfig.from_dict(run_ctx) if run_ctx else RiskRunConfig()
+    if cfg.circuit_breaker_dd is not None and cfg.circuit_breaker_dd > 0:
+        apply_risk_score_adjustment(result, cfg)
+    elif cfg.has_sltp() or cfg.max_position_pct or cfg.slippage_pct:
+        result["risk"] = cfg.to_dict()
+    return result
+
+
+def _resolve_grid_backend() -> str:
+    """網格並行後端：auto 在非 Windows 且已安裝 joblib 時優先 joblib。"""
+    raw = str(getattr(settings, "optimize_parallel_backend", "auto") or "auto").lower()
+    if raw in ("joblib", "futures"):
+        return raw
+    if sys.platform == "win32":
+        return "futures"
+    try:
+        import joblib  # noqa: F401
+
+        return "joblib"
+    except ImportError:
+        return "futures"
 
 
 def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_ratio: float = 0.2) -> list[dict]:
@@ -247,6 +292,7 @@ def grid_search(
     top_n: int = 10,
     verbose: bool = True,
     task_id: str = None,
+    run_ctx: dict | None = None,
 ) -> list[dict]:
     """網格搜索（可選並行）"""
     if strategy_name not in STRATEGIES:
@@ -257,7 +303,7 @@ def grid_search(
             code, strategy_name, objective=objective,
             param_grid=param_grid, top_n=top_n,
             max_workers=_resolve_grid_workers(task_id), verbose=verbose,
-            task_id=task_id,
+            task_id=task_id, run_ctx=run_ctx,
         )
 
     if param_grid is None:
@@ -296,8 +342,8 @@ def grid_search(
                 raise RuntimeError("任務已取消")
             update_task(task_id, progress=min(95, int(i / total * 100)))
         try:
-            r = _run_single(code, strategy_name, params)
-            r["score"] = _score(r, objective)
+            r = _run_single(code, strategy_name, params, run_ctx)
+            _score_and_risk(r, objective, run_ctx)
             results.append(r)
             if verbose and i % 10 == 0:
                 logger.info(f"  進度: {i}/{total}")
@@ -305,7 +351,8 @@ def grid_search(
             logger.warning(f"  組合 {params} 失敗: {e}")
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    
+    top_results = results[:top_n]
+
     # 樣本外驗證：對 top 結果在最後 20% 數據上重新回測（強制篩選條件）
     try:
         top_results = _add_oos_validation(top_results, code, strategy_name)
@@ -333,6 +380,7 @@ def optuna_search(
     param_ranges: dict = None,
     verbose: bool = True,
     task_id: str = None,
+    run_ctx: dict | None = None,
 ) -> list[dict]:
     """Optuna 貝葉斯優化"""
     import optuna
@@ -377,8 +425,8 @@ def optuna_search(
             return float("-inf")
 
         try:
-            r = _run_single(code, strategy_name, params)
-            r["score"] = _score(r, objective)
+            r = _run_single(code, strategy_name, params, run_ctx)
+            _score_and_risk(r, objective, run_ctx)
             with results_lock:
                 all_results.append(r)
             return r["score"]
@@ -430,6 +478,7 @@ def optimize_all(
     top_n: int = 5,
     verbose: bool = True,
     task_id: str = None,
+    run_ctx: dict | None = None,
 ) -> dict:
     """對所有策略做參數優化（默認串行策略 + 每策略進程池，可選策略級並行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -459,11 +508,11 @@ def optimize_all(
         if method == "optuna":
             return name, optuna_search(
                 code, name, objective=objective, n_trials=n_trials,
-                verbose=verbose, task_id=task_id,
+                verbose=verbose, task_id=task_id, run_ctx=run_ctx,
             )
         return name, grid_search(
             code, name, objective=objective, top_n=top_n,
-            verbose=verbose, task_id=task_id,
+            verbose=verbose, task_id=task_id, run_ctx=run_ctx,
         )
 
     if workers <= 1:
@@ -507,9 +556,13 @@ def optimize_all(
 
 def _run_single_worker(args):
     """Worker 函數，用於並行網格搜索"""
-    code, strategy_name, params = args
+    if len(args) >= 4:
+        code, strategy_name, params, run_ctx = args[0], args[1], args[2], args[3]
+    else:
+        code, strategy_name, params = args
+        run_ctx = None
     try:
-        return _run_single(code, strategy_name, params)
+        return _run_single(code, strategy_name, params, run_ctx)
     except Exception as e:
         logger.warning(f"網格 worker 失敗 {code}/{strategy_name}: {e}")
         return None
@@ -522,6 +575,35 @@ def _grid_executor_class():
     return ProcessPoolExecutor
 
 
+def _grid_parallel_joblib(
+    tasks: list,
+    max_workers: int,
+    objective: str,
+    run_ctx: dict | None,
+    verbose: bool,
+    task_id: str | None,
+    total: int,
+) -> list[dict]:
+    from joblib import Parallel, delayed
+
+    def _one(task_args):
+        r = _run_single_worker(task_args)
+        if r is None:
+            return None
+        return _score_and_risk(r, objective, run_ctx)
+
+    batch = Parallel(n_jobs=max_workers, backend="loky", prefer="processes")(
+        delayed(_one)(t) for t in tasks
+    )
+    results = [r for r in batch if r is not None]
+    if verbose and total:
+        logger.info(f"  Joblib 網格完成: {len(results)}/{total} 組有效結果")
+    if task_id:
+        from src.core.task_manager import update_task
+        update_task(task_id, progress=95)
+    return results
+
+
 def grid_search_parallel(
     code: str,
     strategy_name: str,
@@ -531,8 +613,9 @@ def grid_search_parallel(
     max_workers: int = 4,
     verbose: bool = True,
     task_id: str = None,
+    run_ctx: dict | None = None,
 ) -> list[dict]:
-    """並行網格搜索 — 使用 ProcessPoolExecutor"""
+    """並行網格搜索 — futures 或 joblib"""
     if strategy_name not in STRATEGIES:
         raise ValueError(f"未知策略: {strategy_name}")
 
@@ -568,42 +651,49 @@ def grid_search_parallel(
         f"並行網格搜索 {code}/{strategy_name}: {total} 種組合, workers={max_workers}"
     )
 
-    tasks = [(code, strategy_name, p) for p in valid_combos]
-    results = []
-    done = 0
-    last_logged_pct = -1
+    ctx = run_ctx or {}
+    tasks = [(code, strategy_name, p, ctx) for p in valid_combos]
+    backend = _resolve_grid_backend()
+    if backend == "joblib" and sys.platform != "win32":
+        logger.info(f"  並行後端: joblib (loky), workers={max_workers}")
+        results = _grid_parallel_joblib(
+            tasks, max_workers, objective, run_ctx, verbose, task_id, total,
+        )
+    else:
+        results = []
+        done = 0
+        last_logged_pct = -1
+        executor_cls = _grid_executor_class()
+        pool_kind = "thread" if executor_cls is ThreadPoolExecutor else "process"
+        logger.info(f"  並行後端: {pool_kind} pool, workers={max_workers}")
 
-    executor_cls = _grid_executor_class()
-    pool_kind = "thread" if executor_cls is ThreadPoolExecutor else "process"
-    logger.debug(f"網格池類型: {pool_kind}, workers={max_workers}")
+        with executor_cls(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_run_single_worker, t): t
+                for t in tasks
+            }
+            for future in as_completed(futures):
+                done += 1
+                if task_id:
+                    from src.core.task_manager import is_task_cancelled, update_task
+                    if is_task_cancelled(task_id):
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        raise RuntimeError("任務已取消")
+                    pct = min(95, int(done / total * 100))
+                    update_task(task_id, progress=pct)
+                try:
+                    r = future.result()
+                    if r is not None:
+                        _score_and_risk(r, objective, run_ctx)
+                        results.append(r)
+                except Exception as e:
+                    logger.debug(f"  Worker 失敗: {e}")
 
-    with executor_cls(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(_run_single_worker, t): t
-            for t in tasks
-        }
-        for future in as_completed(futures):
-            done += 1
-            if task_id:
-                from src.core.task_manager import is_task_cancelled, update_task
-                if is_task_cancelled(task_id):
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    raise RuntimeError("任務已取消")
-                pct = min(95, int(done / total * 100))
-                update_task(task_id, progress=pct)
-            try:
-                r = future.result()
-                if r is not None:
-                    r["score"] = _score(r, objective)
-                    results.append(r)
-            except Exception as e:
-                logger.debug(f"  Worker 失敗: {e}")
-
-            if verbose and total > 0:
-                pct = int(done / total * 100)
-                if pct >= last_logged_pct + 10 or done == total:
-                    last_logged_pct = pct
-                    logger.info(f"  並行網格進度: {done}/{total} ({pct}%)")
+                if verbose and total > 0:
+                    pct = int(done / total * 100)
+                    if pct >= last_logged_pct + 10 or done == total:
+                        last_logged_pct = pct
+                        logger.info(f"  並行網格進度: {done}/{total} ({pct}%)")
 
     results.sort(key=lambda x: x["score"], reverse=True)
     top_results = results[:top_n]

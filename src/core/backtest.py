@@ -1079,6 +1079,8 @@ def run_backtest(
     enable_limit: bool = True,
     timeframe: str = "1d",
     task_id: str = None,
+    circuit_breaker_dd: float = None,
+    max_position_pct: float = None,
 ) -> dict:
     """
     執行回測並返回結果。
@@ -1149,6 +1151,12 @@ def run_backtest(
 
     if sltp_params:
         cerebro.addstrategy(StrategyWithSLTP, **sltp_params)
+
+    if max_position_pct is not None and 0 < float(max_position_pct) < 1:
+        from src.core.risk_backtest import RiskRunConfig, attach_risk_to_cerebro
+
+        _rc = RiskRunConfig(max_position_pct=float(max_position_pct))
+        attach_risk_to_cerebro(cerebro, _rc, sltp=False, commission=False, slippage=False)
 
     data = prepare_data(code, timeframe=tf)
     # 將股票代碼掛載到 data 上，供 LimitFilter 使用
@@ -1395,6 +1403,19 @@ def run_backtest(
         # 權益曲線分析
         "equity_analysis": equity_analysis,
     }
+
+    if circuit_breaker_dd is not None and float(circuit_breaker_dd) > 0 and nav and dates:
+        from src.core.risk_manager import drawdown_circuit_breaker
+
+        cb = drawdown_circuit_breaker(nav, [str(d) for d in dates], float(circuit_breaker_dd))
+        result["risk_control"] = {
+            "circuit_breaker_dd": float(circuit_breaker_dd),
+            "circuit_breaker": cb,
+            "stop_loss_pct": stop_loss_pct,
+            "take_profit_pct": take_profit_pct,
+            "trailing_stop_pct": trailing_stop_pct,
+            "max_position_pct": max_position_pct,
+        }
 
     # 持久化回測結果
     try:
