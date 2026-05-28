@@ -420,6 +420,17 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
 
     intro = (profile.get("intro") or "").strip()
 
+    if not intro and market == "a_share" and sym.replace(".SS", "").replace(".SZ", "").isdigit():
+        try:
+            from src.core.stock_universe import _fetch_intro_a_share
+
+            code6 = symbol_to_a_share_code(sym) or sym.split(".")[0]
+            intro = _fetch_intro_a_share(code6)
+            if intro:
+                profile["intro"] = intro
+        except Exception as e:
+            logger.debug(f"A股簡介 {sym}: {e}")
+
     if not intro and market == "hk_stock" and sym.endswith(".HK"):
 
         try:
@@ -618,7 +629,7 @@ def _enrich_quote(quote: dict, em: dict, chart: dict) -> dict:
 
 
 
-def build_asset_detail(symbol: str, days: int = 180) -> Optional[dict]:
+def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = True) -> Optional[dict]:
 
     """單一資產完整詳情包。"""
 
@@ -770,7 +781,7 @@ def build_asset_detail(symbol: str, days: int = 180) -> Optional[dict]:
 
 
 
-    return {
+    detail = {
 
         "symbol": symbol,
 
@@ -805,5 +816,12 @@ def build_asset_detail(symbol: str, days: int = 180) -> Optional[dict]:
         "links": links,
 
     }
+
+    if include_thesis:
+        from src.core.stock_insights import enrich_detail_thesis
+        return enrich_detail_thesis(detail, inst)
+    detail["investment_thesis_locked"] = True
+    detail["investment_thesis_upgrade_url"] = "/app#/pricing"
+    return detail
 
 

@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     volume_slippage_enabled: bool = False
     volume_slippage_participation_cap: float = Field(default=0.05, gt=0, le=1.0)
 
+    # ====== 訂閱 / 計費 ======
+    billing_dev_upgrade: bool = Field(
+        default=True,
+        description="開發環境允許 POST /api/billing/checkout 直接升級 Pro（無支付）",
+    )
+    billing_checkout_enabled: bool = False
+    stripe_secret_key: Optional[str] = Field(default=None, description="Stripe Secret Key")
+    stripe_webhook_secret: Optional[str] = Field(default=None, description="Stripe Webhook Signing Secret")
+
     # ====== 股票庫 ======
     stock_universe_max_count: int = Field(default=20000, ge=100, le=50000)
     stock_universe_intro_enrich_limit: int = Field(default=500, ge=0, le=20000)

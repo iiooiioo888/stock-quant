@@ -69,6 +69,7 @@
     /** stocks=僅三地股票 | tradeable=有詳情 | all=完整 Universe */
     viewScope: 'stocks',
     activeSector: 'all',
+    activeTheme: 'all',
     // 1/2/3 級分類（l1=group；l2/l3 由後端提供，或前端推導）
     activeL1: 'all',
     activeL2: 'all',
@@ -221,6 +222,9 @@
     if (state.activeSector && state.activeSector !== 'all') {
       rows = rows.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
     }
+    if (state.activeTheme && state.activeTheme !== 'all') {
+      rows = rows.filter((r) => Array.isArray(r.themes) && r.themes.includes(state.activeTheme));
+    }
     if (state.activeL1 && state.activeL1 !== 'all') rows = rows.filter((r) => r.group === state.activeL1);
     if (state.activeL2 && state.activeL2 !== 'all') rows = rows.filter((r) => (r.l2 || r.asset_class) === state.activeL2);
     if (state.activeL3 && state.activeL3 !== 'all') rows = rows.filter((r) => String(r.l3 || '') === state.activeL3);
@@ -248,7 +252,10 @@
       const l1 = state.activeL1 !== 'all' ? state.activeL1 : '';
       const l2 = state.activeL2 !== 'all' ? state.activeL2 : '';
       const l3 = state.activeL3 !== 'all' ? state.activeL3 : '';
-      const hint = [l1, l2, l3].filter(Boolean).join(' / ');
+      const themeLbl = state.activeTheme !== 'all'
+        ? (state.catalog?.theme_packs || []).find((p) => p.id === state.activeTheme)?.label
+        : '';
+      const hint = [themeLbl, l1, l2, l3].filter(Boolean).join(' / ');
       meta.textContent = `顯示 ${rows.length} / ${total} 檔${hint ? ` · ${hint}` : ''}`;
     }
 
@@ -319,6 +326,51 @@
     UI.mount(root, UI.h('div', { class: 'assets-grid-inner' }, ...cards));
   }
 
+  function renderThemePacks() {
+    if (state.catalog?.theme_packs_locked) {
+      return [
+        UI.h('div', { class: 'assets-pills-row assets-pills-row--themes assets-theme-locked' },
+          UI.h('span', { class: 'assets-theme-locked-msg' }, '主題包與行業標籤篩選需 Pro'),
+          UI.h('button', {
+            type: 'button',
+            class: 'btn btn-s btn-ac',
+            onClick: () => window.StockQPro?.App?.nav?.('pricing', { syncHash: true }),
+          }, '查看方案'),
+        ),
+      ];
+    }
+    const packs = state.catalog?.theme_packs;
+    if (!Array.isArray(packs) || !packs.length) return [];
+    const pills = [
+      UI.h('button', {
+        type: 'button',
+        class: `cat-pill cat-pill--theme ${state.activeTheme === 'all' ? 'on' : ''}`,
+        title: '顯示全部股票專區標的',
+        onClick: () => {
+          state.activeTheme = 'all';
+          renderGroupPills();
+          renderList();
+        },
+      }, '全部主題'),
+      ...packs.map((p) => UI.h('button', {
+        type: 'button',
+        class: `cat-pill cat-pill--theme ${state.activeTheme === p.id ? 'on' : ''}`,
+        title: p.description || p.label,
+        onClick: () => {
+          state.viewScope = 'stocks';
+          state.activeTheme = p.id;
+          state.activeL1 = 'all';
+          state.activeL2 = 'all';
+          state.activeL3 = 'all';
+          state.activeSector = 'all';
+          renderGroupPills();
+          renderList();
+        },
+      }, `${p.label} (${p.catalog_count ?? 0})`)),
+    ];
+    return [UI.h('div', { class: 'assets-pills-row assets-pills-row--themes' }, ...pills)];
+  }
+
   function renderScopePills() {
     const cat = state.catalog;
     if (!cat) return [];
@@ -341,6 +393,7 @@
         state.activeL2 = 'all';
         state.activeL3 = 'all';
         state.activeSector = 'all';
+        state.activeTheme = 'all';
         renderGroupPills();
         renderList();
       },
@@ -407,6 +460,9 @@
       }
       if (state.activeSector && state.activeSector !== 'all') {
         base = base.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
+      }
+      if (state.activeTheme && state.activeTheme !== 'all') {
+        base = base.filter((r) => Array.isArray(r.themes) && r.themes.includes(state.activeTheme));
       }
       if (!gid || gid === 'all') return base.length;
       return base.filter((r) => r.group === gid).length;
@@ -509,6 +565,7 @@
 
     UI.mount(el, UI.h('div', null,
       UI.h('div', { class: 'assets-pills-row assets-pills-row--scope' }, ...renderScopePills()),
+      ...renderThemePacks(),
       renderSectorPills(),
       UI.h('div', { class: 'assets-pills-row' }, ...pillsL1),
       pillsL2.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL2) : null,
@@ -973,6 +1030,20 @@
             UI.h('span', { class: 'mono asset-detail-code' }, symbol),
             d.market_label ? UI.h('span', { class: 'badge b-bl' }, d.market_label) : null,
           ),
+          d.investment_thesis_locked
+            ? UI.h('p', { class: 'asset-detail-thesis asset-detail-thesis--locked' },
+              '投資邏輯一句話需 Pro · ',
+              UI.h('button', {
+                type: 'button',
+                class: 'btn btn-s btn-ac',
+                style: { display: 'inline', marginLeft: '6px' },
+                onClick: () => window.StockQPro?.App?.nav?.('pricing', { syncHash: true }),
+              }, '升級'),
+            )
+            : ((d.investment_thesis || d.one_liner)
+              ? UI.h('p', { class: 'asset-detail-thesis' }, d.investment_thesis || d.one_liner)
+              : null)
+            : null,
         ),
       ),
       UI.h('div', { class: `asset-detail-quote is-${pctCls}` },

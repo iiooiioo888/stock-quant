@@ -189,6 +189,13 @@
         await load();
         return;
       }
+      if (d === null) {
+        window.StockQPro?.App?.toast?.('雲端同步需 Pro，持倉已保留在本機', 'warn');
+        await enrichLocal();
+        render();
+        refreshPortfolioHint();
+        return;
+      }
     } catch (e) {
       window.StockQPro?.App?.toast?.(`保存失敗：${e?.message || e}`, 'er');
     }

@@ -27,6 +27,7 @@
     capitalflow: [`${ROOT}capitalflow-pro.js`],
     ai: [`${ROOT}ai-assistant.js`],
     settings: [`${ROOT}settings-pro.js`],
+    pricing: [`${ROOT}pricing-pro.js`],
     backtest: [
       '/static/js/pro/stock-pick-data.js',
       `${ROOT}backtest-symbol-picker.js`,

@@ -26,7 +26,31 @@ class TestSmokeAPI:
         assert data.get("total", 0) >= 19
 
     def test_auth_me(self, client, auth_headers):
-        assert client.get("/api/auth/me", headers=auth_headers).status_code == 200
+        resp = client.get("/api/auth/me", headers=auth_headers)
+        assert resp.status_code == 200
+        user = resp.json().get("user") or {}
+        assert "billing" in user
+        assert user["billing"].get("plan_id") in ("free", "pro", "institutional")
+
+    def test_billing_plans_public(self, client):
+        resp = client.get("/api/billing/plans")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("success") is True
+        plans = {p["id"]: p for p in (data.get("plans") or [])}
+        assert "free" in plans and "pro" in plans and "institutional" in plans
+        assert plans["pro"].get("highlight") is True
+
+    def test_billing_checkout_dev(self, client, auth_headers):
+        resp = client.post(
+            "/api/billing/checkout",
+            json={"plan_id": "pro"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json().get("plan_id") == "pro"
+        me = client.get("/api/billing/me", headers=auth_headers).json()
+        assert me.get("plan_id") == "pro"
 
     def test_tasks_list(self, client, auth_headers):
         assert client.get("/api/tasks", headers=auth_headers).status_code == 200
@@ -108,6 +132,16 @@ class TestSmokeAPI:
         inst = (data.get("instruments") or [None])[0] or {}
         assert "l2" in inst and "l2_label" in inst
         assert "l3" in inst and "l3_label" in inst
+        assert "theme_packs" in data
+        packs = {p["id"]: p for p in (data.get("theme_packs") or [])}
+        assert "hstech" in packs and "csi300" in packs
+        assert packs["hstech"].get("catalog_count", 0) >= 10
+        stock = next(
+            (x for x in (data.get("instruments") or []) if x.get("symbol") == "0700.HK"),
+            None,
+        )
+        if stock:
+            assert "hstech" in (stock.get("themes") or [])
 
     def test_assets_detail(self, client):
         resp = client.get("/api/assets/detail?symbol=^GSPC&days=60")
@@ -121,6 +155,11 @@ class TestSmokeAPI:
         assert len(d175.get("profile", {}).get("intro", "")) > 20
         assert d175.get("stats", {}).get("period_high") is not None
         assert isinstance(d175.get("links"), list) and len(d175["links"]) >= 2
+        resp_moutai = client.get("/api/assets/detail?symbol=600519.SS&days=90")
+        if resp_moutai.status_code == 200:
+            dm = resp_moutai.json().get("detail") or {}
+            thesis = (dm.get("investment_thesis") or dm.get("one_liner") or "").strip()
+            assert len(thesis) >= 8
         data = resp.json()
         assert data.get("success") is True
         detail = data.get("detail") or {}

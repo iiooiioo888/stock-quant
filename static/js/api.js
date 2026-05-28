@@ -105,18 +105,74 @@ const Api = {
   /**
    * 更新 header 的登錄狀態 UI
    */
+  _billingCache: null,
+
   _updateAuthUI() {
     const el = document.getElementById('authStatus');
-    if (!el) return;
+    const pill = document.getElementById('auth-pill');
     if (this._token) {
-      el.innerHTML = '<span style="color:var(--green)">●</span> 已登錄';
-      el.title = '點擊登出';
-      el.style.cursor = 'pointer';
+      if (el) {
+        el.innerHTML = '<span style="color:var(--green)">●</span> 已登錄';
+        el.title = '點擊登出';
+        el.style.cursor = 'pointer';
+      }
+      if (pill) {
+        const plan = this._billingCache?.plan_name || this._billingCache?.plan_id || '';
+        const letter = (this._billingCache?.username || 'U').slice(0, 1).toUpperCase();
+        pill.textContent = plan ? letter : letter;
+        pill.title = plan ? `${plan} · 點擊登出` : '已登錄 · 點擊登出';
+        pill.dataset.plan = plan || '';
+      }
+      this.refreshBillingBadge?.();
     } else {
-      el.innerHTML = '<span style="color:var(--red)">●</span> 未登錄';
-      el.title = '點擊登錄';
-      el.style.cursor = 'pointer';
+      this._billingCache = null;
+      if (el) {
+        el.innerHTML = '<span style="color:var(--red)">●</span> 未登錄';
+        el.title = '點擊登錄';
+        el.style.cursor = 'pointer';
+      }
+      if (pill) {
+        pill.textContent = '訪';
+        pill.title = '點擊登錄';
+        delete pill.dataset.plan;
+      }
+      const badge = document.getElementById('plan-badge');
+      if (badge) {
+        badge.hidden = true;
+        badge.textContent = '';
+      }
     }
+  },
+
+  async refreshBillingBadge() {
+    if (!this._token) return;
+    try {
+      const me = await this.get('/api/auth/me', { silent: true, timeout: 12000 });
+      const bill = me?.user?.billing;
+      if (bill) {
+        this._billingCache = {
+          plan_id: bill.plan_id,
+          plan_name: bill.plan_name,
+          username: me?.user?.username,
+        };
+        const pill = document.getElementById('auth-pill');
+        const badge = document.getElementById('plan-badge');
+        if (pill && bill.plan_name) {
+          pill.title = `${bill.plan_name} · 點擊登出`;
+          pill.dataset.plan = bill.plan_id || '';
+        }
+        if (badge) {
+          if (bill.plan_id && bill.plan_id !== 'free') {
+            badge.hidden = false;
+            badge.textContent = bill.plan_name || bill.plan_id;
+            badge.title = '當前訂閱方案';
+          } else {
+            badge.hidden = true;
+            badge.textContent = '';
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
   },
 
   /**
@@ -183,6 +239,7 @@ const Api = {
       this.setToken(data.token);
       Utils.closeModal();
       Utils.toast(`${isRegister ? '註冊' : '登錄'}成功`, 3000, 'success');
+      this.refreshBillingBadge?.();
 
       if (typeof App !== 'undefined' && App._initQuickStats) {
         App._initQuickStats();
@@ -219,8 +276,46 @@ const Api = {
     return 'HTTP ' + status;
   },
 
+  _billingDetail(err) {
+    const d = err?.detail;
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : null;
+  },
+
+  /** 403/429 計費相關：提示並可跳轉定價頁 */
+  handleBillingGate(err, status, opts) {
+    opts = opts || {};
+    const detail = this._billingDetail(err);
+    if (!detail?.code) return false;
+    const billingCodes = ['feature_locked', 'plan_required', 'quota_exceeded', 'limit_exceeded'];
+    if (!billingCodes.includes(detail.code)) return false;
+
+    const msg = detail.message || '請升級方案以使用此功能';
+    if (!opts.silent) {
+      const kind = detail.code === 'quota_exceeded' ? 'warning' : 'warning';
+      if (typeof Utils !== 'undefined') {
+        Utils.toast(msg, 4500, kind);
+      }
+      const nav = () => {
+        try {
+          window.StockQPro?.App?.nav?.('pricing', { syncHash: true });
+        } catch (_) { /* ignore */ }
+      };
+      if (detail.code !== 'quota_exceeded') {
+        setTimeout(nav, 600);
+      } else {
+        setTimeout(() => {
+          if (window.confirm(`${msg}\n\n是否前往方案頁查看配額？`)) nav();
+        }, 200);
+      }
+    }
+    return true;
+  },
+
   handleApiError(err, status, opts) {
     opts = opts || {};
+    if ((status === 403 || status === 429) && this.handleBillingGate(err, status, opts)) {
+      return err?.detail?.message || this.parseErrorBody(err, status);
+    }
     const msg = this.parseErrorBody(err, status);
     if (!opts.silent && typeof Utils !== 'undefined') {
       Utils.toast('請求失敗: ' + msg, 3000, 'error');
@@ -626,12 +721,18 @@ const Api = {
     if (this._token) headers.Authorization = `Bearer ${this._token}`;
     const resp = await fetch(API_BASE + path, { headers });
     if (!resp.ok) {
-      let detail = resp.statusText;
+      let errBody = { detail: resp.statusText };
       try {
-        const j = await resp.json();
-        detail = j.detail || j.error || detail;
+        errBody = await resp.json();
       } catch (_) { /* ignore */ }
-      throw new Error(detail || `下載失敗 (${resp.status})`);
+      if (resp.status === 403 || resp.status === 429) {
+        this.handleBillingGate(errBody, resp.status, {});
+      }
+      const d = errBody?.detail;
+      const msg = typeof d === 'object' && d?.message
+        ? d.message
+        : (typeof d === 'string' ? d : (errBody.error || resp.statusText));
+      throw new Error(msg || `下載失敗 (${resp.status})`);
     }
     const blob = await resp.blob();
     const a = document.createElement('a');
@@ -975,6 +1076,21 @@ const Api = {
       chunks.forEach(parseSseBlock);
     }
     if (buffer.trim()) parseSseBlock(buffer);
+  },
+
+  /** 公開：方案列表（定價頁） */
+  async getBillingPlans() {
+    return this.get('/api/billing/plans', { silent: true, timeout: 15000 });
+  },
+
+  /** 當前方案、配額與今日用量（需登錄） */
+  async getBillingMe() {
+    return this.get('/api/billing/me');
+  },
+
+  /** 開發/演示：試用升級 Pro；生產環境預留 Stripe */
+  async billingCheckout(planId = 'pro', trialDays = 14) {
+    return this.post('/api/billing/checkout', { plan_id: planId, trial_days: trialDays });
   },
 };
 

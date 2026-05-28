@@ -507,7 +507,32 @@
     });
   }
 
+  async function loadBillingSummary() {
+    const el = $id('set-billing-summary');
+    if (!el) return;
+    if (!Api?.isLoggedIn?.()) {
+      el.textContent = '未登錄 — 登錄後可同步方案與配額';
+      return;
+    }
+    el.textContent = '載入方案中…';
+    const data = await Api.getBillingMe?.().catch(() => null);
+    if (!data?.plan_id) {
+      el.textContent = '無法載入方案資訊';
+      return;
+    }
+    const lim = data.limits || {};
+    const use = data.usage || {};
+    const trial = data.status === 'trialing' ? '（試用）' : '';
+    el.textContent = `${data.plan_name || data.plan_id}${trial} · 回測 ${use.backtests_today || 0}/${lim.daily_backtests} · 組合 ${use.portfolio_runs_today || 0}/${lim.daily_portfolio_runs}`;
+  }
+
   function init() {
+    if ($id('set-billing-go') && !$id('set-billing-go').dataset.bound) {
+      $id('set-billing-go').dataset.bound = '1';
+      $id('set-billing-go').addEventListener('click', () => {
+        window.StockQPro?.App?.nav?.('pricing', { syncHash: true });
+      });
+    }
     if ($id('set-save-btn') && !$id('set-save-btn').dataset.bound) {
       $id('set-save-btn').dataset.bound = '1';
       $id('set-save-btn').addEventListener('click', () => save());
@@ -537,11 +562,14 @@
       });
     }
     load().catch(() => window.StockQPro?.App?.toast?.('載入設定失敗', 'er'));
+    loadBillingSummary().catch(() => {});
+    window.addEventListener('stockq:auth-changed', () => loadBillingSummary().catch(() => {}));
   }
 
   function onShow() {
     startHealthPolling();
     loadDataSourceHealth().catch(() => {});
+    loadBillingSummary().catch(() => {});
   }
 
   function onUnload() {

@@ -72,21 +72,28 @@
     async loadUsers() {
       const tbody = $id('users-tbody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="5">載入中…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6">載入中…</td></tr>';
       const data = await Api.get('/api/admin/users', { silent: true }).catch(() => null);
       if (!data?.users?.length) {
-        tbody.innerHTML = '<tr><td colspan="5">暫無用戶或無權限</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6">暫無用戶或無權限</td></tr>';
         return;
       }
+      const plans = ['free', 'pro', 'institutional'];
       tbody.innerHTML = data.users.map((u) => {
         const role = u.role === 'admin' ? 'admin' : 'user';
         const badge = role === 'admin' ? 'badge-admin' : 'badge-user';
         const toggleRole = role === 'admin' ? 'user' : 'admin';
         const canDelete = this.user && u.id !== this.user.id;
+        const pid = u.plan_id || 'free';
+        const planOpts = plans.map((p) => `<option value="${p}"${p === pid ? ' selected' : ''}>${p}</option>`).join('');
         return `<tr>
           <td>${u.id}</td>
           <td>${escapeHtml(u.username)}</td>
           <td><span class="badge ${badge}">${role}</span></td>
+          <td>
+            <select class="admin-inp admin-plan-sel" data-uid="${u.id}" style="font-size:.68rem">${planOpts}</select>
+            <button type="button" class="admin-btn admin-btn-sm" data-plan-save="${u.id}">保存</button>
+          </td>
           <td style="color:var(--t3);font-size:.68rem">${escapeHtml(u.created_at || '--')}</td>
           <td>
             <button type="button" class="admin-btn admin-btn-sm" data-role="${u.id}" data-new="${toggleRole}">設為 ${toggleRole}</button>
@@ -95,6 +102,20 @@
         </tr>`;
       }).join('');
 
+      tbody.querySelectorAll('[data-plan-save]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-plan-save');
+          const sel = tbody.querySelector(`select[data-uid="${id}"]`);
+          const planId = sel?.value || 'free';
+          try {
+            await Api.post('/api/billing/admin/set-plan', { user_id: Number(id), plan_id: planId });
+            Utils.toast?.('方案已更新', 2500, 'success');
+            this.loadUsers();
+          } catch (e) {
+            Utils.toast?.(e?.message || '更新失敗', 3000, 'error');
+          }
+        });
+      });
       tbody.querySelectorAll('[data-role]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-role');

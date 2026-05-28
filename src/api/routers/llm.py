@@ -111,6 +111,9 @@ async def llm_put_settings(body: dict, user=Depends(require_auth)):
 @router.post("/api/llm/chat")
 async def llm_chat(body: dict, user=Depends(require_auth)):
     """智能問答（非流式）。"""
+    from src.core.entitlements import gate_ai_assistant
+
+    gate_ai_assistant(user)
     message = body.get("message") or body.get("query") or ""
     history = body.get("history") or body.get("messages")
     overrides = body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None
@@ -136,6 +139,9 @@ def _sse_encode(event: dict) -> str:
 @router.post("/api/llm/chat/stream")
 async def llm_chat_stream(body: dict, user=Depends(require_auth)):
     """智能問答（SSE 流式：status / tool_* / token / done）。"""
+    from src.core.entitlements import gate_ai_assistant
+
+    gate_ai_assistant(user)
     message = body.get("message") or body.get("query") or ""
     history = body.get("history") or body.get("messages")
     overrides = body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None

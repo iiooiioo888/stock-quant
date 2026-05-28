@@ -17,6 +17,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from src.config import settings
 from src.core.db import init_db, get_db_stats, get_alert_logs, get_conn
 from src.core.auth import require_auth, require_admin, get_current_user
+from src.core.entitlements import gate_portfolio_task
+from src.models.user import User
 from src.utils.logger import logger
 
 from src.api.constants import STOCK_NAMES
@@ -38,6 +40,7 @@ from src.api.routers.external_check import router as external_check_router
 from src.api.routers.llm import router as llm_router
 from src.api.routers.portfolio_settlement import router as portfolio_settlement_router
 from src.api.routers.user_allocation import router as user_allocation_router
+from src.api.routers.billing import router as billing_router
 from src.api.routers.stream import router as stream_router
 from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
@@ -182,6 +185,7 @@ app.include_router(external_check_router)
 app.include_router(llm_router)
 app.include_router(portfolio_settlement_router)
 app.include_router(user_allocation_router)
+app.include_router(billing_router)
 app.include_router(stream_router)
 
 # CORS
@@ -758,6 +762,11 @@ async def get_config():
             "local_first_auto_fetch": settings.local_first_auto_fetch,
             "stock_logo_api_enabled": settings.stock_logo_api_enabled,
             "admin_controls": get_controls(),
+            "billing": {
+                "dev_upgrade": bool(getattr(settings, "billing_dev_upgrade", True)),
+                "checkout_enabled": bool(getattr(settings, "billing_checkout_enabled", False)),
+                "pricing_url": "/app#/pricing",
+            },
         }
 
     return cached_response("api:config", ttl=60, builder=_build)
@@ -770,10 +779,15 @@ async def get_portfolio_presets():
 
 
 @app.post("/api/portfolio/preset/{preset_name}")
-async def run_preset_portfolio(preset_name: str, cash: float = None):
+async def run_preset_portfolio(
+    preset_name: str,
+    cash: float = None,
+    user: User = Depends(require_auth),
+):
     """用預設模板跑組合回測（異步任務，納入任務面板）"""
     from src.core.portfolio import run_portfolio
 
+    gate_portfolio_task(user, advanced=False)
     preset = settings.portfolio_presets.get(preset_name)
     if not preset:
         raise HTTPException(404, f"預設組合不存在: {preset_name}，可選: {list(settings.portfolio_presets.keys())}")
@@ -816,10 +830,11 @@ async def run_preset_portfolio(preset_name: str, cash: float = None):
 # ====== 進階組合功能 ======
 
 @app.post("/api/portfolio/dynamic")
-async def run_dynamic_portfolio(body: dict):
+async def run_dynamic_portfolio(body: dict, user: User = Depends(require_auth)):
     """動態權重組合回測 — 根據滾動夏普自動調整子策略權重"""
     from src.core.portfolio import dynamic_weight_portfolio
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     rolling_window = body.get("rolling_window", 60)
     rebalance_freq_days = body.get("rebalance_freq_days", 20)
@@ -850,10 +865,11 @@ async def run_dynamic_portfolio(body: dict):
 
 
 @app.post("/api/portfolio/kelly")
-async def run_kelly_criterion(body: dict):
+async def run_kelly_criterion(body: dict, user: User = Depends(require_auth)):
     """Kelly 公式計算最優倉位比例"""
     from src.core.portfolio import kelly_criterion
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     cash = body.get("cash")
     fraction_limit = body.get("fraction_limit", 0.5)
@@ -878,10 +894,11 @@ async def run_kelly_criterion(body: dict):
 
 
 @app.post("/api/portfolio/degradation")
-async def run_degradation_detection(body: dict):
+async def run_degradation_detection(body: dict, user: User = Depends(require_auth)):
     """策略衰退檢測 — 檢測子策略是否連續跑輸基準"""
     from src.core.portfolio import detect_degradation
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     lookback_days = body.get("lookback_days", 30)
     threshold_days = body.get("threshold_days", 5)
@@ -915,10 +932,11 @@ async def run_degradation_detection(body: dict):
 
 
 @app.post("/api/portfolio/arbitrate")
-async def run_signal_arbitration(body: dict):
+async def run_signal_arbitration(body: dict, user: User = Depends(require_auth)):
     """信號衝突仲裁 — 多策略矛盾信號加權投票"""
     from src.core.portfolio import arbitrate_signals
 
+    gate_portfolio_task(user, advanced=True)
     strategy_signals = body.get("strategy_signals", [])
     allocations = body.get("allocations")
     rolling_window = body.get("rolling_window", 60)
@@ -950,10 +968,11 @@ async def run_signal_arbitration(body: dict):
 
 
 @app.post("/api/portfolio/risk-parity")
-async def run_risk_parity(body: dict):
+async def run_risk_parity(body: dict, user: User = Depends(require_auth)):
     """風險平價組合 — 每個策略對總風險貢獻相等"""
     from src.core.portfolio import risk_parity_portfolio
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     cash = body.get("cash")
 
@@ -973,10 +992,11 @@ async def run_risk_parity(body: dict):
 
 
 @app.post("/api/portfolio/mvo")
-async def run_mean_variance(body: dict):
+async def run_mean_variance(body: dict, user: User = Depends(require_auth)):
     """均值-方差優化 — Markowitz 最優權重"""
     from src.core.portfolio import mean_variance_optimize
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     objective = body.get("objective", "max_sharpe")
     cash = body.get("cash")
@@ -1005,10 +1025,11 @@ async def run_mean_variance(body: dict):
 
 
 @app.post("/api/portfolio/vol-target")
-async def run_vol_targeting(body: dict):
+async def run_vol_targeting(body: dict, user: User = Depends(require_auth)):
     """波動率目標組合 — 根據已實現波動率動態調整倉位"""
     from src.core.portfolio import volatility_targeting
 
+    gate_portfolio_task(user, advanced=True)
     allocations = body.get("allocations", [])
     target_vol = body.get("target_vol", 0.15)
     lookback_days = body.get("lookback_days", 20)
@@ -1371,10 +1392,14 @@ async def run_heatmap(
     param_y: str,
     grid_size: int = 10,
     objective: str = "sharpe",
+    user: User = Depends(require_auth),
 ):
     """參數敏感度熱力圖"""
+    from src.core.entitlements import gate_backtest_submit
     from src.core.heatmap import param_heatmap
     from src.core.result_cache import get_cached_compute, set_cached_compute
+
+    gate_backtest_submit(user, advanced=True)
 
     param_x = (param_x or "").strip()
     param_y = (param_y or "").strip()
@@ -1575,9 +1600,16 @@ async def get_signal_strength(code: str = None):
 # ====== 數據導出 ======
 
 @app.get("/api/export/backtest/{result_id}")
-async def export_backtest(result_id: int, format: str = "csv"):
+async def export_backtest(
+    result_id: int,
+    format: str = "csv",
+    user: User = Depends(require_auth),
+):
     """導出回測結果"""
+    from src.core.entitlements import gate_data_export
     from src.core.export import export_backtest_csv, export_backtest_json
+
+    gate_data_export(user)
 
     if format == "json":
         content = export_backtest_json(result_id)
@@ -1594,9 +1626,17 @@ async def export_backtest(result_id: int, format: str = "csv"):
 
 
 @app.get("/api/export/trades")
-async def export_trades(code: str, strategy: str, format: str = "csv"):
+async def export_trades(
+    code: str,
+    strategy: str,
+    format: str = "csv",
+    user: User = Depends(require_auth),
+):
     """導出交易明細"""
+    from src.core.entitlements import gate_data_export
     from src.core.export import export_trades_csv, export_trades_json
+
+    gate_data_export(user)
 
     if format == "json":
         content = export_trades_json(code, strategy)

@@ -151,6 +151,8 @@
 
     _bindAuth() {
       const pill = document.getElementById('auth-pill');
+      const planBadge = document.getElementById('plan-badge');
+      planBadge?.addEventListener('click', () => this.nav('pricing', { syncHash: true }));
       if (!pill) return;
       pill.addEventListener('click', () => {
         if (typeof Api === 'undefined') return;

@@ -552,9 +552,15 @@ async def list_compare_indexes():
 
 
 @router.post("/api/stocks/compare")
-async def compare_stocks(body: dict):
+async def compare_stocks(
+    body: dict,
+    user=Depends(get_current_user),
+):
     """多股收益率對比（本地優先，缺失時首次自動入庫）"""
     codes = body.get("codes", [])
+    from src.core.entitlements import gate_compare_submit
+
+    gate_compare_submit(user, codes)
     days = body.get("days", 250)
     start = body.get("start")
     benchmark = body.get("benchmark")

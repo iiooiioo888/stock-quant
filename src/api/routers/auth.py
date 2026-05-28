@@ -67,7 +67,11 @@ async def auth_login(body: dict):
 @router.get("/api/auth/me")
 async def auth_me(user = Depends(require_auth)):
     """獲取當前登錄用戶信息"""
-    return {"success": True, "user": user.to_dict()}
+    from src.core.entitlements import billing_summary
+
+    payload = user.to_dict()
+    payload["billing"] = billing_summary(user)
+    return {"success": True, "user": payload}
 
 
 @router.put("/api/auth/settings")
@@ -107,10 +111,14 @@ async def user_get_watchlists(user = Depends(require_auth)):
 async def user_create_watchlist(body: dict, user = Depends(require_auth)):
     """創建監控列表"""
     import sqlite3
+    from src.core.entitlements import check_watchlist_codes_cap
+
     name = (body.get("name") or "").strip()
     codes = body.get("codes", [])
     if not name:
         raise HTTPException(400, "請提供監控列表名稱")
+    if isinstance(codes, list):
+        check_watchlist_codes_cap(user, len(codes))
     
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     codes_json = json.dumps(codes, ensure_ascii=False)
@@ -126,9 +134,13 @@ async def user_create_watchlist(body: dict, user = Depends(require_auth)):
 async def user_update_watchlist(watchlist_id: int, body: dict, user = Depends(require_auth)):
     """更新監控列表"""
     import sqlite3
+    from src.core.entitlements import check_watchlist_codes_cap
+
     name = body.get("name")
     codes = body.get("codes")
-    
+    if codes is not None and isinstance(codes, list):
+        check_watchlist_codes_cap(user, len(codes))
+
     with get_conn() as conn:
         # 確認屬於當前用戶
         existing = conn.execute(
@@ -270,7 +282,13 @@ async def user_backtest_history(user = Depends(require_auth), limit: int = 50):
 async def admin_list_users(user = Depends(require_admin)):
     """列出所有用戶（僅管理員）"""
     from src.core.auth import list_users
+    from src.core.entitlements import effective_plan_id
+    from src.models.user import User
+
     users = list_users()
+    for row in users:
+        u = User.from_row({**row, "password_hash": ""})
+        row["plan_id"] = effective_plan_id(u)
     return {"success": True, "users": users, "total": len(users)}
 
 

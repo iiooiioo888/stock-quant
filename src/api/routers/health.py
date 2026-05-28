@@ -34,6 +34,7 @@ async def health_check():
             "database": db_status,
             "data_ready": data_ready,
             "ws_auth_required": settings.effective_ws_auth_required,
+            "billing_dev_upgrade": bool(getattr(settings, "billing_dev_upgrade", True)),
             "uptime": f"{hours}h {minutes}m {seconds}s",
             **stats,
         }

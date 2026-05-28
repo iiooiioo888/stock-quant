@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
-  <link rel="preload" href="/static/css/pro.css?v=stock-lib-20260529" as="style" />
-  <link rel="stylesheet" href="/static/css/pro.css?v=stock-lib-20260529" />
+  <link rel="preload" href="/static/css/pro.css?v=pricing-20260529" as="style" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=pricing-20260529" />
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
     @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
@@ -66,6 +66,7 @@
         <span class="dot" id="notif-task-dot" style="display:none" title="進行中任務"></span>
       </button>
       <span class="sep" aria-hidden="true"></span>
+      <span class="plan-badge" id="plan-badge" hidden></span>
       <div class="avatar auth-pill" id="auth-pill" role="button" tabindex="0" title="登錄 / 登出">訪</div>
     </div>
   </header>
@@ -826,7 +827,7 @@
             <div class="pa"><span id="assets-meta" class="badge b-bl badge-count">--</span></div>
           </div>
           <div class="pb">
-            <p class="assets-lib-hint">預設顯示 A股 / 港股 / 美股龍頭庫；完整目錄含銀行間、OTC 等機構級占位標的。</p>
+            <p class="assets-lib-hint">預設「股票專區」；可點 <strong>恒生科技</strong>、<strong>滬深300核心</strong> 等主題包一鍵篩選。完整目錄含機構級占位標的。</p>
             <div class="pro-toolbar pro-toolbar--stack" style="margin-bottom:10px">
               <div class="pro-field pro-field--grow">
                 <input type="search" id="assets-search" class="inp" placeholder="搜尋代碼、名稱或行業…" autocomplete="off" />
@@ -885,6 +886,13 @@
                   <button type="button" class="btn s" id="set-topbar-edit">編輯頂欄指數</button>
                   <span style="font-size:.66rem;color:var(--t3)">加入更多指數／移走不想看的（保存到本機）</span>
                 </div>
+              </div>
+            </section>
+            <section class="pnl" id="set-billing-card">
+              <div class="ph"><div class="pt">訂閱方案</div></div>
+              <div class="pb" style="display:grid;gap:10px">
+                <div id="set-billing-summary" class="pro-meta-bar" style="margin:0">未登錄</div>
+                <button type="button" class="btn btn-ac" id="set-billing-go">管理訂閱 / 升級</button>
               </div>
             </section>
             <section class="pnl">
@@ -1030,7 +1038,18 @@
       <div class="pnl"><div class="ph"><div class="pt">市場狀態</div></div><div class="pb"><p class="placeholder-msg">市場狀態（Regime）識別規劃中，將於後續版本提供。</p></div></div>
     </div>
     <div class="pg" id="pg-pricing">
-      <div class="pnl"><div class="ph"><div class="pt">方案定價</div></div><div class="pb"><p class="placeholder-msg">訂閱方案頁規劃中，將於後續版本提供。</p></div></div>
+      <div class="pnl pricing-pnl">
+        <div class="ph pricing-ph">
+          <div>
+            <div class="pt">方案與訂閱</div>
+            <p class="pricing-lead">專業量化研究 · 組合回測 · 多市場對比 · 雲端配置同步</p>
+          </div>
+          <div id="pricing-account" class="pricing-account" hidden></div>
+        </div>
+        <div class="pb" id="pricing-root">
+          <p class="placeholder-msg">載入方案中…</p>
+        </div>
+      </div>
     </div>
 
   </main>

@@ -15,7 +15,8 @@ from src.core.market_catalog import (
     map_price_sources,
 )
 from src.utils.logger import logger
-from src.core.auth import require_admin
+from src.core.auth import get_current_user, require_admin
+from src.core.entitlements import user_assets_pro
 
 router = APIRouter(tags=["assets"])
 
@@ -192,21 +193,33 @@ async def import_asset_prices(
 
 
 @router.get("/api/assets/catalog")
-async def get_assets_catalog():
+async def get_assets_catalog(user=Depends(get_current_user)):
     """資產庫目錄（12 分組元數據）。"""
     from src.core.api_cache import cached_response
+
+    assets_pro = user_assets_pro(user)
 
     def _build():
         from src.core.market_catalog import STOCK_GROUPS
         from src.core.stock_sectors import STOCK_SECTOR_LABELS, stock_sector_label
+        from src.core.stock_theme_packs import count_themes_in_catalog, theme_packs_payload, themes_for_symbol
+
+        stock_syms = [
+            i.symbol for i in MARKET_INSTRUMENTS
+            if i.group in STOCK_GROUPS and i.asset_class == "stock"
+        ]
+        theme_counts = count_themes_in_catalog(stock_syms)
 
         rows = []
         for i in MARKET_INSTRUMENTS:
             sector = ""
             sector_label = ""
+            themes: list[str] = []
             if i.group in STOCK_GROUPS and i.asset_class == "stock":
                 sector = (i.sub_class or "other").strip() or "other"
                 sector_label = stock_sector_label(sector)
+                if assets_pro:
+                    themes = themes_for_symbol(i.symbol)
             rows.append({
                 "symbol": i.symbol,
                 "name": i.name,
@@ -216,6 +229,7 @@ async def get_assets_catalog():
                 "sub_class": i.sub_class,
                 "sector": sector,
                 "sector_label": sector_label,
+                "themes": themes if assets_pro else [],
                 "market": i.market,
                 "exchange": i.exchange,
                 "currency": i.currency,
@@ -231,20 +245,32 @@ async def get_assets_catalog():
                 "tv": i.tv,
                 "topbar": i.topbar,
             })
-        return {
+        packs = theme_packs_payload() if assets_pro else []
+        for p in packs:
+            p["catalog_count"] = theme_counts.get(p["id"], 0)
+
+        out = {
             **catalog_summary(),
             "instruments": rows,
             "sector_labels": STOCK_SECTOR_LABELS,
+            "theme_packs": packs,
+            "theme_pack_order": [p["id"] for p in packs],
         }
+        if not assets_pro:
+            out["theme_packs_locked"] = True
+            out["theme_packs_upgrade_url"] = "/app#/pricing"
+        return out
 
-    # v4: stock sector / stock_universe stats
-    return cached_response("api:assets:catalog:v4", ttl=300, builder=_build)
+    # v5: theme packs + themes[] on instruments（Pro: assets_pro）
+    cache_key = "api:assets:catalog:v5:pro" if assets_pro else "api:assets:catalog:v5:base"
+    return cached_response(cache_key, ttl=300, builder=_build)
 
 
 @router.get("/api/assets/detail")
 async def get_asset_detail(
     symbol: str = Query(..., min_length=1, max_length=32),
     days: int = Query(180, ge=30, le=500),
+    user=Depends(get_current_user),
 ):
     """單資產詳情：K 線、財報、新聞與外部連結。"""
     from src.core.api_cache import cached_response
@@ -254,10 +280,11 @@ async def get_asset_detail(
     if not sym:
         raise HTTPException(400, "symbol required")
 
-    cache_key = f"api:assets:detail:{sym}:{days}"
+    pro = user_assets_pro(user)
+    cache_key = f"api:assets:detail:{sym}:{days}:{'pro' if pro else 'base'}"
 
     def _build():
-        detail = build_asset_detail(sym, days)
+        detail = build_asset_detail(sym, days, include_thesis=pro)
         if not detail:
             raise HTTPException(404, f"無法載入標的 {sym}")
         return {"success": True, "detail": detail}

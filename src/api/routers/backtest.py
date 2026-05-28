@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request, Body
 from src.config import settings
-from src.core.auth import require_auth, require_admin
+from src.core.auth import require_auth, require_admin, get_current_user
 from src.core.db import get_conn
 from src.utils.logger import logger
 from src.api.constants import STOCK_NAMES
@@ -31,11 +31,15 @@ async def run_backtest_api(
     trailing_stop_pct: float = None,
     benchmark: bool = False,
     timeframe: str = "1d",
+    user=Depends(get_current_user),
 ):
     """執行回測（自動去重：相同參數的回測不會重複執行）"""
     from src.core.backtest import run_backtest, STRATEGIES
+    from src.core.entitlements import gate_backtest_submit
     from src.core.kline_timeframe import normalize_timeframe
     from src.core.task_manager import create_task
+
+    gate_backtest_submit(user, advanced=False)
 
     try:
         timeframe = normalize_timeframe(timeframe)
@@ -77,7 +81,7 @@ async def run_backtest_api(
 
 
 @router.post("/api/backtest/advanced")
-async def run_advanced_backtest_api(body: dict):
+async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
     """
     進階回測 — 支持滑點、T+1、漲跌停控制（自動加入任務列表）
 
@@ -97,8 +101,11 @@ async def run_advanced_backtest_api(body: dict):
         timeframe: K 線週期 1d / 1h / 1m（默認 1d）
     """
     from src.core.backtest import run_backtest, STRATEGIES
+    from src.core.entitlements import gate_backtest_submit
     from src.core.kline_timeframe import normalize_timeframe
     from src.core.task_manager import create_task
+
+    gate_backtest_submit(user, advanced=True)
 
     code = body.get("code", "")
     strategy = body.get("strategy", "dual_ma")
@@ -214,17 +221,21 @@ async def run_optimize_api(
     max_position_pct: float = None,
     slippage_pct: float = None,
     body: dict = Body(default=None),
+    user=Depends(require_auth),
 ):
     """
     參數優化（自動加入任務列表）。
     查詢參數與 JSON body 可並用；風控亦可嵌套 risk: { ... }。
     """
+    from src.core.entitlements import gate_optimize_submit
     from src.core.optimize import grid_search, optuna_search, optimize_all
     from src.core.risk_backtest import parse_risk_params
     from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
+
+    gate_optimize_submit(user)
 
     merged = {
         "code": code,
@@ -289,10 +300,14 @@ async def run_portfolio_api(
     rebalance: str = "none",
     rebalance_freq_days: int = 20,
     cash: float = None,
+    user=Depends(require_auth),
 ):
     """組合回測（自動加入任務列表）"""
+    from src.core.entitlements import gate_portfolio_task
     from src.core.portfolio import run_portfolio
     from src.core.task_manager import create_task
+
+    gate_portfolio_task(user, advanced=False)
 
     if not allocations:
         raise HTTPException(400, "請提供組合配置")
@@ -418,13 +433,17 @@ async def run_walkforward(
     step_days: int = 250,
     objective: str = "sharpe",
     n_trials: int = 50,
+    user=Depends(require_auth),
 ):
     """Walk-Forward 分析（自動加入任務列表）"""
+    from src.core.entitlements import gate_backtest_submit
     from src.core.walkforward import walk_forward
     from src.core.task_manager import create_task
 
     if not code:
         raise HTTPException(400, "請提供股票代碼")
+
+    gate_backtest_submit(user, advanced=True)
 
     task_params = {"code": code, "strategy": strategy, "train_days": train_days, "test_days": test_days}
     task = create_task("walkforward", task_params, title=f"Walk-Forward {code}/{strategy}")
@@ -450,10 +469,13 @@ async def run_walkforward(
 # ====== 自動優化 ======
 
 @router.post("/api/auto-optimize")
-async def run_auto_optimize(body: dict = None):
+async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
     """自動參數優化（自動加入任務列表）"""
     from src.core.auto_optimize import auto_optimize_watchlist
+    from src.core.entitlements import gate_optimize_submit
     from src.core.task_manager import create_task
+
+    gate_optimize_submit(user)
 
     if body is None:
         body = {}
