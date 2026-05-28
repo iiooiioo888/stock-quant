@@ -1,5 +1,8 @@
 """任務管理 API 路由"""
+import asyncio
+import json
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -75,6 +78,55 @@ async def get_task_api(task_id: str):
     if not task:
         raise HTTPException(404, "任務不存在")
     return {"task": task}
+
+
+@router.get("/api/task-events")
+async def tasks_sse(
+    heartbeat_sec: int = 15,
+):
+    """
+    任務事件 SSE：
+    - task_*：任務狀態/進度變更
+    - task_log：任務日誌追加
+    """
+    from src.api.sse import subscribe, unsubscribe, sse_format
+
+    hb = max(5, min(int(heartbeat_sec or 15), 60))
+    async def gen():
+        # 讓 proxy/瀏覽器不要緩衝
+        yield b": ok\n\n"
+        q = subscribe(maxsize=300)
+        try:
+            while True:
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=hb)
+                    # msg 已是 json string
+                    try:
+                        obj = json.loads(msg)
+                        ev = obj.get("type") if isinstance(obj, dict) else None
+                    except Exception:
+                        ev = None
+                    yield sse_format(msg, event=ev).encode("utf-8")
+                except asyncio.TimeoutError:
+                    yield b": ping\n\n"
+        finally:
+            unsubscribe(q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/api/task-events/ping")
+async def tasks_sse_ping():
+    """SSE 端點連線測試（不走串流）。"""
+    return {"success": True, "ok": True}
 
 
 @router.post("/api/tasks/{task_id}/cancel")

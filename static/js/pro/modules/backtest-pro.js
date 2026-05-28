@@ -146,12 +146,13 @@
   function getChart(id) {
     const el = $id(id);
     if (!el || typeof echarts === 'undefined') return null;
-    if (charts[id]) {
-      try {
-        if (typeof charts[id].isDisposed === 'function' && !charts[id].isDisposed()) return charts[id];
-      } catch (_) { /* re-init */ }
-      delete charts[id];
+    const reg = window.StockQPro?.ECharts;
+    if (reg?.get) {
+      const inst = reg.get('backtest', id, el);
+      if (inst) charts[id] = inst;
+      return inst;
     }
+    if (charts[id]) return charts[id];
     if (el.offsetWidth < 2 || el.offsetHeight < 2) return null;
     charts[id] = echarts.init(el);
     return charts[id];
@@ -863,6 +864,11 @@
     });
   }
 
+  function unload() {
+    try { window.StockQPro?.ECharts?.disposePage?.('backtest'); } catch (_) {}
+    charts = {};
+  }
+
   /** 從任務中心跳轉時展示已有回測結果 */
   function showResult(r, task) {
     const norm = normalizeResult(r);
@@ -894,5 +900,5 @@
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
-  window.StockQPro.pages.backtest = { init, onShow, showResult };
+  window.StockQPro.pages.backtest = { init, onShow, unload, showResult };
 })();

@@ -17,13 +17,26 @@ def api_error_body(code: int, msg: str, trace_id: str | None = None) -> dict:
     }
 
 
-def _trace_id(request: Request) -> str:
+def get_trace_id(request: Request) -> str:
     existing = request.headers.get("X-Request-Id") or request.headers.get("X-Trace-Id")
     return (existing or uuid.uuid4().hex[:12])[:32]
 
 
+def api_error_response(request: Request, code: int, msg: str) -> JSONResponse:
+    """
+    統一由 middleware / router 直接返回的錯誤格式。
+    例：429 限流、401 未登錄、403 功能關閉等。
+    """
+    tid = get_trace_id(request)
+    return JSONResponse(
+        status_code=code,
+        content=api_error_body(code, msg, tid),
+        headers={"X-Trace-Id": tid},
+    )
+
+
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-    tid = _trace_id(request)
+    tid = get_trace_id(request)
     detail = exc.detail
     if isinstance(detail, dict):
         msg = detail.get("msg") or detail.get("message") or str(detail)
@@ -39,7 +52,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    tid = _trace_id(request)
+    tid = get_trace_id(request)
     errs = exc.errors()
     first = errs[0] if errs else {}
     loc = ".".join(str(x) for x in first.get("loc", []) if x != "body")
@@ -54,7 +67,7 @@ async def validation_exception_handler(
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    tid = _trace_id(request)
+    tid = get_trace_id(request)
     from src.utils.logger import logger
 
     logger.exception("未處理異常 [%s] %s", tid, request.url.path)

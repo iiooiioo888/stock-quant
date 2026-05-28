@@ -184,18 +184,27 @@ _watchdog_stop = threading.Event()
 _watchdog_thread: Optional[threading.Thread] = None
 _MAX_LOG_LINES = 500
 
-# ── WebSocket 任務推送 ──────────────────────────────────────────
-_ws_broadcast: Optional[Callable] = None
+# ── 任務事件推送（WebSocket / SSE 等）───────────────────────────
+_broadcasters: list[Callable] = []
 
 
 def register_ws_broadcaster(broadcast_fn: Callable):
-    """註冊 WebSocket 廣播函數，任務狀態變更時自動推送。"""
-    global _ws_broadcast
-    _ws_broadcast = broadcast_fn
+    """向後兼容：註冊 WebSocket 廣播函數。"""
+    register_task_broadcaster(broadcast_fn)
+
+
+def register_task_broadcaster(broadcast_fn: Callable):
+    """註冊任務事件廣播函數（可多個）。"""
+    if not broadcast_fn:
+        return
+    with _lock:
+        if broadcast_fn in _broadcasters:
+            return
+        _broadcasters.append(broadcast_fn)
 
 
 def append_task_log(task_id: str, line: str, *, level: str = "info") -> None:
-    """追加任務日誌行並推送 WebSocket。"""
+    """追加任務日誌行並推送事件。"""
     if not line:
         return
     entry = {
@@ -206,16 +215,18 @@ def append_task_log(task_id: str, line: str, *, level: str = "info") -> None:
     with _lock:
         buf = _task_logs.setdefault(task_id, deque(maxlen=_MAX_LOG_LINES))
         buf.append(entry)
-    if _ws_broadcast is None:
-        return
-    try:
-        _ws_broadcast(_to_json_safe({
-            "type": "task_log",
-            "task_id": task_id,
-            "log": entry,
-        }))
-    except Exception as e:
-        logger.debug(f"WS 任務日誌推送失敗: {e}")
+    payload = _to_json_safe({
+        "type": "task_log",
+        "task_id": task_id,
+        "log": entry,
+    })
+    with _lock:
+        fns = list(_broadcasters)
+    for fn in fns:
+        try:
+            fn(payload)
+        except Exception as e:
+            logger.debug(f"任務日誌推送失敗: {e}")
 
 
 def get_task_logs(task_id: str, *, tail: int = 200) -> list[dict]:
@@ -230,9 +241,10 @@ def get_task_logs(task_id: str, *, tail: int = 200) -> list[dict]:
 
 
 def _notify_task_update(task_id: str, event: str = "task_update"):
-    """通過 WebSocket 推送任務狀態更新（非阻塞）。"""
-    if _ws_broadcast is None:
-        return
+    """推送任務狀態更新（非阻塞）。"""
+    with _lock:
+        if not _broadcasters:
+            return
     try:
         task = _tasks.get(task_id)
         if not task:
@@ -251,9 +263,15 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
             "completed_at": task.get("completed_at"),
             "result_preview": _extract_result_preview(task),
         })
-        _ws_broadcast(payload)
+        with _lock:
+            fns = list(_broadcasters)
+        for fn in fns:
+            try:
+                fn(payload)
+            except Exception as e:
+                logger.debug(f"任務推送失敗: {e}")
     except Exception as e:
-        logger.debug(f"WS 任務推送失敗: {e}")
+        logger.debug(f"任務推送失敗: {e}")
 
 
 def _resolve_max_workers() -> int:

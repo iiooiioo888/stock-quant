@@ -372,7 +372,10 @@
       chart.resize();
       return chart;
     }
-    chart = echarts.init(el, null, { renderer: 'canvas' });
+    const reg = window.StockQPro?.ECharts;
+    chart = reg?.get
+      ? reg.get('compare', 'cmp-ch', el, { renderer: 'canvas' })
+      : echarts.init(el, null, { renderer: 'canvas' });
     return chart;
   }
 
@@ -575,7 +578,10 @@
       corrChart.resize();
       return corrChart;
     }
-    corrChart = echarts.init(el, null, { renderer: 'canvas' });
+    const reg = window.StockQPro?.ECharts;
+    corrChart = reg?.get
+      ? reg.get('compare', 'cmp-corr-heat', el, { renderer: 'canvas' })
+      : echarts.init(el, null, { renderer: 'canvas' });
     return corrChart;
   }
 
@@ -1681,7 +1687,9 @@
   }
 
   function unload() {
-    /* keep chart instance */
+    try { window.StockQPro?.ECharts?.disposePage?.('compare'); } catch (_) {}
+    chart = null;
+    corrChart = null;
   }
 
   window.addEventListener('resize', () => {

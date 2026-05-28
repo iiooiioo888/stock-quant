@@ -35,7 +35,8 @@
     const el = $id('wl-ch');
     if (!el) return null;
     if (chart) return chart;
-    chart = echarts.init(el);
+    const reg = window.StockQPro?.ECharts;
+    chart = reg?.get ? reg.get('watchlist', 'wl-ch', el) : echarts.init(el);
     return chart;
   }
 
@@ -306,6 +307,10 @@
   window.StockQPro.pages.watchlist = {
     init,
     load,
-    unload: () => stopRealtime(),
+    unload: () => {
+      stopRealtime();
+      try { window.StockQPro?.ECharts?.disposePage?.('watchlist'); } catch (_) {}
+      chart = null;
+    },
   };
 })();

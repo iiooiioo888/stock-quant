@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "subagentStart": [
+      {
+        "command": ".cursor/hooks/fastapi-subagent-guard.ps1",
+        "timeout": 10,
+        "failClosed": false
+      }
+    ]
+  }
+}
+

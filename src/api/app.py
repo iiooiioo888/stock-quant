@@ -11,7 +11,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 
@@ -39,7 +38,7 @@ from src.api.routers.external_check import router as external_check_router
 from src.api.routers.llm import router as llm_router
 from src.api.routers.portfolio_settlement import router as portfolio_settlement_router
 from src.api.routers.stream import router as stream_router
-from src.api.errors import register_exception_handlers
+from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
 
@@ -108,9 +107,12 @@ async def lifespan(app: FastAPI):
     # 啟動 WebSocket 後台推送
     import asyncio
     from src.api.ws import set_event_loop, sync_broadcast
-    from src.core.task_manager import register_ws_broadcaster
+    from src.api.sse import set_event_loop as set_sse_loop, sync_publish as sse_publish
+    from src.core.task_manager import register_ws_broadcaster, register_task_broadcaster
     set_event_loop(asyncio.get_running_loop())
+    set_sse_loop(asyncio.get_running_loop())
     register_ws_broadcaster(sync_broadcast)
+    register_task_broadcaster(sse_publish)
     _ws_task = asyncio.create_task(ws_realtime_push())
 
     try:
@@ -200,8 +202,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API / 靜態資源 GZip（減少傳輸體積）
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# 注意：全域 GZip 會干擾 SSE/StreamingResponse（可能導致串流端點卡住）。
+# 如需壓縮，改用反向代理層（nginx/caddy）或針對非串流端點做選擇性壓縮。
 
 
 @app.middleware("http")
@@ -333,11 +335,7 @@ async def admin_controls_middleware(request: Request, call_next):
     try:
         from src.core.admin_controls import is_allowed
         if not is_allowed(scope, action, user=user):
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "此功能已被管理員關閉（僅管理員可用）", "scope": scope, "action": action},
-            )
+            return api_error_response(request, 403, "此功能已被管理員關閉（僅管理員可用）")
     except Exception:
         # 保守策略：控制開關異常時不阻擋
         pass
@@ -453,12 +451,9 @@ async def rate_limit_middleware(request: Request, call_next):
     allowed, retry_after = limiter.check(client_ip)
 
     if not allowed:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "請求過於頻繁，請稍後再試"},
-            headers={"Retry-After": str(retry_after)},
-        )
+        resp = api_error_response(request, 429, "請求過於頻繁，請稍後再試")
+        resp.headers["Retry-After"] = str(retry_after)
+        return resp
 
     return await call_next(request)
 
@@ -472,6 +467,7 @@ AUTH_WHITELIST_PREFIX = (
     "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
     "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/stock-universe", "/api/data-sources",
     "/api/markets", "/api/indices", "/api/assets", "/api/dashboard", "/api/data/", "/api/tasks",
+    "/api/task-events",
     "/api/external",
     "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts", "/api/watchlist",
     "/api/llm/status",
@@ -553,12 +549,10 @@ async def auth_middleware(request: Request, call_next):
                 request.state.user = user
             else:
                 # Token 無效
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=401, content={"detail": "Token 無效或已過期，請重新登錄"})
+                return api_error_response(request, 401, "Token 無效或已過期，請重新登錄")
         else:
             # 無 token
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=401, content={"detail": "未登錄，請先獲取 Token（POST /api/auth/login）"})
+            return api_error_response(request, 401, "未登錄，請先獲取 Token（POST /api/auth/login）")
 
     response = await call_next(request)
     return response

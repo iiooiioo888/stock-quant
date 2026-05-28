@@ -23,6 +23,8 @@
     _bound: false,
     _selectedIds: new Set(),
     _wsHandler: null,
+    _sse: null,
+    _sseRetry: 0,
     _todayOnly: false,
     _hasResultOnly: false,
 
@@ -77,6 +79,7 @@
       this._selectedIds.clear();
       this._updateBatchBar();
       this._bindWsEvents();
+      this._bindSseEvents();
       await this.refresh();
       this._startPolling();
     },
@@ -84,7 +87,62 @@
     unload() {
       this._stopPolling();
       this._unbindWsEvents();
+      this._unbindSseEvents();
       this.closeDetail();
+    },
+
+    _bindSseEvents() {
+      // SSE 作為 WS 的補強：當 WS 不可用/不穩定時仍可即時更新
+      // 若瀏覽器不支援或已連線則跳過
+      if (this._sse) return;
+      if (typeof EventSource === 'undefined') return;
+      // 任務中心不在前台就不建立連線（避免背景頁面資源浪費）
+      if (proApp()?.current && proApp().current !== 'tasks') return;
+
+      const url = '/api/task-events';
+      const es = new EventSource(url);
+      this._sse = es;
+      this._sseRetry = 0;
+
+      const onAny = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (!data?.type) return;
+          if (data.type === 'task_log' && data.task_id) {
+            this._appendLiveLog(data.task_id, data.log);
+            return;
+          }
+          if (!String(data.type).startsWith('task_')) return;
+          if (data.type === 'task_progress' && this._patchTaskFromWs(data)) return;
+          this._pollCount = 0;
+          this.refresh(true);
+        } catch (_) {}
+      };
+
+      // 註冊常見事件（後端會用 event: <type>）
+      [
+        'task_created', 'task_started', 'task_retrying',
+        'task_progress', 'task_update',
+        'task_completed', 'task_failed', 'task_cancelled',
+        'task_log',
+      ].forEach((t) => es.addEventListener(t, onAny));
+      es.onmessage = onAny;
+
+      es.onerror = () => {
+        // 交給瀏覽器重連；若多次失敗則退回輪詢即可
+        this._sseRetry += 1;
+        if (this._sseRetry >= 5) {
+          try { es.close(); } catch (_) {}
+          this._sse = null;
+        }
+      };
+    },
+
+    _unbindSseEvents() {
+      const es = this._sse;
+      if (!es) return;
+      try { es.close(); } catch (_) {}
+      this._sse = null;
     },
 
     _populateTypeFilter() {
