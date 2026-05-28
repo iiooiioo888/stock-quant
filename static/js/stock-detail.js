@@ -350,6 +350,18 @@ const StockDetail = {
         const code = el.dataset.code || '';
         if (code) this.open(code);
       });
+      // 雙擊快速刷新該股詳情
+      el.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const code = el.dataset.code || '';
+        if (code) {
+          this.load(code);
+          if (typeof Utils !== 'undefined') {
+            Utils.toast(`重新載入 ${code}`, 1500);
+          }
+        }
+      });
     });
   },
 
@@ -429,7 +441,7 @@ const StockDetail = {
       const code = this._esc(s.code);
       const name = this._esc(s.name || s.code);
       const fav = LocalStore.isFavorite(s.code);
-      return `<button type="button" class="sd-recent-chip" data-code="${code}" title="${name}">
+      return `<button type="button" class="sd-recent-chip" data-code="${code}" title="${name} (雙擊查看詳情)">
         <span class="sd-recent-code">${code}</span>
         <span class="sd-recent-name">${name}</span>
         ${fav ? '<span class="sd-recent-fav" title="已收藏">★</span>' : ''}
@@ -439,6 +451,18 @@ const StockDetail = {
       btn.addEventListener('click', () => {
         const code = btn.dataset.code || '';
         if (code) this.open(code);
+      });
+      // 雙擊跳轉詳情頁（已在詳情頁，刷新該股）
+      btn.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const code = btn.dataset.code || '';
+        if (code) {
+          this.load(code);
+          if (typeof Utils !== 'undefined') {
+            Utils.toast(`重新載入 ${code}`, 1500);
+          }
+        }
       });
     });
   },
