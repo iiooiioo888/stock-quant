@@ -351,7 +351,7 @@
       const items = [
         { icon: '📋', label: '總數', value: stats.total || 0, color: '', filter: '' },
         { icon: '⚙️', label: '並行', value: `${inFlight}/${maxW}`, color: 'var(--bl)', filter: '' },
-        { icon: '⏸️', label: '等待', value: stats.pending || 0, color: 'var(--am)', filter: 'pending' },
+        { icon: '📋', label: '隊列', value: stats.pending || 0, color: 'var(--am)', filter: 'pending' },
         { icon: '⏳', label: '運行', value: stats.running || 0, color: 'var(--bl)', filter: 'running' },
         { icon: '✅', label: '完成', value: stats.completed || 0, color: 'var(--quote-up)', filter: 'completed' },
         { icon: '❌', label: '失敗', value: stats.failed || 0, color: 'var(--quote-down)', filter: 'failed' },

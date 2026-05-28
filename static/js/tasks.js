@@ -388,7 +388,7 @@ const Tasks = {
       { icon: '📋', label: '總任務數', value: stats.total || 0, color: '', filter: '' },
       { icon: '⚙️', label: '並行槽', value: `${inFlight}/${maxW}`, color: '#38bdf8', filter: '' },
       { icon: '🧠', label: '重型併發', value: `${heavyFlight}/${heavyMax}`, color: '#a78bfa', filter: '' },
-      { icon: '⏸️', label: '等待中', value: stats.pending || 0, color: '#f59e0b', filter: 'pending' },
+      { icon: '⏸️', label: '隊列', value: stats.pending || 0, color: '#f59e0b', filter: 'pending' },
       { icon: '⏳', label: '運行中', value: stats.running || 0, color: '#38bdf8', filter: 'running' },
       { icon: '✅', label: '已完成', value: stats.completed || 0, color: '#22c55e', filter: 'completed' },
       { icon: '❌', label: '失敗', value: stats.failed || 0, color: '#ef4444', filter: 'failed' },
