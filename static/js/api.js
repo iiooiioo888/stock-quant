@@ -51,6 +51,11 @@ const Api = {
       this._token = stored;
     }
     this._updateAuthUI();
+    try {
+      window.dispatchEvent(new CustomEvent('stockq:auth-changed', {
+        detail: { loggedIn: !!this._token },
+      }));
+    } catch (_) {}
   },
 
   /**
@@ -83,6 +88,11 @@ const Api = {
     }
     this._updateAuthUI();
     this.reconnectWebSocket();
+    try {
+      window.dispatchEvent(new CustomEvent('stockq:auth-changed', {
+        detail: { loggedIn: !!token },
+      }));
+    } catch (_) {}
   },
 
   /**

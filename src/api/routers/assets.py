@@ -197,37 +197,48 @@ async def get_assets_catalog():
     from src.core.api_cache import cached_response
 
     def _build():
+        from src.core.market_catalog import STOCK_GROUPS
+        from src.core.stock_sectors import STOCK_SECTOR_LABELS, stock_sector_label
+
+        rows = []
+        for i in MARKET_INSTRUMENTS:
+            sector = ""
+            sector_label = ""
+            if i.group in STOCK_GROUPS and i.asset_class == "stock":
+                sector = (i.sub_class or "other").strip() or "other"
+                sector_label = stock_sector_label(sector)
+            rows.append({
+                "symbol": i.symbol,
+                "name": i.name,
+                "group": i.group,
+                "group_label": GROUP_LABELS.get(i.group, i.group),
+                "asset_class": i.asset_class,
+                "sub_class": i.sub_class,
+                "sector": sector,
+                "sector_label": sector_label,
+                "market": i.market,
+                "exchange": i.exchange,
+                "currency": i.currency,
+                "settlement": i.settlement,
+                "regulator": i.regulator,
+                "detail_supported": bool(getattr(i, "detail_supported", True)),
+                "l2": derive_l2(i)[0],
+                "l2_label": derive_l2(i)[1],
+                "l3": derive_l3(i)[0],
+                "l3_label": derive_l3(i)[1],
+                "price_sources": map_price_sources(i)[0],
+                "pricing_note": map_price_sources(i)[1],
+                "tv": i.tv,
+                "topbar": i.topbar,
+            })
         return {
             **catalog_summary(),
-            "instruments": [
-                {
-                    "symbol": i.symbol,
-                    "name": i.name,
-                    "group": i.group,
-                    "group_label": GROUP_LABELS.get(i.group, i.group),
-                    "asset_class": i.asset_class,
-                    "sub_class": i.sub_class,
-                    "market": i.market,
-                    "exchange": i.exchange,
-                    "currency": i.currency,
-                    "settlement": i.settlement,
-                    "regulator": i.regulator,
-                    "detail_supported": bool(getattr(i, "detail_supported", True)),
-                    "l2": derive_l2(i)[0],
-                    "l2_label": derive_l2(i)[1],
-                    "l3": derive_l3(i)[0],
-                    "l3_label": derive_l3(i)[1],
-                    "price_sources": map_price_sources(i)[0],
-                    "pricing_note": map_price_sources(i)[1],
-                    "tv": i.tv,
-                    "topbar": i.topbar,
-                }
-                for i in MARKET_INSTRUMENTS
-            ],
+            "instruments": rows,
+            "sector_labels": STOCK_SECTOR_LABELS,
         }
 
-    # v3: include price_sources mapping
-    return cached_response("api:assets:catalog:v3", ttl=300, builder=_build)
+    # v4: stock sector / stock_universe stats
+    return cached_response("api:assets:catalog:v4", ttl=300, builder=_build)
 
 
 @router.get("/api/assets/detail")

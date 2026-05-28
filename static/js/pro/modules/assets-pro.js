@@ -61,9 +61,14 @@
     { id: 'volume', label: '量價' },
   ];
 
+  const STOCK_GROUPS = new Set(['a_share', 'hk_stock', 'us_stock']);
+
   const state = {
     catalog: null,
     quotesBySym: {},
+    /** stocks=僅三地股票 | tradeable=有詳情 | all=完整 Universe */
+    viewScope: 'stocks',
+    activeSector: 'all',
     // 1/2/3 級分類（l1=group；l2/l3 由後端提供，或前端推導）
     activeL1: 'all',
     activeL2: 'all',
@@ -208,6 +213,14 @@
     const cat = state.catalog;
     if (!cat?.instruments) return [];
     let rows = cat.instruments;
+    if (state.viewScope === 'stocks') {
+      rows = rows.filter((r) => STOCK_GROUPS.has(r.group) && r.asset_class === 'stock');
+    } else if (state.viewScope === 'tradeable') {
+      rows = rows.filter((r) => r.detail_supported !== false);
+    }
+    if (state.activeSector && state.activeSector !== 'all') {
+      rows = rows.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
+    }
     if (state.activeL1 && state.activeL1 !== 'all') rows = rows.filter((r) => r.group === state.activeL1);
     if (state.activeL2 && state.activeL2 !== 'all') rows = rows.filter((r) => (r.l2 || r.asset_class) === state.activeL2);
     if (state.activeL3 && state.activeL3 !== 'all') rows = rows.filter((r) => String(r.l3 || '') === state.activeL3);
@@ -215,7 +228,9 @@
     if (q) {
       rows = rows.filter((r) =>
         String(r.symbol || '').toLowerCase().includes(q)
-        || String(r.name || '').toLowerCase().includes(q),
+        || String(r.name || '').toLowerCase().includes(q)
+        || String(r.sector_label || '').toLowerCase().includes(q)
+        || String(r.exchange || '').toLowerCase().includes(q),
       );
     }
     return rows;
@@ -251,6 +266,8 @@
       const canDetail = inst.detail_supported !== false;
       const src0 = Array.isArray(inst.price_sources) && inst.price_sources.length ? inst.price_sources[0] : null;
       const srcBadge = src0?.name ? `定價入口：${src0.name}` : '';
+      const sectorLbl = inst.sector_label || '';
+      const exchLbl = [inst.exchange, inst.currency].filter(Boolean).join(' · ');
       return UI.h('article', {
         class: `asset-card asset-card--${pctCls}${canDetail ? '' : ' is-disabled'}`,
         dataset: { assetSymbol: inst.symbol },
@@ -270,7 +287,12 @@
         ),
         UI.h('div', { class: 'asset-card-foot' },
           UI.h('span', { class: 'asset-card-sym' }, inst.symbol),
-          UI.h('span', { class: 'badge b-bl', title: inst.pricing_note || '' }, srcBadge || (inst.group_label || inst.group)),
+          sectorLbl
+            ? UI.h('span', { class: 'badge b-gr' }, sectorLbl)
+            : null,
+          exchLbl
+            ? UI.h('span', { class: 'badge b-bl', title: inst.settlement || '' }, exchLbl)
+            : UI.h('span', { class: 'badge b-bl', title: inst.pricing_note || '' }, srcBadge || (inst.group_label || inst.group)),
           UI.h('button', {
             type: 'button',
             class: 'asset-card-add-alloc',
@@ -297,6 +319,71 @@
     UI.mount(root, UI.h('div', { class: 'assets-grid-inner' }, ...cards));
   }
 
+  function renderScopePills() {
+    const cat = state.catalog;
+    if (!cat) return [];
+    const stockN = cat.stock_universe ?? cat.instruments?.filter(
+      (r) => STOCK_GROUPS.has(r.group) && r.asset_class === 'stock',
+    ).length ?? 0;
+    const tradeN = cat.tradeable_count ?? cat.instruments?.filter((r) => r.detail_supported !== false).length ?? 0;
+    const totalN = cat.total ?? cat.instruments?.length ?? 0;
+    const scopes = [
+      { id: 'stocks', label: `股票專區 (${stockN})` },
+      { id: 'tradeable', label: `可詳情 (${tradeN})` },
+      { id: 'all', label: `完整目錄 (${totalN})` },
+    ];
+    return scopes.map((s) => UI.h('button', {
+      type: 'button',
+      class: `cat-pill cat-pill--scope ${state.viewScope === s.id ? 'on' : ''}`,
+      onClick: () => {
+        state.viewScope = s.id;
+        state.activeL1 = 'all';
+        state.activeL2 = 'all';
+        state.activeL3 = 'all';
+        state.activeSector = 'all';
+        renderGroupPills();
+        renderList();
+      },
+    }, s.label));
+  }
+
+  function renderSectorPills() {
+    if (state.viewScope !== 'stocks' && state.viewScope !== 'tradeable') return [];
+    const labels = state.catalog?.sector_labels || state.catalog?.stock_sector_labels || {};
+    const counts = {};
+    (state.catalog?.instruments || []).forEach((r) => {
+      if (state.viewScope === 'stocks' && !(STOCK_GROUPS.has(r.group) && r.asset_class === 'stock')) return;
+      if (state.viewScope === 'tradeable' && r.detail_supported === false) return;
+      const sec = r.sector || 'other';
+      counts[sec] = (counts[sec] || 0) + 1;
+    });
+    const keys = Object.keys(counts).sort(
+      (a, b) => (counts[b] - counts[a]) || String(labels[a] || a).localeCompare(String(labels[b] || b), 'zh-Hant'),
+    );
+    if (keys.length < 2) return [];
+    const pills = [
+      UI.h('button', {
+        type: 'button',
+        class: `cat-pill ${state.activeSector === 'all' ? 'on' : ''}`,
+        onClick: () => {
+          state.activeSector = 'all';
+          renderGroupPills();
+          renderList();
+        },
+      }, '全部行業'),
+      ...keys.map((k) => UI.h('button', {
+        type: 'button',
+        class: `cat-pill ${state.activeSector === k ? 'on' : ''}`,
+        onClick: () => {
+          state.activeSector = k;
+          renderGroupPills();
+          renderList();
+        },
+      }, `${labels[k] || k} (${counts[k]})`)),
+    ];
+    return [UI.h('div', { class: 'assets-pills-row assets-pills-row--sector' }, ...pills)];
+  }
+
   function renderGroupPills() {
     const el = UI.id('assets-group-pills');
     if (!el || !state.catalog) return;
@@ -306,7 +393,24 @@
       ? tree.l1_order
       : (state.catalog.group_order || Object.keys(state.catalog.groups || {}));
 
-    const totalAll = state.catalog.total || 0;
+    let l1OrderFiltered = [...l1Order];
+    if (state.viewScope === 'stocks') {
+      l1OrderFiltered = l1Order.filter((gid) => STOCK_GROUPS.has(gid));
+    }
+
+    const countInScope = (gid) => {
+      let base = state.catalog.instruments || [];
+      if (state.viewScope === 'stocks') {
+        base = base.filter((r) => STOCK_GROUPS.has(r.group) && r.asset_class === 'stock');
+      } else if (state.viewScope === 'tradeable') {
+        base = base.filter((r) => r.detail_supported !== false);
+      }
+      if (state.activeSector && state.activeSector !== 'all') {
+        base = base.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
+      }
+      if (!gid || gid === 'all') return base.length;
+      return base.filter((r) => r.group === gid).length;
+    };
 
     const pillsL1 = [
       UI.h('button', {
@@ -319,10 +423,10 @@
           renderGroupPills();
           renderList();
         },
-      }, `全部 (${totalAll})`),
-      ...l1Order.map((gid) => {
+      }, `本分類全部 (${countInScope('all')})`),
+      ...l1OrderFiltered.map((gid) => {
         const g = (l1 && l1[gid]) ? l1[gid] : (state.catalog.groups || {})[gid] || {};
-        const cnt = g.count || 0;
+        const cnt = countInScope(gid) || g.count || 0;
         return UI.h('button', {
           type: 'button',
           class: `cat-pill ${state.activeL1 === gid ? 'on' : ''}`,
@@ -404,6 +508,8 @@
       : [];
 
     UI.mount(el, UI.h('div', null,
+      UI.h('div', { class: 'assets-pills-row assets-pills-row--scope' }, ...renderScopePills()),
+      renderSectorPills(),
       UI.h('div', { class: 'assets-pills-row' }, ...pillsL1),
       pillsL2.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL2) : null,
       pillsL3.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL3) : null,

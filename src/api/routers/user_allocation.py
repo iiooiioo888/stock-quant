@@ -24,14 +24,18 @@ async def get_my_allocation(
 
 
 @router.put("/api/my-allocation")
-async def put_my_allocation(body: dict, user=Depends(require_auth)):
+async def put_my_allocation(
+    body: dict,
+    user=Depends(require_auth),
+    weight_mode: str = "market_value",
+):
     positions = body.get("positions") if isinstance(body, dict) else None
     if positions is None:
         positions = body.get("holdings") if isinstance(body, dict) else []
     if not isinstance(positions, list):
         raise HTTPException(400, "positions 必須為陣列")
     replace_positions(user.id, positions)
-    return allocation_payload(user.id)
+    return allocation_payload(user.id, weight_mode=weight_mode)
 
 
 @router.post("/api/my-allocation/positions")

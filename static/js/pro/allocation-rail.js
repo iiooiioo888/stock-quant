@@ -115,6 +115,9 @@
   async function load() {
     state.loading = true;
     render();
+    if (typeof Api !== 'undefined' && Api.init && !Api._token) {
+      try { Api.init(); } catch (_) {}
+    }
     const token = typeof Api !== 'undefined' && Api._token;
     try {
       if (token) {
@@ -138,6 +141,13 @@
           state.updatedAt = d.updated_at || null;
           writeLocal(state.positions.map(({ last_price, market_value, weight_pct, ...rest }) => rest));
           dispatchChange();
+          if (!state.positions.length) {
+            const local = readLocal();
+            if (local.length) {
+              state.positions = local;
+              await enrichLocal();
+            }
+          }
           return;
         }
       }
@@ -168,14 +178,16 @@
       return;
     }
     try {
-      const d = await Api.put('/api/my-allocation', { positions: slim });
+      const d = await Api.put(
+        `/api/my-allocation?weight_mode=${encodeURIComponent(state.weightMode)}`,
+        { positions: slim },
+      );
       if (d?.success) {
-        state.positions = d.positions || slim;
-        state.enriched = [...state.positions];
-        state.updatedAt = d.updated_at || null;
         writeLocal(slim);
         window.StockQPro?.App?.toast?.('配置已同步', 'ok');
         window.StockQPro?.CurrencyManager?.loadData?.();
+        await load();
+        return;
       }
     } catch (e) {
       window.StockQPro?.App?.toast?.(`保存失敗：${e?.message || e}`, 'er');
@@ -451,7 +463,8 @@
     const wl = weightLabel();
     list.innerHTML = rows.map((p) => {
       const w = Number(p.weight_pct);
-      const wText = Number.isFinite(w) ? w.toFixed(1) : '—';
+      const wText = Number.isFinite(w) && w > 0 ? w.toFixed(1) : '—';
+      const barW = Number.isFinite(w) && w > 0 ? Math.min(100, w) : 0;
       const label = p.name || p.code;
       const price = Number(p.last_price) > 0 ? Number(p.last_price).toFixed(2) : '—';
       const mv = Number(p.market_value) > 0 ? Number(p.market_value).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—';
@@ -464,8 +477,8 @@
           <span>${p.code}</span>
           <span>${Number(p.quantity).toLocaleString()} 股</span>
         </div>
-        <div class="alloc-row-bar" aria-hidden="true"><span style="width:${Math.min(100, wText)}%"></span></div>
-        <div class="alloc-row-foot"><span>${wl} ${wText}%</span><span>現 ${price} · ${mv}</span></div>
+        <div class="alloc-row-bar" aria-hidden="true"><span style="width:${barW}%"></span></div>
+        <div class="alloc-row-foot"><span>${wl} ${wText}${wText === '—' ? '' : '%'}</span><span>現 ${price} · ${mv}</span></div>
       </div>`;
     }).join('');
 
@@ -484,7 +497,17 @@
     });
   }
 
+  let _inited = false;
+
   function init() {
+    if (_inited) {
+      load();
+      return;
+    }
+    _inited = true;
+    if (typeof Api !== 'undefined' && Api.init) {
+      try { Api.init(); } catch (_) {}
+    }
     loadPrefs();
     document.querySelector('.app')?.classList.toggle('allocation-rail-open', state.open);
     const rail = document.getElementById('allocation-rail');
@@ -520,9 +543,16 @@
     applyToPortfolio,
   };
 
+  // 由 app.js 在 Api.init() 之後呼叫；若 app 未載入則 DOMContentLoaded 兜底
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        if (!_inited) init();
+      }, 0);
+    });
   } else {
-    init();
+    setTimeout(() => {
+      if (!_inited) init();
+    }, 0);
   }
 })();

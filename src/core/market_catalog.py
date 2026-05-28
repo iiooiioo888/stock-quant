@@ -75,6 +75,37 @@ A_SHARE_LEADERS: dict[str, str] = {
     "300274.SZ": "陽光電源",
     "002466.SZ": "天齊鋰業",
     "002460.SZ": "贛鋒鋰業",
+  # 能源 / 央企高股息
+    "601857.SS": "中國石油",
+    "600028.SS": "中國石化",
+    "601088.SS": "中國神華",
+    "601225.SS": "陝西煤業",
+    "601728.SS": "中國電信",
+    "600050.SS": "中國聯通",
+    # 銀行 / 券商補充
+    "601288.SS": "農業銀行",
+    "601328.SS": "交通銀行",
+    "601211.SS": "國泰君安",
+    # 汽車 / 製造
+    "600104.SS": "上汽集團",
+    "601633.SS": "長城汽車",
+    "600031.SS": "三一重工",
+    # 半導體 / 硬科技
+    "688981.SS": "中芯國際",
+    "688012.SS": "中微公司",
+    "603501.SS": "韋爾股份",
+    "688036.SS": "傳音控股",
+    "688111.SS": "金山辦公",
+    "300124.SZ": "匯川技術",
+    # 消費 / 物流 / 免稅
+    "601888.SS": "中國中免",
+    "002352.SZ": "順豐控股",
+    "002714.SZ": "牧原股份",
+    # 地產 / 基建
+    "000002.SZ": "萬科Ａ",
+    "600048.SS": "保利發展",
+    "601390.SS": "中國中鐵",
+    "601668.SS": "中國建築",
 }
 
 POWER_UTILITIES: dict[str, str] = {
@@ -262,10 +293,10 @@ def map_price_sources(inst: MarketInstrument) -> tuple[list[PriceSource], str]:
 
 GROUP_LABELS: dict[str, str] = {
     "asia": "亞太指數",
-    "a_share": "A股龍頭",
-    "hk_stock": "港股",
+    "a_share": "A股 · 龍頭藍籌",
+    "hk_stock": "港股 · 藍籌與科技",
     "us": "美歐指數",
-    "us_stock": "美股",
+    "us_stock": "美股 · 龍頭與中概",
     "europe": "歐洲指數",
     "forex": "外匯",
     "crypto": "加密貨幣",
@@ -287,7 +318,9 @@ GROUP_ORDER: list[str] = [
     "structured", "interbank", "otc", "crossborder", "alternative",
 ]
 
-VALID_SCOPES = frozenset(["all", "topbar", "custom", *GROUP_ORDER])
+STOCK_GROUPS = frozenset({"a_share", "hk_stock", "us_stock"})
+
+VALID_SCOPES = frozenset(["all", "topbar", "custom", "stocks", "tradeable", *GROUP_ORDER])
 
 ASSET_CLASS_LABELS: dict[str, str] = {
     "index": "指數",
@@ -510,6 +543,8 @@ def _build_catalog() -> list[MarketInstrument]:
         if sym in eu_idx:
             add(_make(sym, name, "europe", tv=eu_tv.get(sym, ""), scanner=eu_scan.get(sym, "cfd"), asset_class="index"))
 
+    from src.core.stock_sectors import stock_sector
+
     # --- A股龍頭 ---
     for sym, name in A_SHARE_LEADERS.items():
         code = sym.split(".")[0]
@@ -519,6 +554,10 @@ def _build_catalog() -> list[MarketInstrument]:
             tv=f"{exch}:{code}", scanner="china",
             ib=_ib_a_share(sym),
             asset_class="stock",
+            sub_class=stock_sector(sym),
+            exchange=exch,
+            currency="CNY",
+            settlement="T+1",
         ))
 
     # --- 港股 ---
@@ -528,15 +567,25 @@ def _build_catalog() -> list[MarketInstrument]:
             tv=_hk_tv(sym), scanner="hongkong",
             ib=_ib_stock(sym, currency="HKD", exchange="SEHK"),
             asset_class="stock",
+            sub_class=stock_sector(sym),
+            exchange="HKEX",
+            currency="HKD",
+            settlement="T+2",
         ))
 
     # --- 美股 ---
     for sym, name in US_STOCKS.items():
+        us_sym = sym.upper().replace(".", "-")
+        us_ex = "NYSE" if us_sym in _US_NYSE or us_sym.replace("-", ".") in _US_NYSE else "NASDAQ"
         add(_make(
             sym, name, "us_stock",
             tv=_us_tv(sym), scanner="america",
             ib=_ib_stock(sym),
             asset_class="stock",
+            sub_class=stock_sector(sym),
+            exchange=us_ex,
+            currency="USD",
+            settlement="T+1",
         ))
 
     # --- 外匯 ---
@@ -801,16 +850,32 @@ def instruments_by_group() -> dict[str, list[MarketInstrument]]:
 
 
 def catalog_summary() -> dict:
+    from src.core.stock_sectors import STOCK_SECTOR_LABELS
+
     by_group = instruments_by_group()
     by_asset: dict[str, int] = {}
+    stock_universe = 0
+    tradeable_count = 0
+    by_sector: dict[str, int] = {}
     for inst in MARKET_INSTRUMENTS:
         ac = inst.asset_class or "other"
         by_asset[ac] = by_asset.get(ac, 0) + 1
+        if inst.detail_supported:
+            tradeable_count += 1
+        if inst.group in STOCK_GROUPS and inst.asset_class == "stock":
+            stock_universe += 1
+            sec = (inst.sub_class or "other").strip() or "other"
+            by_sector[sec] = by_sector.get(sec, 0) + 1
     return {
         "total": len(MARKET_INSTRUMENTS),
         "topbar": len(TOPBAR_INSTRUMENTS),
+        "stock_universe": stock_universe,
+        "tradeable_count": tradeable_count,
         "groups": {g: len(by_group.get(g, [])) for g in GROUP_ORDER if g in by_group},
         "asset_classes": by_asset,
+        "stock_sectors": by_sector,
+        "stock_sector_labels": STOCK_SECTOR_LABELS,
         "group_order": GROUP_ORDER,
         "group_labels": GROUP_LABELS,
+        "stock_groups": list(STOCK_GROUPS),
     }

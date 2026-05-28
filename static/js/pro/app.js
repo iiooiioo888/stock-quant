@@ -15,6 +15,7 @@
     init() {
       // keep existing API init (token, auth UI) if present
       try { if (typeof Api !== 'undefined' && Api.init) Api.init(); } catch (_) {}
+      try { window.StockQPro?.Allocation?.init?.(); } catch (_) {}
 
       this._bindAuth();
       this._bindNav();
