@@ -451,7 +451,8 @@ const StockPicker = {
       const dispName = s?.name || code;
       const chip = document.createElement('span');
       chip.className = 'stock-picker-chip';
-      chip.title = `${code} ${dispName}`;
+      chip.title = `${code} ${dispName} (雙擊查看詳情)`;
+      chip.dataset.code = code;
 
       const codeEl = document.createElement('span');
       codeEl.className = 'stock-picker-chip-code';
@@ -473,6 +474,16 @@ const StockPicker = {
       btn.textContent = '×';
 
       chip.append(codeEl, sep, nameEl, btn);
+      
+      // 雙擊跳轉詳情頁
+      chip.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof App !== 'undefined' && App.openStockDetail) {
+          App.openStockDetail(code);
+        }
+      });
+      
       host.appendChild(chip);
     });
   },
