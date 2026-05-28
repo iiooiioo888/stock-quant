@@ -1,5 +1,5 @@
 """
-數據源自動降級 — Yahoo / AKShare / 本地緩存。
+數據源自動降級 — 本地庫 → 自動選源拉取 → 過期緩存兜底。
 """
 from __future__ import annotations
 
@@ -7,11 +7,12 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
+from src.config import settings
 from src.utils.logger import logger
 
 
 class FallbackManager:
-    """K 線拉取降級鏈（本地庫 → 主源 → 備選源）。"""
+    """K 線拉取降級鏈（與 ensure_daily_kline 共用同一套自動選源，避免重複遞迴）。"""
 
     async def get_daily_kline_with_fallback(
         self,
@@ -20,40 +21,34 @@ class FallbackManager:
         end_date: Optional[str] = None,
         min_bars: int = 2,
     ) -> Tuple[pd.DataFrame, str]:
-        from src.core.local_kline import ensure_daily_kline
-        df, src = ensure_daily_kline(code, start_date=start_date, end_date=end_date, min_bars=min_bars)
+        from src.core.db import load_daily_kline
+        from src.core.local_kline import ensure_daily_kline, normalize_kline_code
+
+        code = normalize_kline_code(code)
+        df, src = ensure_daily_kline(
+            code,
+            start_date=start_date,
+            end_date=end_date,
+            min_bars=min_bars,
+            auto_fetch=settings.local_first_auto_fetch,
+        )
         if len(df) >= min_bars:
             return df, src
 
-        try:
-            from src.core.yahoo_finance import download_a_share_daily
-            ydf = download_a_share_daily(code, start_date=start_date)
-            if ydf is not None and not ydf.empty:
-                from src.core.local_kline import persist_kline_df
-                persist_kline_df(code, ydf)
-                logger.warning(f"主源失敗後 Yahoo 降級成功: {code}")
-                return ydf, "yahoo_fallback"
-        except Exception as e:
-            logger.debug(f"Yahoo 降級失敗 {code}: {e}")
+        if not df.empty:
+            return df, src or "partial"
 
         try:
-            from src.core.history import download_one
-            n = download_one(code, start_date=start_date)
-            if n > 0:
-                from src.core.db import load_daily_kline, clear_data_cache
-                clear_data_cache(quiet=True, reason=f"fallback:{code}")
-                df = load_daily_kline(code, start_date=start_date, end_date=end_date)
-                return df, "akshare_fallback"
+            from src.core.cache import get_cached_kline
+
+            cached = get_cached_kline(code)
+            if cached:
+                logger.warning(f"使用過期緩存兜底: {code}")
+                return pd.DataFrame(cached), "stale_cache"
         except Exception as e:
-            logger.debug(f"AKShare 降級失敗 {code}: {e}")
+            logger.debug(f"過期緩存兜底跳過 {code}: {e}")
 
-        from src.core.cache import get_cached_kline
-        cached = get_cached_kline(code)
-        if cached:
-            logger.warning(f"使用過期緩存兜底: {code}")
-            return pd.DataFrame(cached), "stale_cache"
-
-        return df, src or "empty"
+        return load_daily_kline(code, start_date=start_date, end_date=end_date), src or "empty"
 
 
 _manager: Optional[FallbackManager] = None

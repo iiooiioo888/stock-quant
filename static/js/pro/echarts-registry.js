@@ -61,6 +61,29 @@
       for (const inst of this._byKey.values()) this._safeDispose(inst);
       this._byKey.clear();
     },
+    getDebugInfo() {
+      const pages = {};
+      const instances = [];
+      for (const [key, inst] of this._byKey.entries()) {
+        const [pageId, chartId] = String(key).split('::');
+        if (!pages[pageId]) pages[pageId] = [];
+        pages[pageId].push(chartId);
+        let disposed = false;
+        try {
+          disposed = typeof inst?.isDisposed === 'function' ? !!inst.isDisposed() : false;
+        } catch (_) {
+          disposed = false;
+        }
+        instances.push({ key, pageId, chartId, disposed });
+      }
+      Object.keys(pages).forEach((pid) => pages[pid].sort());
+      instances.sort((a, b) => a.key.localeCompare(b.key));
+      return {
+        pages,
+        total: instances.length,
+        instances,
+      };
+    },
   };
 
   window.StockQPro = window.StockQPro || {};

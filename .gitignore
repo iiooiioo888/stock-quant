@@ -36,6 +36,7 @@ target/
 # Project runtime artifacts
 data/.admin_password
 data/.jwt_secret
+data/runtime_watchlist.json
 
 # Environment
 .env

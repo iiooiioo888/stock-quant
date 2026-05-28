@@ -329,6 +329,7 @@
         { n: '任務中心', d: '回測與數據任務佇列', p: 'tasks', k: 'T' },
         { n: '對比', d: '策略對比', p: 'compare', k: '3' },
         { n: '組合回測', d: '多標的組合與權重', p: 'portfolio', k: '4' },
+        { n: '我的配置', d: '右側持倉欄 · 回測/對比/結算', act: 'allocation', k: 'P' },
         { n: '自選股', d: '自選列表', p: 'watchlist', k: '5' },
         { n: '選股器', d: '全市場掃描', p: 'scanner', k: '6' },
         { n: '預警', d: '條件預警', p: 'alerts', k: '7' },
@@ -416,7 +417,7 @@
             `</div>`
           )).join('')
           + filtered.map((p) => (
-            `<div class="cmd-item" data-cmd="${p.p || ''}" data-href="${p.href || ''}">` +
+            `<div class="cmd-item" data-cmd="${p.p || ''}" data-href="${p.href || ''}" data-act="${p.act || ''}">` +
               `<div class="cmd-item-info"><div class="cmd-item-name">${p.n}</div><div class="cmd-item-desc">${p.d}</div></div>` +
               (p.k ? `<div class="cmd-item-kb"><kbd>${p.k}</kbd></div>` : '') +
             `</div>`
@@ -443,6 +444,12 @@
         if (href) {
           close();
           window.location.href = href;
+          return;
+        }
+        const act = item.getAttribute('data-act');
+        if (act === 'allocation') {
+          close();
+          window.StockQPro?.Allocation?.setOpen?.(true);
           return;
         }
         const p = item.getAttribute('data-cmd');

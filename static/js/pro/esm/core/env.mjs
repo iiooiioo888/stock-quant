@@ -23,16 +23,18 @@ export function getEsmConfig() {
   const q = _getQuery();
 
   // Highest priority: explicit off
-  const esmQ = q.get('esm');
-  if (esmQ === '0' || esmQ === 'false' || esmQ === 'off') {
+  const esmQRaw = q.get('esm');
+  const esmQ = esmQRaw != null ? String(esmQRaw).trim() : '';
+  const esmQL = esmQ.toLowerCase();
+  if (esmQL === '0' || esmQL === 'false' || esmQL === 'off') {
     return { forceLegacy: true, forceAll: false, pages: new Set() };
   }
 
   // Explicit on: esm=1 (all) or esm=<pageId>
-  if (esmQ === '1' || esmQ === 'true' || esmQ === 'on' || esmQ === 'all') {
+  if (esmQL === '1' || esmQL === 'true' || esmQL === 'on' || esmQL === 'all') {
     return { forceLegacy: false, forceAll: true, pages: new Set() };
   }
-  if (esmQ && esmQ !== '0') {
+  if (esmQ) {
     return { forceLegacy: false, forceAll: false, pages: new Set([esmQ]) };
   }
 

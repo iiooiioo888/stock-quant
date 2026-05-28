@@ -63,6 +63,8 @@ const Portfolio = {
   _currentMethod: 'basic',
   _methodFilter: 'all',
   _strategyList: null,
+  /** 由配置欄匯入：code -> weight (0~1) */
+  _allocationWeightMap: null,
   _STRAT_PRESETS: {
     trend: ['dual_ma', 'macd', 'adx_trend', 'momentum', 'breakout'],
     mean: ['bollinger', 'rsi', 'mean_reversion', 'kdj', 'cci'],
@@ -74,7 +76,29 @@ const Portfolio = {
     this._initStrategyPicker();
     this._initSummaryBindings();
     this._initOpenTasks();
+    this._initAllocationBridge();
     this.updateSummary();
+  },
+
+  _initAllocationBridge() {
+    if (this._allocationBridgeBound) return;
+    this._allocationBridgeBound = true;
+    window.addEventListener('stockq:allocation-import-portfolio', (ev) => {
+      const { codes, weightMap, strategy } = ev.detail || {};
+      if (!Array.isArray(codes) || !codes.length) return;
+      this._allocationWeightMap = weightMap && typeof weightMap === 'object' ? { ...weightMap } : null;
+      this._setCodes(codes);
+      if (strategy) this._setStrategies([strategy]);
+      this.updateSummary();
+      const wHint = this._allocationWeightMap
+        ? Object.keys(this._allocationWeightMap).length
+        : 0;
+      Utils.toast(
+        `已載入 ${codes.length} 檔${wHint ? `（${wHint} 檔帶市值權重）` : ''}，策略：${strategy || '—'}`,
+        2800,
+        'success',
+      );
+    });
   },
 
   updateSummary() {
@@ -725,8 +749,17 @@ const Portfolio = {
   _buildAllocations() {
     const codes = document.getElementById('pfCodes').value.split(',').map(s => s.trim()).filter(Boolean);
     const strategies = document.getElementById('pfStrategies').value.split(',').map(s => s.trim()).filter(Boolean);
+    const wm = this._allocationWeightMap;
     const alloc = [];
-    codes.forEach(c => strategies.forEach(s => alloc.push({ strategy: s, code: c })));
+    codes.forEach((c) => {
+      const key = String(c).trim().toUpperCase();
+      const w = wm && wm[key] != null ? Number(wm[key]) : null;
+      strategies.forEach((s) => {
+        const row = { strategy: s, code: c };
+        if (w != null && Number.isFinite(w) && w > 0) row.weight = w;
+        alloc.push(row);
+      });
+    });
     return alloc;
   },
 
@@ -765,7 +798,17 @@ const Portfolio = {
     switch (method) {
       case 'basic': {
         const rebalance = document.getElementById('pfRebalance').value;
-        d = await Api.runPortfolio({ allocations, rebalance, rebalance_freq_days: 20 });
+        const weights = codes.map((c) => {
+          const w = this._allocationWeightMap?.[String(c).trim().toUpperCase()];
+          return w != null && Number.isFinite(w) ? w : null;
+        });
+        const hasWeights = weights.some((w) => w != null && w > 0);
+        d = await Api.runPortfolio({
+          allocations,
+          rebalance,
+          rebalance_freq_days: 20,
+          weights: hasWeights ? weights : undefined,
+        });
         break;
       }
       case 'risk_parity':

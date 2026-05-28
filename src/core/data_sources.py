@@ -342,6 +342,7 @@ register("global_realtime", DataSource("東財全球", priority=3, rate_limit=0.
 register("global_realtime", DataSource("Twelve Data", priority=4, rate_limit=8.0, daily_limit=800))
 
 # --- 全球歷史 ---
+register("global_history", DataSource("Interactive Brokers", priority=0, rate_limit=0.5))
 register("global_history", DataSource("Yahoo Finance", priority=1, rate_limit=0.5))
 register("global_history", DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800))
 register("global_history", DataSource("TradingView", priority=3, rate_limit=1.0))

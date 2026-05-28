@@ -58,6 +58,9 @@
         <span id="conn-status">連線中…</span>
       </div>
       <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="tbtn" id="alloc-rail-toggle" title="個人資產配置" aria-label="個人資產配置" aria-expanded="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 7v10a2 2 0 0 0 2 2h14v4H5a2 2 0 0 1-2-2V7"/><path d="M18 12h.01"/></svg>
+      </button>
       <button type="button" class="tbtn" id="notif-btn" title="任務通知" aria-label="任務通知">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="dot" id="notif-task-dot" style="display:none" title="進行中任務"></span>
@@ -1031,6 +1034,48 @@
 
   </main>
 
+  <aside id="allocation-rail" class="allocation-rail" aria-label="個人資產配置">
+    <header class="allocation-rail-hd">
+      <div>
+        <h2 class="allocation-rail-title">我的配置</h2>
+        <p class="allocation-rail-desc">持倉寫入帳戶後，持倉與淨值、多幣種結算自動讀取</p>
+      </div>
+      <button type="button" class="tbtn" id="alloc-rail-close" title="收起" aria-label="收起配置欄">›</button>
+    </header>
+    <div class="allocation-rail-summary" id="alloc-rail-summary">—</div>
+    <div class="allocation-rail-modes" role="group" aria-label="權重計算方式">
+      <button type="button" class="alloc-mode-pill on" data-alloc-weight-mode="market_value">市值權重</button>
+      <button type="button" class="alloc-mode-pill" data-alloc-weight-mode="quantity">股數權重</button>
+    </div>
+    <form id="alloc-rail-form" class="allocation-rail-form">
+      <input type="text" id="alloc-in-code" class="inp" placeholder="代碼" required autocomplete="off" />
+      <input type="text" id="alloc-in-name" class="inp" placeholder="名稱（選填）" autocomplete="off" />
+      <input type="number" id="alloc-in-qty" class="inp" placeholder="股數" min="0.0001" step="any" required />
+      <input type="number" id="alloc-in-cost" class="inp" placeholder="成本（選填）" min="0" step="any" />
+      <button type="submit" class="btn btn-ac allocation-rail-add">加入</button>
+    </form>
+    <div id="alloc-rail-empty" class="allocation-rail-empty" hidden>
+      <p>尚未添加持倉。可從資產庫卡片點「＋配置」快速加入。</p>
+    </div>
+    <div id="alloc-rail-list" class="allocation-rail-list"></div>
+    <div class="allocation-rail-pf-row">
+      <label class="alloc-pf-lbl" for="alloc-pf-strategy">組合策略</label>
+      <select id="alloc-pf-strategy" class="sel alloc-pf-strategy">
+        <option value="dual_ma">雙均線</option>
+        <option value="macd">MACD</option>
+        <option value="bollinger">布林帶</option>
+        <option value="rsi">RSI</option>
+        <option value="momentum">動量</option>
+      </select>
+    </div>
+    <footer class="allocation-rail-ft">
+      <button type="button" class="btn s" id="alloc-act-backtest">回測首檔</button>
+      <button type="button" class="btn s" id="alloc-act-compare">多股對比</button>
+      <button type="button" class="btn s" id="alloc-act-portfolio">組合回測權重</button>
+      <button type="button" class="btn s" id="alloc-act-watchlist">同步自選</button>
+    </footer>
+  </aside>
+
   <!-- ═══ STATUSBAR ═══ -->
   <footer class="statusbar" role="contentinfo">
     <div class="sbl">
@@ -1078,6 +1123,8 @@
 <script src="/static/js/api.js?v=ws-fix-20260527"></script>
 <script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/user-prefs.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/symbol-utils.js?v=sym-utils-20260528"></script>
+<script src="/static/js/pro/allocation-rail.js?v=alloc-rail-20260528b"></script>
 <script src="/static/js/pro/app-store.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/index.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/dashboard-components.js?v=stockq-pro-v9"></script>

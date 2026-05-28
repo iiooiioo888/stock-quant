@@ -434,7 +434,7 @@
         <div class="sec data-sec-primary">
             <div class="data-sec-head">
                 <h2>爬取數據並寫入本地庫</h2>
-                <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>；手動下載用於批量預載，增量更新補最新交易日。</p>
+                <p class="sec-desc"><strong>本地優先：</strong>每隻標的僅在本地無日 K 時自動爬取一次並寫入 <code>data/stock.db</code>（系統依市場與連線狀態自動選擇 Yahoo / 東財 / IB 等來源，無需手動指定）。手動下載用於批量預載，增量更新補最新交易日。</p>
             </div>
             <div class="data-ib-strip" id="ibStatusCard" aria-live="polite">
                 <span class="data-ib-dot" id="ibStatusDot" aria-hidden="true"></span>

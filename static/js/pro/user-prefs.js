@@ -18,6 +18,10 @@
     assetDetailTab: 'chart',
     /** HKD | MOP | USD | CNY */
     preferredCurrency: 'MOP',
+    /** 右側個人資產配置欄 */
+    allocationRailOpen: true,
+    allocationWeightMode: 'market_value',
+    allocationPortfolioStrategy: 'dual_ma',
   };
 
   const SCHEME_ATTR = {

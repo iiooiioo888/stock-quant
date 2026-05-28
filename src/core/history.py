@@ -72,36 +72,20 @@ def detect_market(code: str) -> str:
 
 
 def download_one(code: str, start_date: str = None, market: str = None) -> int:
-    """
-    下載單個標的歷史日K（自動判斷市場）。
+    """下載單個標的歷史日K（自動判斷市場與數據源）。"""
+    from src.core.auto_kline_fetch import download_one_auto
 
-    參數：
-        code: 標的代碼（如 600519, BTCUSDT, USDCNY）
-        start_date: 起始日期
-        market: 市場類型（自動判斷）
-    """
-    if start_date is None:
-        start_date = settings.history_start_date
-
-    if market is None:
-        market = detect_market(code)
-
-    if market == "crypto":
-        count = _download_crypto(code, start_date)
-    elif market == "forex":
-        count = _download_forex(code, start_date)
-    elif market == "global":
-        count = _download_global(code, start_date)
-    else:
-        count = _download_a_share(code, start_date)
-
-    if count > 0:
-        try:
-            from src.core.cache import invalidate_by_rule
-            invalidate_by_rule("data_update", code=code)
-        except Exception:
-            pass
+    count, _ = download_one_auto(code, start_date=start_date, market=market)
     return count
+
+
+def download_one_with_source(
+    code: str, start_date: str = None, market: str = None,
+) -> tuple[int, str]:
+    """下載單標的日 K，返回 (條數, source_slug)。"""
+    from src.core.auto_kline_fetch import download_one_auto
+
+    return download_one_auto(code, start_date=start_date, market=market)
 
 
 def _download_crypto(code: str, start_date: str = None) -> int:
@@ -134,46 +118,117 @@ def _download_forex(code: str, start_date: str = None) -> int:
         return 0
 
 
-def _download_global(code: str, start_date: str = None) -> int:
-    """下載全球標的歷史數據（Yahoo Finance）"""
-    from src.core.global_market import download_global_symbol
-    try:
-        df = download_global_symbol(symbol=code, start_date=start_date)
-        if df.empty:
-            try:
-                from src.core.data_sources import record_outcome
-                record_outcome("global_history", "Yahoo Finance", ok=False)
-            except Exception:
-                pass
-            return 0
-        market = "global"
-        # 細分市場
-        if code.endswith(".HK"):
-            market = "hk_stock"
-        elif code.endswith("=F"):
-            market = "commodity"
-        elif code.endswith("=X"):
-            market = "forex_yahoo"
-        elif code.startswith("^"):
-            market = "index"
-        elif code.isalpha():
-            market = "us_stock"
-        count = save_daily_kline(df, code, market=market)
-        logger.info(f"全球標的 {code}: {count} 條記錄 (market={market})")
-        try:
-            from src.core.data_sources import record_outcome
-            record_outcome("global_history", "Yahoo Finance", ok=True)
-        except Exception:
-            pass
-        return count
-    except Exception as e:
-        logger.error(f"全球標的 {code} 下載失敗: {e}")
-        try:
-            from src.core.data_sources import record_outcome
-            record_outcome("global_history", "Yahoo Finance", ok=False)
-        except Exception:
-            pass
+def _global_market_tag(code: str) -> str:
+    if code.endswith(".HK"):
+        return "hk_stock"
+    if code.endswith("=F"):
+        return "commodity"
+    if code.endswith("=X"):
+        return "forex_yahoo"
+    if code.startswith("^"):
+        return "index"
+    if code.isalpha() or ("-" in code and not code[0].isdigit()):
+        return "us_stock"
+    return "global"
+
+
+def _global_try_ib(code: str, start_date: str | None) -> int:
+    if not getattr(settings, "ib_enabled", False):
         return 0
+    try:
+        from src.core.ib_data import ib_available, fetch_ib_history
+        from src.core.market_catalog import lookup_instrument
+    except Exception:
+        return 0
+    if not ib_available():
+        return 0
+    inst = lookup_instrument(code)
+    spec = inst.ib if inst else None
+    if not spec:
+        return 0
+    days = 120
+    if start_date:
+        try:
+            sd = datetime.strptime(str(start_date).replace("-", "")[:8], "%Y%m%d")
+            days = max(2, min(365, (datetime.now() - sd).days + 1))
+        except Exception:
+            days = 120
+    df_ib = fetch_ib_history(spec, days=days)
+    if df_ib is None or df_ib.empty:
+        return 0
+    market = _global_market_tag(code)
+    count = save_daily_kline(df_ib, code, market=market)
+    logger.info(f"全球標的 {code}: {count} 條記錄 (IB, market={market})")
+    return count
+
+
+def _global_try_yahoo(code: str, start_date: str | None) -> int:
+    from src.core.global_market import download_global_symbol
+
+    df = download_global_symbol(symbol=code, start_date=start_date)
+    if df.empty:
+        return 0
+    count = save_daily_kline(df, code, market=_global_market_tag(code))
+    logger.info(f"全球標的 {code}: {count} 條記錄 (Yahoo)")
+    return count
+
+
+def _global_try_twelve(code: str, start_date: str | None) -> int:
+    from src.core.global_market import _twelve_time_series
+
+    if not (code.isalpha() or ("-" in code and not code[0].isdigit())):
+        return 0
+    df = _twelve_time_series(code, start_date)
+    if df.empty:
+        return 0
+    count = save_daily_kline(df, code, market=_global_market_tag(code))
+    logger.info(f"全球標的 {code}: {count} 條記錄 (Twelve Data)")
+    return count
+
+
+def _global_try_tradingview(code: str, start_date: str | None) -> int:
+    try:
+        from src.core.market_catalog import lookup_instrument
+        from src.core.tradingview_data import fetch_tv_bundle
+    except Exception:
+        return 0
+    inst = lookup_instrument(code)
+    if not inst or not inst.tv:
+        return 0
+    days = 120
+    if start_date:
+        try:
+            sd = datetime.strptime(str(start_date).replace("-", "")[:8], "%Y%m%d")
+            days = max(2, min(365, (datetime.now() - sd).days + 1))
+        except Exception:
+            pass
+    df, _, _ = fetch_tv_bundle(inst.tv, inst.scanner, days, inst.symbol)
+    if df.empty:
+        return 0
+    count = save_daily_kline(df, code, market=_global_market_tag(code))
+    logger.info(f"全球標的 {code}: {count} 條記錄 (TradingView)")
+    return count
+
+
+def download_global_auto(code: str, start_date: str = None) -> tuple[int, str]:
+    """全球標的：依 data_sources 動態排序自動選源。"""
+    from src.core.auto_kline_fetch import _run_ordered_sources
+
+    handlers = {
+        "Interactive Brokers": lambda: _global_try_ib(code, start_date),
+        "Yahoo Finance": lambda: _global_try_yahoo(code, start_date),
+        "Twelve Data": lambda: _global_try_twelve(code, start_date),
+        "TradingView": lambda: _global_try_tradingview(code, start_date),
+    }
+    n, slug = _run_ordered_sources("global_history", handlers)
+    if n <= 0:
+        logger.error(f"全球標的 {code}: 所有數據源均失敗")
+    return n, slug
+
+
+def _download_global(code: str, start_date: str = None) -> int:
+    n, _ = download_global_auto(code, start_date)
+    return n
 
 
 def _download_a_share(code: str, start_date: str = None) -> int:

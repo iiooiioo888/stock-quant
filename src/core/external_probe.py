@@ -258,7 +258,7 @@ def probe_ib_tws() -> dict:
         if not st.get("enabled"):
             msg = "未啟用（設 SQ_IB_ENABLED=true）"
         elif not st.get("library"):
-            msg = "缺少 ib_insync（pip install ib_insync）"
+            msg = "缺少 ib_insync（pip install -r requirements-ib.txt）"
         elif ok:
             msg = f"已連接 {st.get('host')}:{st.get('port')}"
         else:

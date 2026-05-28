@@ -64,13 +64,17 @@
   const state = {
     catalog: null,
     quotesBySym: {},
-    activeGroup: 'all',
+    // 1/2/3 級分類（l1=group；l2/l3 由後端提供，或前端推導）
+    activeL1: 'all',
+    activeL2: 'all',
+    activeL3: 'all',
     query: '',
     detailSymbol: null,
     detailData: null,
     chartInst: null,
     detailTab: 'quote',
     chartMode: 'line',
+    detailPrice: null,
   };
 
   function fmtMv(v) {
@@ -204,9 +208,9 @@
     const cat = state.catalog;
     if (!cat?.instruments) return [];
     let rows = cat.instruments;
-    if (state.activeGroup && state.activeGroup !== 'all') {
-      rows = rows.filter((r) => r.group === state.activeGroup);
-    }
+    if (state.activeL1 && state.activeL1 !== 'all') rows = rows.filter((r) => r.group === state.activeL1);
+    if (state.activeL2 && state.activeL2 !== 'all') rows = rows.filter((r) => (r.l2 || r.asset_class) === state.activeL2);
+    if (state.activeL3 && state.activeL3 !== 'all') rows = rows.filter((r) => String(r.l3 || '') === state.activeL3);
     const q = String(state.query || '').trim().toLowerCase();
     if (q) {
       rows = rows.filter((r) =>
@@ -226,7 +230,11 @@
     const total = state.catalog?.total ?? rows.length;
 
     if (meta) {
-      meta.textContent = `顯示 ${rows.length} / ${total} 檔 · 12 分組資產庫`;
+      const l1 = state.activeL1 !== 'all' ? state.activeL1 : '';
+      const l2 = state.activeL2 !== 'all' ? state.activeL2 : '';
+      const l3 = state.activeL3 !== 'all' ? state.activeL3 : '';
+      const hint = [l1, l2, l3].filter(Boolean).join(' / ');
+      meta.textContent = `顯示 ${rows.length} / ${total} 檔${hint ? ` · ${hint}` : ''}`;
     }
 
     if (!rows.length) {
@@ -240,11 +248,17 @@
         ? Dash.normalizeQuote({ ...inst, ...q, name: inst.name })
         : { name: inst.name, symbol: inst.symbol, priceText: '--', pctText: '--', toneClass: 'up' };
       const pctCls = norm.toneClass === 'down' ? 'down' : 'up';
+      const canDetail = inst.detail_supported !== false;
+      const src0 = Array.isArray(inst.price_sources) && inst.price_sources.length ? inst.price_sources[0] : null;
+      const srcBadge = src0?.name ? `定價入口：${src0.name}` : '';
       return UI.h('article', {
-        class: `asset-card asset-card--${pctCls}`,
+        class: `asset-card asset-card--${pctCls}${canDetail ? '' : ' is-disabled'}`,
         dataset: { assetSymbol: inst.symbol },
         title: `${inst.name} (${inst.symbol})`,
-        onClick: () => openAsset(inst.symbol),
+        onClick: () => {
+          if (canDetail) openAsset(inst.symbol);
+          else window.StockQPro?.App?.toast?.('此資產目前僅做 Universe 覆蓋（暫無詳情/定價介面）', 'inf');
+        },
       },
         UI.h('div', { class: 'asset-card-top' },
           UI.h('span', { class: 'asset-card-name' }, inst.name),
@@ -256,7 +270,26 @@
         ),
         UI.h('div', { class: 'asset-card-foot' },
           UI.h('span', { class: 'asset-card-sym' }, inst.symbol),
-          UI.h('span', { class: 'badge b-bl' }, inst.group_label || inst.group),
+          UI.h('span', { class: 'badge b-bl', title: inst.pricing_note || '' }, srcBadge || (inst.group_label || inst.group)),
+          UI.h('button', {
+            type: 'button',
+            class: 'asset-card-add-alloc',
+            title: '加入我的配置',
+            onClick: (ev) => {
+              ev.stopPropagation();
+              const qty = 100;
+              if (window.StockQPro?.Allocation?.add) {
+                window.StockQPro.Allocation.add({
+                  code: inst.symbol,
+                  name: inst.name,
+                  quantity: qty,
+                });
+                window.StockQPro?.Allocation?.setOpen?.(true);
+              } else {
+                window.StockQPro?.App?.toast?.('配置欄載入中，請稍後再試', 'inf');
+              }
+            },
+          }, '+配置'),
         ),
       );
     });
@@ -267,32 +300,238 @@
   function renderGroupPills() {
     const el = UI.id('assets-group-pills');
     if (!el || !state.catalog) return;
-    const groups = state.catalog.groups || {};
-    const order = state.catalog.group_order || Object.keys(groups);
-    const pills = [
+    const tree = state.catalog.hierarchy || null;
+    const l1 = tree?.l1 || null;
+    const l1Order = Array.isArray(tree?.l1_order) && tree.l1_order.length
+      ? tree.l1_order
+      : (state.catalog.group_order || Object.keys(state.catalog.groups || {}));
+
+    const totalAll = state.catalog.total || 0;
+
+    const pillsL1 = [
       UI.h('button', {
         type: 'button',
-        class: `cat-pill ${state.activeGroup === 'all' ? 'on' : ''}`,
-        onClick: () => { state.activeGroup = 'all'; renderGroupPills(); renderList(); },
-      }, `全部 (${state.catalog.total || 0})`),
-      ...order.map((gid) => {
-        const g = groups[gid] || {};
+        class: `cat-pill ${state.activeL1 === 'all' ? 'on' : ''}`,
+        onClick: () => {
+          state.activeL1 = 'all';
+          state.activeL2 = 'all';
+          state.activeL3 = 'all';
+          renderGroupPills();
+          renderList();
+        },
+      }, `全部 (${totalAll})`),
+      ...l1Order.map((gid) => {
+        const g = (l1 && l1[gid]) ? l1[gid] : (state.catalog.groups || {})[gid] || {};
         const cnt = g.count || 0;
         return UI.h('button', {
           type: 'button',
-          class: `cat-pill ${state.activeGroup === gid ? 'on' : ''}`,
-          onClick: () => { state.activeGroup = gid; renderGroupPills(); renderList(); },
+          class: `cat-pill ${state.activeL1 === gid ? 'on' : ''}`,
+          onClick: () => {
+            state.activeL1 = gid;
+            state.activeL2 = 'all';
+            state.activeL3 = 'all';
+            renderGroupPills();
+            renderList();
+          },
         }, `${g.label || gid} (${cnt})`);
       }),
     ];
-    UI.mount(el, UI.h('div', { class: 'assets-pills-row' }, ...pills));
+
+    const curL1 = state.activeL1 !== 'all' ? state.activeL1 : null;
+    const l2Map = curL1 ? (l1?.[curL1]?.l2 || null) : null;
+    const l2Order = curL1 && Array.isArray(l1?.[curL1]?.l2_order) ? l1[curL1].l2_order : (l2Map ? Object.keys(l2Map) : []);
+    const l2Total = curL1 ? (l1?.[curL1]?.count || 0) : totalAll;
+
+    const pillsL2 = (curL1 && l2Map)
+      ? [
+        UI.h('button', {
+          type: 'button',
+          class: `cat-pill ${state.activeL2 === 'all' ? 'on' : ''}`,
+          onClick: () => {
+            state.activeL2 = 'all';
+            state.activeL3 = 'all';
+            renderGroupPills();
+            renderList();
+          },
+        }, `全部 (${l2Total})`),
+        ...l2Order.map((k) => {
+          const g = l2Map[k] || {};
+          return UI.h('button', {
+            type: 'button',
+            class: `cat-pill ${state.activeL2 === k ? 'on' : ''}`,
+            onClick: () => {
+              state.activeL2 = k;
+              state.activeL3 = 'all';
+              renderGroupPills();
+              renderList();
+            },
+          }, `${g.label || k} (${g.count || 0})`);
+        }),
+      ]
+      : [];
+
+    const curL2 = (curL1 && state.activeL2 !== 'all') ? state.activeL2 : null;
+    const l3Map = (curL1 && curL2) ? (l2Map?.[curL2]?.l3 || null) : null;
+    const l3Order = (curL1 && curL2 && Array.isArray(l2Map?.[curL2]?.l3_order))
+      ? l2Map[curL2].l3_order
+      : (l3Map ? Object.keys(l3Map) : []);
+    const l3Total = (curL1 && curL2) ? (l2Map?.[curL2]?.count || 0) : l2Total;
+
+    const pillsL3 = (curL1 && curL2 && l3Map)
+      ? [
+        UI.h('button', {
+          type: 'button',
+          class: `cat-pill ${state.activeL3 === 'all' ? 'on' : ''}`,
+          onClick: () => {
+            state.activeL3 = 'all';
+            renderGroupPills();
+            renderList();
+          },
+        }, `全部 (${l3Total})`),
+        ...l3Order.map((k) => {
+          const g = l3Map[k] || {};
+          return UI.h('button', {
+            type: 'button',
+            class: `cat-pill ${state.activeL3 === k ? 'on' : ''}`,
+            onClick: () => {
+              state.activeL3 = k;
+              renderGroupPills();
+              renderList();
+            },
+          }, `${g.label || k} (${g.count || 0})`);
+        }),
+      ]
+      : [];
+
+    UI.mount(el, UI.h('div', null,
+      UI.h('div', { class: 'assets-pills-row' }, ...pillsL1),
+      pillsL2.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL2) : null,
+      pillsL3.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL3) : null,
+    ));
+  }
+
+  function buildGroupsFromInstruments(instruments) {
+    const rows = Array.isArray(instruments) ? instruments : [];
+    const groups = {};
+    rows.forEach((r) => {
+      const gid = String(r?.group || '').trim() || 'unknown';
+      const label = String(r?.group_label || '').trim() || gid;
+      if (!groups[gid]) groups[gid] = { label, count: 0 };
+      groups[gid].count += 1;
+      // prefer first non-empty label
+      if (!groups[gid].label && label) groups[gid].label = label;
+    });
+    const group_order = Object.keys(groups).sort((a, b) => {
+      const la = String(groups[a]?.label || a);
+      const lb = String(groups[b]?.label || b);
+      return la.localeCompare(lb, 'zh-Hant');
+    });
+    return { groups, group_order };
+  }
+
+  function buildHierarchyFromInstruments(instruments, baseGroups, baseOrder) {
+    const rows = Array.isArray(instruments) ? instruments : [];
+    const l1 = {};
+    const l1_order = Array.isArray(baseOrder) && baseOrder.length ? [...baseOrder] : [];
+
+    const ensure = (obj, key, init) => {
+      if (!obj[key]) obj[key] = init();
+      return obj[key];
+    };
+
+    rows.forEach((r) => {
+      const g1 = String(r?.group || '').trim() || 'unknown';
+      const g1Label = String(r?.group_label || '').trim() || (baseGroups?.[g1]?.label) || g1;
+      const l2Key = String(r?.l2 || r?.asset_class || 'other').trim() || 'other';
+      const l2Label = String(r?.l2_label || '').trim() || l2Key;
+      const l3Key = String(r?.l3 || 'other').trim() || 'other';
+      const l3Label = String(r?.l3_label || '').trim() || l3Key;
+
+      const n1 = ensure(l1, g1, () => ({ label: g1Label, count: 0, l2: {}, l2_order: [] }));
+      n1.count += 1;
+      if (!l1_order.includes(g1)) l1_order.push(g1);
+
+      const n2 = ensure(n1.l2, l2Key, () => ({ label: l2Label, count: 0, l3: {}, l3_order: [] }));
+      n2.count += 1;
+      if (!n1.l2_order.includes(l2Key)) n1.l2_order.push(l2Key);
+
+      const n3 = ensure(n2.l3, l3Key, () => ({ label: l3Label, count: 0 }));
+      n3.count += 1;
+      if (!n2.l3_order.includes(l3Key)) n2.l3_order.push(l3Key);
+    });
+
+    Object.keys(l1).forEach((g1) => {
+      l1[g1].l2_order.sort((a, b) => String(l1[g1].l2[a]?.label || a).localeCompare(String(l1[g1].l2[b]?.label || b), 'zh-Hant'));
+      Object.keys(l1[g1].l2).forEach((k2) => {
+        l1[g1].l2[k2].l3_order.sort((a, b) => String(l1[g1].l2[k2].l3[a]?.label || a).localeCompare(String(l1[g1].l2[k2].l3[b]?.label || b), 'zh-Hant'));
+      });
+    });
+
+    return { l1, l1_order };
+  }
+
+  function normalizeCatalog(raw) {
+    const cat = (raw && typeof raw === 'object') ? { ...raw } : {};
+    if (!Array.isArray(cat.instruments)) cat.instruments = [];
+    if (typeof cat.total !== 'number') cat.total = cat.instruments.length;
+
+    // Backward/forward compatibility:
+    // - If backend doesn't ship groups metadata, infer from instruments.
+    const hasGroups = cat.groups && typeof cat.groups === 'object' && Object.keys(cat.groups).length;
+    const groupsLooksLikeCounts = hasGroups && Object.values(cat.groups).every((v) => typeof v === 'number');
+    if (groupsLooksLikeCounts) {
+      const labels = (cat.group_labels && typeof cat.group_labels === 'object') ? cat.group_labels : {};
+      const next = {};
+      Object.keys(cat.groups).forEach((gid) => {
+        next[gid] = {
+          label: labels[gid] || gid,
+          count: Number(cat.groups[gid] || 0),
+        };
+      });
+      cat.groups = next;
+    }
+
+    if (!hasGroups || groupsLooksLikeCounts) {
+      const built = buildGroupsFromInstruments(cat.instruments);
+      cat.groups = built.groups;
+      cat.group_order = built.group_order;
+    } else if (!Array.isArray(cat.group_order) || !cat.group_order.length) {
+      cat.group_order = Object.keys(cat.groups);
+    }
+
+    if (!cat.hierarchy || !cat.hierarchy.l1) {
+      const built = buildHierarchyFromInstruments(cat.instruments, cat.groups, cat.group_order);
+      cat.hierarchy = { l1: built.l1, l1_order: built.l1_order };
+    }
+    return cat;
   }
 
   async function loadCatalog() {
-    const data = await Api.getAssetsCatalog();
-    state.catalog = data;
-    renderGroupPills();
-    renderList();
+    const root = UI.id('assets-grid');
+    const pills = UI.id('assets-group-pills');
+    const meta = UI.id('assets-meta');
+    try {
+      if (meta) meta.textContent = '載入中…';
+      if (root) UI.mount(root, UI.h('div', { class: 'assets-loading' }, '載入資產庫中…'));
+      if (pills) UI.mount(pills, UI.h('div', { class: 'assets-loading' }, '載入分類中…'));
+
+      const data = await Api.getAssetsCatalog();
+      state.catalog = normalizeCatalog(data);
+      renderGroupPills();
+      renderList();
+    } catch (e) {
+      state.catalog = { instruments: [], total: 0, groups: {}, group_order: [] };
+      if (meta) meta.textContent = '資產庫載入失敗';
+      if (pills) UI.mount(pills, UI.h('div', { class: 'assets-empty er' }, '分類載入失敗'));
+      if (root) {
+        UI.mount(root, UI.h('div', { class: 'assets-empty er' },
+          `資產庫載入失敗：${e?.message || e}`,
+          UI.h('div', { style: { marginTop: '10px' } },
+            UI.h('button', { type: 'button', class: 'btn btn-s', onClick: () => loadCatalog().then(() => loadQuotes()) }, '重試'),
+          ),
+        ));
+      }
+    }
   }
 
   async function loadQuotes() {
@@ -598,6 +837,19 @@
       ? `${change >= 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 4 })}`
       : '';
 
+    const live = state.detailPrice;
+    const liveSrc = live?.source ? String(live.source) : '';
+    const liveKind = live?.kind ? String(live.kind) : '';
+    const liveTs = live?.ts ? new Date(Number(live.ts) * 1000) : null;
+    const liveTsText = liveTs && !Number.isNaN(liveTs.getTime())
+      ? liveTs.toLocaleString('zh-TW', { hour12: false })
+      : '';
+    const liveText = live?.loading
+      ? '即時/估值：載入中…'
+      : (live?.success
+        ? `即時/估值：${liveSrc}${liveKind ? ` · ${liveKind}` : ''}${liveTsText ? ` · ${liveTsText}` : ''}`
+        : (live?.message ? `即時/估值：${live.message}` : '即時/估值：—'));
+
     return UI.h('header', { class: 'asset-detail-hero' },
       UI.h('div', { class: 'asset-detail-hero-left' },
         UI.h('button', {
@@ -626,9 +878,46 @@
           UI.h('span', { class: 'asset-detail-pct' }, pctText),
           changeText ? UI.h('span', { class: 'asset-detail-chg' }, changeText) : null,
         ),
+        UI.h('div', { class: 'assets-hint', id: 'asset-detail-live-price' }, liveText),
         q.source ? UI.h('span', { class: 'ticker-card-src' }, q.source) : null,
       ),
     );
+  }
+
+  async function loadDetailPrice(symbol) {
+    const sym = String(symbol || '').trim();
+    if (!sym) return;
+    state.detailPrice = { loading: true };
+    // re-render hero only if already mounted
+    if (UI.id('asset-detail-live-price')) {
+      const el = UI.id('asset-detail-live-price');
+      if (el) el.textContent = '即時/估值：載入中…';
+    }
+    try {
+      const res = await Api.get(`/api/assets/price?symbol=${encodeURIComponent(sym)}`, { silent: true, noCache: true });
+      state.detailPrice = res || { success: false, message: '暫無回應' };
+      const el = UI.id('asset-detail-live-price');
+      if (el) {
+        const live = state.detailPrice;
+        const liveSrc = live?.source ? String(live.source) : '';
+        const liveKind = live?.kind ? String(live.kind) : '';
+        const liveTs = live?.ts ? new Date(Number(live.ts) * 1000) : null;
+        const liveTsText = liveTs && !Number.isNaN(liveTs.getTime())
+          ? liveTs.toLocaleString('zh-TW', { hour12: false })
+          : '';
+        if (live?.success) {
+          el.textContent = `即時/估值：${liveSrc}${liveKind ? ` · ${liveKind}` : ''}${liveTsText ? ` · ${liveTsText}` : ''}`;
+          el.title = live?.pricing_note || '';
+        } else {
+          el.textContent = `即時/估值：${live?.message || '—'}`;
+          el.title = live?.pricing_note || '';
+        }
+      }
+    } catch (_) {
+      state.detailPrice = { success: false, message: '載入失敗' };
+      const el = UI.id('asset-detail-live-price');
+      if (el) el.textContent = '即時/估值：載入失敗';
+    }
   }
 
   function mountDetailShell(d, symbol) {
@@ -734,7 +1023,9 @@
       const res = await Api.getAssetDetail(sym, days);
       const d = res.detail || res;
       state.detailData = d;
+      state.detailPrice = null;
       mountDetailShell(d, sym);
+      loadDetailPrice(sym);
     } catch (e) {
       state.detailData = null;
       UI.mount(root, UI.h('div', { class: 'assets-empty er' },

@@ -280,11 +280,24 @@ async def get_stock_names():
 
 
 def _normalize_compare_code(code: str) -> str:
-    """A 股代碼補零（000001）"""
-    code = str(code).strip()
-    if code.isdigit() and len(code) < 6:
-        return code.zfill(6)
-    return code
+    """多市場代碼正規化（A 股補零；港股/美股等保留 Yahoo/IB 格式）"""
+    from src.core.history import detect_market
+    from src.core.local_kline import normalize_kline_code
+
+    raw = str(code or "").strip().upper()
+    if not raw:
+        return raw
+    if raw.isdigit() and len(raw) < 6:
+        return raw.zfill(6)
+    mkt = detect_market(raw)
+    if mkt == "a_share" and raw.replace(".", "").isdigit():
+        return normalize_kline_code(raw)
+    if raw.endswith(".HK"):
+        num = raw[:-3].replace(".", "")
+        if num.isdigit():
+            return f"{num.zfill(4)}.HK"
+        return raw
+    return raw
 
 
 def _compare_daily_returns(closes: list) -> list[float]:

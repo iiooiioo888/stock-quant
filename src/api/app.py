@@ -37,6 +37,7 @@ from src.api.routers.crypto import router as crypto_router
 from src.api.routers.external_check import router as external_check_router
 from src.api.routers.llm import router as llm_router
 from src.api.routers.portfolio_settlement import router as portfolio_settlement_router
+from src.api.routers.user_allocation import router as user_allocation_router
 from src.api.routers.stream import router as stream_router
 from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
@@ -180,6 +181,7 @@ app.include_router(crypto_router)
 app.include_router(external_check_router)
 app.include_router(llm_router)
 app.include_router(portfolio_settlement_router)
+app.include_router(user_allocation_router)
 app.include_router(stream_router)
 
 # CORS

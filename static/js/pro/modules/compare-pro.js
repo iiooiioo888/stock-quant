@@ -53,16 +53,22 @@
   };
 
   function normalizeCode(raw) {
+    const SU = window.StockQPro?.SymbolUtils;
+    if (SU?.normalizeCompareCode) return SU.normalizeCompareCode(raw);
     const s = String(raw || '').trim();
     if (/^\d{1,6}$/.test(s)) return s.padStart(6, '0');
-    const m = s.match(/(\d{6})/);
-    if (m) return m[1];
-    if (s.includes('.')) return s.split('.')[0].replace(/\D/g, '').padStart(6, '0').slice(-6);
-    return s;
+    return s.toUpperCase();
   }
 
-  function isValidAshare(code) {
+  function isValidCompareSymbol(code) {
+    const SU = window.StockQPro?.SymbolUtils;
+    if (SU?.isValidCompareSymbol) return SU.isValidCompareSymbol(code);
     return /^\d{6}$/.test(code);
+  }
+
+  /** @deprecated 使用 isValidCompareSymbol */
+  function isValidAshare(code) {
+    return isValidCompareSymbol(code);
   }
 
   function resolveName(code) {
@@ -103,7 +109,7 @@
       if (!Array.isArray(arr)) return;
       state.chips = arr
         .map((x) => ({ code: normalizeCode(x.code), name: x.name || '' }))
-        .filter((x) => isValidAshare(x.code))
+        .filter((x) => isValidCompareSymbol(x.code))
         .slice(0, MAX_STOCKS);
     } catch (_) { /* ignore */ }
   }
@@ -174,7 +180,7 @@
 
   async function enqueueStrategyCompare(code, opts = {}) {
     const c = normalizeCode(code);
-    if (!isValidAshare(c)) return false;
+    if (!isValidCompareSymbol(c)) return false;
     if (state.strategyEnqueueInFlight.has(c)) {
       if (!opts.silent) window.StockQPro?.App?.toast?.(`${c} 任務提交中…`, 'inf');
       return false;
@@ -267,8 +273,8 @@
 
   function addChip(code, name = '', opts = {}) {
     const c = normalizeCode(code);
-    if (!isValidAshare(c)) {
-      window.StockQPro?.App?.toast?.('請輸入 6 位 A 股代碼', 'er');
+    if (!isValidCompareSymbol(c)) {
+      window.StockQPro?.App?.toast?.('請輸入有效代碼（A股/港股/美股等）', 'er');
       return false;
     }
     const n = name || resolveName(c) || c;
@@ -331,7 +337,7 @@
     const hint = $id('cmp-mode-hint');
     if (hint) {
       hint.textContent = state.mode === 'stocks'
-        ? `選 2～${MAX_STOCKS} 檔股票，對比區間相對收益走勢`
+        ? `選 2～${MAX_STOCKS} 檔（A股/港股/美股等），對比區間相對收益`
         : '選 1 檔股票對比全部策略；執行後再點其他股票會加入任務中心';
     }
     document.querySelectorAll('.cmp-ctl-strat').forEach((el) => {
@@ -422,7 +428,7 @@
     if (mode === 'stocks' || mode === 'strategies') state.mode = mode;
     const codes = qs.get('codes');
     if (codes) {
-      const list = codes.split(/[,，\s]+/).map((x) => normalizeCode(x)).filter(isValidAshare);
+      const list = codes.split(/[,，\s]+/).map((x) => normalizeCode(x)).filter(isValidCompareSymbol);
       if (list.length) {
         state.chips = list.slice(0, MAX_STOCKS).map((code) => ({ code, name: resolveName(code) }));
       }
@@ -540,7 +546,7 @@
       const d = await Api.getWatchlist();
       items = (d?.items || []).map((x) => ({ code: x.code, name: x.name }));
     } catch (_) { /* ignore */ }
-    items = items.filter((x) => isValidAshare(normalizeCode(x.code))).slice(0, MAX_STOCKS);
+    items = items.filter((x) => isValidCompareSymbol(normalizeCode(x.code))).slice(0, MAX_STOCKS);
     if (!items.length) return window.StockQPro?.App?.toast?.('自選為空', 'inf');
     state.chips = items.map((x) => ({ code: normalizeCode(x.code), name: x.name || resolveName(x.code) }));
     renderChips();
@@ -1489,7 +1495,7 @@
       const d = await Api.getWatchlist();
       items = (d?.items || []).map((x) => ({ code: x.code, name: x.name }));
     } catch (_) { /* ignore */ }
-    items = items.filter((x) => isValidAshare(normalizeCode(x.code)));
+    items = items.filter((x) => isValidCompareSymbol(normalizeCode(x.code)));
     renderPickList('cmp-pick-watch', items, '自選為空');
   }
 
@@ -1699,6 +1705,23 @@
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
+  window.addEventListener('stockq:allocation-import-compare', (ev) => {
+    const codes = ev.detail?.codes;
+    const names = ev.detail?.names || {};
+    if (!Array.isArray(codes) || !codes.length) return;
+    state.mode = 'stocks';
+    const modeBtn = document.querySelector('[data-cmp-mode="stocks"]');
+    if (modeBtn) modeBtn.click();
+    state.chips = [];
+    codes.forEach((code) => {
+      const c = normalizeCode(code);
+      const nm = names[code] || names[c] || resolveName(c);
+      addChip(c, nm, { silent: true, skipEnqueue: true });
+    });
+    renderChips();
+    window.StockQPro?.App?.toast?.(`已載入 ${state.chips.length} 檔至多股對比（含港股/美股）`, 'ok');
+  });
+
   window.StockQPro.pages.compare = {
     init,
     onShow,

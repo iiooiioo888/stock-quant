@@ -104,6 +104,10 @@ class TestSmokeAPI:
         groups = data.get("groups") or {}
         assert "asia" in groups
         assert "us_stock" in groups
+        # v4 assets: hierarchical classification
+        inst = (data.get("instruments") or [None])[0] or {}
+        assert "l2" in inst and "l2_label" in inst
+        assert "l3" in inst and "l3_label" in inst
 
     def test_assets_detail(self, client):
         resp = client.get("/api/assets/detail?symbol=^GSPC&days=60")
