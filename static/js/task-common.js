@@ -591,9 +591,33 @@ const TaskCommon = {
 
   renderQueueSection(snapshot, compact) {
     const q = this.splitQueue(snapshot);
+    const pendingTasks = (Array.isArray(snapshot) ? snapshot : [])
+      .filter(t => t.status === 'pending')
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    const pendingHtml = pendingTasks.length
+      ? `<div class="tk-pending-queue"><div class="tk-pending-queue-hd">📋 排隊序列 <span style="font-weight:400;color:var(--t3)">(${pendingTasks.length})</span></div><div class="tk-pending-queue-list">${pendingTasks.map((t, idx) => this._renderPendingItem(t, idx + 1)).join('')}</div></div>`
+      : '';
     return `${this.renderQueueCard('current', q.current, compact)}
       ${this.renderQueueCard('next', q.next, compact)}
-      ${this.renderQueueCard('recent', q.recent, compact)}`;
+      ${this.renderQueueCard('recent', q.recent, compact)}
+      ${pendingHtml}`;
+  },
+
+  _renderPendingItem(task, index) {
+    const typeName = this.typeName(task.task_type);
+    const sub = this.formatTaskSubtitle(task) || typeName;
+    const canCancel = task.status === 'pending';
+    const actions = canCancel
+      ? `<div class="tk-pending-actions"><button class="btn danger" style="padding:2px 8px;font-size:10px" data-tk-queue-action="cancel" data-task-id="${task.task_id}">取消</button></div>`
+      : '';
+    return `<div class="tk-pending-item" data-task-id="${task.task_id}">
+      <div class="tk-pending-idx">#${index}</div>
+      <div class="tk-pending-body">
+        <div class="tk-pending-title">${task.title || typeName}</div>
+        <div class="tk-pending-sub">${sub}</div>
+      </div>
+      ${actions}
+    </div>`;
   },
 
   bindQueueActions(root, handlers) {

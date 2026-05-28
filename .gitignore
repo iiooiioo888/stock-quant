@@ -1,18 +1,60 @@
-data/
-*.db
-*.png
-__pycache__/
-*.pyc
+```
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
 .env
-logs/
-*.egg-info/
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
 dist/
 build/
-.venv/
-venv/
-.qwen/
-.playwright-mcp/
+target/
+.gradle/
 
-# Cursor Agent Skills (sync via scripts/sync-cursor-skills.ps1)
-.cursor/skills/
-.cursor/claude-skills-upstream/
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```
