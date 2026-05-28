@@ -104,6 +104,14 @@
             if (m && typeof m.rebindWs === 'function') m.rebindWs();
           });
         } catch (_) {}
+        try {
+          const mods = window.__StockQProESM__?.registry?.listPages?.()
+            ?.map((pid) => window.__StockQProESM__?.getPage?.(pid))
+            ?.filter(Boolean);
+          (mods || []).forEach((m) => {
+            if (m && typeof m.rebindWs === 'function') m.rebindWs();
+          });
+        } catch (_) {}
       };
 
       ws.onclose = () => {
@@ -215,7 +223,7 @@
 
       if (prev && prev !== pid) {
         try {
-          const prevMod = window.StockQPro?.pages?.[prev];
+          const prevMod = window.__StockQProESM__?.getPage?.(prev) || window.StockQPro?.pages?.[prev];
           if (prevMod && typeof prevMod.unload === 'function') prevMod.unload();
         } catch (_) {}
       }
@@ -225,7 +233,7 @@
       } catch (_) {}
 
       try {
-        const mod = window.StockQPro?.pages?.[pid];
+        const mod = window.__StockQProESM__?.getPage?.(pid) || window.StockQPro?.pages?.[pid];
         if (mod) {
           if (prev !== pid && typeof mod.init === 'function') {
             await Promise.resolve(mod.init());

@@ -7,7 +7,18 @@
     activeCat: '',
     query: '',
     implOnly: false,
+    pageSize: 36,
+    visible: 36,
+    lastTotal: 0,
   };
+
+  function prefersReducedMotion() {
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (_) {
+      return false;
+    }
+  }
 
   function fmtKlines(n) {
     const x = Number(n);
@@ -31,6 +42,35 @@
     return 'tier-ent';
   }
 
+  function animateNumber(el, to, fmt = (v) => String(v)) {
+    if (!el) return;
+    const target = Number(to);
+    if (!Number.isFinite(target) || prefersReducedMotion()) {
+      el.textContent = fmt(target);
+      return;
+    }
+    const fromRaw = Number(String(el.textContent || '').replace(/[^\d.-]/g, ''));
+    const from = Number.isFinite(fromRaw) ? fromRaw : 0;
+    const start = performance.now();
+    const dur = 650;
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / dur);
+      const v = from + (target - from) * ease(p);
+      el.textContent = fmt(Math.round(v));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function markLoadedTime() {
+    const el = document.getElementById('home-loaded-at');
+    if (!el) return;
+    const iso = new Date().toISOString();
+    el.setAttribute('datetime', iso);
+    el.textContent = iso.replace('T', ' ').replace('Z', 'Z');
+  }
+
   function isImplemented(s) {
     const st = s.status || 'planned';
     return st === 'implemented' || st === 'user';
@@ -43,8 +83,16 @@
     const klines = document.getElementById('home-st-klines');
     const ver = document.getElementById('home-st-ver');
     const uptime = document.getElementById('home-st-uptime');
-    if (stocks) stocks.textContent = fmtKlines(health.total_stocks ?? 0);
-    if (klines) klines.textContent = fmtKlines(health.total_klines ?? 0);
+    if (stocks) {
+      const n = Number(health.total_stocks ?? 0);
+      if (Number.isFinite(n) && n < 1e6) animateNumber(stocks, n, (v) => fmtKlines(v));
+      else stocks.textContent = fmtKlines(n);
+    }
+    if (klines) {
+      const n = Number(health.total_klines ?? 0);
+      if (Number.isFinite(n) && n < 1e7) animateNumber(klines, n, (v) => fmtKlines(v));
+      else klines.textContent = fmtKlines(n);
+    }
     if (ver && health.version) ver.textContent = `v${health.version}`;
     if (uptime && health.uptime) uptime.textContent = health.uptime;
   }
@@ -111,11 +159,15 @@
     const cats = state.catalog.cats.length;
     const engine = state.builtin.length;
     el.innerHTML = `
-      <div class="home-lib-stat"><span class="v ac">${total}</span><span class="l">策略目錄</span></div>
-      <div class="home-lib-stat"><span class="v gn">${impl}</span><span class="l">目錄可回測</span></div>
-      <div class="home-lib-stat"><span class="v bl">${engine}</span><span class="l">引擎內建</span></div>
-      <div class="home-lib-stat"><span class="v">${cats}</span><span class="l">大類別</span></div>
+      <div class="home-lib-stat"><span class="v ac" data-anim="total">0</span><span class="l">策略目錄</span></div>
+      <div class="home-lib-stat"><span class="v gn" data-anim="impl">0</span><span class="l">目錄可回測</span></div>
+      <div class="home-lib-stat"><span class="v bl" data-anim="engine">0</span><span class="l">引擎內建</span></div>
+      <div class="home-lib-stat"><span class="v" data-anim="cats">0</span><span class="l">大類別</span></div>
     `;
+    animateNumber(el.querySelector('[data-anim="total"]'), total);
+    animateNumber(el.querySelector('[data-anim="impl"]'), impl);
+    animateNumber(el.querySelector('[data-anim="engine"]'), engine);
+    animateNumber(el.querySelector('[data-anim="cats"]'), cats);
   }
 
   function renderCatPills() {
@@ -150,12 +202,30 @@
     });
   }
 
+  function revealNewItems(root) {
+    if (!root) return;
+    const items = root.querySelectorAll('.reveal-item:not(.is-in)');
+    if (!items.length) return;
+    if (prefersReducedMotion()) {
+      items.forEach((el) => el.classList.add('is-in'));
+      return;
+    }
+    // lightweight: no IntersectionObserver dependency for older browsers
+    let i = 0;
+    const step = () => {
+      const el = items[i++];
+      if (el) el.classList.add('is-in');
+      if (i < items.length) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   function renderCard(s, cat) {
     const impl = isImplemented(s);
     const tier = s.tier || 'free';
     const href = impl ? '/app#/backtest' : '/app#/strategies';
     return `
-      <a class="strat-card ${impl ? 'is-impl is-ready' : 'is-planned'}" href="${href}" data-id="${s.id}">
+      <a class="strat-card reveal-item ${impl ? 'is-impl is-ready' : 'is-planned'}" href="${href}" data-id="${s.id}">
         <div class="strat-accent" style="position:absolute;top:0;left:0;bottom:0;width:3px;background:${impl ? 'var(--gn)' : 'var(--t3)'}"></div>
         <div class="strat-hdr">
           <span class="strat-num">#${String(s.id).padStart(3, '0')}</span>
@@ -171,6 +241,19 @@
     `;
   }
 
+  function updatePagerUi(listLen, totalLen) {
+    const actions = document.getElementById('home-strat-actions');
+    const meta = document.getElementById('home-strat-meta');
+    const btnMore = document.getElementById('home-strat-more');
+    if (!actions || !meta || !btnMore) return;
+
+    const shown = Math.min(state.visible, listLen);
+    actions.hidden = listLen <= state.pageSize;
+    meta.textContent = `已顯示 ${shown} / ${listLen}（全目錄 ${totalLen}）`;
+    btnMore.disabled = shown >= listLen;
+    btnMore.textContent = shown >= listLen ? '已顯示全部' : `顯示更多（+${Math.min(state.pageSize, listLen - shown)}）`;
+  }
+
   function renderGrid() {
     const grid = document.getElementById('home-strat-grid');
     const foot = document.getElementById('home-strat-foot');
@@ -178,18 +261,24 @@
     grid.classList.remove('is-loading');
 
     const list = filteredStrats();
+    state.lastTotal = list.length;
+    if (state.visible > list.length) state.visible = list.length || state.pageSize;
     if (!list.length) {
       grid.innerHTML = '<p style="color:var(--t3);font-size:.74rem;padding:20px 0;text-align:center">沒有符合條件的策略</p>';
     } else {
-      grid.innerHTML = list.map((s) => {
+      const page = list.slice(0, Math.max(state.pageSize, state.visible));
+      grid.innerHTML = page.map((s) => {
         const cat = state.catalog.cats.find((c) => c.id === s.cat) || state.catalog.cats[0];
         return renderCard(s, cat);
       }).join('');
+      revealNewItems(grid);
     }
 
     if (foot) {
-      foot.textContent = `顯示 ${list.length} / ${state.catalog.strats.length} 條策略 · 點擊卡片進入工作台`;
+      const shown = Math.min(state.visible, list.length);
+      foot.textContent = `顯示 ${shown} / ${list.length} 條策略 · 點擊卡片進入工作台`;
     }
+    updatePagerUi(list.length, state.catalog.strats.length);
   }
 
   function bindToolbar() {
@@ -198,13 +287,32 @@
     if (search) {
       search.addEventListener('input', () => {
         state.query = search.value;
+        state.visible = state.pageSize;
         renderGrid();
       });
     }
     if (implOnly) {
       implOnly.addEventListener('change', () => {
         state.implOnly = implOnly.checked;
+        state.visible = state.pageSize;
         renderGrid();
+      });
+    }
+    const more = document.getElementById('home-strat-more');
+    if (more && !more._bound) {
+      more._bound = true;
+      more.addEventListener('click', () => {
+        state.visible += state.pageSize;
+        renderGrid();
+        // keep user's context near controls
+        more.focus();
+      });
+    }
+    const top = document.getElementById('home-strat-top');
+    if (top && !top._bound) {
+      top._bound = true;
+      top.addEventListener('click', () => {
+        document.getElementById('home-cat-pills')?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       });
     }
   }
@@ -233,6 +341,7 @@
       renderCatPills();
       bindToolbar();
       setGridLoading(false);
+      state.visible = state.pageSize;
       renderGrid();
     } catch (e) {
       grid.classList.remove('is-loading');
@@ -242,6 +351,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     try { if (typeof Api !== 'undefined' && Api.init) Api.init(); } catch (_) {}
+    markLoadedTime();
     loadStats();
     initStrategyLibrary();
   });

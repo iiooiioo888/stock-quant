@@ -85,6 +85,20 @@
   async function ensurePage(pageId) {
     const pid = String(pageId || '').trim();
     await ensureCharts(pid);
+
+    // ESM gray release: delegate to ESM loader when enabled for this page.
+    // This keeps legacy PAGE_SCRIPTS untouched for rollback safety.
+    try {
+      const ESM = window.__StockQProESM__;
+      if (ESM?.isEnabled?.(pid)) {
+        await ESM.ensurePage(pid);
+        return;
+      }
+    } catch (e) {
+      // If ESM path fails, bubble up so App can toast the error.
+      throw e;
+    }
+
     const list = PAGE_SCRIPTS[pid];
     if (!list?.length) return;
     const SL = window.StockQPro?.StreamLoader;
