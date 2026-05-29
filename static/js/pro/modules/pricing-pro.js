@@ -140,7 +140,7 @@
         <div class="pricing-price">${fmtMoney(plan)}</div>
         <p class="pricing-limits">
           回測 ${lim.daily_backtests}/日 · 組合 ${lim.daily_portfolio_runs}/日 ·
-          自選 ${lim.max_watchlist} · 配置 ${lim.max_allocation_positions} 檔
+          並行 ${lim.concurrent_tasks} · 自選 ${lim.max_watchlist} · 配置 ${lim.max_allocation_positions} 檔
         </p>
         <ul class="pricing-feats">${feats}${more}</ul>
         <div class="pricing-card-ft">${ctaForPlan(plan)}</div>

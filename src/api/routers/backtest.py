@@ -40,6 +40,9 @@ async def run_backtest_api(
     from src.core.task_manager import create_task
 
     gate_backtest_submit(user, advanced=False)
+    if user:
+        from src.core.entitlements import gate_concurrent_tasks
+        gate_concurrent_tasks(user)
 
     try:
         timeframe = normalize_timeframe(timeframe)
@@ -58,7 +61,10 @@ async def run_backtest_api(
         "trailing_stop_pct": trailing_stop_pct,
         "benchmark": benchmark,
     }
-    task = create_task("backtest", task_params, title=f"回測 {code}/{strategy}", force_refresh=force_refresh)
+    task = create_task(
+        "backtest", task_params, title=f"回測 {code}/{strategy}",
+        force_refresh=force_refresh, user_id=user.id if user else None,
+    )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同回測正在執行中，請等待完成", "async": True}
@@ -106,6 +112,8 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
     from src.core.task_manager import create_task
 
     gate_backtest_submit(user, advanced=True)
+    from src.core.entitlements import gate_concurrent_tasks
+    gate_concurrent_tasks(user)
 
     code = body.get("code", "")
     strategy = body.get("strategy", "dual_ma")
@@ -152,7 +160,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
         drop_cached_compute("backtest_advanced", task_params, code=code)
     task = create_task(
         "backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}",
-        force_refresh=force_refresh,
+        force_refresh=force_refresh, user_id=user.id,
     )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
@@ -236,6 +244,8 @@ async def run_optimize_api(
         raise HTTPException(400, "請提供股票代碼")
 
     gate_optimize_submit(user)
+    from src.core.entitlements import gate_concurrent_tasks
+    gate_concurrent_tasks(user)
 
     merged = {
         "code": code,
@@ -257,7 +267,9 @@ async def run_optimize_api(
     risk_cfg = parse_risk_params(merged)
     task_params = {**merged, **risk_cfg.to_dict()}
     display_strategy = strategy if strategy != "all" else "全部策略"
-    task = create_task("optimize", task_params, title=f"參數優化 {code}/{display_strategy}")
+    task = create_task(
+        "optimize", task_params, title=f"參數優化 {code}/{display_strategy}", user_id=user.id,
+    )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同優化正在執行中，請等待完成", "async": True}
@@ -323,7 +335,9 @@ async def run_portfolio_api(
         "cash": cash,
         "count": len(allocations),
     }
-    task = create_task("portfolio", task_params, title=f"組合回測 · 基礎等權 ({len(allocations)}子)")
+    task = create_task(
+        "portfolio", task_params, title=f"組合回測 · 基礎等權 ({len(allocations)}子)", user_id=user.id,
+    )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同組合回測正在執行中，請等待完成", "async": True}
@@ -444,9 +458,13 @@ async def run_walkforward(
         raise HTTPException(400, "請提供股票代碼")
 
     gate_backtest_submit(user, advanced=True)
+    from src.core.entitlements import gate_concurrent_tasks
+    gate_concurrent_tasks(user)
 
     task_params = {"code": code, "strategy": strategy, "train_days": train_days, "test_days": test_days}
-    task = create_task("walkforward", task_params, title=f"Walk-Forward {code}/{strategy}")
+    task = create_task(
+        "walkforward", task_params, title=f"Walk-Forward {code}/{strategy}", user_id=user.id,
+    )
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "相同 Walk-Forward 正在執行中，請等待完成", "async": True}
@@ -476,12 +494,14 @@ async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
     from src.core.task_manager import create_task
 
     gate_optimize_submit(user)
+    from src.core.entitlements import gate_concurrent_tasks
+    gate_concurrent_tasks(user)
 
     if body is None:
         body = {}
 
     task_params = {"codes": body.get("codes"), "strategies": body.get("strategies"), "method": body.get("method", "optuna")}
-    task = create_task("auto_optimize", task_params, title="全自動參數優化")
+    task = create_task("auto_optimize", task_params, title="全自動參數優化", user_id=user.id)
     if task.get("is_duplicate"):
         return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
                 "message": "全自動優化正在執行中，請等待完成", "async": True}

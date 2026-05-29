@@ -226,6 +226,31 @@ def check_position_cap(user: User, position_count: int) -> None:
         )
 
 
+def gate_concurrent_tasks(user: User) -> None:
+    """限制同時進行中的任務數（僅統計本進程記憶體任務）。"""
+    from src.core import task_manager as tm
+
+    cap = plan_definition(effective_plan_id(user)).limits.concurrent_tasks
+    active_status = (tm.STATUS_PENDING, tm.STATUS_RUNNING, tm.STATUS_RETRYING)
+    with tm._lock:
+        n = sum(
+            1
+            for t in tm._tasks.values()
+            if t.get("user_id") == user.id and t.get("status") in active_status
+        )
+    if n >= cap:
+        raise HTTPException(
+            429,
+            detail={
+                "code": "quota_exceeded",
+                "message": f"同時進行中的任務已達上限（{cap} 個），請稍後或升級方案",
+                "used": n,
+                "limit": cap,
+                "upgrade_url": "/app#/pricing",
+            },
+        )
+
+
 def check_watchlist_codes_cap(user: User, code_count: int) -> None:
     cap = plan_definition(effective_plan_id(user)).limits.max_watchlist
     if code_count > cap:
@@ -265,6 +290,7 @@ def gate_portfolio_task(user: User, *, advanced: bool = False) -> None:
                 "upgrade_url": "/app#/pricing",
             },
         )
+    gate_concurrent_tasks(user)
     check_quota(user, "portfolio")
     record_usage(user, "portfolio")
 

@@ -527,7 +527,14 @@ def _is_scheduler_trigger(params: dict | None) -> bool:
     )
 
 
-def create_task(task_type: str, params: dict, title: str = "", *, force_refresh: bool = False) -> dict:
+def create_task(
+    task_type: str,
+    params: dict,
+    title: str = "",
+    *,
+    force_refresh: bool = False,
+    user_id: int | None = None,
+) -> dict:
     params = dict(params or {})
     params_hash = _make_params_hash(params)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -603,6 +610,7 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
                         "last_accessed": time.time(),
                         "from_cache": True,
                         "data_version": data_ver,
+                        "user_id": user_id,
                     }
                     _tasks[task_id] = task
                     _save_task_to_db(task, force=True)
@@ -636,6 +644,7 @@ def create_task(task_type: str, params: dict, title: str = "", *, force_refresh:
             "completed_at": None,
             "last_accessed": time.time(),
             "data_version": data_ver,
+            "user_id": user_id,
         }
         _tasks[task_id] = task
         _cancel_flags.pop(task_id, None)
