@@ -241,7 +241,22 @@ def get_task_logs(task_id: str, *, tail: int = 200) -> list[dict]:
 
 
 def _notify_task_update(task_id: str, event: str = "task_update"):
-    """推送任務狀態更新（非阻塞）。"""
+    """推送任務狀態更新（非阻塞），同步到 Redis Pub/Sub。"""
+    # === Redis Pub/Sub 跨實例廣播 ===
+    try:
+        from src.core import task_store
+        if task_store.is_available():
+            task = _tasks.get(task_id)
+            if task:
+                task_store.publish_task_event({
+                    "type": event,
+                    "task_id": task_id,
+                    "status": task.get("status"),
+                    "progress": task.get("progress", 0),
+                })
+    except Exception:
+        pass
+
     with _lock:
         if not _broadcasters:
             return
@@ -667,10 +682,20 @@ def create_task(
 
 
 def ensure_task_in_memory(task_id: str) -> bool:
-    """跨進程（Celery Worker）從 DB 還原任務至本進程記憶體。"""
+    """跨進程（Celery Worker）從 DB 或 Redis 還原任務至本進程記憶體。"""
     with _lock:
         if task_id in _tasks:
             return True
+        # 先嘗試 Redis（更快）
+        try:
+            from src.core import task_store
+            if task_store.is_available():
+                cached = task_store.load_task(task_id)
+                if cached:
+                    _tasks[task_id] = cached
+                    return True
+        except Exception:
+            pass
         row = _load_task_from_db(task_id)
         if not row:
             return False
@@ -1351,6 +1376,13 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
 
 
 def _save_task_to_db(task: dict, force: bool = False):
+    # === Redis 同步（非阻塞，失敗不影響主流程）===
+    try:
+        from src.core import task_store
+        if task_store.is_available():
+            task_store.save_task(task.get("task_id", ""), task)
+    except Exception:
+        pass
     if not force and task.get("status") in (STATUS_RUNNING, STATUS_RETRYING):
         prog = task.get("progress", 0)
         if 0 < prog < 100:

@@ -24,6 +24,9 @@ DEFAULT_BILLING = {
     "updated_at": None,
 }
 
+# 允許的方案 ID 列表（single source of truth）
+_VALID_PLAN_IDS = frozenset({"free", "pro", "pro_ai", "institutional"})
+
 
 def _parse_billing(settings: dict | None) -> dict[str, Any]:
     raw = (settings or {}).get("billing")
@@ -31,7 +34,7 @@ def _parse_billing(settings: dict | None) -> dict[str, Any]:
         return dict(DEFAULT_BILLING)
     out = {**DEFAULT_BILLING, **raw}
     out["plan_id"] = str(out.get("plan_id") or "free").lower()
-    if out["plan_id"] not in ("free", "pro", "institutional"):
+    if out["plan_id"] not in _VALID_PLAN_IDS:
         out["plan_id"] = "free"
     return out
 
@@ -82,9 +85,18 @@ def billing_summary(user: User | None) -> dict[str, Any]:
             "daily_backtests": plan.limits.daily_backtests,
             "daily_portfolio_runs": plan.limits.daily_portfolio_runs,
             "daily_optimize_runs": plan.limits.daily_optimize_runs,
+            "daily_ai_queries": plan.limits.daily_ai_queries,
+            "daily_walkforward": plan.limits.daily_walkforward,
+            "daily_monte_carlo": plan.limits.daily_monte_carlo,
+            "daily_signal_ranking": plan.limits.daily_signal_ranking,
+            "daily_full_report": plan.limits.daily_full_report,
             "max_watchlist": plan.limits.max_watchlist,
+            "max_custom_strategies": plan.limits.max_custom_strategies,
+            "max_paper_sessions": plan.limits.max_paper_sessions,
             "max_allocation_positions": plan.limits.max_allocation_positions,
             "concurrent_tasks": plan.limits.concurrent_tasks,
+            "realtime_ws_symbols": plan.limits.realtime_ws_symbols,
+            "export_row_limit": plan.limits.export_row_limit,
         },
         "features": sorted(plan.features),
         "feature_labels": {k: FEATURE_LABELS.get(k, k) for k in plan.features},
@@ -114,7 +126,16 @@ def _save_user_settings(user_id: int, settings: dict) -> None:
 
 
 def usage_snapshot(user_id: int) -> dict[str, int]:
-    out = {"backtests_today": 0, "portfolio_runs_today": 0, "optimize_runs_today": 0}
+    out = {
+        "backtests_today": 0,
+        "portfolio_runs_today": 0,
+        "optimize_runs_today": 0,
+        "ai_queries_today": 0,
+        "walkforward_today": 0,
+        "monte_carlo_today": 0,
+        "signal_ranking_today": 0,
+        "full_report_today": 0,
+    }
     if not user_id:
         return out
     today = datetime.now().strftime("%Y-%m-%d")
@@ -125,6 +146,11 @@ def usage_snapshot(user_id: int) -> dict[str, int]:
         out["backtests_today"] = int(day.get("backtest") or 0)
         out["portfolio_runs_today"] = int(day.get("portfolio") or 0)
         out["optimize_runs_today"] = int(day.get("optimize") or 0)
+        out["ai_queries_today"] = int(day.get("ai_query") or 0)
+        out["walkforward_today"] = int(day.get("walkforward") or 0)
+        out["monte_carlo_today"] = int(day.get("monte_carlo") or 0)
+        out["signal_ranking_today"] = int(day.get("signal_ranking") or 0)
+        out["full_report_today"] = int(day.get("full_report") or 0)
     return out
 
 
@@ -199,6 +225,113 @@ def gate_allocation_cloud(user: User) -> None:
 def gate_ai_assistant(user: User) -> None:
     if not user_has_feature(user, "ai_assistant"):
         _feature_locked("ai_assistant", "AI 投研助手需 Pro 方案", user)
+    if user:
+        check_quota(user, "ai_query")
+        record_usage(user, "ai_query")
+
+
+def gate_ai_strategy_recommend(user: User) -> None:
+    """AI 策略智能推薦（Pro+AI 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="AI 策略推薦需登錄")
+    if not user_has_feature(user, "ai_strategy_recommend"):
+        _feature_locked("ai_strategy_recommend", "AI 策略推薦需 Pro+AI 方案", user)
+    check_quota(user, "ai_query")
+    record_usage(user, "ai_query")
+
+
+def gate_ai_report_interpret(user: User) -> None:
+    """AI 回測報告解讀（Pro 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="AI 報告解讀需登錄")
+    if not user_has_feature(user, "ai_report_interpret"):
+        _feature_locked("ai_report_interpret", "AI 回測報告解讀需 Pro 方案", user)
+    check_quota(user, "ai_query")
+    record_usage(user, "ai_query")
+
+
+def gate_ai_code_generate(user: User) -> None:
+    """AI 策略代碼生成（Pro+AI 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="AI 代碼生成需登錄")
+    if not user_has_feature(user, "ai_code_generate"):
+        _feature_locked("ai_code_generate", "AI 策略代碼生成需 Pro+AI 方案", user)
+    check_quota(user, "ai_query")
+    record_usage(user, "ai_query")
+
+
+def gate_ai_param_suggest(user: User) -> None:
+    """AI 參數調優建議（Pro+AI 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="AI 參數建議需登錄")
+    if not user_has_feature(user, "ai_param_suggest"):
+        _feature_locked("ai_param_suggest", "AI 參數調優建議需 Pro+AI 方案", user)
+    check_quota(user, "ai_query")
+    record_usage(user, "ai_query")
+
+
+def gate_ai_market_report(user: User) -> None:
+    """AI 市場晨報/日報（Pro+AI 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="AI 市場報告需登錄")
+    if not user_has_feature(user, "ai_market_report"):
+        _feature_locked("ai_market_report", "AI 市場晨報需 Pro+AI 方案", user)
+
+
+def gate_walkforward(user: User) -> None:
+    """Walk-Forward 分析（Pro 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Walk-Forward 分析需登錄")
+    if not user_has_feature(user, "walkforward"):
+        _feature_locked("walkforward", "Walk-Forward 分析需 Pro 方案", user)
+    check_quota(user, "walkforward")
+    record_usage(user, "walkforward")
+
+
+def gate_monte_carlo(user: User) -> None:
+    """蒙特卡羅模擬（Pro 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="蒙特卡羅模擬需登錄")
+    if not user_has_feature(user, "monte_carlo"):
+        _feature_locked("monte_carlo", "蒙特卡羅模擬需 Pro 方案", user)
+    check_quota(user, "monte_carlo")
+    record_usage(user, "monte_carlo")
+
+
+def gate_full_report(user: User) -> None:
+    """全面回測報告（Pro 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="全面回測報告需登錄")
+    if not user_has_feature(user, "full_report"):
+        _feature_locked("full_report", "全面回測報告需 Pro 方案", user)
+    check_quota(user, "full_report")
+    record_usage(user, "full_report")
+
+
+def gate_signal_ranking(user: User) -> None:
+    """信號排名（Pro 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="信號排名需登錄")
+    if not user_has_feature(user, "signal_ranking"):
+        _feature_locked("signal_ranking", "信號排名需 Pro 方案", user)
+    check_quota(user, "signal_ranking")
+    record_usage(user, "signal_ranking")
+
+
+def gate_risk_pipeline(user: User) -> None:
+    """風控管道（Institutional 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="風控管道需登錄")
+    if not user_has_feature(user, "risk_pipeline"):
+        _feature_locked("risk_pipeline", "風控管道需 Institutional 方案", user)
+
+
+def gate_correlation_monitor(user: User) -> None:
+    """策略相關性監控（Institutional 方案）。"""
+    if not user:
+        raise HTTPException(status_code=401, detail="相關性監控需登錄")
+    if not user_has_feature(user, "correlation_monitor"):
+        _feature_locked("correlation_monitor", "策略相關性監控需 Institutional 方案", user)
 
 
 def gate_data_export(user: User) -> None:
@@ -304,6 +437,11 @@ def check_quota(user: User, metric: str) -> None:
         "backtest": (usage["backtests_today"], limits.daily_backtests, "回測"),
         "portfolio": (usage["portfolio_runs_today"], limits.daily_portfolio_runs, "組合回測"),
         "optimize": (usage["optimize_runs_today"], limits.daily_optimize_runs, "參數優化"),
+        "ai_query": (usage["ai_queries_today"], limits.daily_ai_queries, "AI 問答"),
+        "walkforward": (usage["walkforward_today"], limits.daily_walkforward, "Walk-Forward"),
+        "monte_carlo": (usage["monte_carlo_today"], limits.daily_monte_carlo, "蒙特卡羅"),
+        "signal_ranking": (usage["signal_ranking_today"], limits.daily_signal_ranking, "信號排名"),
+        "full_report": (usage["full_report_today"], limits.daily_full_report, "全面報告"),
     }
     key = metric if metric in checks else "backtest"
     used, cap, label = checks[key]
@@ -312,7 +450,7 @@ def check_quota(user: User, metric: str) -> None:
             403,
             detail={
                 "code": "plan_required",
-                "message": f"當前方案不包含{label}功能，請升級 Pro",
+                "message": f"當前方案不包含{label}功能，請升級方案",
                 "plan_id": effective_plan_id(user),
                 "upgrade_url": "/app#/pricing",
             },
@@ -334,7 +472,15 @@ def require_feature(feature: str):
     async def _dep(user: User = Depends(require_auth)) -> User:
         if not user_has_feature(user, feature):
             pid = effective_plan_id(user)
-            need = "pro" if feature != "team_seats" else "institutional"
+            # 根據 feature 判斷需要哪個方案
+            pro_ai_features = {"ai_strategy_recommend", "ai_code_generate", "ai_param_suggest", "ai_market_report"}
+            inst_features = {"risk_pipeline", "correlation_monitor", "signal_arbitration", "rest_api_access", "team_seats"}
+            if feature in inst_features:
+                need = "institutional"
+            elif feature in pro_ai_features:
+                need = "pro_ai"
+            else:
+                need = "pro"
             raise HTTPException(
                 403,
                 detail={
@@ -352,7 +498,7 @@ def require_feature(feature: str):
 
 def set_user_plan(user_id: int, plan_id: str, *, status: str = "active", expires_at: str | None = None) -> None:
     plan_id = (plan_id or "free").lower()
-    if plan_id not in ("free", "pro", "institutional"):
+    if plan_id not in _VALID_PLAN_IDS:
         raise ValueError("無效方案")
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row

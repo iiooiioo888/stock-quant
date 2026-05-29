@@ -156,9 +156,15 @@ async def add_to_watchlist(
     above_pct: float = 3.0,
     below_pct: float = 3.0,
     change_pct: float = 5.0,
+    user = Depends(require_auth),
 ):
-    """添加股票到自選 / 監控列表；auto_rule=true 時嘗試依最新價生成預警閾值"""
+    """添加股票到自選 / 監控列表（需登入）；auto_rule=true 時嘗試依最新價生成預警閾值"""
     from src.core.watchlist_store import ensure_in_watchlist, save_runtime
+    from src.core.admin_controls import is_allowed
+
+    # 檢查自選股加入開關
+    if not is_allowed("watchlist", "add", user=user):
+        raise HTTPException(403, "自選股加入功能目前關閉")
 
     code = _normalize_watchlist_code(code)
     if code in settings.watchlist and code in settings.alert_rules:

@@ -109,8 +109,24 @@ class StrategyMarketplace:
         conn.commit()
         conn.close()
     
+    def _ensure_status_column(self):
+        """確保 strategies 表有 status 和 review_comment 欄位"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("ALTER TABLE strategies ADD COLUMN status TEXT DEFAULT 'pending_review'")
+        except sqlite3.OperationalError:
+            pass  # 欄位已存在
+        try:
+            cursor.execute("ALTER TABLE strategies ADD COLUMN review_comment TEXT")
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+        conn.close()
+
     def upload_strategy(self, strategy: StrategyModel) -> dict:
-        """上傳策略"""
+        """上傳策略（直接發佈，管理員可後台刪除）"""
+        self._ensure_status_column()
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -118,8 +134,8 @@ class StrategyMarketplace:
             cursor.execute("""
                 INSERT OR REPLACE INTO strategies 
                 (id, name, description, category, author, version, code, 
-                 parameters, backtest_stats, visibility, tags, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 parameters, backtest_stats, visibility, tags, updated_at, status, review_comment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', NULL)
             """, (
                 strategy.id,
                 strategy.name,
@@ -136,12 +152,13 @@ class StrategyMarketplace:
             ))
             
             conn.commit()
-            logger.info(f"策略上傳成功：{strategy.name} ({strategy.id})")
+            logger.info(f"策略已發佈：{strategy.name} ({strategy.id})")
             
             return {
                 "success": True,
                 "strategy_id": strategy.id,
-                "message": f"策略 '{strategy.name}' 上傳成功",
+                "message": f"策略 '{strategy.name}' 已發佈",
+                "status": "published",
             }
         
         except Exception as e:
@@ -151,6 +168,72 @@ class StrategyMarketplace:
                 "error": str(e),
             }
         
+        finally:
+            conn.close()
+
+    def approve_strategy(self, strategy_id: str) -> dict:
+        """審批通過策略"""
+        self._ensure_status_column()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE strategies SET status = 'published', review_comment = NULL WHERE id = ?",
+                (strategy_id,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                return {"success": False, "error": "策略不存在"}
+            logger.info(f"策略已通過審批: {strategy_id}")
+            return {"success": True, "message": "策略已通過審批"}
+        finally:
+            conn.close()
+
+    def reject_strategy(self, strategy_id: str, comment: str = "") -> dict:
+        """退回策略（帶評語）"""
+        self._ensure_status_column()
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE strategies SET status = 'rejected', review_comment = ? WHERE id = ?",
+                (comment, strategy_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                return {"success": False, "error": "策略不存在"}
+            logger.info(f"策略已退回: {strategy_id}，原因: {comment}")
+            return {"success": True, "message": "策略已退回", "comment": comment}
+        finally:
+            conn.close()
+
+    def list_pending_strategies(self) -> list[dict]:
+        """列出所有待審批策略"""
+        self._ensure_status_column()
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM strategies WHERE status = 'pending_review' ORDER BY created_at DESC"
+            )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                results.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "category": row["category"],
+                    "author": row["author"],
+                    "version": row["version"],
+                    "visibility": row["visibility"],
+                    "tags": json.loads(row["tags"] or "[]"),
+                    "created_at": row["created_at"],
+                    "status": row["status"],
+                    "review_comment": row["review_comment"],
+                })
+            return results
         finally:
             conn.close()
     
@@ -400,6 +483,54 @@ class StrategyMarketplace:
             tags=json.loads(row[13] or "[]"),
         )
     
+    def list_all_strategies(self) -> list[dict]:
+        """列出所有策略（管理員用）"""
+        self._ensure_status_column()
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM strategies ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                results.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "category": row["category"],
+                    "author": row["author"],
+                    "version": row["version"],
+                    "visibility": row["visibility"],
+                    "tags": json.loads(row["tags"] or "[]"),
+                    "created_at": row["created_at"],
+                    "status": row["status"] if "status" in row.keys() else "published",
+                    "download_count": row["download_count"],
+                })
+            return results
+        finally:
+            conn.close()
+
+    def admin_delete_strategy(self, strategy_id: str) -> dict:
+        """管理員刪除策略（無需驗證作者）"""
+        strategy = self.get_strategy(strategy_id)
+        if not strategy:
+            return {"success": False, "error": "策略不存在"}
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM ratings WHERE strategy_id = ?", (strategy_id,))
+            cursor.execute("DELETE FROM shares WHERE strategy_id = ?", (strategy_id,))
+            cursor.execute("DELETE FROM strategies WHERE id = ?", (strategy_id,))
+            conn.commit()
+            logger.info(f"管理員已刪除策略: {strategy_id}")
+            return {"success": True, "message": f"策略 '{strategy.name}' 已刪除"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def delete_strategy(self, strategy_id: str, user_id: str) -> dict:
         """刪除策略（僅作者可刪除）"""
         strategy = self.get_strategy(strategy_id)

@@ -168,3 +168,217 @@ async def llm_chat_stream(body: dict, user=Depends(require_auth)):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# P2: LLM 新 API — 策略推薦 / 報告 / 代碼生成 / 參數調優 / 投資報告 / 晨報
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/llm/analyze")
+async def llm_analyze(body: dict, user=Depends(require_auth)):
+    """AI 回測報告解讀。"""
+    from src.core.entitlements import gate_ai_report_interpret
+    from src.integrations.llm.service import invoke_llm
+
+    gate_ai_report_interpret(user)
+    data = body.get("data") or body.get("message") or ""
+    if not data:
+        raise HTTPException(400, "data 或 message 不能為空")
+
+    result = invoke_llm(
+        "backtest_report",
+        str(data),
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+        cache_context=str(body.get("task_id") or ""),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "分析失敗")
+    return {"success": True, **result}
+
+
+@router.post("/api/llm/analyze/stream")
+async def llm_analyze_stream(body: dict, user=Depends(require_auth)):
+    """AI 回測報告解讀（SSE 流式）。"""
+    from src.core.entitlements import gate_ai_report_interpret
+    from src.integrations.llm.service import invoke_llm_stream
+
+    gate_ai_report_interpret(user)
+    data = body.get("data") or body.get("message") or ""
+    if not data:
+        raise HTTPException(400, "data 或 message 不能為空")
+
+    def event_gen():
+        try:
+            for ev in invoke_llm_stream(
+                "backtest_report",
+                str(data),
+                history=body.get("history"),
+                request_overrides=body.get("llm_config"),
+                user_settings=_user_settings_dict(user),
+            ):
+                yield _sse_encode(ev)
+        except Exception as e:
+            yield _sse_encode({"type": "error", "message": str(e)})
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/api/llm/suggest")
+async def llm_suggest(body: dict, user=Depends(require_auth)):
+    """AI 策略智能推薦。"""
+    from src.core.entitlements import gate_ai_strategy_recommend
+    from src.integrations.llm.service import invoke_llm
+
+    gate_ai_strategy_recommend(user)
+    query = body.get("query") or body.get("message") or ""
+    if not query:
+        raise HTTPException(400, "query 或 message 不能為空")
+
+    # 附加用戶偏好到 prompt
+    preferences = body.get("preferences") or {}
+    if preferences:
+        query = f"{query}\n\n用戶偏好：{json.dumps(preferences, ensure_ascii=False)}"
+
+    result = invoke_llm(
+        "strategy_analysis",
+        query,
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "推薦失敗")
+    return {"success": True, **result}
+
+
+@router.post("/api/llm/generate")
+async def llm_generate(body: dict, user=Depends(require_auth)):
+    """AI 策略代碼生成。"""
+    from src.core.entitlements import gate_ai_code_generate
+    from src.integrations.llm.service import invoke_llm
+
+    gate_ai_code_generate(user)
+    description = body.get("description") or body.get("message") or ""
+    if not description:
+        raise HTTPException(400, "description 或 message 不能為空")
+
+    # 附加策略類型和參數要求
+    extras = []
+    if body.get("strategy_type"):
+        extras.append(f"策略類型：{body['strategy_type']}")
+    if body.get("indicators"):
+        extras.append(f"指標：{', '.join(body['indicators'])}")
+    if body.get("market"):
+        extras.append(f"市場：{body['market']}")
+    if extras:
+        description = f"{description}\n\n{'、'.join(extras)}"
+
+    result = invoke_llm(
+        "code_generate",
+        description,
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "代碼生成失敗")
+    return {"success": True, **result}
+
+
+@router.post("/api/llm/optimize")
+async def llm_optimize(body: dict, user=Depends(require_auth)):
+    """AI 參數調優建議。"""
+    from src.core.entitlements import gate_ai_param_suggest
+    from src.integrations.llm.service import invoke_llm
+
+    gate_ai_param_suggest(user)
+    data = body.get("data") or body.get("message") or ""
+    if not data:
+        raise HTTPException(400, "data 或 message 不能為空")
+
+    # 附加當前參數和回測結果
+    current_params = body.get("current_params") or {}
+    backtest_result = body.get("backtest_result") or {}
+    if current_params or backtest_result:
+        extra_parts = []
+        if current_params:
+            extra_parts.append(f"當前參數：{json.dumps(current_params, ensure_ascii=False)}")
+        if backtest_result:
+            extra_parts.append(f"回測結果：{json.dumps(backtest_result, ensure_ascii=False)}")
+        data = f"{data}\n\n{chr(10).join(extra_parts)}"
+
+    result = invoke_llm(
+        "param_optimize",
+        str(data),
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "調優建議失敗")
+    return {"success": True, **result}
+
+
+@router.post("/api/llm/report")
+async def llm_report(body: dict, user=Depends(require_auth)):
+    """AI 投資報告生成。"""
+    from src.core.entitlements import gate_ai_report_interpret
+    from src.integrations.llm.service import invoke_llm
+
+    # 投資報告使用 report 功能門控
+    gate_ai_report_interpret(user)
+    data = body.get("data") or body.get("message") or ""
+    if not data:
+        raise HTTPException(400, "data 或 message 不能為空")
+
+    # 附加報告類型
+    report_type = body.get("report_type") or "綜合"
+    data = f"報告類型：{report_type}\n\n{data}"
+
+    result = invoke_llm(
+        "portfolio_report",
+        str(data),
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+        cache_context=str(body.get("task_id") or ""),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "報告生成失敗")
+    return {"success": True, **result}
+
+
+@router.post("/api/llm/morning")
+async def llm_morning(body: dict, user=Depends(require_auth)):
+    """AI 市場晨報。"""
+    from src.core.entitlements import gate_ai_market_report
+    from src.integrations.llm.service import invoke_llm
+
+    gate_ai_market_report(user)
+    market_data = body.get("data") or body.get("market_data") or ""
+    if not market_data:
+        raise HTTPException(400, "data 或 market_data 不能為空")
+
+    result = invoke_llm(
+        "morning_report",
+        str(market_data),
+        history=body.get("history"),
+        request_overrides=body.get("llm_config"),
+        user_settings=_user_settings_dict(user),
+    )
+    if not result.get("success"):
+        code = 503 if not result.get("configured") else 400
+        raise HTTPException(code, result.get("error") or "晨報生成失敗")
+    return {"success": True, **result}

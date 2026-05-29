@@ -13,21 +13,39 @@ router = APIRouter()
 
 @router.post("/api/auth/register")
 async def auth_register(body: dict):
-    """用戶註冊"""
+    """用戶註冊（需邀請碼）"""
     from src.core.auth import create_user
-    
+    from src.core.invite_codes import validate_code, use_code
+    from src.core.admin_controls import is_allowed
+
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
-    
+    invite_code = (body.get("invite_code") or "").strip()
+
     if not username or not password:
         raise HTTPException(400, "用戶名和密碼不能為空")
     if len(username) < 3:
         raise HTTPException(400, "用戶名至少 3 個字符")
     if len(password) < 6:
         raise HTTPException(400, "密碼至少 6 個字符")
-    
+
+    # 檢查註冊開關
+    if not is_allowed("users", "register"):
+        raise HTTPException(403, "目前未開放註冊")
+
+    # 邀請碼驗證（invite_only 模式下必填）
+    if is_allowed("users", "invite_only"):
+        if not invite_code:
+            raise HTTPException(400, "需要邀請碼才能註冊")
+        valid, reason = validate_code(invite_code)
+        if not valid:
+            raise HTTPException(400, reason)
+
     try:
         user = create_user(username, password)
+        # 註冊成功後標記邀請碼已使用
+        if invite_code:
+            use_code(invite_code)
         from src.core.auth import create_token
         token = create_token(user.id, user.role)
         return {
@@ -348,3 +366,59 @@ async def admin_update_controls(body: dict, user = Depends(require_admin)):
     prev = get_controls()
     updated = set_controls(controls)
     return {"success": True, "controls": updated, "previous": prev}
+
+
+# ====== 邀請碼管理（僅管理員） ======
+
+@router.get("/api/admin/invite-codes")
+async def admin_list_invite_codes(user = Depends(require_admin)):
+    """列出所有邀請碼"""
+    from src.core.invite_codes import list_codes
+    codes = list_codes()
+    return {"success": True, "codes": codes, "total": len(codes)}
+
+
+@router.post("/api/admin/invite-codes")
+async def admin_generate_invite_code(body: dict, user = Depends(require_admin)):
+    """生成邀請碼"""
+    from src.core.invite_codes import generate_code
+
+    max_uses = int(body.get("max_uses", 1))
+    expires_at = body.get("expires_at")  # ISO format string or None
+
+    if max_uses < 1:
+        raise HTTPException(400, "最大使用次數至少為 1")
+
+    code = generate_code(created_by=user.id, max_uses=max_uses, expires_at=expires_at)
+    return {"success": True, "code": code, "message": f"邀請碼 {code} 已生成"}
+
+
+@router.delete("/api/admin/invite-codes/{code}")
+async def admin_delete_invite_code(code: str, user = Depends(require_admin)):
+    """刪除邀請碼"""
+    from src.core.invite_codes import delete_code
+    if not delete_code(code):
+        raise HTTPException(404, "邀請碼不存在")
+    return {"success": True, "message": f"邀請碼 {code} 已刪除"}
+
+
+# ====== 策略管理（僅管理員） ======
+
+@router.get("/api/admin/strategies")
+async def admin_list_strategies(user = Depends(require_admin)):
+    """列出所有策略（管理員用）"""
+    from src.marketplace.registry import StrategyMarketplace
+    marketplace = StrategyMarketplace()
+    strategies = marketplace.list_all_strategies()
+    return {"success": True, "strategies": strategies, "total": len(strategies)}
+
+
+@router.delete("/api/admin/strategies/{strategy_id}")
+async def admin_delete_strategy(strategy_id: str, user = Depends(require_admin)):
+    """管理員刪除策略"""
+    from src.marketplace.registry import StrategyMarketplace
+    marketplace = StrategyMarketplace()
+    result = marketplace.admin_delete_strategy(strategy_id)
+    if not result["success"]:
+        raise HTTPException(404, result.get("error", "策略不存在"))
+    return result

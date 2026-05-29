@@ -27,22 +27,28 @@ const StockPicker = {
   ],
 
   initAll() {
+    // P5 改造：除熱力圖（需單股二維掃描）外，全部改為多選
     const singles = [
+      ['hmCode', '選擇熱力圖標的'],
+    ];
+    const multis = [
       ['optCode', '選擇優化標的'],
       ['wfCode', '選擇滾動窗口驗證標的'],
-      ['hmCode', '選擇熱力圖標的'],
       ['histCode', '篩選回測股票'],
       ['cfCode', '選擇資金流向標的'],
       ['basicsCode', '選擇基本數據標的'],
-    ];
-    const multis = [
       ['cmpCodes', '選擇對比股票'],
       ['sigCodes', '選擇信號評分股票'],
       ['dbDownloadCodes', '選擇下載股票'],
     ];
 
     singles.forEach(([id, title]) => this.attach(id, { mode: 'single', title }));
-    multis.forEach(([id, title]) => this.attach(id, { mode: 'multi', title }));
+    multis.forEach(([id, title]) => this.attach(id, {
+      mode: 'multi',
+      title,
+      multiToggle: true,
+      chipList: true,
+    }));
   },
 
   /** 組合頁：延後掛載選股器，避免 chips / 股票庫請求搶走 LCP */

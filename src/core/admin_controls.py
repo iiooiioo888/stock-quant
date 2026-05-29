@@ -18,14 +18,16 @@ _RUNTIME_PATH = DATA_DIR / "runtime_admin_controls.json"
 
 
 DEFAULT_CONTROLS: dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     # master: True=對所有人開放；False=僅 admin 可用（非 admin 一律視為關閉）
     "public_enabled": True,
     # v1 兼容欄位（仍接受寫入；讀取時會映射到 scopes.*）
     "features_enabled": True,
     "strategies_enabled": True,
     "tasks_enabled": True,
-    # v2: 細粒度控制
+    "users_enabled": True,
+    "watchlist_enabled": True,
+    # v2/v3: 細粒度控制
     "scopes": {
         "features": {
             "enabled": True,
@@ -51,6 +53,15 @@ DEFAULT_CONTROLS: dict[str, Any] = {
             # 名稱白/黑名單（空＝不限制）
             "allowed_names": [],
             "blocked_names": [],
+        },
+        "users": {
+            "enabled": True,
+            "register": True,
+            "invite_only": True,
+        },
+        "watchlist": {
+            "enabled": True,
+            "add": True,
         },
         "tasks": {
             "enabled": True,
@@ -152,6 +163,10 @@ def is_scope_enabled(scope: str, user: Any = None) -> bool:
         return bool(c.get("strategies_enabled", True))
     if scope == "tasks":
         return bool(c.get("tasks_enabled", True))
+    if scope == "users":
+        return bool(c.get("users_enabled", True))
+    if scope == "watchlist":
+        return bool(c.get("watchlist_enabled", True))
     return True
 
 
@@ -202,6 +217,8 @@ def _normalize_controls(raw: dict[str, Any]) -> dict[str, Any]:
     out["features_enabled"] = _bool("features_enabled", out["features_enabled"])
     out["strategies_enabled"] = _bool("strategies_enabled", out["strategies_enabled"])
     out["tasks_enabled"] = _bool("tasks_enabled", out["tasks_enabled"])
+    out["users_enabled"] = _bool("users_enabled", out.get("users_enabled", True))
+    out["watchlist_enabled"] = _bool("watchlist_enabled", out.get("watchlist_enabled", True))
 
     scopes = raw.get("scopes")
     if isinstance(scopes, dict):
@@ -220,13 +237,15 @@ def _normalize_controls(raw: dict[str, Any]) -> dict[str, Any]:
     out["scopes"]["features"]["enabled"] = bool(out["features_enabled"]) and bool(out["scopes"]["features"]["enabled"])
     out["scopes"]["strategies"]["enabled"] = bool(out["strategies_enabled"]) and bool(out["scopes"]["strategies"]["enabled"])
     out["scopes"]["tasks"]["enabled"] = bool(out["tasks_enabled"]) and bool(out["scopes"]["tasks"]["enabled"])
+    out["scopes"]["users"]["enabled"] = bool(out["users_enabled"]) and bool(out["scopes"]["users"]["enabled"])
+    out["scopes"]["watchlist"]["enabled"] = bool(out["watchlist_enabled"]) and bool(out["scopes"]["watchlist"]["enabled"])
     return out
 
 
 def _merge_controls(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     merged = _normalize_controls(current)
     # 允許直接更新 v1 欄位
-    for k in ("public_enabled", "features_enabled", "strategies_enabled", "tasks_enabled"):
+    for k in ("public_enabled", "features_enabled", "strategies_enabled", "tasks_enabled", "users_enabled", "watchlist_enabled"):
         if k in patch:
             merged[k] = bool(patch.get(k))
     # 允許更新 scopes（巢狀）

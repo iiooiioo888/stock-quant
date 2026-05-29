@@ -23,6 +23,8 @@
       <nav class="admin-nav" aria-label="管理選單">
         <button type="button" class="on" data-panel="overview">總覽</button>
         <button type="button" data-panel="users">用戶管理</button>
+        <button type="button" data-panel="invites">邀請碼</button>
+        <button type="button" data-panel="strategy-manage">策略管理</button>
         <button type="button" data-panel="controls">全域開關</button>
         <button type="button" data-panel="system">系統狀態</button>
       </nav>
@@ -69,6 +71,62 @@
               </thead>
               <tbody id="users-tbody"><tr><td colspan="6">載入中…</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====== 邀請碼管理 ====== -->
+      <section class="admin-panel" id="panel-invites">
+        <div class="admin-card">
+          <div class="admin-card-h">
+            <span>邀請碼管理</span>
+            <span style="font-weight:400;color:var(--t3)">POST /api/admin/invite-codes</span>
+          </div>
+          <div class="admin-card-b">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:end">
+              <div style="display:grid;gap:4px">
+                <label style="font-size:.72rem;color:var(--t3)">最大使用次數</label>
+                <input type="number" id="invite-max-uses" value="1" min="1" style="width:100px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg1);color:var(--tx)" />
+              </div>
+              <div style="display:grid;gap:4px">
+                <label style="font-size:.72rem;color:var(--t3)">過期時間（可選）</label>
+                <input type="datetime-local" id="invite-expires" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg1);color:var(--tx)" />
+              </div>
+              <button type="button" class="admin-btn admin-btn-primary" id="invite-generate-btn">生成邀請碼</button>
+              <span id="invite-status" style="color:var(--t3);font-size:.72rem;align-self:center"></span>
+            </div>
+            <div style="overflow:auto">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>邀請碼</th><th>最大使用次數</th><th>已使用</th><th>過期時間</th><th>創建時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="invites-tbody"><tr><td colspan="6">載入中…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====== 策略管理 ====== -->
+      <section class="admin-panel" id="panel-strategy-manage">
+        <div class="admin-card">
+          <div class="admin-card-h">
+            <span>策略管理</span>
+            <span style="font-weight:400;color:var(--t3)">GET /api/admin/strategies</span>
+          </div>
+          <div class="admin-card-b">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+              <button type="button" class="admin-btn" id="strat-manage-refresh-btn">刷新列表</button>
+              <span id="strat-manage-status" style="color:var(--t3);font-size:.72rem;align-self:center"></span>
+            </div>
+            <div style="overflow:auto">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>ID</th><th>策略名稱</th><th>作者</th><th>分類</th><th>狀態</th><th>下載次數</th><th>上傳時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="strat-manage-tbody"><tr><td colspan="8">載入中…</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -122,6 +180,33 @@
                   <div style="font-size:.72rem;color:var(--t3)">可選：白/黑名單（策略 name，用逗號分隔；白名單非空時只允許白名單）</div>
                   <input id="ctl-strat-allowed" placeholder="allowed_names：dual_ma,macd,..." style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg1);color:var(--tx)" />
                   <input id="ctl-strat-blocked" placeholder="blocked_names：rsi,grid,..." style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg1);color:var(--tx)" />
+                </div>
+              </div>
+
+              <div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px;background:var(--bg2);display:grid;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <strong>用戶註冊（Users）</strong>
+                  <label style="display:flex;align-items:center;gap:8px;color:var(--t2)">
+                    <span style="font-size:.72rem">總開關</span>
+                    <input type="checkbox" id="ctl-users-enabled" />
+                  </label>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+                  <label style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>開放註冊</span><input type="checkbox" id="ctl-user-register" /></label>
+                  <label style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>僅邀請碼模式</span><input type="checkbox" id="ctl-user-invite-only" /></label>
+                </div>
+              </div>
+
+              <div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px;background:var(--bg2);display:grid;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <strong>自選股（Watchlist）</strong>
+                  <label style="display:flex;align-items:center;gap:8px;color:var(--t2)">
+                    <span style="font-size:.72rem">總開關</span>
+                    <input type="checkbox" id="ctl-watchlist-enabled" />
+                  </label>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+                  <label style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>允許加入自選</span><input type="checkbox" id="ctl-watchlist-add" /></label>
                 </div>
               </div>
 

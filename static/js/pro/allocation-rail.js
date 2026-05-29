@@ -430,6 +430,7 @@
     document.getElementById('alloc-act-portfolio')?.addEventListener('click', applyToPortfolio);
     document.getElementById('alloc-act-watchlist')?.addEventListener('click', () => syncToWatchlist());
     document.getElementById('alloc-rail-close')?.addEventListener('click', () => setOpen(false));
+    document.getElementById('alloc-rail-backdrop')?.addEventListener('click', () => setOpen(false));
     document.querySelectorAll('[data-alloc-weight-mode]').forEach((btn) => {
       btn.addEventListener('click', () => {
         setWeightMode(btn.getAttribute('data-alloc-weight-mode'));

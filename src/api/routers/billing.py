@@ -47,8 +47,8 @@ async def billing_checkout(body: dict, user: User = Depends(require_auth)):
     - 開發：SQ_BILLING_DEV_UPGRADE=true 時可直接升級試用
     """
     plan_id = str((body or {}).get("plan_id") or "").strip().lower()
-    if plan_id not in ("pro", "institutional"):
-        raise HTTPException(400, "僅支持升級至 pro 或 institutional")
+    if plan_id not in ("pro", "pro_ai", "institutional"):
+        raise HTTPException(400, "僅支持升級至 pro、pro_ai 或 institutional")
 
     if plan_id == "institutional":
         raise HTTPException(

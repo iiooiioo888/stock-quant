@@ -36,8 +36,9 @@ const Optimize = {
 
   async run() {
     if (this._running) return;
-    const code = document.getElementById('optCode').value.trim();
-    if (!code) return Utils.toast('請輸入股票代碼', 3000, 'error');
+    const codeRaw = document.getElementById('optCode').value.trim();
+    if (!codeRaw) return Utils.toast('請輸入股票代碼', 3000, 'error');
+    const codes = codeRaw.split(/[\s,，;；]+/).map(s => s.trim()).filter(Boolean);
     const strategy = document.getElementById('optStrategy').value;
     const method = this._method;
     const objective = this._objective;
@@ -46,30 +47,49 @@ const Optimize = {
 
     Utils.btnLoading(btn, true, '優化中...');
     try {
-    const risk = this.collectRiskParams();
-    const d = await Api.runOptimize({
-      code,
-      strategy,
-      method,
-      objective,
-      n_trials: 50,
-      ...risk,
-    });
-
-    if (!d || !d.success) return;
-
-      if (d.is_duplicate) {
-        Utils.toast('⏳ ' + (d.message || '相同優化執行中，等待完成...'), 3000, 'warning');
-      } else if (d.async && d.task_id) {
-        Utils.toast('📋 優化任務已提交', 2000, 'info');
+      const risk = this.collectRiskParams();
+      // 多股模式：逐個提交，最後合併結果
+      if (codes.length > 1) {
+        Utils.toast(`📋 批量優化 ${codes.length} 隻股票…`, 2000, 'info');
+        const allResults = [];
+        for (const code of codes) {
+          try {
+            const d = await Api.runOptimize({ code, strategy, method, objective, n_trials: 50, ...risk });
+            if (!d || !d.success) { allResults.push({ code, error: d?.error || '失敗' }); continue; }
+            if (d.is_duplicate) { allResults.push({ code, message: d.message || '執行中' }); continue; }
+            const resolved = await Api.resolveTaskResponse(d);
+            const results = resolved?.results || resolved?.result || resolved?.task?.result;
+            if (results) allResults.push({ code, results });
+            else allResults.push({ code, error: '未取得結果' });
+          } catch (e) {
+            allResults.push({ code, error: e.message || String(e) });
+          }
+        }
+        // 渲染第一個有結果的
+        const first = allResults.find(r => r.results);
+        if (first) {
+          this.renderResults(first.results, strategy);
+          const ok = allResults.filter(r => r.results).length;
+          Utils.toast(`✅ ${ok}/${codes.length} 隻優化完成`, 3000, 'success');
+        } else {
+          Utils.toast('全部優化失敗', 3000, 'error');
+        }
+      } else {
+        const d = await Api.runOptimize({ code: codes[0], strategy, method, objective, n_trials: 50, ...risk });
+        if (!d || !d.success) return;
+        if (d.is_duplicate) {
+          Utils.toast('⏳ ' + (d.message || '相同優化執行中，等待完成...'), 3000, 'warning');
+        } else if (d.async && d.task_id) {
+          Utils.toast('📋 優化任務已提交', 2000, 'info');
+        }
+        const resolved = await Api.resolveTaskResponse(d);
+        const results = resolved?.results || resolved?.result || resolved?.task?.result;
+        if (!results) {
+          Utils.toast('未取得優化結果', 3000, 'error');
+          return;
+        }
+        this.renderResults(results, strategy);
       }
-      const resolved = await Api.resolveTaskResponse(d);
-      const results = resolved?.results || resolved?.result || resolved?.task?.result;
-      if (!results) {
-        Utils.toast('未取得優化結果', 3000, 'error');
-        return;
-      }
-      this.renderResults(results, strategy);
     } catch (e) {
       Utils.toast('優化失敗: ' + (e.message || e), 3000, 'error');
     } finally {
@@ -77,26 +97,6 @@ const Optimize = {
       Utils.btnLoading(btn, false, '🔍 開始優化');
     }
   },
-
-  renderResults(results, strategy) {
-    const el = document.getElementById('optOutput');
-    if (!el) return;
-    let h = '';
-
-    if (strategy === 'all') {
-      for (const [n, rl] of Object.entries(results)) {
-        if (!rl || !rl.length) {
-          h += `<div style="margin-bottom:6px"><strong>${n}</strong>: <span style="color:var(--text-dim)">無結果</span></div>`;
-          continue;
-        }
-        const b = rl[0];
-        h += `<div style="margin-bottom:8px;padding:10px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong style="color:var(--accent)">${n}</strong>
-            <div>
-              <span style="margin-left:10px;font-size:12px">夏普 <b>${Utils.formatNum(b.sharpe_ratio, 2)}</b></span>
-              <span style="margin-left:10px;font-size:12px">收益 <b>${Utils.formatPct(b.total_return_pct)}</b></span>
-            </div>
           </div>
           <div style="margin-top:4px;font-size:10px;color:var(--text-dim)">${Object.entries(b.params).map(([k, v]) => k + '=' + v).join(', ')}</div>
         </div>`;

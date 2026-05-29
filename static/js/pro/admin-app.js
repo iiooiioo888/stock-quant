@@ -23,6 +23,8 @@
           const panel = $id(`panel-${id}`);
           if (panel) panel.classList.add('on');
           if (id === 'users') this.loadUsers();
+          if (id === 'invites') this.loadInvites();
+          if (id === 'strategy-manage') this.loadManageStrategies();
           if (id === 'controls') this.loadControls();
           if (id === 'system') this.loadSystem();
         });
@@ -144,6 +146,118 @@
       });
     },
 
+    // ====== 邀請碼管理 ======
+    async loadInvites() {
+      const tbody = $id('invites-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="6">載入中…</td></tr>';
+      const data = await Api.get('/api/admin/invite-codes', { silent: true }).catch(() => null);
+      if (!data?.codes?.length) {
+        tbody.innerHTML = '<tr><td colspan="6">暫無邀請碼</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.codes.map((c) => {
+        const expired = c.expires_at && new Date(c.expires_at) < new Date();
+        const usedUp = c.uses >= c.max_uses;
+        const status = expired ? '<span style="color:var(--quote-down)">已過期</span>' :
+                       usedUp ? '<span style="color:var(--t3)">已用完</span>' :
+                       '<span style="color:var(--quote-up)">可用</span>';
+        return `<tr>
+          <td><code style="font-size:.78rem">${escapeHtml(c.code)}</code></td>
+          <td>${c.max_uses}</td>
+          <td>${c.uses}</td>
+          <td>${c.expires_at ? escapeHtml(c.expires_at) : '--'}</td>
+          <td style="color:var(--t3);font-size:.68rem">${escapeHtml(c.created_at || '--')}</td>
+          <td>
+            ${status}
+            <button type="button" class="admin-btn admin-btn-sm admin-btn-danger" data-del-invite="${c.code}" style="margin-left:6px">刪除</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('[data-del-invite]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const code = btn.getAttribute('data-del-invite');
+          if (!confirm(`確定刪除邀請碼 ${code}？`)) return;
+          try {
+            await Api.delete(`/api/admin/invite-codes/${code}`);
+            Utils.toast?.('邀請碼已刪除', 2500, 'success');
+            this.loadInvites();
+          } catch (e) {
+            Utils.toast?.(e.message || '刪除失敗', 3000, 'error');
+          }
+        });
+      });
+
+      // 綁定生成按鈕
+      const genBtn = $id('invite-generate-btn');
+      if (genBtn) genBtn.onclick = async () => {
+        const maxUses = parseInt($id('invite-max-uses')?.value) || 1;
+        const expiresInput = $id('invite-expires')?.value || '';
+        const status = $id('invite-status');
+        if (status) status.textContent = '生成中…';
+        try {
+          const body = { max_uses: maxUses };
+          if (expiresInput) body.expires_at = new Date(expiresInput).toISOString();
+          await Api.post('/api/admin/invite-codes', body);
+          Utils.toast?.('邀請碼已生成', 2500, 'success');
+          if (status) status.textContent = '';
+          this.loadInvites();
+        } catch (e) {
+          Utils.toast?.(e.message || '生成失敗', 3000, 'error');
+          if (status) status.textContent = '生成失敗';
+        }
+      };
+    },
+
+    // ====== 策略管理 ======
+    async loadManageStrategies() {
+      const tbody = $id('strat-manage-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="8">載入中…</td></tr>';
+      const data = await Api.get('/api/admin/strategies', { silent: true }).catch(() => null);
+      if (!data?.strategies?.length) {
+        tbody.innerHTML = '<tr><td colspan="8">暫無策略</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.strategies.map((s) => {
+        const statusColor = s.status === 'published' ? 'var(--quote-up)' :
+                           s.status === 'rejected' ? 'var(--quote-down)' : 'var(--t3)';
+        return `<tr>
+          <td style="font-size:.72rem">${escapeHtml(s.id || '')}</td>
+          <td>${escapeHtml(s.name || '')}</td>
+          <td>${escapeHtml(s.author || '')}</td>
+          <td>${escapeHtml(s.category || '')}</td>
+          <td style="color:${statusColor};font-size:.72rem">${escapeHtml(s.status || '--')}</td>
+          <td>${s.download_count ?? 0}</td>
+          <td style="color:var(--t3);font-size:.68rem">${escapeHtml(s.created_at || '--')}</td>
+          <td>
+            <button type="button" class="admin-btn admin-btn-sm admin-btn-danger" data-del-strategy="${s.id}">刪除</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('[data-del-strategy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-del-strategy');
+          const strat = data.strategies.find(s => s.id === sid);
+          if (!strat) return;
+          if (!confirm(`確定刪除策略「${strat.name}」（${sid}）？`)) return;
+          try {
+            await Api.delete(`/api/admin/strategies/${sid}`);
+            Utils.toast?.('策略已刪除', 2500, 'success');
+            this.loadManageStrategies();
+          } catch (e) {
+            Utils.toast?.(e.message || '刪除失敗', 3000, 'error');
+          }
+        });
+      });
+
+      // 綁定刷新
+      const refreshBtn = $id('strat-manage-refresh-btn');
+      if (refreshBtn) refreshBtn.onclick = () => this.loadManageStrategies();
+    },
+
     async loadSystem() {
       const grid = $id('system-stats');
       if (!grid) return;
@@ -174,10 +288,14 @@
       const feat = scopes.features || {};
       const strat = scopes.strategies || {};
       const tasks = scopes.tasks || {};
+      const users = scopes.users || {};
+      const watchlist = scopes.watchlist || {};
       const $pub = $id('ctl-public-enabled');
       const $feat = $id('ctl-features-enabled');
       const $strat = $id('ctl-strategies-enabled');
       const $tasks = $id('ctl-tasks-enabled');
+      const $users = $id('ctl-users-enabled');
+      const $watchlist = $id('ctl-watchlist-enabled');
       if ($pub) $pub.checked = !!c.public_enabled;
       if ($feat) $feat.checked = !!(feat.enabled ?? c.features_enabled);
       if ($strat) $strat.checked = !!(strat.enabled ?? c.strategies_enabled);
@@ -201,6 +319,15 @@
       if ($id('ctl-strat-user')) $id('ctl-strat-user').checked = !!strat.user_enabled;
       if ($id('ctl-strat-allowed')) $id('ctl-strat-allowed').value = Array.isArray(strat.allowed_names) ? strat.allowed_names.join(',') : '';
       if ($id('ctl-strat-blocked')) $id('ctl-strat-blocked').value = Array.isArray(strat.blocked_names) ? strat.blocked_names.join(',') : '';
+
+      // users
+      if ($users) $users.checked = !!(users.enabled ?? c.users_enabled);
+      if ($id('ctl-user-register')) $id('ctl-user-register').checked = !!users.register;
+      if ($id('ctl-user-invite-only')) $id('ctl-user-invite-only').checked = !!users.invite_only;
+
+      // watchlist
+      if ($watchlist) $watchlist.checked = !!(watchlist.enabled ?? c.watchlist_enabled);
+      if ($id('ctl-watchlist-add')) $id('ctl-watchlist-add').checked = !!watchlist.add;
 
       // tasks
       if ($id('ctl-task-list')) $id('ctl-task-list').checked = !!tasks.list;
@@ -230,6 +357,8 @@
           features_enabled: !!$feat?.checked,
           strategies_enabled: !!$strat?.checked,
           tasks_enabled: !!$tasks?.checked,
+          users_enabled: !!$users?.checked,
+          watchlist_enabled: !!$watchlist?.checked,
           // v2 scopes
           scopes: {
             features: {
@@ -252,6 +381,15 @@
               user_enabled: !!$id('ctl-strat-user')?.checked,
               allowed_names: parseList('ctl-strat-allowed'),
               blocked_names: parseList('ctl-strat-blocked'),
+            },
+            users: {
+              enabled: !!$users?.checked,
+              register: !!$id('ctl-user-register')?.checked,
+              invite_only: !!$id('ctl-user-invite-only')?.checked,
+            },
+            watchlist: {
+              enabled: !!$watchlist?.checked,
+              add: !!$id('ctl-watchlist-add')?.checked,
             },
             tasks: {
               enabled: !!$tasks?.checked,

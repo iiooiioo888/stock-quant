@@ -78,8 +78,10 @@
 
       const token = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
       const conn = document.getElementById('conn-status');
+      const connFooter = document.getElementById('conn-status-footer');
+      const _setConn = (txt) => { if (conn) conn.textContent = txt; if (connFooter) connFooter.textContent = txt; };
       if (!token) {
-        if (conn) conn.textContent = '未登錄';
+        _setConn('未登錄');
         return;
       }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -96,7 +98,7 @@
       ws.onopen = () => {
         if (this._ws !== ws || this._wsGen !== gen) return;
         this._wsRetry = 0;
-        if (conn) conn.textContent = '已連線';
+        _setConn('已連線');
         try {
           window.StockQPro?.pages?.tasks?.updateBadges?.();
         } catch (_) {}
@@ -120,7 +122,7 @@
         this._ws = null;
         const still = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
         if (!still) {
-          if (conn) conn.textContent = '未登錄';
+          _setConn('未登錄');
           return;
         }
         this._wsRetry += 1;
@@ -283,7 +285,8 @@
       const el = document.createElement('div');
       el.className = `toast ${type}`;
       const icon = type === 'ok' ? '✓' : type === 'er' ? '✕' : 'ℹ';
-      el.innerHTML = `<span>${icon}</span><span>${String(msg || '')}</span>`;
+      el.innerHTML = `<span>${icon}</span><span>${String(msg || '')}</span><button type="button" style="border:none;background:none;color:var(--t3);cursor:pointer;font-size:.9rem;padding:0 0 0 6px;line-height:1" aria-label="關閉">×</button>`;
+      el.querySelector('button').addEventListener('click', () => el.remove());
       c.appendChild(el);
       setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; }, 3000);
       setTimeout(() => el.remove(), 3500);
@@ -471,6 +474,11 @@
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
         if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+          e.preventDefault();
+          this._cmd?.open?.();
+          return;
+        }
+        if (e.key === '?' || (e.shiftKey && e.key === '/')) {
           e.preventDefault();
           this._cmd?.open?.();
           return;

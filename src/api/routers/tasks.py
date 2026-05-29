@@ -129,6 +129,88 @@ async def tasks_sse_ping():
     return {"success": True, "ok": True}
 
 
+@router.get("/api/tasks/{task_id}/stream")
+async def task_stream(task_id: str, heartbeat_sec: int = 10):
+    """
+    P4: 單任務 SSE 進度流。
+
+    只推送指定 task_id 的事件（task_update / task_started / task_completed 等），
+    完成或失敗後自動關閉連接。
+    """
+    from src.api.sse import subscribe, unsubscribe, sse_format
+    from src.core.task_manager import get_task
+
+    # 檢查任務是否存在
+    existing = get_task(task_id)
+    if not existing:
+        raise HTTPException(404, f"任務不存在: {task_id}")
+
+    hb = max(5, min(int(heartbeat_sec or 10), 60))
+
+    async def gen():
+        yield b": ok\n\n"
+        q = subscribe(maxsize=100)
+        try:
+            # 如果任務已完成，直接返回最終狀態
+            if existing.get("status") in ("completed", "failed", "cancelled"):
+                data = json.dumps({
+                    "type": f"task_{existing['status']}",
+                    "task_id": task_id,
+                    "status": existing["status"],
+                    "progress": existing.get("progress", 100),
+                    "result": existing.get("result"),
+                }, ensure_ascii=False, default=str)
+                yield sse_format(data, event=f"task_{existing['status']}").encode("utf-8")
+                return
+
+            # 持續監聽，只轉發目標 task_id 的事件
+            while True:
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=hb)
+                    try:
+                        obj = json.loads(msg)
+                    except Exception:
+                        continue
+
+                    # 只關心指定 task_id
+                    if obj.get("task_id") != task_id:
+                        continue
+
+                    ev_type = obj.get("type") or ""
+                    yield sse_format(msg, event=ev_type).encode("utf-8")
+
+                    # 任務結束時自動關閉
+                    if ev_type in ("task_completed", "task_failed", "task_cancelled"):
+                        return
+                except asyncio.TimeoutError:
+                    # 心跳：順便檢查任務是否已被外部完成
+                    current = get_task(task_id)
+                    if current and current.get("status") in ("completed", "failed", "cancelled"):
+                        data = json.dumps({
+                            "type": f"task_{current['status']}",
+                            "task_id": task_id,
+                            "status": current["status"],
+                            "progress": current.get("progress", 100),
+                            "result": current.get("result"),
+                        }, ensure_ascii=False, default=str)
+                        yield sse_format(data, event=f"task_{current['status']}").encode("utf-8")
+                        return
+                    yield b": ping\n\n"
+        finally:
+            unsubscribe(q)
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/api/tasks/{task_id}/cancel")
 async def cancel_task_api(task_id: str):
     """取消任務"""

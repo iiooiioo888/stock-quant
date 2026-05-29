@@ -1,0 +1,2 @@
+open("migrations/script.py.mako","w",encoding="utf-8").write('"""${message}"""\nfrom alembic import op\nimport sqlalchemy as sa\n\nrevision = ${repr(up_revision)}\ndown_revision = ${repr(down_revision)}\n\n\ndef upgrade():\n    ${upgrades if upgrades else "pass"}\n\n\ndef downgrade():\n    ${downgrades if downgrades else "pass"}\n')
+print("OK")
