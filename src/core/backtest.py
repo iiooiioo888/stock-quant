@@ -1081,6 +1081,7 @@ def run_backtest(
     task_id: str = None,
     circuit_breaker_dd: float = None,
     max_position_pct: float = None,
+    sandbox_mode: bool = False,
 ) -> dict:
     """
     執行回測並返回結果。
@@ -1100,6 +1101,7 @@ def run_backtest(
         enable_t1: 是否啟用 T+1 限制（默認 True）
         enable_limit: 是否啟用漲跌停限制（默認 True）
         timeframe: K 線週期 1d / 1h / 1m（默認 1d）
+        sandbox_mode: 是否為沙箱模式（不污染正式記錄）
     """
     from src.core.kline_timeframe import (
         bars_per_year as tf_bars_per_year,

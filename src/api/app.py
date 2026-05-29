@@ -42,6 +42,7 @@ from src.api.routers.portfolio_settlement import router as portfolio_settlement_
 from src.api.routers.user_allocation import router as user_allocation_router
 from src.api.routers.billing import router as billing_router
 from src.api.routers.stream import router as stream_router
+from src.api.routers.indicators import router as indicators_router
 from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
@@ -187,6 +188,7 @@ app.include_router(portfolio_settlement_router)
 app.include_router(user_allocation_router)
 app.include_router(billing_router)
 app.include_router(stream_router)
+app.include_router(indicators_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
@@ -576,6 +578,47 @@ async def get_data_sources():
     """獲取所有數據源狀態"""
     from src.core.data_sources import health_check
     return {"sources": health_check()}
+
+
+@app.get("/api/data-sources/health")
+async def data_sources_health_check():
+    """
+    數據源健康檢查端點（Phase 1 P1-5）
+    
+    提供詳細的數據源健康狀態，包括：
+    - 各類別數據源可用性
+    - 熔斷狀態
+    - 今日請求次數
+    - 動態評分
+    """
+    from src.core.data_sources import health_check, get_all_sources
+    
+    health = health_check()
+    all_sources = get_all_sources()
+    
+    # 計算整體健康分數
+    total_available = 0
+    total_sources = 0
+    degraded_categories = []
+    
+    for cat, info in health.items():
+        total_available += info.get("available", 0)
+        total_sources += info.get("total", 0)
+        if info.get("status") != "ok":
+            degraded_categories.append(cat)
+    
+    health_score = (total_available / total_sources * 100) if total_sources > 0 else 0
+    
+    return {
+        "status": "ok" if health_score >= 80 else "degraded" if health_score >= 50 else "critical",
+        "health_score": round(health_score, 2),
+        "total_available": total_available,
+        "total_sources": total_sources,
+        "degraded_categories": degraded_categories,
+        "categories": health,
+        "detailed_sources": all_sources,
+        "timestamp": time.time(),
+    }
 
 
 @app.get("/api/status")

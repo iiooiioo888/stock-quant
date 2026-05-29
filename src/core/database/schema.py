@@ -510,4 +510,8 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_task_created ON task_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_task_active ON task_log(created_at DESC) WHERE status IN ('pending', 'running')",
+    # Phase 2: K 線索引優化（提升查詢效能）
+    "CREATE INDEX IF NOT EXISTS idx_klines_code_date ON klines(code, date)",
+    "CREATE INDEX IF NOT EXISTS idx_klines_code ON klines(code)",
+    "CREATE INDEX IF NOT EXISTS idx_klines_date ON klines(date DESC)",
 ]

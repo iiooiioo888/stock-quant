@@ -522,3 +522,251 @@ async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
         cache_namespace="auto_optimize", cache_params=task_params,
     )
 
+
+@router.post("/api/backtest/sandbox")
+async def run_sandbox_backtest_api(
+    code: str = Body(..., description="股票代碼"),
+    strategy_code: str = Body(..., description="用戶上傳的策略源碼（Python）"),
+    cash: float = Body(100000.0, description="初始資金"),
+    commission: float = Body(0.001, description="手續費率"),
+    stop_loss_pct: float = Body(None, description="止損百分比"),
+    take_profit_pct: float = Body(None, description="止盈百分比"),
+    benchmark: bool = Body(False, description="是否對比基準"),
+    timeframe: str = Body("1d", description="K 線週期"),
+    user=Depends(require_auth),
+):
+    """
+    沙箱模式回測（Phase 1 穩定性優化）
+    
+    允許用戶上傳自定義策略源碼，在隔離環境中執行回測：
+    - AST 白名單校驗：僅允許安全庫（numpy/pandas/backtrader 等）
+    - 危險語法攔截：禁止 open/eval/exec/__import__ 等
+    - 檔案大小限制：最大 64KB
+    - AST 節點數限制：防止複雜度爆炸
+    - 生產數據隔離：沙箱回測不污染正式回測記錄
+    
+    請求體：
+        code: 股票代碼
+        strategy_code: 用戶策略源碼（必須繼承 UserStrategy）
+        cash: 初始資金
+        commission: 手續費率
+        stop_loss_pct: 止損百分比（可選）
+        take_profit_pct: 止盈百分比（可選）
+        benchmark: 是否對比基準
+        timeframe: K 線週期
+    
+    返回：
+        任務 ID（異步執行），可通過 /api/tasks/{task_id} 查詢進度
+    """
+    from src.core.strategy_sandbox import validate_strategy_source
+    from src.core.kline_timeframe import normalize_timeframe
+    from src.core.task_manager import create_task
+    from src.core.entitlements import gate_backtest_submit, gate_concurrent_tasks
+    
+    # 權限檢查
+    gate_backtest_submit(user, advanced=True)
+    gate_concurrent_tasks(user)
+    
+    # 驗證策略源碼
+    validation = validate_strategy_source(strategy_code)
+    if not validation.ok:
+        raise HTTPException(400, f"策略源碼校驗失敗：{validation.error}")
+    
+    # 標準化時間框架
+    try:
+        timeframe = normalize_timeframe(timeframe)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    
+    # 創建沙箱任務
+    task_params = {
+        "code": code,
+        "strategy_code": strategy_code,
+        "cash": cash,
+        "commission": commission,
+        "stop_loss_pct": stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+        "benchmark": benchmark,
+        "timeframe": timeframe,
+        "sandbox_mode": True,  # 標記為沙箱模式
+    }
+    
+    task = create_task(
+        "sandbox_backtest",
+        task_params,
+        title=f"沙箱回測 {code}",
+        user_id=user.id,
+    )
+    
+    if task.get("is_duplicate"):
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同沙箱回測正在執行中，請等待完成",
+            "async": True,
+        }
+    
+    task_id = task["task_id"]
+    
+    def _work():
+        """執行沙箱回測"""
+        from src.core.backtest_sandbox_executor import run_sandbox_backtest
+        return run_sandbox_backtest(
+            code=code,
+            strategy_code=strategy_code,
+            cash=cash,
+            commission=commission,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            benchmark=benchmark,
+            timeframe=timeframe,
+            task_id=task_id,
+            user_id=user.id,
+        )
+    
+    return dispatch_async_task(
+        task_id,
+        _work,
+        cache_namespace="sandbox_backtest",
+        cache_params=task_params,
+        cache_code=code,
+    )
+
+
+@router.get("/api/backtest/sandbox/examples")
+async def get_sandbox_examples():
+    """
+    獲取沙箱策略示例代碼
+    
+    返回多個示例策略，供用戶參考學習如何編寫自定義策略。
+    """
+    examples = [
+        {
+            "name": "簡單雙均線策略",
+            "description": "當快均線上穿慢均線時買入，下穿時賣出",
+            "code": '''from src.core.strategy_base import UserStrategy
+import pandas as pd
+
+class MyDualMA(UserStrategy):
+    """簡單雙均線策略示例"""
+    
+    def __init__(self):
+        super().__init__()
+        self.fast_period = 5
+        self.slow_period = 20
+    
+    def next(self, df: pd.DataFrame) -> int:
+        \"\"\"
+        返回值：1=買入，-1=賣出，0=保持
+        
+        df 包含 columns: ['open', 'high', 'low', 'close', 'volume']
+        \"\"\"
+        if len(df) < self.slow_period:
+            return 0
+        
+        fast_ma = df['close'].tail(self.fast_period).mean()
+        slow_ma = df['close'].tail(self.slow_period).mean()
+        
+        prev_fast = df['close'].tail(self.fast_period + 1).head(self.fast_period).mean()
+        prev_slow = df['close'].tail(self.slow_period + 1).head(self.slow_period).mean()
+        
+        # 金叉：快均線上穿慢均線
+        if prev_fast <= prev_slow and fast_ma > slow_ma:
+            return 1
+        
+        # 死叉：快均線下穿慢均線
+        if prev_fast >= prev_slow and fast_ma < slow_ma:
+            return -1
+        
+        return 0
+''',
+        },
+        {
+            "name": "RSI 超買超賣策略",
+            "description": "當 RSI < 30 時買入，RSI > 70 時賣出",
+            "code": '''from src.core.strategy_base import UserStrategy
+import pandas as pd
+
+class MyRSI(UserStrategy):
+    """RSI 超買超賣策略示例"""
+    
+    def __init__(self):
+        super().__init__()
+        self.rsi_period = 14
+        self.oversold = 30
+        self.overbought = 70
+    
+    def calculate_rsi(self, series: pd.Series) -> float:
+        \"\"\"計算 RSI\"\"\"
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        rs = gain / loss if loss != 0 else 0
+        return 100 - (100 / (1 + rs))
+    
+    def next(self, df: pd.DataFrame) -> int:
+        if len(df) < self.rsi_period + 1:
+            return 0
+        
+        rsi = self.calculate_rsi(df['close'])
+        
+        # RSI < 30：超賣，買入
+        if rsi < self.oversold:
+            return 1
+        
+        # RSI > 70：超買，賣出
+        if rsi > self.overbought:
+            return -1
+        
+        return 0
+''',
+        },
+        {
+            "name": "布林帶突破策略",
+            "description": "價格跌破下軌買入，突破上軌賣出",
+            "code": '''from src.core.strategy_base import UserStrategy
+import pandas as pd
+import numpy as np
+
+class MyBollinger(UserStrategy):
+    """布林帶突破策略示例"""
+    
+    def __init__(self):
+        super().__init__()
+        self.period = 20
+        self.std_mult = 2.0
+    
+    def next(self, df: pd.DataFrame) -> int:
+        if len(df) < self.period:
+            return 0
+        
+        close = df['close']
+        sma = close.tail(self.period).mean()
+        std = close.tail(self.period).std()
+        
+        upper = sma + self.std_mult * std
+        lower = sma - self.std_mult * std
+        
+        current_price = close.iloc[-1]
+        
+        # 跌破下軌：買入
+        if current_price < lower:
+            return 1
+        
+        # 突破上軌：賣出
+        if current_price > upper:
+            return -1
+        
+        return 0
+''',
+        },
+    ]
+    
+    return {
+        "success": True,
+        "examples": examples,
+        "total": len(examples),
+        "note": "這些示例僅供參考，實際使用請根據需求調整參數",
+    }
+

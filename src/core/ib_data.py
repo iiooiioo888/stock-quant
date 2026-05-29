@@ -145,8 +145,7 @@ def _get_ib():
             return None
         except Exception as e:
             _connected = False
-            logger.debug(f"IB 連接失敗: {e}")
-            return None
+            logger.warning(f"IB 連接異常：{e}，將在 {_CONNECT_COOLDOWN} 秒後重試")
 
 
 def _ensure_ib_thread() -> None:
@@ -352,3 +351,32 @@ def disconnect_ib():
         _ib = None
         _ib_loop = None
         _ib_thread = None
+
+
+def ib_reconnect():
+    """
+    手動觸發 IB 重連（Phase 1 P1-3）
+    
+    重置冷卻計時器，立即嘗試重新連接。
+    返回連接狀態。
+    """
+    global _last_connect_attempt, _connected
+    
+    if not ib_available():
+        return {"status": "disabled", "reason": "IB 未啟用或缺少依賴"}
+    
+    # 重置冷卻計時器
+    with _lock:
+        _last_connect_attempt = 0.0
+        _connected = False
+    
+    # 嘗試連接
+    ib = _get_ib()
+    connected = bool(ib and ib.isConnected())
+    
+    return {
+        "status": "connected" if connected else "failed",
+        "connected": connected,
+        "host": getattr(_settings(), "ib_host", "127.0.0.1"),
+        "port": getattr(_settings(), "ib_port", 7497),
+    }
