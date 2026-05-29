@@ -7,6 +7,8 @@ from fastapi import APIRouter, Response
 from src.config import settings
 from src.core.db import get_db_stats
 from src.api import state
+from src.core.data_sources import health_check as data_sources_health_check
+from src.utils.logger import logger
 
 router = APIRouter(tags=["health"])
 
@@ -132,6 +134,50 @@ async def health_detailed():
         result["memory"] = {"status": "unavailable"}
 
     return result
+
+
+@router.get("/api/data-sources/health")
+async def data_sources_health():
+    """
+    數據源健康檢查端點（Phase 1 穩定性優化）
+    
+    返回所有已註冊數據源的狀態，包括：
+    - 可用性（是否熔斷/超限）
+    - 失敗次數
+    - 今日調用次數
+    - 動態評分（用於智能排隊）
+    - IB/TWS 連接狀態（如適用）
+    
+    用途：
+    - 監控數據源穩定性
+    - 觸發告警（當某類別所有源均不可用）
+    - 前端顯示數據源狀態儀表板
+    """
+    try:
+        health = data_sources_health_check()
+        overall_status = "ok"
+        degraded_categories = []
+        
+        for category, info in health.items():
+            if info.get("status") == "degraded":
+                degraded_categories.append(category)
+                overall_status = "degraded"
+        
+        return {
+            "status": overall_status,
+            "timestamp": time.time(),
+            "categories": health,
+            "degraded_categories": degraded_categories,
+            "total_categories": len(health),
+            "healthy_categories": len(health) - len(degraded_categories),
+        }
+    except Exception as e:
+        logger.error(f"數據源健康檢查失敗：{e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": time.time(),
+        }
 
 
 @router.get("/metrics")
