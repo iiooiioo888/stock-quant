@@ -2,20 +2,20 @@
 import os
 import sqlite3
 import tempfile
+import uuid
 
 import pytest
 
 
 @pytest.fixture
 def isolated_db(monkeypatch):
-    """每個用例使用獨立臨時庫，避免污染開發庫。"""
-    path = os.path.join(tempfile.gettempdir(), f"test_schema_{os.getpid()}.db")
-    if os.path.exists(path):
-        os.remove(path)
-    monkeypatch.setenv("SQ_DB_PATH", path)
+    """每個用例使用獨立臨時庫，避免污染開發庫與連線鎖定。"""
     from src.config import settings
     from src.core.database.connection import reset_thread_connection
 
+    reset_thread_connection()
+    path = os.path.join(tempfile.gettempdir(), f"test_schema_{uuid.uuid4().hex}.db")
+    monkeypatch.setenv("SQ_DB_PATH", path)
     settings.db_path = path
     reset_thread_connection()
     yield path

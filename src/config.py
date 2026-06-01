@@ -78,6 +78,10 @@ class Settings(BaseSettings):
         description="開發環境允許 POST /api/billing/checkout 直接升級 Pro（無支付）",
     )
     billing_checkout_enabled: bool = False
+    billing_quota_enforce: bool = Field(
+        default=True,
+        description="是否強制每日回測/優化等配額；測試與 CI 可設 SQ_BILLING_QUOTA_ENFORCE=false",
+    )
     stripe_secret_key: Optional[str] = Field(default=None, description="Stripe Secret Key")
     stripe_webhook_secret: Optional[str] = Field(default=None, description="Stripe Webhook Signing Secret")
 

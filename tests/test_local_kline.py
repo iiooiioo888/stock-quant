@@ -61,8 +61,12 @@ def test_ensure_daily_kline_fetches_once_when_empty(monkeypatch):
         })
         return 3
 
+    def fake_download_auto(code, start_date=None, market=None):
+        fake_download(code, start_date, market)
+        return 3, "fetched"
+
     monkeypatch.setattr("src.core.local_kline.load_daily_kline", fake_load)
-    monkeypatch.setattr("src.core.history.download_one", fake_download)
+    monkeypatch.setattr("src.core.auto_kline_fetch.download_one_auto", fake_download_auto)
     monkeypatch.setattr("src.core.db.clear_data_cache", lambda **kw: None)
 
     df, source = ensure_daily_kline("600519", min_bars=2, auto_fetch=True)

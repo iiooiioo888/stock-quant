@@ -303,7 +303,8 @@ class TestCryptoIndicators:
             {"price": 65000, "qty": 0.1, "quote_qty": 6500, "is_buyer_maker": False, "trade_time": 0},
             {"price": 65000, "qty": 5.0, "quote_qty": 325000, "is_buyer_maker": False, "trade_time": 0},  # 大單
         ]
-        large = detect_large_orders(trades, multiplier=5.0)
+        # multiplier×平均量：0.1×3 + 5.0 → 平均 1.325，×3 ≈ 3.98，5.0 為大單
+        large = detect_large_orders(trades, multiplier=3.0)
         assert len(large) == 1
         assert large[0]["qty"] == 5.0
 

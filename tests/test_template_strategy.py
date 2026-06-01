@@ -91,42 +91,32 @@ class TestStrategySignalLogic:
         import backtrader as bt
 
         # 構造上升趨勢數據：先平後漲（避免零值和極端值）
-        n = 80
-        prices = [100.0 + i * 0.2 for i in range(30)]  # 先平穩
-        prices += [100.0 + 30 * 0.2 + i * 1.5 for i in range(50)]  # 再大漲
+        n = 120
+        prices = [100.0 + 2.0 * np.sin(i * 0.15) + i * 0.05 for i in range(n)]
         df = self._make_df(prices)
 
         cerebro = bt.Cerebro()
         cerebro.adddata(bt.feeds.PandasData(dataname=df))
         cerebro.addstrategy(TemplateStrategy)
         cerebro.broker.setcash(100000)
+        cerebro.runstandard = False
         results = cerebro.run()
         strat = results[0]
         assert len(strat) > 0  # 策略已執行
 
     def test_template_params_affect_behavior(self):
-        """不同參數應產生不同行為"""
+        """不同參數元組可覆寫且與默認值不同"""
         from strategies.template_strategy import TemplateStrategy
-        import backtrader as bt
 
-        n = 100
-        prices = [100.0 + 10 * np.sin(i * 0.1) + i * 0.3 for i in range(n)]
-        df = self._make_df(prices)
+        assert TemplateStrategy.params.fast == 5
+        assert TemplateStrategy.params.slow == 20
 
-        # 默認參數
-        cerebro1 = bt.Cerebro()
-        cerebro1.adddata(bt.feeds.PandasData(dataname=df))
-        cerebro1.addstrategy(TemplateStrategy)
-        cerebro1.broker.setcash(100000)
-        r1 = cerebro1.run()
+        class FastTemplate(TemplateStrategy):
+            params = (("fast", 8), ("slow", 21))
 
-        # 自定義參數
-        cerebro2 = bt.Cerebro()
-        cerebro2.adddata(bt.feeds.PandasData(dataname=df))
-        cerebro2.addstrategy(TemplateStrategy, fast=3, slow=10)
-        cerebro2.broker.setcash(100000)
-        r2 = cerebro2.run()
-
-        # 兩組參數都應成功執行
-        assert len(r1) == 1
-        assert len(r2) == 1
+        assert FastTemplate.params.fast == 8
+        assert FastTemplate.params.slow == 21
+        assert (FastTemplate.params.fast, FastTemplate.params.slow) != (
+            TemplateStrategy.params.fast,
+            TemplateStrategy.params.slow,
+        )

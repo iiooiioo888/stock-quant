@@ -430,6 +430,10 @@ def gate_portfolio_task(user: User, *, advanced: bool = False) -> None:
 
 def check_quota(user: User, metric: str) -> None:
     """配額不足時拋 429（檢查後由調用方 record_usage）。"""
+    from src.config import settings
+
+    if not settings.billing_quota_enforce:
+        return
     plan = plan_definition(effective_plan_id(user))
     usage = usage_snapshot(user.id)
     limits = plan.limits

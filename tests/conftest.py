@@ -16,6 +16,8 @@ os.environ.setdefault("SQ_LOG_LEVEL", "WARNING")
 os.environ.setdefault("SQ_DEBUG", "true")
 os.environ.setdefault("SQ_DEMO_MODE", "true")
 os.environ.setdefault("SQ_LOCAL_FIRST_AUTO_FETCH", "false")
+os.environ.setdefault("SQ_BILLING_QUOTA_ENFORCE", "false")
+os.environ.setdefault("SQ_RATE_LIMIT_PER_MINUTE", "10000")
 
 import pytest
 from fastapi.testclient import TestClient

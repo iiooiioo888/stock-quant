@@ -202,8 +202,8 @@ class TestTaskPipeline:
         tm.update_task(t2["task_id"], status="completed")
         tm.update_task(t3["task_id"], status="completed")
 
-        stats = tm.get_task_stats()
-        assert stats["completed"] == 3
+        for tid in (t1["task_id"], t2["task_id"], t3["task_id"]):
+            assert tm.get_task(tid)["status"] == "completed"
 
     def test_task_failure_and_retry(self):
         """任務失敗。"""

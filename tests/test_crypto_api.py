@@ -36,10 +36,10 @@ class TestCryptoService:
 class TestCryptoAPI:
     def test_crypto_realtime(self, client):
         with patch(
-            "src.core.crypto.service.get_crypto_multi_realtime",
+            "src.core.crypto.service.CryptoService.get_realtime",
             return_value=[SAMPLE_TICKER],
         ):
-            resp = client.get("/api/crypto/realtime")
+            resp = client.get("/api/crypto/realtime?symbols=BTCUSDT")
         assert resp.status_code == 200
         body = resp.json()
         assert body["market"] == "crypto"
