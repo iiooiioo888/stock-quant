@@ -118,13 +118,8 @@ class TestSmokeAPI:
         assert "tradingview" in data
         assert "ib" in data
 
-    def test_assets_catalog(self, client, auth_headers):
-        client.post(
-            "/api/billing/checkout",
-            json={"plan_id": "pro"},
-            headers=auth_headers,
-        )
-        resp = client.get("/api/assets/catalog", headers=auth_headers)
+    def test_assets_catalog(self, client):
+        resp = client.get("/api/assets/catalog")
         assert resp.status_code == 200
         data = resp.json()
         assert data.get("total", 0) >= 200
@@ -141,12 +136,13 @@ class TestSmokeAPI:
         packs = {p["id"]: p for p in (data.get("theme_packs") or [])}
         assert "hstech" in packs and "csi300" in packs
         assert packs["hstech"].get("catalog_count", 0) >= 10
+        assert data.get("theme_packs_locked") is True
         stock = next(
             (x for x in (data.get("instruments") or []) if x.get("symbol") == "0700.HK"),
             None,
         )
         if stock:
-            assert "hstech" in (stock.get("themes") or [])
+            assert (stock.get("themes") or []) == []
 
     def test_assets_detail(self, client):
         resp = client.get("/api/assets/detail?symbol=^GSPC&days=60")

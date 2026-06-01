@@ -18,6 +18,16 @@ def init_database() -> None:
     run_migrations()
 
     try:
+        from src.core.database.index_audit import ensure_missing_indexes
+
+        idx_report = ensure_missing_indexes()
+        applied = idx_report.get("applied") or []
+        if applied:
+            logger.info(f"已補建缺失索引 {len(applied)} 個: {applied[:5]}{'…' if len(applied) > 5 else ''}")
+    except Exception as e:
+        logger.debug(f"索引健檢跳過: {e}")
+
+    try:
         from src.core.auth import ensure_default_admin
         ensure_default_admin()
     except Exception as e:

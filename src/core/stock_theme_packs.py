@@ -131,16 +131,25 @@ THEME_PACK_ORDER: list[str] = [
 ]
 
 
+def build_symbol_themes_map(symbols: list[str]) -> dict[str, list[str]]:
+    """一次掃描主題包，為目錄內標的建立 symbol → theme_ids（避免逐標的 O(n×m)）。"""
+    sym_set = {str(s or "").strip().upper() for s in symbols if str(s or "").strip()}
+    out: dict[str, list[str]] = {s: [] for s in sym_set}
+    for tid in THEME_PACK_ORDER:
+        pack = THEME_PACKS.get(tid)
+        if not pack:
+            continue
+        for sym in pack.symbols:
+            if sym in out:
+                out[sym].append(tid)
+    return out
+
+
 def themes_for_symbol(symbol: str) -> list[str]:
     sym = str(symbol or "").strip().upper()
     if not sym:
         return []
-    out: list[str] = []
-    for tid in THEME_PACK_ORDER:
-        pack = THEME_PACKS.get(tid)
-        if pack and sym in pack.symbols:
-            out.append(tid)
-    return out
+    return build_symbol_themes_map([sym]).get(sym, [])
 
 
 def theme_packs_payload() -> list[dict]:
@@ -158,7 +167,7 @@ def theme_packs_payload() -> list[dict]:
 
 def count_themes_in_catalog(symbols: list[str]) -> dict[str, int]:
     counts = {tid: 0 for tid in THEME_PACK_ORDER}
-    for sym in symbols:
-        for tid in themes_for_symbol(sym):
+    for themes in build_symbol_themes_map(symbols).values():
+        for tid in themes:
             counts[tid] = counts.get(tid, 0) + 1
     return counts

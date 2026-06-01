@@ -121,7 +121,8 @@ async def get_indices_charts(
             "providers": _provider_status(indices),
         }
 
-    return cached_response(cache_key, ttl=120, builder=_build)
+    ttl = 45 if scope == "topbar" else 120
+    return cached_response(cache_key, ttl=ttl, builder=_build)
 
 
 def _provider_status(indices: list) -> dict:

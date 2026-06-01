@@ -20,6 +20,25 @@ from src.core.entitlements import user_assets_pro
 
 router = APIRouter(tags=["assets"])
 
+_INSTRUMENT_BY_SYMBOL: dict | None = None
+
+
+def _instrument_index() -> dict:
+    """符號 → 掛牌元數據（模組級快取）。"""
+    global _INSTRUMENT_BY_SYMBOL
+    if _INSTRUMENT_BY_SYMBOL is not None:
+        return _INSTRUMENT_BY_SYMBOL
+    idx: dict = {}
+    for inst in MARKET_INSTRUMENTS:
+        key = (inst.symbol or "").upper()
+        if not key:
+            continue
+        idx[key] = inst
+        if key.isdigit() and len(key) <= 6:
+            idx[key.zfill(6)] = inst
+    _INSTRUMENT_BY_SYMBOL = idx
+    return idx
+
 
 def _a_share_catalog_symbol(code: str) -> str:
     """六位 A 股代碼 → 目錄符號（600519 → 600519.SS）。"""
@@ -41,12 +60,10 @@ def _lookup_inst(symbol: str):
     candidates = [u]
     if u.isdigit() and len(u) <= 6:
         candidates.append(_a_share_catalog_symbol(u))
+    idx = _instrument_index()
     for key in candidates:
-        if not key:
-            continue
-        for i in MARKET_INSTRUMENTS:
-            if (i.symbol or "").upper() == key:
-                return i
+        if key and key in idx:
+            return idx[key]
     return None
 
 
@@ -202,13 +219,18 @@ async def get_assets_catalog(user=Depends(get_current_user)):
     def _build():
         from src.core.market_catalog import STOCK_GROUPS
         from src.core.stock_sectors import STOCK_SECTOR_LABELS, stock_sector_label
-        from src.core.stock_theme_packs import count_themes_in_catalog, theme_packs_payload, themes_for_symbol
+        from src.core.stock_theme_packs import (
+            build_symbol_themes_map,
+            count_themes_in_catalog,
+            theme_packs_payload,
+        )
 
         stock_syms = [
             i.symbol for i in MARKET_INSTRUMENTS
             if i.group in STOCK_GROUPS and i.asset_class == "stock"
         ]
         theme_counts = count_themes_in_catalog(stock_syms)
+        theme_map = build_symbol_themes_map(stock_syms) if assets_pro else {}
 
         rows = []
         for i in MARKET_INSTRUMENTS:
@@ -219,7 +241,10 @@ async def get_assets_catalog(user=Depends(get_current_user)):
                 sector = (i.sub_class or "other").strip() or "other"
                 sector_label = stock_sector_label(sector)
                 if assets_pro:
-                    themes = themes_for_symbol(i.symbol)
+                    themes = theme_map.get((i.symbol or "").upper(), [])
+            l2, l2_label = derive_l2(i)
+            l3, l3_label = derive_l3(i)
+            price_sources, pricing_note = map_price_sources(i)
             rows.append({
                 "symbol": i.symbol,
                 "name": i.name,
@@ -236,18 +261,20 @@ async def get_assets_catalog(user=Depends(get_current_user)):
                 "settlement": i.settlement,
                 "regulator": i.regulator,
                 "detail_supported": bool(getattr(i, "detail_supported", True)),
-                "l2": derive_l2(i)[0],
-                "l2_label": derive_l2(i)[1],
-                "l3": derive_l3(i)[0],
-                "l3_label": derive_l3(i)[1],
-                "price_sources": map_price_sources(i)[0],
-                "pricing_note": map_price_sources(i)[1],
+                "l2": l2,
+                "l2_label": l2_label,
+                "l3": l3,
+                "l3_label": l3_label,
+                "price_sources": price_sources,
+                "pricing_note": pricing_note,
                 "tv": i.tv,
                 "topbar": i.topbar,
             })
-        packs = theme_packs_payload() if assets_pro else []
+        packs = theme_packs_payload()
         for p in packs:
             p["catalog_count"] = theme_counts.get(p["id"], 0)
+            if not assets_pro:
+                p["locked"] = True
 
         out = {
             **catalog_summary(),
@@ -261,8 +288,8 @@ async def get_assets_catalog(user=Depends(get_current_user)):
             out["theme_packs_upgrade_url"] = "/app#/pricing"
         return out
 
-    # v5: theme packs + themes[] on instruments（Pro: assets_pro）
-    cache_key = "api:assets:catalog:v5:pro" if assets_pro else "api:assets:catalog:v5:base"
+    # v6: 主題包元數據全員可見；instruments.themes 仍為 Pro
+    cache_key = "api:assets:catalog:v6:pro" if assets_pro else "api:assets:catalog:v6:base"
     return cached_response(cache_key, ttl=300, builder=_build)
 
 

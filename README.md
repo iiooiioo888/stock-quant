@@ -16,6 +16,8 @@
 
 > 演示版部署在 Render.com (Free Plan)，首次訪問可能需要等待 30 秒冷啟動。
 
+**冷啟動保活（可選）**：免費方案約 15 分鐘無流量會休眠。可用 [UptimeRobot](https://uptimerobot.com/) 每 **5–10 分鐘** GET 一次 https://你的域名/api/health（勿過於頻繁）。
+
 **演示地址：** `https://stock-quant.onrender.com`
 
 演示模式特性（`SQ_DEMO_MODE=true`）：
