@@ -1,0 +1,92 @@
+{
+  "dashboard": {
+    "title": "Stock-Quant 業務監控",
+    "uid": "stockquant-biz",
+    "tags": ["stock-quant", "business"],
+    "timezone": "Asia/Macau",
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "回測成功率",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+        "targets": [{ "expr": "stock_quant_backtest_success_total / (stock_quant_backtest_success_total + stock_quant_backtest_failure_total) * 100" }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": { "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]}
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "策略勝率",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+        "targets": [{ "expr": "stock_quant_strategy_win_total / (stock_quant_strategy_win_total + stock_quant_strategy_loss_total) * 100" }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": { "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 45 },
+              { "color": "green", "value": 55 }
+            ]}
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "數據源健康度",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+        "targets": [{ "expr": "stock_quant_data_source_ok_total / (stock_quant_data_source_ok_total + stock_quant_data_source_fail_total + stock_quant_data_source_degrade_total) * 100" }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": { "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "任務統計",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          { "expr": "stock_quant_task_submitted_total", "legendFormat": "已提交" },
+          { "expr": "stock_quant_task_completed_total", "legendFormat": "已完成" },
+          { "expr": "stock_quant_task_failed_total", "legendFormat": "失敗" }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "回測執行時間（秒）",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "targets": [{ "expr": "stock_quant_backtest_duration_seconds", "legendFormat": "平均執行時間" }]
+      },
+      {
+        "id": 6,
+        "title": "數據源請求趨勢",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "targets": [
+          { "expr": "stock_quant_data_source_ok_total", "legendFormat": "成功" },
+          { "expr": "stock_quant_data_source_fail_total", "legendFormat": "失敗" },
+          { "expr": "stock_quant_data_source_degrade_total", "legendFormat": "降級" }
+        ]
+      }
+    ]
+  }
+}

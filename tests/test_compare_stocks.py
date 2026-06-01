@@ -4,7 +4,7 @@ import pytest
 
 @pytest.fixture
 def auth_headers(client):
-    """註冊並登錄，返回 Authorization header"""
+    """註冊、登錄並升級到 Pro，返回 Authorization header"""
     import uuid
     pw = "test_compare_stocks_pw_2026"
     username = f"comparetester_{uuid.uuid4().hex[:8]}"
@@ -13,7 +13,10 @@ def auth_headers(client):
     assert resp.status_code == 200
     token = resp.json().get("token")
     assert token
-    return {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}"}
+    # 升級到 Pro 以便使用多股對比等功能（dev 環境直接升級）
+    client.post("/api/billing/checkout", json={"plan_id": "pro"}, headers=headers)
+    return headers
 
 
 class TestCompareStocks:

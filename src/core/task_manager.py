@@ -28,6 +28,30 @@ STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 STATUS_RETRYING = "retrying"
 
+# 任務優先級（數值越小優先級越高）
+PRIORITY_HIGH = 0    # 盯盤、實時信號等關鍵任務
+PRIORITY_NORMAL = 1  # 普通回測/優化
+PRIORITY_LOW = 2     # 批量下載、數據同步
+PRIORITY_LABELS = {PRIORITY_HIGH: "high", PRIORITY_NORMAL: "normal", PRIORITY_LOW: "low"}
+
+# 根據任務類型自動分配優先級
+_TASK_TYPE_PRIORITY: dict[str, int] = {
+    "data_incremental": PRIORITY_HIGH,
+    "scheduled_job": PRIORITY_HIGH,
+    "backtest": PRIORITY_NORMAL,
+    "backtest_advanced": PRIORITY_NORMAL,
+    "backtest_multi": PRIORITY_NORMAL,
+    "optimize": PRIORITY_NORMAL,
+    "auto_optimize": PRIORITY_NORMAL,
+    "portfolio": PRIORITY_NORMAL,
+    "walkforward": PRIORITY_NORMAL,
+    "target_search": PRIORITY_NORMAL,
+    "data_download": PRIORITY_LOW,
+    "data_download_all": PRIORITY_LOW,
+    "stock_universe_sync": PRIORITY_LOW,
+    "stock_universe_intro": PRIORITY_LOW,
+}
+
 TERMINAL_STATUSES = frozenset({
     STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED,
 })
@@ -644,6 +668,7 @@ def create_task(
                 logger.debug(f"緩存查詢跳過: {e}")
 
         task_id = _make_task_id(task_type, params)
+        priority = _TASK_TYPE_PRIORITY.get(task_type, PRIORITY_NORMAL)
         task = {
             "task_id": task_id,
             "task_type": task_type,
@@ -660,6 +685,7 @@ def create_task(
             "last_accessed": time.time(),
             "data_version": data_ver,
             "user_id": user_id,
+            "priority": priority,
         }
         _tasks[task_id] = task
         _cancel_flags.pop(task_id, None)
@@ -750,7 +776,8 @@ def _drain_queue():
             and t["task_id"] not in _dispatched
             and not _cancel_flags.get(t["task_id"])
         ]
-        pending.sort(key=lambda t: t.get("created_at", ""))
+        # 按優先級排序（高優先級優先），同級按創建時間排序
+        pending.sort(key=lambda t: (t.get("priority", PRIORITY_NORMAL), t.get("created_at", "")))
         in_flight = _count_in_flight()
         heavy_in_flight = count_in_flight_heavy()
 

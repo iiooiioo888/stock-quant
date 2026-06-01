@@ -70,6 +70,8 @@ async def data_sources_health_check():
 @router.get("/api/status")
 async def system_status():
     """系統狀態"""
+    from src.core.db import get_db_stats
+    from src.api import state
     stats = get_db_stats()
     uptime_sec = int(time.time() - state.start_time)
 
@@ -345,6 +347,27 @@ async def disable_data_quality_api():
     from src.core.scheduler import disable_data_quality_check
     disable_data_quality_check()
     return {"success": True, "message": "數據質量巡檢已禁用"}
+
+
+# ====== 業務監控指標 ======
+
+
+@router.get("/api/metrics/business")
+async def business_metrics_api():
+    """業務監控指標（回測成功率、策略勝率、數據源健康度）"""
+    from src.monitoring.business_metrics import get_all_business_metrics
+    return {"success": True, "metrics": get_all_business_metrics()}
+
+
+@router.get("/api/metrics/business/prometheus")
+async def business_metrics_prometheus():
+    """Prometheus 格式業務指標"""
+    from src.monitoring.business_metrics import export_prometheus
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        content=export_prometheus(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 # ====== 靜態文件（前端） ======

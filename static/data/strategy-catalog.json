@@ -1,0 +1,1236 @@
+{
+  "cats": [
+    {
+      "id": "trend",
+      "name": "趨勢跟蹤與動量",
+      "icon": "📈",
+      "color": "#e8b830"
+    },
+    {
+      "id": "osc",
+      "name": "振盪與均值回歸",
+      "icon": "〰️",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "breakout",
+      "name": "突破與通道",
+      "icon": "🚀",
+      "color": "#f97316"
+    },
+    {
+      "id": "ai",
+      "name": "AI / 機器學習",
+      "icon": "🤖",
+      "color": "#a78bfa"
+    },
+    {
+      "id": "risk",
+      "name": "風險與資金管理",
+      "icon": "🛡️",
+      "color": "#34d399"
+    },
+    {
+      "id": "micro",
+      "name": "微結構與量能",
+      "icon": "📊",
+      "color": "#22d3ee"
+    },
+    {
+      "id": "macro",
+      "name": "宏觀與跨資產",
+      "icon": "🌐",
+      "color": "#fb7185"
+    },
+    {
+      "id": "quant",
+      "name": "計量與統計套利",
+      "icon": "∑",
+      "color": "#c084fc"
+    },
+    {
+      "id": "pattern",
+      "name": "形態與 K 線",
+      "icon": "🕯️",
+      "color": "#fbbf24"
+    },
+    {
+      "id": "execution",
+      "name": "演算法執行",
+      "icon": "⚙️",
+      "color": "#94a3b8"
+    }
+  ],
+  "strats": [
+    {
+      "id": 1,
+      "name": "ADX趨勢強度策略",
+      "desc": "ADX 趋势强度策略 — ADX 高于阈值时趋势交易，配合 +DI/-DI 交叉",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "adx_trend",
+      "status": "implemented"
+    },
+    {
+      "id": 2,
+      "name": "ATR移動止損趨勢策略",
+      "desc": "均線趨勢 + ATR 移動止損（操作優化）",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": "atr_trail",
+      "status": "implemented"
+    },
+    {
+      "id": 3,
+      "name": "布林帶突破策略",
+      "desc": "布林帶策略",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": "bollinger",
+      "status": "implemented"
+    },
+    {
+      "id": 4,
+      "name": "布林帶收窄突破策略",
+      "desc": "布林带收窄策略 — 布林带宽收窄后突破，预期大行情",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": "bollinger_squeeze",
+      "status": "implemented"
+    },
+    {
+      "id": 5,
+      "name": "N日高點突破策略",
+      "desc": "突破策略 — N 日高點突破買入，ATR 移動止損賣出",
+      "cat": "breakout",
+      "tier": "free",
+      "backend_key": "breakout",
+      "status": "implemented"
+    },
+    {
+      "id": 6,
+      "name": "CCI商品通道策略",
+      "desc": "CCI 商品通道 — 偏離均值反轉",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": "cci",
+      "status": "implemented"
+    },
+    {
+      "id": 7,
+      "name": "多策略組合投票策略",
+      "desc": "多策略組合信號 — 綜合 dual_ma、macd、rsi、bollinger 四個子策略的買賣信號",
+      "cat": "trend",
+      "tier": "ent",
+      "backend_key": "composite",
+      "status": "implemented"
+    },
+    {
+      "id": 8,
+      "name": "唐奇安通道突破策略",
+      "desc": "唐奇安通道突破",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "donchian",
+      "status": "implemented"
+    },
+    {
+      "id": 9,
+      "name": "雙均線金叉策略",
+      "desc": "雙均線策略",
+      "cat": "trend",
+      "tier": "free",
+      "backend_key": "dual_ma",
+      "status": "implemented"
+    },
+    {
+      "id": 10,
+      "name": "雙軌日內突破策略",
+      "desc": "DualThrust 策略",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": "dual_thrust",
+      "status": "implemented"
+    },
+    {
+      "id": 11,
+      "name": "EMA交叉策略",
+      "desc": "EMA 交叉 — 對近期價格更敏感",
+      "cat": "trend",
+      "tier": "free",
+      "backend_key": "ema_cross",
+      "status": "implemented"
+    },
+    {
+      "id": 12,
+      "name": "EMA量價確認策略",
+      "desc": "EMA 交叉 + 成交量放大確認",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": "ema_volume",
+      "status": "implemented"
+    },
+    {
+      "id": 13,
+      "name": "均線通道策略",
+      "desc": "均线通道策略 — 基于均线的上下轨通道，触下轨买入，触上轨卖出",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": "envelope",
+      "status": "implemented"
+    },
+    {
+      "id": 14,
+      "name": "網格交易策略",
+      "desc": "網格交易策略",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": "grid",
+      "status": "implemented"
+    },
+    {
+      "id": 15,
+      "name": "KDJ隨機指標策略",
+      "desc": "KDJ 策略",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": "kdj",
+      "status": "implemented"
+    },
+    {
+      "id": 16,
+      "name": "MACD金叉策略",
+      "desc": "MACD 策略",
+      "cat": "trend",
+      "tier": "free",
+      "backend_key": "macd",
+      "status": "implemented"
+    },
+    {
+      "id": 17,
+      "name": "MACD+RSI過濾策略",
+      "desc": "MACD 金叉 + RSI 過濾（避免追高）",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": "macd_rsi",
+      "status": "implemented"
+    },
+    {
+      "id": 18,
+      "name": "均值回歸Z-score策略",
+      "desc": "均值回歸策略 — 基於滾動 Z-score，超賣買入，回歸均值賣出",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": "mean_reversion",
+      "status": "implemented"
+    },
+    {
+      "id": 19,
+      "name": "動量ROC策略",
+      "desc": "動量策略 — 基於 N 日 ROC 動量指標，正動量買入，負動量賣出",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "momentum",
+      "status": "implemented"
+    },
+    {
+      "id": 20,
+      "name": "OBV能量潮策略",
+      "desc": "OBV 能量潮策略 — OBV 趨勢與價格趨勢背離時交易",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": "obv",
+      "status": "implemented"
+    },
+    {
+      "id": 21,
+      "name": "拋物線SAR策略",
+      "desc": "抛物线 SAR 策略 — 趋势跟踪，SAR 翻转时交易",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "parabolic_sar",
+      "status": "implemented"
+    },
+    {
+      "id": 22,
+      "name": "趨勢回調均線策略",
+      "desc": "趨勢回調買入 — 長期均線向上時，短期均線金叉",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "pullback_ma",
+      "status": "implemented"
+    },
+    {
+      "id": 23,
+      "name": "RSI相對強弱策略",
+      "desc": "RSI 策略",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": "rsi",
+      "status": "implemented"
+    },
+    {
+      "id": 24,
+      "name": "超級趨勢策略",
+      "desc": "超級趨勢（ATR 軌跡翻轉）",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "supertrend",
+      "status": "implemented"
+    },
+    {
+      "id": 25,
+      "name": "三重均線過濾策略",
+      "desc": "三重均線多頭排列 + 快線金叉",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "triple_ma",
+      "status": "implemented"
+    },
+    {
+      "id": 26,
+      "name": "海龜趨勢跟蹤策略",
+      "desc": "海龜交易策略",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": "turtle",
+      "status": "implemented"
+    },
+    {
+      "id": 27,
+      "name": "量價齊升策略",
+      "desc": "量價策略 — 放量上漲買入，縮量下跌賣出",
+      "cat": "micro",
+      "tier": "free",
+      "backend_key": "volume_price",
+      "status": "implemented"
+    },
+    {
+      "id": 28,
+      "name": "VWAP成交量加權策略",
+      "desc": "VWAP 策略 — 成交量加权平均价格，价格低于 VWAP 买入，高于 VWAP 卖出",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": "vwap",
+      "status": "implemented"
+    },
+    {
+      "id": 29,
+      "name": "威廉指標策略",
+      "desc": "威廉指標 %R 超買超賣反轉",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": "williams_r",
+      "status": "implemented"
+    },
+    {
+      "id": 30,
+      "name": "一目均衡表",
+      "desc": "雲圖趨勢與轉折",
+      "cat": "trend",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 31,
+      "name": "Ichimoku 雲帶",
+      "desc": "多空雲帶過濾",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 32,
+      "name": "DMI 趨勢強度",
+      "desc": "方向運動指標",
+      "cat": "trend",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 33,
+      "name": "Stochastic RSI",
+      "desc": "隨機 RSI 超買超賣",
+      "cat": "osc",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 34,
+      "name": "DeMarker",
+      "desc": "DeM 振盪",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 35,
+      "name": "Ultimate Oscillator",
+      "desc": "終極振盪",
+      "cat": "osc",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 36,
+      "name": "Opening Range Breakout",
+      "desc": "開盤區間突破",
+      "cat": "breakout",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 37,
+      "name": "Pivot 突破",
+      "desc": "樞軸點突破",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 38,
+      "name": "箱體突破",
+      "desc": "橫盤突破",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 39,
+      "name": "波動率突破",
+      "desc": "ATR 擴張突破",
+      "cat": "breakout",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 40,
+      "name": "BREAKOUT 策略 8",
+      "desc": "即將推出",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 41,
+      "name": "BREAKOUT 策略 9",
+      "desc": "即將推出",
+      "cat": "breakout",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 42,
+      "name": "BREAKOUT 策略 10",
+      "desc": "即將推出",
+      "cat": "breakout",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 43,
+      "name": "LSTM 價格預測",
+      "desc": "序列深度學習",
+      "cat": "ai",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 44,
+      "name": "隨機森林分類",
+      "desc": "特徵樹模型",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 45,
+      "name": "XGBoost 信號",
+      "desc": "梯度提升",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 46,
+      "name": "強化學習執行",
+      "desc": "RL 下單",
+      "cat": "ai",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 47,
+      "name": "Transformer 因子",
+      "desc": "注意力因子",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 48,
+      "name": "AutoML 策略搜索",
+      "desc": "自動特徵與模型",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 49,
+      "name": "GAN 合成行情",
+      "desc": "數據增強",
+      "cat": "ai",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 50,
+      "name": "聚類 regime",
+      "desc": "市場狀態分群",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 51,
+      "name": "異常檢測",
+      "desc": "極端行情識別",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 52,
+      "name": "NLP 新聞情緒",
+      "desc": "文本情緒因子",
+      "cat": "ai",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 53,
+      "name": "圖神經網絡",
+      "desc": "關聯股票圖",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 54,
+      "name": "聯邦學習",
+      "desc": "分散式訓練",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 55,
+      "name": "知識蒸餾",
+      "desc": "輕量模型",
+      "cat": "ai",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 56,
+      "name": "元學習",
+      "desc": "快速適應",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 57,
+      "name": "多任務學習",
+      "desc": "聯合優化",
+      "cat": "ai",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 58,
+      "name": "波動率目標",
+      "desc": "目標波動倉位",
+      "cat": "risk",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 59,
+      "name": "最大回撤控制",
+      "desc": "動態降倉",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 60,
+      "name": "VaR 限倉",
+      "desc": "風險價值",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 61,
+      "name": "Kelly 倉位",
+      "desc": "最優下注",
+      "cat": "risk",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 62,
+      "name": "止損止盈模板",
+      "desc": "風控模板",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 63,
+      "name": "組合風險平價",
+      "desc": "風險均衡",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 64,
+      "name": "相關性對沖",
+      "desc": "配對風險",
+      "cat": "risk",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 65,
+      "name": "尾部對沖",
+      "desc": "極端保護",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 66,
+      "name": "流動性過濾",
+      "desc": "成交量門檻",
+      "cat": "risk",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 67,
+      "name": "黑天鵝預警",
+      "desc": "壓力情景",
+      "cat": "risk",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 68,
+      "name": "訂單流不平衡",
+      "desc": "買賣盤力量",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 69,
+      "name": "大單追蹤",
+      "desc": "主力單偵測",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 70,
+      "name": "價量背離",
+      "desc": "量價異常",
+      "cat": "micro",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 71,
+      "name": "MICRO 策略 8",
+      "desc": "即將推出",
+      "cat": "micro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 72,
+      "name": "利率曲線",
+      "desc": "債券曲線因子",
+      "cat": "macro",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 73,
+      "name": "通脹預期",
+      "desc": "CPI 關聯",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 74,
+      "name": "匯率因子",
+      "desc": "跨境資金",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 75,
+      "name": "商品週期",
+      "desc": "大宗聯動",
+      "cat": "macro",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 76,
+      "name": "GDP 驚喜",
+      "desc": "宏觀意外",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 77,
+      "name": "央行政策",
+      "desc": "政策事件",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 78,
+      "name": "信用利差",
+      "desc": "信用風險",
+      "cat": "macro",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 79,
+      "name": "VIX 避險",
+      "desc": "波動率指數",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 80,
+      "name": "行業輪動",
+      "desc": "板塊輪動",
+      "cat": "macro",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 81,
+      "name": "全球 beta",
+      "desc": "跨市場 beta",
+      "cat": "macro",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 82,
+      "name": "協整配對",
+      "desc": "統計套利",
+      "cat": "quant",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 83,
+      "name": "格蘭傑因果",
+      "desc": "領先滯後",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 84,
+      "name": "VAR 預測",
+      "desc": "向量自回歸",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 85,
+      "name": "因子中性",
+      "desc": "多因子中性",
+      "cat": "quant",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 86,
+      "name": "PCA 降維",
+      "desc": "主成分",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 87,
+      "name": "卡爾曼濾波",
+      "desc": "狀態空間",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 88,
+      "name": "小波分解",
+      "desc": "多尺度",
+      "cat": "quant",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 89,
+      "name": "Hurst 指數",
+      "desc": "長記憶",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 90,
+      "name": "Copula 相依",
+      "desc": "尾部相依",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 91,
+      "name": "事件研究",
+      "desc": "公告效應",
+      "cat": "quant",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 92,
+      "name": "季節性分解",
+      "desc": "STL",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 93,
+      "name": "橫截面動量",
+      "desc": "截面排序",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 94,
+      "name": "價值因子",
+      "desc": "估值因子",
+      "cat": "quant",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 95,
+      "name": "質量因子",
+      "desc": "財務質量",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 96,
+      "name": "低波因子",
+      "desc": "低波異象",
+      "cat": "quant",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 97,
+      "name": "錘頭線",
+      "desc": "反轉 K 線",
+      "cat": "pattern",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 98,
+      "name": "吞沒形態",
+      "desc": "反轉確認",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 99,
+      "name": "頭肩頂底",
+      "desc": "經典形態",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 100,
+      "name": "三角形",
+      "desc": "整理突破",
+      "cat": "pattern",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 101,
+      "name": "旗形",
+      "desc": "趨勢延續",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 102,
+      "name": "楔形",
+      "desc": "反轉楔形",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 103,
+      "name": "缺口策略",
+      "desc": "跳空交易",
+      "cat": "pattern",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 104,
+      "name": "三法",
+      "desc": "持續形態",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 105,
+      "name": "十字星",
+      "desc": "猶豫信號",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 106,
+      "name": "早晨之星",
+      "desc": "底部組合",
+      "cat": "pattern",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 107,
+      "name": "黃昏之星",
+      "desc": "頂部組合",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 108,
+      "name": "島形反轉",
+      "desc": "島形",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 109,
+      "name": "矩形整理",
+      "desc": "箱體",
+      "cat": "pattern",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 110,
+      "name": "圓弧底",
+      "desc": "緩變反轉",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 111,
+      "name": "V 型反轉",
+      "desc": "急反轉",
+      "cat": "pattern",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 112,
+      "name": "TWAP",
+      "desc": "時間加權",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 113,
+      "name": "冰山單",
+      "desc": "隱藏數量",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 114,
+      "name": "POV",
+      "desc": "成交量占比",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 115,
+      "name": "Sniper",
+      "desc": "流動性捕捉",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 116,
+      "name": "做市模擬",
+      "desc": "雙邊報價",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 117,
+      "name": "智能路由",
+      "desc": "多交易所",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 118,
+      "name": "滑點優化",
+      "desc": "執行成本",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 119,
+      "name": "開盤競價",
+      "desc": "集合競價",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 120,
+      "name": "收盤競價",
+      "desc": "尾盤執行",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 121,
+      "name": "VWAP 執行",
+      "desc": "基準跟蹤",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 122,
+      "name": "Implementation Shortfall",
+      "desc": "IS 最小化",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 123,
+      "name": "Participation",
+      "desc": "參與率",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 124,
+      "name": "Dark Pool",
+      "desc": "暗池",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 125,
+      "name": "Arrival Price",
+      "desc": "到達價",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 126,
+      "name": "Limit Chase",
+      "desc": "限價追單",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 127,
+      "name": "Stop Limit",
+      "desc": "止損限價",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 128,
+      "name": "Bracket Order",
+      "desc": "括號單",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 129,
+      "name": "Scale In/Out",
+      "desc": "分批建倉",
+      "cat": "execution",
+      "tier": "free",
+      "backend_key": null,
+      "status": "planned"
+    },
+    {
+      "id": 130,
+      "name": "EXECUTION 策略 20",
+      "desc": "即將推出",
+      "cat": "execution",
+      "tier": "pro",
+      "backend_key": null,
+      "status": "planned"
+    }
+  ]
+}

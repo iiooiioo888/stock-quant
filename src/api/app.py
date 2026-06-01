@@ -43,6 +43,7 @@ from src.api.routers.user_allocation import router as user_allocation_router
 from src.api.routers.billing import router as billing_router
 from src.api.routers.stream import router as stream_router
 from src.api.routers.indicators import router as indicators_router
+from src.api.routers.factors import router as factors_router
 from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
@@ -61,6 +62,10 @@ async def lifespan(app: FastAPI):
         apply_runtime_on_startup()
     except Exception as e:
         logger.debug(f"自選股 runtime 載入跳過: {e}")
+    # 生產環境安全檢查
+    from src.core.auth import _validate_jwt_secret_for_production
+    _validate_jwt_secret_for_production()
+
     logger.info(f"🚀 {settings.app_name} v{settings.app_version} 啟動")
     logger.info(f"   http://{settings.web_host}:{settings.web_port}")
 
@@ -189,6 +194,7 @@ app.include_router(user_allocation_router)
 app.include_router(billing_router)
 app.include_router(stream_router)
 app.include_router(indicators_router)
+app.include_router(factors_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]

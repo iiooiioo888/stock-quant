@@ -188,44 +188,47 @@ class TestDownloadRateLimit:
 
     def test_rate_limiter_boundary(self):
         """速率限制器在頻率內外的行為。"""
-        from src.api.app import _RateLimiter
-        rl = _RateLimiter(limit_per_minute=5)
+        from src.core.rate_limiter import _MemoryRateLimiter
+        rl = _MemoryRateLimiter()
+        limit = 5
 
         # 前 5 個應通過
         for _ in range(5):
-            allowed, _ = rl.check("test")
+            allowed, _ = rl.check("test", limit)
             assert allowed is True
 
         # 第 6 個應被拒絕
-        allowed, _ = rl.check("test")
+        allowed, _ = rl.check("test", limit)
         assert allowed is False
 
     def test_rate_limiter_separate_keys(self):
         """不同 IP 的限制獨立。"""
-        from src.api.app import _RateLimiter
-        rl = _RateLimiter(limit_per_minute=2)
+        from src.core.rate_limiter import _MemoryRateLimiter
+        rl = _MemoryRateLimiter()
+        limit = 2
 
-        allowed_a, _ = rl.check("ip_a")
+        allowed_a, _ = rl.check("ip_a", limit)
         assert allowed_a is True
-        allowed_a, _ = rl.check("ip_a")
+        allowed_a, _ = rl.check("ip_a", limit)
         assert allowed_a is True
-        allowed_a, _ = rl.check("ip_a")
+        allowed_a, _ = rl.check("ip_a", limit)
         assert allowed_a is False  # ip_a 耗盡
 
-        allowed_b, _ = rl.check("ip_b")
+        allowed_b, _ = rl.check("ip_b", limit)
         assert allowed_b is True  # ip_b 獨立
 
     def test_concurrent_rate_limiter(self):
         """併發使用速率限制器。"""
-        from src.api.app import _RateLimiter
+        from src.core.rate_limiter import _MemoryRateLimiter
         import threading
 
-        rl = _RateLimiter(limit_per_minute=10)
+        rl = _MemoryRateLimiter()
+        limit = 10
         granted = []
         lock = threading.Lock()
 
         def _acquire():
-            allowed, _ = rl.check("10.0.0.1")
+            allowed, _ = rl.check("10.0.0.1", limit)
             if allowed:
                 with lock:
                     granted.append(1)

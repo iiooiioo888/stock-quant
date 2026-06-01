@@ -10,7 +10,7 @@ def test_register_login_and_protected_write(client):
         "/api/auth/register",
         json={"username": username, "password": password},
     )
-    if reg.status_code == 400 and "已存在" in reg.json().get("detail", ""):
+    if reg.status_code == 400 and ("已存在" in reg.json().get("detail", "") or "已存在" in reg.json().get("msg", "")):
         login = client.post(
             "/api/auth/login",
             json={"username": username, "password": password},

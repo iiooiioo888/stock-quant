@@ -61,6 +61,13 @@
 - [x] 實現多數據源熔斷與動態排隊機制
 - [ ] 自動切換健康數據源
 
+### P1-6: CI/CD 流水線
+- [x] 建立 `.github/workflows/ci.yml`（lint + test + security audit + Docker build）
+- [x] pytest + coverage > 80%
+- [x] black + flake8 + isort 格式檢查
+- [x] pip-audit 依賴安全掃描
+- [ ] PR 合併後自動生成 changelog + semantic version
+
 ---
 
 ## 🟡 Phase 2：效能與擴展性（2-4 週）
@@ -162,10 +169,16 @@
 - [ ] 保留策略版本（7 天/30 天）
 
 ### P4-5: API 安全強化
-- [ ] Rate Limiting（令牌桶算法）
+- [x] Rate Limiting（滑動窗口限流，支持 Redis 跨實例）
 - [ ] OAuth2 / SSO 集成
-- [ ] JWT 過期刷新機制
-- [ ] WebSocket 認證
+- [x] JWT 啟動時生產環境安全檢查（`_validate_jwt_secret_for_production`）
+- [x] WebSocket 認證（`effective_ws_auth_required`）
+
+### P1-7: 策略開發文檔
+- [x] 策略開發模板 `strategies/template_strategy.py`（含 3 個範例策略 + 元數據註冊）
+- [ ] Jupyter Notebook 教程：交互式回測流程
+- [ ] 常見問題 FAQ（Yahoo Finance 限流、AKShare 接口變更）
+- [ ] 部署 Checklist（生產環境必改配置）
 
 ---
 

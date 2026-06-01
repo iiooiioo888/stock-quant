@@ -16,7 +16,7 @@ class TestMarketFetch:
             "volume": [1000, 1100],
         })
 
-        monkeypatch.setattr(mf, "fetch_history_df", lambda s, d: (df, "eastmoney"))
+        monkeypatch.setattr(mf, "fetch_history_df", lambda s, d, **kw: (df, "eastmoney"))
         monkeypatch.setattr(mf, "fetch_quote", lambda s: ({}, ""))
 
         item = mf.build_index_chart_item("^GSPC", "標普 500", 60)

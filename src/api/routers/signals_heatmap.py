@@ -92,6 +92,7 @@ async def get_strategy_params(strategy: str):
 @router.get("/api/signals/current")
 async def get_current_signals():
     """獲取所有監控股票的當前信號"""
+    from src.api.routers.data_ops import _fetch_current_signals
     try:
         signals_data = _fetch_current_signals()
         return {"success": True, "signals": signals_data, "total": len(signals_data)}
@@ -105,6 +106,7 @@ async def get_current_signals():
 @router.get("/api/signals/trading")
 async def get_trading_signals():
     """儀表盤交易信號（與 current 同源，兼容舊前端路由）"""
+    from src.api.routers.data_ops import _fetch_current_signals
     try:
         signals_data = _fetch_current_signals()
         return {"success": True, "signals": signals_data, "data": signals_data, "total": len(signals_data)}

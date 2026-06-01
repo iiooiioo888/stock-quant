@@ -37,6 +37,19 @@ JWT_EXPIRE_HOURS = 24  # Token 有效期 24 小時
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin"
 
+
+def _validate_jwt_secret_for_production():
+    """生產環境啟動時檢查 JWT 密鑰配置。"""
+    from src.config import settings
+    if settings.demo_mode or settings.debug:
+        return
+    if not os.environ.get("SQ_JWT_SECRET"):
+        logger.error(
+            "🚨 安全風險: SQ_JWT_SECRET 未設置！"
+            " 生產環境必須顯式配置 JWT 密鑰，否則重啟後所有 token 失效。"
+            " 請在 .env 中設置 SQ_JWT_SECRET=<隨機字串>（至少 32 字元）"
+        )
+
 # HTTP Bearer 提取器（可選模式：無 token 時不報錯）
 security = HTTPBearer(auto_error=False)
 
