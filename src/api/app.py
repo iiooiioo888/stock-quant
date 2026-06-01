@@ -44,6 +44,8 @@ from src.api.routers.billing import router as billing_router
 from src.api.routers.stream import router as stream_router
 from src.api.routers.indicators import router as indicators_router
 from src.api.routers.factors import router as factors_router
+from src.api.routers.ml_strategy import router as ml_strategy_router
+from src.api.routers.stress import router as stress_router
 from src.api.errors import register_exception_handlers, api_error_response
 from src.api.portfolio_dispatch import dispatch_portfolio_async
 from src.api.ws import router as ws_router, ws_realtime_push
@@ -195,6 +197,8 @@ app.include_router(billing_router)
 app.include_router(stream_router)
 app.include_router(indicators_router)
 app.include_router(factors_router)
+app.include_router(ml_strategy_router)
+app.include_router(stress_router)
 
 # CORS
 _cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]

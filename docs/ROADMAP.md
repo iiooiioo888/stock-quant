@@ -125,10 +125,25 @@
 - [ ] 社群生態運營工具
 
 ### P3-3: 自動特徵工程
+- [x] 多因子選股引擎 `src/core/factor_engine.py`（15 因子、IC 分析、正交化、打分選股）
+- [x] 因子 API `/api/factors/definitions`, `/api/factors/screen`, `/api/factors/ic`
 - [ ] TA-Lib 因子自動生成
 - [ ] 自定義因子擴展接口
-- [ ] 特徵重要性評估
+- [x] 特徵重要性評估（ML 模型特徵重要性提取）
 - [ ] 候選特徵集篩選
+
+### P3-6: ML 策略集成
+- [x] 機器學習策略模組 `src/core/ml_strategy.py`（sklearn/XGBoost 接口）
+- [x] 特徵工程管道（13 個技術指標特徵）
+- [x] 模型訓練 + 評估 + 信號生成
+- [x] ML API `/api/ml/train`, `/api/ml/models`, `/api/ml/features`
+- [ ] 移動端 PWA 適配
+
+### P3-7: 壓力測試增強
+- [x] 蒙特卡洛模擬（多資產相關性）`src/core/stress_test.py`
+- [x] 歷史極端行情重放（2015 股災、2020 疫情、2018 貿易戰、閃崩）
+- [x] VaR/CVaR 壓力測試報告
+- [x] 壓力測試 API `/api/stress/scenarios`, `/api/stress/replay`, `/api/stress/var`
 
 ### P3-4: 風險預警引擎
 - [ ] 波動率突變檢測
@@ -246,5 +261,5 @@ echo "*.db filter=lfs diff=lfs merge=lfs -text" >> .gitattributes
 
 ---
 
-*最後更新*: 2026-05-29
+*最後更新*: 2026-06-01
 *維護者*: Stock-Quant Team

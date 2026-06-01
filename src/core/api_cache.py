@@ -12,6 +12,19 @@ from src.utils.logger import logger
 _DEFAULT_TTL = 5
 _CACHE_PREFIX = "ac:"
 
+# 分類 TTL 常量（秒）— 根據數據時效性分級
+TTL_REALTIME = 5          # 實時行情、盯盤
+TTL_REALTIME_QUOTE = 10   # 個股報價
+TTL_CAPITAL_FLOW = 120    # 資金流向（實時性要求高，原 300s → 120s）
+TTL_SECTOR_HEATMAP = 120  # 板塊熱力圖
+TTL_DASHBOARD = 30        # 儀表盤數據
+TTL_CONFIG = 60           # 配置信息
+TTL_FUNDAMENTALS = 3600   # 基本面（日內穩定）
+TTL_BACKTEST_RESULT = 3600    # 回測結果
+TTL_OPTIMIZE_RESULT = 7200    # 優化結果
+TTL_STRATEGY_LIST = 300       # 策略列表
+TTL_STATIC_REFERENCE = 86400  # 靜態參考數據（指數成分等）
+
 # ---------------------------------------------------------------------------
 # 進程內存後備
 # ---------------------------------------------------------------------------

@@ -89,36 +89,87 @@ async def ws_realtime_push():
         pass
     signal_push_counter = 0
     signal_push_interval = 6
+
+    # 加密貨幣 WS 初始化
+    crypto_push_counter = 0
+    crypto_push_interval = max(1, settings.crypto_push_interval_sec // settings.poll_interval_sec)
+    crypto_ws_started = False
+
     while True:
         await asyncio.sleep(settings.poll_interval_sec)
         if not manager.active:
             continue
-        if not _is_trading_time():
-            continue
-        try:
-            df = fetch_realtime(settings.watchlist)
-            if not df.empty:
-                await manager.broadcast({
-                    "type": "quotes",
-                    "data": df.to_dict(orient="records"),
-                    "timestamp": datetime.now().isoformat(),
-                })
-        except Exception as e:
-            logger.debug(f"WebSocket 推送失敗: {e}")
 
-        signal_push_counter += 1
-        if signal_push_counter >= signal_push_interval:
-            signal_push_counter = 0
+        # ── A 股行情推送（僅交易時間） ──
+        if _is_trading_time():
             try:
-                signals_data = compute_and_push_signals(signal_engine, settings.watchlist)
-                if signals_data:
+                df = fetch_realtime(settings.watchlist)
+                if not df.empty:
                     await manager.broadcast({
-                        "type": "signals",
-                        "data": signals_data,
+                        "type": "quotes",
+                        "data": df.to_dict(orient="records"),
                         "timestamp": datetime.now().isoformat(),
                     })
             except Exception as e:
-                logger.debug(f"WebSocket 信號推送失敗: {e}")
+                logger.debug(f"WebSocket 推送失敗: {e}")
+
+            signal_push_counter += 1
+            if signal_push_counter >= signal_push_interval:
+                signal_push_counter = 0
+                try:
+                    signals_data = compute_and_push_signals(signal_engine, settings.watchlist)
+                    if signals_data:
+                        await manager.broadcast({
+                            "type": "signals",
+                            "data": signals_data,
+                            "timestamp": datetime.now().isoformat(),
+                        })
+                except Exception as e:
+                    logger.debug(f"WebSocket 信號推送失敗: {e}")
+
+        # ── 加密貨幣行情推送（24/7，不受交易時間限制） ──
+        if settings.crypto_enabled and settings.crypto_ws_enabled:
+            # 懶啟動 WS 連接
+            if not crypto_ws_started:
+                try:
+                    from src.core.crypto.service import get_crypto_service
+                    svc = get_crypto_service()
+                    await svc.start_ws()
+                    crypto_ws_started = True
+                except Exception as e:
+                    logger.debug(f"[CryptoWS] 啟動失敗: {e}")
+
+            crypto_push_counter += 1
+            if crypto_push_counter >= crypto_push_interval:
+                crypto_push_counter = 0
+                try:
+                    from src.core.crypto.service import get_crypto_service
+                    svc = get_crypto_service()
+
+                    push_types = settings.crypto_push_types
+
+                    # 實時行情快照
+                    if "quotes" in push_types:
+                        snapshots = svc._stream_manager.get_all_snapshots() if svc._stream_manager else []
+                        if snapshots:
+                            await manager.broadcast({
+                                "type": "crypto_quotes",
+                                "data": snapshots,
+                                "timestamp": datetime.now().isoformat(),
+                            })
+
+                    # 告警推送
+                    if "alerts" in push_types:
+                        alerts = svc.get_alerts()
+                        if alerts:
+                            await manager.broadcast({
+                                "type": "crypto_alerts",
+                                "data": alerts,
+                                "timestamp": datetime.now().isoformat(),
+                            })
+
+                except Exception as e:
+                    logger.debug(f"[CryptoWS] 推送失敗: {e}")
 
 
 @router.websocket("/ws")

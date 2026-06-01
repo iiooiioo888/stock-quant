@@ -135,6 +135,59 @@ class Settings(BaseSettings):
     # ====== 加密貨幣行情（Binance 等，只讀） ======
     crypto_enabled: bool = True
 
+    # ── 加密貨幣 WebSocket 串流 ──
+    crypto_ws_enabled: bool = True
+    crypto_ws_streams: list[str] = Field(
+        default=["trade", "kline_1m", "ticker", "depth"],
+        description="訂閱串流類型：trade / kline_* / ticker / depth",
+    )
+    crypto_ws_kline_intervals: list[str] = Field(
+        default=["1m", "5m", "15m", "1h"],
+        description="K 線週期（僅 stream_types 含 kline 時生效）",
+    )
+    crypto_ws_reconnect_base_sec: int = Field(default=5, ge=1, le=30)
+    crypto_ws_reconnect_max_sec: int = Field(default=60, ge=10, le=300)
+    crypto_ws_trade_window_size: int = Field(default=10000, ge=1000, le=100000)
+    crypto_ws_max_connections: int = Field(default=5, ge=1, le=20)
+
+    # ── 加密貨幣技術指標參數 ──
+    crypto_indicator_rsi_period: int = Field(default=14, ge=2, le=100)
+    crypto_indicator_macd_fast: int = Field(default=12, ge=2, le=50)
+    crypto_indicator_macd_slow: int = Field(default=26, ge=5, le=100)
+    crypto_indicator_macd_signal: int = Field(default=9, ge=2, le=50)
+    crypto_indicator_bb_period: int = Field(default=20, ge=5, le=100)
+    crypto_indicator_bb_std: float = Field(default=2.0, ge=0.5, le=5.0)
+    crypto_indicator_ema_periods: list[int] = Field(default=[9, 21, 55, 200])
+    crypto_indicator_atr_period: int = Field(default=14, ge=2, le=100)
+    crypto_indicator_mfi_period: int = Field(default=14, ge=2, le=100)
+    crypto_indicator_stoch_rsi_period: int = Field(default=14, ge=2, le=100)
+    crypto_indicator_cci_period: int = Field(default=20, ge=5, le=100)
+
+    # ── 加密貨幣微結構分析 ──
+    crypto_micro_large_order_multiplier: float = Field(default=10.0, ge=2.0, le=100.0)
+    crypto_micro_depth_levels: int = Field(default=20, ge=5, le=100)
+
+    # ── 加密貨幣告警 ──
+    crypto_alerts_enabled: bool = True
+    crypto_alert_price_change_pct: float = Field(default=5.0, ge=0.5, le=50.0)
+    crypto_alert_volume_surge_multiplier: float = Field(default=5.0, ge=2.0, le=50.0)
+    crypto_alert_rsi_overbought: float = Field(default=70.0, ge=50.0, le=95.0)
+    crypto_alert_rsi_oversold: float = Field(default=30.0, ge=5.0, le=50.0)
+    crypto_alert_cooldown_sec: int = Field(default=300, ge=10, le=3600)
+    crypto_alert_large_order_usd: float = Field(default=100000.0, ge=1000.0, le=10000000.0)
+
+    # ── 加密貨幣數據持久化 ──
+    crypto_persist_trades: bool = False
+    crypto_persist_kline: bool = True
+    crypto_kline_max_days: int = Field(default=365, ge=7, le=3650)
+
+    # ── 加密貨幣推送 ──
+    crypto_push_interval_sec: int = Field(default=5, ge=1, le=60)
+    crypto_push_types: list[str] = Field(
+        default=["quotes", "indicators", "alerts", "micro"],
+        description="WS 推送的消息類型",
+    )
+
     # ====== TradingView / IB 行情（儀表盤掛牌） ======
     tradingview_enabled: bool = True
     ib_enabled: bool = False
