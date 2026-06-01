@@ -14,7 +14,7 @@ from src.utils.logger import logger
 
 router = APIRouter()
 
-static_dir = Path(__file__).parent.parent.parent / "static"
+static_dir = Path(__file__).resolve().parents[3] / "static"
 
 
 @router.get("/static/iconfont/stocks/{filename}", include_in_schema=False)
@@ -59,7 +59,7 @@ async def user_manual():
     """使用手冊（docs/manual/README.md）。"""
     import html as html_module
 
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     readme = root / "docs" / "manual" / "README.md"
     if not readme.is_file():
         raise HTTPException(404, "手冊尚未就緒")
