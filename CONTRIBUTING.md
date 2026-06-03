@@ -151,7 +151,8 @@ def calcSharpe(r, rf=0.02):  # 命名不符合 snake_case，缺少 docstring
 
 ```bash
 # 安裝檢查工具
-pip install flake8 black mypy isort
+pip install -r requirements-dev.txt
+pip install flake8 black mypy isort ruff
 
 # 格式化程式碼
 black src/ strategies/ tests/
@@ -159,7 +160,11 @@ isort src/ strategies/ tests/
 
 # 靜態分析
 flake8 src/ strategies/ tests/
-mypy src/
+ruff check src/core/ops_health.py tests/unit/   # 逐步擴大
+mypy src/core/ops_health.py
+
+# P1 單測（無外網）
+python -m pytest tests/unit/ tests/test_ops_task_queue.py -q
 ```
 
 ### 文件要求

@@ -7,8 +7,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from src.core.db import get_conn, load_daily_kline
-from src.utils.logger import logger
+from src.core.db import get_conn
 
 
 def _normalize_code(code: str) -> str:

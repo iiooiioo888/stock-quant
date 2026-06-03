@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("kdj", "KDJ隨機指標策略")
 class KDJStrategy(OrderManagedStrategy):
     """KDJ 策略"""

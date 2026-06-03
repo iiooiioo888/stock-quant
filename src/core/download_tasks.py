@@ -5,7 +5,6 @@ import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 from src.config import settings
 from src.utils.logger import logger
@@ -36,7 +35,7 @@ def _update_download_meta(
     records_total: int = None,
     progress: int = None,
 ):
-    from src.core.task_manager import update_task_meta, update_task, is_task_cancelled
+    from src.core.task_manager import is_task_cancelled, update_task, update_task_meta
 
     meta = {}
     if message is not None:
@@ -185,8 +184,8 @@ def run_stocks_download(codes: list[str], task_id: str = None) -> dict:
 
 def run_download_all(task_id: str = None) -> dict:
     """下載所有市場數據"""
-    from src.core.history import download_one
     from src.core.global_market import MARKET_CATALOG
+    from src.core.history import download_one
 
     plan: list[tuple[str, str, list[str]]] = []
     plan.append(("a_share", MARKET_NAMES["a_share"], list(settings.watchlist)))

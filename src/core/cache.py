@@ -4,9 +4,9 @@ Redis 緩存層 — 支持 Redis 和本地 LRU 回退
 """
 import json
 import time
-from functools import lru_cache
 from collections import OrderedDict
-from typing import Optional, Any
+from typing import Any, Optional
+
 from src.config import settings
 from src.utils.logger import logger
 

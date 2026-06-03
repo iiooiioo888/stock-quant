@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("bollinger_squeeze", "布林帶收窄突破策略")
 class BollingerSqueezeStrategy(OrderManagedStrategy):
     """布林带收窄策略 — 布林带宽收窄后突破，预期大行情"""

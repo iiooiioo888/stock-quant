@@ -1,11 +1,13 @@
 """
 基準對比 — 滬深300 基準比較
 """
-import akshare as ak
-import pandas as pd
-import numpy as np
 from datetime import datetime
-from src.core.db import load_daily_kline, get_conn
+
+import akshare as ak
+import numpy as np
+import pandas as pd
+
+from src.core.db import load_daily_kline
 from src.utils.logger import logger
 
 BENCHMARK_CODE = "000300"
@@ -28,7 +30,7 @@ def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
     if df.empty:
         # 主源：Yahoo Finance（000300.SS）
         try:
-            from src.core.yahoo_finance import yahoo_chart, a_share_to_yahoo
+            from src.core.yahoo_finance import a_share_to_yahoo, yahoo_chart
             sd = start_date.replace("-", "") if start_date else "20200101"
             symbol = a_share_to_yahoo(BENCHMARK_CODE)
             range_str = "max"

@@ -3,11 +3,11 @@
 使用 AKShare 接口獲取板塊列表、成分股、板塊漲跌排行
 新增：快照存儲、板塊輪動、趨勢分析、資金流向、全景數據
 """
-import akshare as ak
-import pandas as pd
 import time
-import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
+
+import akshare as ak
+
 from src.core.db import get_conn
 from src.utils.logger import logger
 
@@ -488,11 +488,11 @@ def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[d
             df = ak.stock_board_concept_cons_em(symbol=sector_name)
         else:
             df = ak.stock_board_industry_cons_em(symbol=sector_name)
-        
+
         if df.empty:
             logger.warning(f"板塊 {sector_name} 無成分股數據")
             return []
-        
+
         result = []
         for _, row in df.iterrows():
             result.append({
@@ -504,12 +504,12 @@ def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[d
                 "amount": float(row.get("成交额", 0) or 0),
                 "turnover": float(row.get("换手率", 0) or 0),
             })
-        
+
         # 存入數據庫
         _save_sector_stocks(sector_name, sector_type, result)
         _rate_sleep()
         return result
-        
+
     except Exception as e:
         logger.error(f"獲取板塊 {sector_name} 成分股失敗: {e}")
         return []
@@ -527,10 +527,10 @@ def _save_sector_stocks(sector_name: str, sector_type: str, stocks: list[dict]):
             s.get("name", ""),
             now,
         ))
-    
+
     if not records:
         return
-    
+
     with get_conn() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO sector_data
@@ -555,7 +555,7 @@ def get_sector_performance(sector_type: str = "industry", top_n: int = 20) -> li
     sectors = get_sector_list(sector_type)
     if not sectors:
         return []
-    
+
     # 按漲跌幅排序
     sectors.sort(key=lambda x: x.get("change_pct", 0), reverse=True)
     return sectors[:top_n]
@@ -704,7 +704,7 @@ def get_sector_trend(sector_name: str, days: int = 20) -> list[dict]:
     rows = rows[::-1]
 
     # 計算每天的排名
-    dates = [r[0] for r in rows]
+    [r[0] for r in rows]
     result = []
     for date, change_pct in rows:
         # 查該天所有板塊排名

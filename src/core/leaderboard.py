@@ -8,9 +8,9 @@
 """
 import json
 from datetime import datetime
+
 from src.core.db import get_conn
 from src.utils.logger import logger
-
 
 # ============================================================
 # 排行榜數據表

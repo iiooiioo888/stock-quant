@@ -1,7 +1,7 @@
-import backtrader as bt
 
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
+
 
 @register_strategy("vwap", "VWAP成交量加權策略")
 class VWAPStrategy(OrderManagedStrategy):
@@ -29,7 +29,7 @@ class VWAPStrategy(OrderManagedStrategy):
 
         # 滚动 VWAP：用 SMA 近似
         # 计算典型价格 * 成交量的滚动和 / 成交量的滚动和
-        typical = (self.data.high[0] + self.data.low[0] + self.data.close[0]) / 3.0
+        (self.data.high[0] + self.data.low[0] + self.data.close[0]) / 3.0
 
         # 使用简单方法：累计 VWAP
         if len(self.data) < self.p.period + 1:
@@ -41,10 +41,10 @@ class VWAPStrategy(OrderManagedStrategy):
         for i in range(self.p.period):
             idx = -i
             h = self.data.high[idx]
-            l = self.data.low[idx]
+            low_px = self.data.low[idx]
             c = self.data.close[idx]
             v = self.data.volume[idx]
-            tp = (h + l + c) / 3.0
+            tp = (h + low_px + c) / 3.0
             cum_tp_vol += tp * v
             cum_vol += v
 

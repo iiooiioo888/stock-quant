@@ -2,8 +2,7 @@
 股票篩選器 — 基於 AKShare 數據的條件篩選
 """
 import akshare as ak
-import pandas as pd
-import numpy as np
+
 from src.core.db import load_daily_kline
 from src.utils.logger import logger
 

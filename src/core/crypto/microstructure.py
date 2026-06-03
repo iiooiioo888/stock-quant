@@ -9,12 +9,9 @@
 from __future__ import annotations
 
 import time
-from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
-
-from src.utils.logger import logger
 
 
 class CryptoMicrostructureAnalyzer:
@@ -67,7 +64,7 @@ class CryptoMicrostructureAnalyzer:
 
         buy_quote = float(np.sum(quote_qtys[buy_mask])) if buy_mask.any() else 0.0
         sell_quote = float(np.sum(quote_qtys[sell_mask])) if sell_mask.any() else 0.0
-        total_quote = buy_quote + sell_quote
+        buy_quote + sell_quote
 
         buy_count = int(np.sum(buy_mask))
         sell_count = int(np.sum(sell_mask))
@@ -240,7 +237,7 @@ class CryptoMicrostructureAnalyzer:
             return {"error": "insufficient trades"}
 
         prices = np.array([t["price"] for t in trades], dtype=np.float64)
-        times = np.array([t.get("timestamp", 0) for t in trades], dtype=np.float64)
+        np.array([t.get("timestamp", 0) for t in trades], dtype=np.float64)
 
         result: dict[str, Any] = {"timestamp": time.time()}
 

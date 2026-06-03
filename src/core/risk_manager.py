@@ -5,12 +5,11 @@
 DrawdownProtector（回撤保護）三個核心類，以及 drawdown_circuit_breaker 函數。
 """
 import math
-import numpy as np
-import pandas as pd
-from datetime import datetime
-from src.core.db import load_daily_kline, get_conn
-from src.utils.logger import logger
 
+import numpy as np
+
+from src.core.db import load_daily_kline
+from src.utils.logger import logger
 
 # ============================================================
 # PositionSizer — 倉位管理器

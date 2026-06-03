@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-from src.core.indicators.fast_indicators import compute_atr, compute_macd, compute_rsi
+from src.core.indicators.fast_indicators import compute_macd, compute_rsi
 from src.utils.logger import logger
 
 

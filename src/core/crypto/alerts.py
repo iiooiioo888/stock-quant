@@ -19,10 +19,9 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from src.utils.logger import logger
-
 
 # ── 告警級別 ──────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("donchian", "唐奇安通道突破策略")
 class DonchianStrategy(OrderManagedStrategy):
     """唐奇安通道突破"""

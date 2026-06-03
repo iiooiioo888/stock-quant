@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("dual_ma", "雙均線金叉策略")
 class DualMAStrategy(OrderManagedStrategy):
     """雙均線策略"""

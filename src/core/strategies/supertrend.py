@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("supertrend", "超級趨勢策略")
 class SuperTrendStrategy(OrderManagedStrategy):
     """超級趨勢（ATR 軌跡翻轉）"""

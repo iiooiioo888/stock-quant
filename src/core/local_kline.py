@@ -96,8 +96,8 @@ def persist_kline_df(symbol: str, df: pd.DataFrame) -> int:
     """將已拉取的 DataFrame 寫入本地庫（供多源行情模塊使用）"""
     if df is None or df.empty:
         return 0
-    from src.core.history import detect_market
     from src.core.db import save_daily_kline
+    from src.core.history import detect_market
 
     code = normalize_kline_code(symbol)
     if "date" not in df.columns:

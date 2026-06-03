@@ -6,8 +6,7 @@ Redis 任務狀態存儲 — 替代進程內存 _tasks dict，支持多實例共
 from __future__ import annotations
 
 import json
-import time
-from typing import Any, Optional
+from typing import Optional
 
 from src.utils.logger import logger
 

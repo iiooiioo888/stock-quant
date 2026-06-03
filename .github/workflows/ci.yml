@@ -15,10 +15,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install black flake8 isort
+      - run: |
+          pip install black flake8 isort ruff
+          pip install -r requirements-dev.txt
       - run: black --check --diff src/ tests/ strategies/
       - run: isort --check-only --diff src/ tests/ strategies/
       - run: flake8 src/ tests/ strategies/ --max-line-length=120 --ignore=E501,W503,E203
+      - name: Ruff
+        run: |
+          ruff check \
+            src/core/ops_health.py src/core/ops_probe_http.py src/core/indicators/fast_indicators.py \
+            src/utils/logger.py src/integrations/sentry_setup.py src/core/portfolio_ledger.py \
+            tests/unit/ tests/test_ops_task_queue.py tests/helpers/
+          ruff check src/core/
+
+  typecheck:
+    name: Typecheck (mypy)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy
+      - run: |
+          mypy src/core/ops_health.py src/core/ops_probe_http.py src/core/portfolio_ledger.py \
+            src/utils/logger.py src/core/indicators/fast_indicators.py
 
   test:
     name: Tests
@@ -35,7 +62,18 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
+          pip install -r requirements-dev.txt
+      - name: P1 unit & SOP tests
+        env:
+          SQ_DB_PATH: /tmp/test_stock.db
+          SQ_REDIS_ENABLED: "false"
+          SQ_LOG_LEVEL: WARNING
+          SQ_DEBUG: "true"
+          SQ_DEMO_MODE: "true"
+          SQ_LOCAL_FIRST_AUTO_FETCH: "false"
+        run: |
+          python -m pytest tests/unit/ tests/test_ops_health.py tests/test_ops_sop_consistency.py \
+            tests/test_ops_task_queue.py tests/test_strategy_sandbox.py tests/test_ci_ops_summary.py -q --tb=short
       - name: Run tests
         env:
           SQ_DB_PATH: /tmp/test_stock.db
@@ -77,6 +115,7 @@ jobs:
         run: |
           python main.py ops check --ci --json > ops-report.json
           python -c "import json; d=json.load(open('ops-report.json')); print('verdict:', d.get('verdict_zh'), d.get('verdict'))"
+          python -m pytest tests/test_ops_task_queue.py tests/test_ops_sop_consistency.py -q --tb=line
       - name: Ops report summary
         if: always()
         run: python scripts/ci_ops_summary.py ops-report.json >> "$GITHUB_STEP_SUMMARY"

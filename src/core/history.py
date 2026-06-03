@@ -1,14 +1,16 @@
 """
 歷史數據下載模塊（支持增量更新，多市場：A股/加密貨幣/外匯）
 """
+import random
+import time
+from datetime import datetime, timedelta
+
 import akshare as ak
 import pandas as pd
 import requests
-import time
-import random
-from datetime import datetime, timedelta
-from src.core.db import save_daily_kline, init_db, get_latest_date, clear_data_cache, get_market_for_code
+
 from src.config import settings
+from src.core.db import clear_data_cache, get_latest_date, init_db, save_daily_kline
 from src.utils.logger import logger
 
 MAX_RETRIES = 3
@@ -136,7 +138,7 @@ def _global_try_ib(code: str, start_date: str | None) -> int:
     if not getattr(settings, "ib_enabled", False):
         return 0
     try:
-        from src.core.ib_data import ib_available, fetch_ib_history
+        from src.core.ib_data import fetch_ib_history, ib_available
         from src.core.market_catalog import lookup_instrument
     except Exception:
         return 0
@@ -414,7 +416,6 @@ def _download_a_share_http(code: str, start_date: str = None) -> "pd.DataFrame |
     直接 HTTP 請求東方財富歷史 K 線 API（不依賴 akshare）。
     作為最後備選方案。
     """
-    import json as _json
 
     if start_date is None:
         start_date = settings.history_start_date
@@ -593,9 +594,9 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
     if period not in MINUTE_PERIODS:
         logger.error(f"不支持的週期: {period}，可選: {list(MINUTE_PERIODS.keys())}")
         return 0
-    
+
     ak_period = MINUTE_PERIODS[period]
-    
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             df = ak.stock_zh_a_hist_min_em(
@@ -603,11 +604,11 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
                 period=ak_period,
                 adjust=adjust,
             )
-            
+
             if df.empty:
                 logger.warning(f"{code} {period}: 無分鐘K線數據")
                 return 0
-            
+
             # 統一列名
             col_map = {
                 "时间": "datetime",
@@ -619,18 +620,18 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
                 "成交额": "amount",
             }
             df = df.rename(columns=col_map)
-            
+
             from src.core.db import save_minute_kline
             count = save_minute_kline(df, code, period)
             logger.info(f"{code} {period}: {count} 條分鐘K線")
-            
+
             # 清除分鐘K線緩存
             from src.core.db import _load_minute_kline_cached
             _load_minute_kline_cached.cache_clear()
-            
+
             time.sleep(_RATE_LIMIT)
             return count
-            
+
         except Exception as e:
             if attempt < MAX_RETRIES:
                 logger.warning(f"{code} {period}: 分鐘K線下載失敗(第{attempt}次)，重試... ({e})")
@@ -638,7 +639,7 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
             else:
                 logger.error(f"{code} {period}: 分鐘K線下載全部失敗: {e}")
                 return 0
-    
+
     return 0
 
 
@@ -662,13 +663,13 @@ def download_minute_batch(codes: list[str], period: str = "5m", adjust: str = "q
     success = 0
     failed = 0
     details = []
-    
+
     logger.info(f"開始下載 {len(codes)} 只股票 {period} 分鐘K線")
-    
+
     for i, code in enumerate(codes, 1):
         logger.info(f"[{i}/{len(codes)}] {code}")
         count = download_minute_data(code, period, adjust)
-        
+
         if count > 0:
             success += 1
             total += count
@@ -676,23 +677,24 @@ def download_minute_batch(codes: list[str], period: str = "5m", adjust: str = "q
         else:
             failed += 1
             details.append({"code": code, "status": "failed", "records": 0})
-        
+
         if i < len(codes):
             time.sleep(1)
-    
+
     result = {
         "total": total,
         "success": success,
         "failed": failed,
         "details": details,
     }
-    
+
     logger.info(f"分鐘K線下載完成: {success} 成功, {failed} 失敗, 共 {total} 條")
     return result
 
 async def preload_kline_range(code: str, start_date: str = None, end_date: str = None) -> int:
     """異步預載 K 線至 LRU（不阻塞事件循環）。"""
     import asyncio
+
     from src.core.db import preload_kline_range as _sync_preload
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _sync_preload, code, start_date, end_date)

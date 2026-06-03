@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("triple_ma", "三重均線過濾策略")
 class TripleMAFilterStrategy(OrderManagedStrategy):
     """三重均線多頭排列 + 快線金叉"""

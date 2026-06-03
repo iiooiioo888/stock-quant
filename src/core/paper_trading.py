@@ -15,13 +15,12 @@ import sqlite3
 from datetime import datetime
 from typing import Optional
 
-from src.core.db import get_conn, load_daily_kline
-from src.core.risk_pipeline import RiskPipeline, TradeSignal, TradeOrder, SignalType, OrderSide
-from src.core.signals import SignalEngine
-from src.core.risk_manager import calculate_volatility, calculate_atr
 from src.config import settings
+from src.core.db import get_conn, load_daily_kline
+from src.core.risk_manager import calculate_volatility
+from src.core.risk_pipeline import OrderSide, RiskPipeline, TradeOrder
+from src.core.signals import SignalEngine
 from src.utils.logger import logger
-
 
 # ============================================================
 # 交易日誌數據庫
@@ -189,7 +188,7 @@ class PaperTradingEngine:
         # 計算盈虧（賣出時）
         pnl = 0.0
         if order.side == OrderSide.SELL:
-            pos = self._pipeline.portfolio.positions.get(order.code)
+            self._pipeline.portfolio.positions.get(order.code)
             # 從 paper_positions 查成本
             with get_conn() as conn:
                 row = conn.execute(

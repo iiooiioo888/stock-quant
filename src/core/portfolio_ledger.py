@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from src.core.portfolio_repo import MaterializedHolding, PortfolioRepo, get_portfolio_repo
-from src.core.portfolio_currency import infer_currency
 from src.core.db import get_conn
+from src.core.portfolio_currency import infer_currency
+from src.core.portfolio_repo import MaterializedHolding, PortfolioRepo, get_portfolio_repo
 from src.utils.logger import logger
 
 _Q = Decimal("0.000001")

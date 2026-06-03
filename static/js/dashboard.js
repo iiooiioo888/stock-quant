@@ -517,7 +517,7 @@ const Dashboard = {
     this._lwRetryCount = 0;
 
     try {
-      const d = await Api.getIndicesCharts(90);
+      const d = await Api.getIndicesCharts(90, 'dashboard');
       const list = d?.indices || [];
       if (!list.length) {
         grid.innerHTML = '<div class="index-charts-loading">暫無法取得指數行情，請稍後刷新</div>';

@@ -10,7 +10,6 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from src.core.db import get_conn
-from src.utils.logger import logger
 
 TX_TYPES = frozenset(
     {"BUY", "SELL", "DIV", "SPLIT", "CASH_IN", "CASH_OUT", "DELIST"}

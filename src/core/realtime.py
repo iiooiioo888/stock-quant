@@ -1,10 +1,12 @@
 """
 實時行情獲取模塊（多源備選，增強容錯）
 """
+import time
+
 import akshare as ak
 import pandas as pd
 import requests
-import time
+
 from src.core.db import save_realtime_snapshot
 from src.utils.logger import logger
 

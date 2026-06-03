@@ -7,10 +7,10 @@ from src.core.market_catalog import (
     GROUP_LABELS,
     GROUP_ORDER,
     MARKET_INSTRUMENTS,
-    TOPBAR_INSTRUMENTS,
     VALID_SCOPES,
     catalog_summary,
     instruments_by_group,
+    instruments_for_charts,
 )
 from src.core.market_fetch import build_index_chart_item
 from src.utils.logger import logger
@@ -28,8 +28,9 @@ async def get_indices_charts(
 ):
     """
     全球掛牌：IB → TradingView → Yahoo / 東財 / Twelve Data。
-    scope: all | topbar | 任一分組 id（asia / hk_stock / us_stock / forex / crypto …）
-    topbar 允許 1–14 日（頂欄輕量）；其餘 scope 至少 30 日以保證圖表可讀。
+    scope: dashboard | all | tradeable | topbar | stocks | 任一分組 id（asia / hk_stock …）
+    dashboard：儀表盤核心掛牌（~80，不含三地個股 bulk）；all/tradeable 為全部可行情標的。
+    完整元數據見 /api/indices/catalog。topbar 允許 1–14 日（頂欄輕量）；其餘 scope 至少 30 日。
     """
     if scope not in VALID_SCOPES:
         raise HTTPException(400, detail=f"invalid scope; use one of: {sorted(VALID_SCOPES)}")
@@ -42,31 +43,10 @@ async def get_indices_charts(
     from src.core.api_cache import cached_response
 
     def _pick_instruments():
-        if scope == "topbar":
-            return TOPBAR_INSTRUMENTS
-        if scope == "custom":
-            from src.core.market_catalog import lookup_instrument
+        return instruments_for_charts(scope, symbols)
 
-            raw = (symbols or "").strip()
-            if not raw:
-                return TOPBAR_INSTRUMENTS
-            picked = []
-            seen = set()
-            for sym in raw.split(","):
-                s = sym.strip().upper()
-                if not s or s in seen:
-                    continue
-                seen.add(s)
-                inst = lookup_instrument(s)
-                if inst:
-                    picked.append(inst)
-            # safety: never return empty -> fallback
-            return picked or TOPBAR_INSTRUMENTS
-        if scope != "all":
-            return [i for i in MARKET_INSTRUMENTS if i.group == scope]
-        return MARKET_INSTRUMENTS
-
-    cache_key = f"api:indices:charts:{days}:{scope}"
+    sym_key = (symbols or "").strip().upper()[:120] if scope == "custom" else ""
+    cache_key = f"api:indices:charts:{days}:{scope}:{sym_key}"
 
     def _build():
         from src.core.data_pipeline import flush_deferred_data_cache_clear
@@ -96,6 +76,12 @@ async def get_indices_charts(
 
         order = {i.symbol: n for n, i in enumerate(MARKET_INSTRUMENTS)}
         indices.sort(key=lambda x: order.get(x["symbol"], 999))
+
+        max_kline_pts = 32
+        for item in indices:
+            kl = item.get("kline")
+            if isinstance(kl, list) and len(kl) > max_kline_pts:
+                item["kline"] = kl[-max_kline_pts:]
 
         groups: dict[str, dict] = {}
         for gid in GROUP_ORDER:

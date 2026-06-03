@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("breakout", "N日高點突破策略")
 class BreakoutStrategy(OrderManagedStrategy):
     """突破策略 — N 日高點突破買入，ATR 移動止損賣出"""

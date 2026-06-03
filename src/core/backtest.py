@@ -2,14 +2,15 @@
 回測引擎 — 基於 Backtrader，支持多種內置策略
 包含：滑點模擬、漲跌停限制、T+1 限制、權益曲線分析
 """
-import backtrader as bt
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from src.core.db import load_daily_kline
-from src.config import settings
-from src.utils.logger import logger
+from datetime import datetime
 
+import backtrader as bt
+import numpy as np
+import pandas as pd
+
+from src.config import settings
+from src.core.db import load_daily_kline
+from src.utils.logger import logger
 
 # ============================================================
 # A 股精確佣金模型
@@ -273,7 +274,6 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
     # === 回撤恢復期 ===
     recovery_periods = []
     # 找到所有回撤超過 5% 的事件
-    dd_events = []
     peak_val = nav_arr[0]
     peak_idx = 0
     dd_start_idx = None
@@ -1105,6 +1105,8 @@ def run_backtest(
     """
     from src.core.kline_timeframe import (
         bars_per_year as tf_bars_per_year,
+    )
+    from src.core.kline_timeframe import (
         normalize_timeframe,
         timeframe_label,
     )
@@ -1250,7 +1252,7 @@ def run_backtest(
 
     sharpe = strat.analyzers.sharpe.get_analysis()
     drawdown = strat.analyzers.drawdown.get_analysis()
-    returns = strat.analyzers.returns.get_analysis()
+    _ = strat.analyzers.returns.get_analysis()
     trades = strat.analyzers.trades.get_analysis()
     time_returns = strat.analyzers.timereturn.get_analysis()
 
@@ -1451,8 +1453,8 @@ def run_multi_strategy(code: str, plot: bool = False, task_id: str = None) -> li
     """對同一隻股票跑所有策略並對比（並行執行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    from src.core.compute_budget import get_thread_workers
     from src.config import settings
+    from src.core.compute_budget import get_thread_workers
     max_workers = get_thread_workers(
         getattr(settings, "multi_strategy_workers", 4),
         task_id=task_id,

@@ -1,7 +1,7 @@
-import backtrader as bt
 
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
+
 
 @register_strategy("dual_thrust", "雙軌日內突破策略")
 class DualThrustStrategy(OrderManagedStrategy):

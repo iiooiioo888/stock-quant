@@ -4,17 +4,16 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
-
 from sqlalchemy import (
-    Column, Integer, Float, Text, Boolean, ForeignKey, Index,
-    UniqueConstraint, PrimaryKeyConstraint,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    Text,
 )
 from sqlalchemy.orm import relationship
 
 from src.core.database.orm_base import Base
-
 
 # ── 用戶系統 ──────────────────────────────────────────────
 

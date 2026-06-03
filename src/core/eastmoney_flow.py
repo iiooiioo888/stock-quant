@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from src.core.data_sources import get_session
 from src.utils.logger import logger

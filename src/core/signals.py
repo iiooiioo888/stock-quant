@@ -5,15 +5,15 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import backtrader as bt
 import numpy as np
 import pandas as pd
 
+from src.config import settings
 from src.core.backtest import STRATEGIES, _get_prepared_df
 from src.core.db import get_conn, load_daily_kline
-from src.config import settings
 from src.utils.logger import logger
 
 _BT_LOOKBACK = 200

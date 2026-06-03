@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("pullback_ma", "趨勢回調均線策略")
 class PullbackMAStrategy(OrderManagedStrategy):
     """趨勢回調買入 — 長期均線向上時，短期均線金叉"""

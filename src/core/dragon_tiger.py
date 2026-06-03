@@ -1,11 +1,13 @@
 """
 龍虎榜數據模塊 — 獲取龍虎榜明細及歷史
 """
+import sqlite3
+import time
+from datetime import datetime, timedelta
+
 import akshare as ak
 import pandas as pd
-import time
-import sqlite3
-from datetime import datetime, timedelta
+
 from src.core.db import get_conn
 from src.utils.logger import logger
 
@@ -62,17 +64,17 @@ def get_dragon_tiger(date: str = None) -> list[dict]:
     """
     if date is None:
         date = datetime.now().strftime("%Y%m%d")
-    
+
     try:
         df = ak.stock_lhb_detail_em(
             start_date=date,
             end_date=date,
         )
-        
+
         if df.empty:
             logger.warning(f"龍虎榜 {date} 無數據")
             return []
-        
+
         # 靈活匹配列名
         result = []
         for _, row in df.iterrows():
@@ -91,13 +93,13 @@ def get_dragon_tiger(date: str = None) -> list[dict]:
                 "circulating_mv": float(_get_col(row, ["流通市值"], 0) or 0),
             }
             result.append(record)
-        
+
         # 存入數據庫
         result = _enrich_market_and_sector(result)
         _save_dragon_tiger(result)
         _rate_sleep()
         return result
-        
+
     except Exception as e:
         logger.error(f"獲取龍虎榜 {date} 失敗: {e}")
         return []
@@ -209,33 +211,33 @@ def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
     cached = _load_dragon_tiger_from_db(code, days)
     if cached:
         return _enrich_market_and_sector(cached)
-    
+
     # 數據庫無數據，嘗試從 API 獲取最近一段時間
     try:
         end_date = datetime.now().strftime("%Y%m%d")
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-        
+
         df = ak.stock_lhb_detail_em(
             start_date=start_date,
             end_date=end_date,
         )
-        
+
         if df.empty:
             return []
-        
+
         # 按股票代碼過濾
         code_col = None
         for col in ["代码", "股票代码"]:
             if col in df.columns:
                 code_col = col
                 break
-        
+
         if code_col:
             df = df[df[code_col].astype(str) == str(code)]
-        
+
         if df.empty:
             return []
-        
+
         result = []
         for _, row in df.iterrows():
             record = {
@@ -253,11 +255,11 @@ def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
                 "circulating_mv": float(_get_col(row, ["流通市值"], 0) or 0),
             }
             result.append(record)
-        
+
         _save_dragon_tiger(result)
         _rate_sleep()
         return result
-        
+
     except Exception as e:
         logger.error(f"獲取 {code} 龍虎榜歷史失敗: {e}")
         return []
@@ -271,7 +273,7 @@ def _save_dragon_tiger(records: list[dict]):
     """保存龍虎榜數據到數據庫"""
     if not records:
         return
-    
+
     db_records = []
     for r in records:
         db_records.append((
@@ -289,7 +291,7 @@ def _save_dragon_tiger(records: list[dict]):
             r.get("circulating_mv"),
             None,  # raw_json
         ))
-    
+
     with get_conn() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO dragon_tiger
@@ -308,7 +310,7 @@ def _load_dragon_tiger_from_db(code: str, days: int) -> list[dict]:
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            """SELECT * FROM dragon_tiger 
+            """SELECT * FROM dragon_tiger
                WHERE code = ? AND date >= ?
                ORDER BY date DESC""",
             (code, cutoff)

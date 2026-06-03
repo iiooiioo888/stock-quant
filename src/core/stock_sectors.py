@@ -93,7 +93,6 @@ _STOCK_SECTOR: dict[str, str] = {
     "601728.SS": "telecom",
     "600050.SS": "telecom",
     "601211.SS": "finance",
-    "600809.SS": "consumer",
     "688036.SS": "semiconductor",
     "300124.SZ": "tech",
     "002714.SZ": "consumer",

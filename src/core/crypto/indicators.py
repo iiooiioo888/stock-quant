@@ -22,8 +22,6 @@ from src.core.indicators.fast_indicators import (
     compute_rsi,
     compute_sma,
 )
-from src.utils.logger import logger
-
 
 # ============================================================
 # 趨勢指標
@@ -62,12 +60,12 @@ def compute_supertrend(
     返回：(supertrend_line, direction) — direction: 1=上升, -1=下降
     """
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     n = len(c)
 
-    atr = compute_atr(h, l, c, atr_period)
-    hl2 = (h + l) / 2.0
+    atr = compute_atr(h, lows, c, atr_period)
+    hl2 = (h + lows) / 2.0
 
     upper_band = hl2 + multiplier * atr
     lower_band = hl2 - multiplier * atr
@@ -128,7 +126,7 @@ def compute_ichimoku(
     返回：tenkan_sen, kijun_sen, senkou_a, senkou_b, chikou
     """
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     n = len(c)
 
@@ -138,15 +136,15 @@ def compute_ichimoku(
             out[i] = (np.max(data[i - period + 1:i + 1]) + np.min(data[i - period + 1:i + 1])) / 2.0
         return out
 
-    tenkan_sen = _donchian((h + l) / 2.0, tenkan)
-    kijun_sen = _donchian((h + l) / 2.0, kijun)
+    tenkan_sen = _donchian((h + lows) / 2.0, tenkan)
+    kijun_sen = _donchian((h + lows) / 2.0, kijun)
 
     senkou_a = np.full(n, np.nan)
     for i in range(max(tenkan, kijun) - 1, n):
         if not np.isnan(tenkan_sen[i]) and not np.isnan(kijun_sen[i]):
             senkou_a[i] = (tenkan_sen[i] + kijun_sen[i]) / 2.0
 
-    senkou_b_line = _donchian((h + l) / 2.0, senkou_b)
+    senkou_b_line = _donchian((h + lows) / 2.0, senkou_b)
 
     chikou = np.full(n, np.nan)
     if n > kijun:
@@ -202,13 +200,13 @@ def compute_williams_r(
 ) -> np.ndarray:
     """Williams %R。"""
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     n = len(c)
     out = np.full(n, np.nan)
     for i in range(period - 1, n):
         hh = np.max(h[i - period + 1:i + 1])
-        ll = np.min(l[i - period + 1:i + 1])
+        ll = np.min(lows[i - period + 1:i + 1])
         if hh != ll:
             out[i] = (hh - c[i]) / (hh - ll) * -100
         else:
@@ -224,9 +222,9 @@ def compute_cci(
 ) -> np.ndarray:
     """CCI（Commodity Channel Index）。"""
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
-    tp = (h + l + c) / 3.0
+    tp = (h + lows + c) / 3.0
     n = len(tp)
     out = np.full(n, np.nan)
     for i in range(period - 1, n):
@@ -274,10 +272,10 @@ def compute_keltner_channel(
     """Keltner Channel。返回：(upper, middle, lower)"""
     c = np.asarray(close, dtype=np.float64).ravel()
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     n = len(c)
     middle = compute_ema(c, ema_period)
-    atr = compute_atr(h, l, c, atr_period)
+    atr = compute_atr(h, lows, c, atr_period)
     upper = np.full(n, np.nan)
     lower = np.full(n, np.nan)
     for i in range(n):
@@ -345,10 +343,10 @@ def compute_vwap(
 ) -> np.ndarray:
     """VWAP（成交量加權平均價格）。"""
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     v = np.asarray(volume, dtype=np.float64).ravel()
-    tp = (h + l + c) / 3.0
+    tp = (h + lows + c) / 3.0
     cumulative_tp_vol = np.cumsum(tp * v)
     cumulative_vol = np.cumsum(v)
     n = len(c)
@@ -368,10 +366,10 @@ def compute_mfi(
 ) -> np.ndarray:
     """MFI（Money Flow Index）。"""
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     v = np.asarray(volume, dtype=np.float64).ravel()
-    tp = (h + l + c) / 3.0
+    tp = (h + lows + c) / 3.0
     mf = tp * v
     n = len(c)
     out = np.full(n, np.nan)
@@ -402,16 +400,16 @@ def compute_adosc(
 ) -> np.ndarray:
     """ADOSC（Accumulation/Distribution Oscillator）。"""
     h = np.asarray(high, dtype=np.float64).ravel()
-    l = np.asarray(low, dtype=np.float64).ravel()
+    lows = np.asarray(low, dtype=np.float64).ravel()
     c = np.asarray(close, dtype=np.float64).ravel()
     v = np.asarray(volume, dtype=np.float64).ravel()
     n = len(c)
 
     clv = np.zeros(n)
     for i in range(n):
-        hl = h[i] - l[i]
+        hl = h[i] - lows[i]
         if hl > 0:
-            clv[i] = ((c[i] - l[i]) - (h[i] - c[i])) / hl * v[i]
+            clv[i] = ((c[i] - lows[i]) - (h[i] - c[i])) / hl * v[i]
 
     ad = np.cumsum(clv)
     fast_ema = compute_ema(ad, fast)
@@ -551,10 +549,10 @@ def compute_all_crypto_indicators(
 
     if highs is not None and lows is not None:
         h = np.asarray(highs, dtype=np.float64).ravel()
-        l = np.asarray(lows, dtype=np.float64).ravel()
+        lows = np.asarray(lows, dtype=np.float64).ravel()
 
         atr_period = cfg.get("atr_period", 14)
-        atr = compute_atr(h, l, c, atr_period)
+        atr = compute_atr(h, lows, c, atr_period)
         result["atr"] = _latest(atr)
         result["atr_pct"] = (
             round(result["atr"] / c[-1] * 100, 4)
@@ -563,17 +561,17 @@ def compute_all_crypto_indicators(
         )
 
         # Supertrend
-        st, st_dir = compute_supertrend(h, l, c)
+        st, st_dir = compute_supertrend(h, lows, c)
         result["supertrend"] = _latest(st)
         result["supertrend_direction"] = _latest(st_dir)
 
         # Ichimoku
-        ichi = compute_ichimoku(h, l, c)
+        ichi = compute_ichimoku(h, lows, c)
         for key, arr in ichi.items():
             result[f"ichimoku_{key}"] = _latest(arr)
 
         # Keltner
-        kc_upper, kc_mid, kc_lower = compute_keltner_channel(h, l, c)
+        kc_upper, kc_mid, kc_lower = compute_keltner_channel(h, lows, c)
         result["kc_upper"] = _latest(kc_upper)
         result["kc_middle"] = _latest(kc_mid)
         result["kc_lower"] = _latest(kc_lower)
@@ -585,25 +583,25 @@ def compute_all_crypto_indicators(
         result["stoch_rsi_d"] = _latest(stoch_d)
 
         # Williams %R
-        result["williams_r"] = _latest(compute_williams_r(h, l, c))
+        result["williams_r"] = _latest(compute_williams_r(h, lows, c))
 
         # CCI
         cci_period = cfg.get("cci_period", 20)
-        result["cci"] = _latest(compute_cci(h, l, c, cci_period))
+        result["cci"] = _latest(compute_cci(h, lows, c, cci_period))
 
         # MFI
         if volumes is not None:
             v = np.asarray(volumes, dtype=np.float64).ravel()
             mfi_period = cfg.get("mfi_period", 14)
-            result["mfi"] = _latest(compute_mfi(h, l, c, v, mfi_period))
-            result["adosc"] = _latest(compute_adosc(h, l, c, v))
+            result["mfi"] = _latest(compute_mfi(h, lows, c, v, mfi_period))
+            result["adosc"] = _latest(compute_adosc(h, lows, c, v))
 
     # ── 量價 ──
     if volumes is not None:
         v = np.asarray(volumes, dtype=np.float64).ravel()
         result["obv"] = _latest(compute_obv(c, v))
         if highs is not None and lows is not None:
-            result["vwap"] = _latest(compute_vwap(h, l, c, v))
+            result["vwap"] = _latest(compute_vwap(h, lows, c, v))
 
     # ── 波動率百分位 ──
     result["volatility_percentile"] = compute_volatility_percentile(c)

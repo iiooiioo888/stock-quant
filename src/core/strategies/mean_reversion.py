@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("mean_reversion", "均值回歸Z-score策略")
 class MeanReversionStrategy(OrderManagedStrategy):
     """均值回歸策略 — 基於滾動 Z-score，超賣買入，回歸均值賣出"""

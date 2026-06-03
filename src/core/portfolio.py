@@ -2,10 +2,10 @@
 組合回測模塊 — 多策略 + 多股票 + 資金分配 + 再平衡
 """
 import math
+
 import backtrader as bt
-import pandas as pd
 import numpy as np
-from src.core.db import load_daily_kline
+
 from src.config import settings
 from src.core.backtest import STRATEGIES, prepare_data
 from src.utils.logger import logger
@@ -1826,14 +1826,14 @@ def hierarchical_risk_parity(
 
     # 步驟 2: 層次聚類（單連接法，純 numpy 實現）
     # 使用貪心合併：每次合併距離最近的兩個簇
-    clusters = {i: [i] for i in range(n_strats)}
+    {i: [i] for i in range(n_strats)}
     merge_order = []  # 記錄合併順序
     active = set(range(n_strats))
     cluster_id = n_strats  # 新簇的起始 ID
 
     # 當前距離矩陣（動態更新）
-    current_dist = dist_matrix.copy()
-    cluster_map = {i: i for i in range(n_strats)}  # 節點 → 所屬簇
+    dist_matrix.copy()
+    {i: i for i in range(n_strats)}  # 節點 → 所屬簇
 
     # 記錄每個簇的成員
     cluster_members = {i: [i] for i in range(n_strats)}

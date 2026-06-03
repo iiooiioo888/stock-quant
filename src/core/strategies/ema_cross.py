@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("ema_cross", "EMA交叉策略")
 class EMACrossStrategy(OrderManagedStrategy):
     """EMA 交叉 — 對近期價格更敏感"""

@@ -10,9 +10,8 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Optional
-
 
 _DEFAULT_PATH = os.path.join("data", "runtime_asset_prices.json")
 

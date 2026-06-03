@@ -9,8 +9,8 @@ import itertools
 import time
 from typing import Any, Optional
 
-from src.core.optimize import PARAM_GRIDS, PARAM_RANGES, _run_single
 from src.core.backtest import STRATEGIES
+from src.core.optimize import PARAM_GRIDS, PARAM_RANGES, _run_single
 from src.utils.logger import logger
 
 
@@ -48,6 +48,7 @@ def target_search(
 ) -> dict:
     """循環回測直至找到達成目標的參數，或達到最大迭代次數/超時"""
     import optuna
+
     from src.core.task_manager import is_task_cancelled, update_task, update_task_meta
 
     if strategy_name not in STRATEGIES:

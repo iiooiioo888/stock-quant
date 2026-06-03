@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Callable
 
 from src.config import settings
+
+
 class RetryWorkerError(ValueError):
     """無法為該任務類型建立重試 worker。"""
 
@@ -67,7 +69,7 @@ def _retry_backtest_multi(params: dict, task_id: str):
 
 
 def _retry_optimize(params: dict, task_id: str):
-    from src.core.optimize import grid_search, optuna_search, optimize_all
+    from src.core.optimize import grid_search, optimize_all, optuna_search
 
     code = params["code"]
     strategy = params.get("strategy", "all")
@@ -181,8 +183,8 @@ def _retry_data_incremental(params: dict, task_id: str):
 
 def _retry_portfolio(params: dict, task_id: str):
     method = params.get("method", "basic")
-    allocations = params.get("allocations") or []
-    cash = params.get("cash")
+    params.get("allocations") or []
+    params.get("cash")
 
     handlers = {
         "basic": _portfolio_basic,

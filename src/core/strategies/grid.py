@@ -1,7 +1,7 @@
-import backtrader as bt
 
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
+
 
 @register_strategy("grid", "網格交易策略")
 class GridStrategy(OrderManagedStrategy):

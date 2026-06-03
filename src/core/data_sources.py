@@ -4,9 +4,11 @@
 集中管理所有數據源的配置、健康檢查、自動降級邏輯。
 每個數據源統一接口：fetch_quote(symbol) / fetch_history(symbol, start)
 """
-import requests
 import time
 from typing import Optional
+
+import requests
+
 from src.utils.logger import logger
 
 

@@ -139,7 +139,8 @@ def _run_scheduled_as_task(
     created = create_task(ttype, params, title=title)
     task_id = created["task_id"]
 
-    from src.core.task_manager import _lock as tm_lock, _tasks
+    from src.core.task_manager import _lock as tm_lock
+    from src.core.task_manager import _tasks
 
     with tm_lock:
         t = _tasks.get(task_id)
@@ -240,6 +241,7 @@ def enable_degradation_check(codes: list[str] = None, lookback_days: int = 30):
     def _job_impl():
         logger.info("執行策略衰減檢測...")
         import numpy as np
+
         from src.core.backtest import STRATEGIES, run_backtest
         from src.core.db import load_daily_kline
 
@@ -318,6 +320,7 @@ def enable_correlation_monitor(codes: list[str] = None):
     def _job_impl():
         logger.info("執行策略相關性監控...")
         import pandas as pd
+
         from src.core.backtest import STRATEGIES, run_backtest
 
         target_codes = codes or ["600519", "000001"]

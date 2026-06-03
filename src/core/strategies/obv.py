@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class _OBV(bt.Indicator):
     """自定義 OBV（On-Balance Volume）指標"""
     lines = ('obv',)
@@ -15,6 +16,7 @@ class _OBV(bt.Indicator):
 
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
+
 
 @register_strategy("obv", "OBV能量潮策略")
 class OBVStrategy(OrderManagedStrategy):

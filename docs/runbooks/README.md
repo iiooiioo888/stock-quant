@@ -1,6 +1,6 @@
 # Stock-Quant 運維 SOP 總覽
 
-> **版本**: v1.6 | **最後更新**: 2026-06-03  
+> **版本**: v1.7 | **最後更新**: 2026-06-03  
 > 本頁為**唯一入口**：依場景選路徑，避免在多篇文檔間來回跳轉。
 
 ---
@@ -208,6 +208,7 @@ python scripts/probe_health_sop_url.py --json
 | 5 | Pro UI | 頂欄運維 pill / 設定 SOP 面板 | 與 CLI 一致 |
 | 6 | 連線檢查 | `/app` → 連線檢查頁 SOP 橫條 | 可刷新 |
 | 7 | 文檔 | 本頁 + [TROUBLESHOOTING](../TROUBLESHOOTING.md) | 症狀能對上表 |
+| 8 | P1 品質 | `ruff` / `mypy`（CI）· `tests/unit/` | 見 [PRODUCTION_READINESS](../PRODUCTION_READINESS.md) |
 
 自動化測試：`pytest tests/test_ops_health.py tests/test_ops_sop_consistency.py tests/test_health_sop_api.py -q`
 
@@ -223,6 +224,9 @@ python scripts/probe_health_sop_url.py --json
 | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) | 症狀百科與命令片段 |
 | [MCP.md](../MCP.md) | MCP 安裝、Tools、SDK 自動化 |
 | [monitoring/uptime-kuma.md](monitoring/uptime-kuma.md) | Uptime Kuma / Push / probe 範本 |
+| [monitoring/grafana-prometheus.example.md](monitoring/grafana-prometheus.example.md) | Grafana + PromQL 示意 |
+| [STRATEGY_DEV_CHECKLIST.md](../STRATEGY_DEV_CHECKLIST.md) | 策略 PR Checklist |
+| [PRODUCTION_READINESS.md](../PRODUCTION_READINESS.md) | 生產就緒路線圖（評審建議對照） |
 | [manual/02-快速開始](../manual/02-快速開始.md) | 量化業務流：下載 → 回測 → 信號 |
 
 ---

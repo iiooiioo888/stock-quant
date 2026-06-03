@@ -10,16 +10,15 @@ def run_registered_task(task_id: str):
     from src.core.task_executors import execute_task
     from src.core.task_log_stream import capture_exception, task_log_context
     from src.core.task_manager import (
-        append_task_log,
-        get_task,
-        is_task_cancelled,
-        update_task,
         STATUS_CANCELLED,
         STATUS_COMPLETED,
         STATUS_FAILED,
+        _mark_running,
+        append_task_log,
+        ensure_task_in_memory,
+        is_task_cancelled,
+        update_task,
     )
-
-    from src.core.task_manager import _mark_running, ensure_task_in_memory
 
     if is_task_cancelled(task_id):
         update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
@@ -62,6 +61,8 @@ def run_registered_task(task_id: str):
 
 
 def _maybe_write_cache(task_id: str, result) -> None:
+    from src.core.task_manager import get_task
+
     task = get_task(task_id)
     if not task:
         return

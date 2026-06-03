@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("momentum", "動量ROC策略")
 class MomentumStrategy(OrderManagedStrategy):
     """動量策略 — 基於 N 日 ROC 動量指標，正動量買入，負動量賣出"""

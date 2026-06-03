@@ -2,10 +2,12 @@
 外匯數據模塊 — 使用 frankfurter.app（免費，無需 API Key）
 支持：USD/CNY, EUR/USD, GBP/USD 等主要貨幣對
 """
-import requests
-import pandas as pd
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+
+import pandas as pd
+import requests
+
 from src.utils.logger import logger
 
 FRANKFURTER_BASE = "https://api.frankfurter.dev"
@@ -165,11 +167,11 @@ def _estimate_forex_ohlc(df: pd.DataFrame) -> pd.DataFrame:
         o = closes[i - 1] if i > 0 else c
         # 估算 high/low
         h = max(o, c) + r * 0.5
-        l = min(o, c) - r * 0.5
+        low_px = min(o, c) - r * 0.5
 
         df.at[i, "open"] = round(o, 6)
         df.at[i, "high"] = round(h, 6)
-        df.at[i, "low"] = round(l, 6)
+        df.at[i, "low"] = round(low_px, 6)
         df.at[i, "close"] = round(c, 6)
 
     return df

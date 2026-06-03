@@ -2,17 +2,19 @@
 全球股票 & 指數數據模塊 — Yahoo Finance（免費，無需 API Key）
 支持：美股、港股、日股、歐股、全球指數、ETF、商品期貨
 """
-import requests
-import pandas as pd
 import time
-from datetime import datetime, timedelta
-from src.utils.logger import logger
+from datetime import datetime
+
+import pandas as pd
+import requests
 
 from src.core.yahoo_finance import (
-    YAHOO_BASE,
     yahoo_chart as _yahoo_chart,
+)
+from src.core.yahoo_finance import (
     yahoo_quote as _yahoo_quote,
 )
+from src.utils.logger import logger
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2
@@ -474,15 +476,12 @@ US_STOCKS = {
     "CSX": "CSX 鐵路",
     "NSC": "諾福克南方",
     # 必需消費/飲料/食品
-    "PEP": "百事",
-    "KO": "可口可樂",
     "MDLZ": "億滋",
     "KHC": "卡夫亨氏",
     "PM": "菲利普莫里斯",
     "MO": "奧馳亞",
     "CAG": "康尼格拉",
     # 零售/服飾
-    "TJX": "TJX",
     "BKNG": "Booking",
     "EBAY": "eBay",
     "ROST": "Ross",
@@ -499,7 +498,6 @@ US_STOCKS = {
     "REGN": "再生元",
     "BIIB": "百健",
     # 其他大型/熱門
-    "C": "花旗",
     "PBR": "巴西石油(美)",
     "VALE": "淡水河谷(美)",
     # 網安 / 雲 / AI 基建
@@ -562,13 +560,10 @@ HK_STOCKS = {
     "0669.HK": "創科實業",
     "2015.HK": "理想汽車(港)",
     "9868.HK": "小鵬汽車(港)",
-    "1024.HK": "快手",
     "9888.HK": "百度(港)",
     "9626.HK": "嗶哩嗶哩(港)",
     "9992.HK": "泡泡瑪特",
     "2618.HK": "京東物流",
-    "6862.HK": "海底撈",
-    "2269.HK": "藥明生物",
     "3692.HK": "翰森製藥",
     # 科技 / 半導體 / 電訊
     "0981.HK": "中芯國際",

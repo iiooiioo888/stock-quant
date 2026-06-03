@@ -1,10 +1,10 @@
 """
 策略熱力圖 — 參數敏感度分析
 """
-import itertools
 import numpy as np
+
 from src.core.backtest import STRATEGIES
-from src.core.optimize import _run_single, _score, PARAM_GRIDS
+from src.core.optimize import _run_single, _score
 from src.utils.logger import logger
 
 
@@ -117,6 +117,7 @@ def param_heatmap(
 
     # 運行網格（可並行）
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from src.config import settings
     from src.core.compute_budget import get_thread_workers
 

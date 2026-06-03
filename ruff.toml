@@ -1,0 +1,15 @@
+# P1：與 flake8/black 並行；逐步收緊規則
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "E402"]
+
+[lint.extend-per-file-ignores]
+"src/core/**" = ["W293"]  # 空白行尾：逐步清理，暫不阻斷 CI
+
+[lint.per-file-ignores]
+"tests/**" = ["F401", "F811"]
+"migrations/**" = ["E402"]
+"scripts/**" = ["E402"]

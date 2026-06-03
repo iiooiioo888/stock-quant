@@ -71,7 +71,7 @@ def get_daily_kline_with_fallback(
     import asyncio
     mgr = get_fallback_manager()
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(
             mgr.get_daily_kline_with_fallback(code, start_date, end_date, min_bars)

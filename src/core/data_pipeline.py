@@ -8,10 +8,8 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Optional
-
-from src.utils.logger import logger
 
 # 批量 K 線寫入時累計，由 indices 等批量任務結束後 flush
 _deferred_cache_clears: int = 0
@@ -85,7 +83,7 @@ def resolve_financials(
     解析 A 股財報（供詳情頁 / analysis-page）。
     合併 fundamental 表與 stock_basics 展示格式。
     """
-    from src.core.fundamental import get_fundamentals, fundamentals_row_to_fin
+    from src.core.fundamental import fundamentals_row_to_fin, get_fundamentals
     from src.core.stock_basics import load_stock_financials
 
     code = str(code).strip()

@@ -35,8 +35,8 @@ def collect_ops_snapshot() -> dict[str, Any]:
     """收集與日常健檢 SOP 一致的快照（不啟動 HTTP）。"""
     from src.config import settings
     from src.core.data_sources import health_check as ds_health_check
-    from src.core.db import get_db_stats
     from src.core.database.index_audit import audit_indexes
+    from src.core.db import get_db_stats
     from src.core.pipeline_observability import get_pipeline_metrics
 
     snapshot: dict[str, Any] = {
@@ -63,6 +63,14 @@ def collect_ops_snapshot() -> dict[str, Any]:
     except Exception as e:
         snapshot["index_audit"] = {"error": str(e)}
         errors.append(f"index_audit: {e}")
+
+    try:
+        from src.core.task_manager import get_task_stats
+
+        snapshot["task_queue"] = get_task_stats()
+    except Exception as e:
+        snapshot["task_queue"] = {"error": str(e)}
+        errors.append(f"task_queue: {e}")
 
     try:
         raw_ds = ds_health_check()
@@ -227,6 +235,54 @@ def evaluate_ops_health(
                 ),
             })
 
+    tq = snap.get("task_queue") or {}
+    if tq.get("error"):
+        checks.append({
+            "id": "task_queue",
+            "name": "任務佇列",
+            "level": VERDICT_ATTENTION,
+            "ok": False,
+            "detail": tq["error"],
+        })
+        _bump(VERDICT_ATTENTION)
+    else:
+        pending = int(tq.get("pending") or 0)
+        running = int(tq.get("running") or 0)
+        retrying = int(tq.get("retrying") or 0)
+        in_flight = int(tq.get("in_flight") or 0)
+        detail = (
+            f"pending={pending} running={running} retrying={retrying} "
+            f"in_flight={in_flight}"
+        )
+        if pending >= 100:
+            checks.append({
+                "id": "task_queue",
+                "name": "任務佇列",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": detail,
+            })
+            _bump(VERDICT_CRITICAL)
+            recommendations.append("任務中心積壓過多：檢查 Worker / 取消無效 pending")
+        elif pending >= 20:
+            checks.append({
+                "id": "task_queue",
+                "name": "任務佇列",
+                "level": VERDICT_ATTENTION,
+                "ok": False,
+                "detail": detail,
+            })
+            _bump(VERDICT_ATTENTION)
+            recommendations.append("見 TROUBLESHOOTING § 任務佇列；必要時 POST /api/tasks/cancel-pending")
+        else:
+            checks.append({
+                "id": "task_queue",
+                "name": "任務佇列",
+                "level": VERDICT_OK,
+                "ok": True,
+                "detail": detail,
+            })
+
     ds = snap.get("data_sources") or {}
     if ds.get("error"):
         checks.append({
@@ -330,6 +386,7 @@ def build_health_sop_payload(
             "healthy_categories": ds.get("healthy_categories"),
             "total_categories": ds.get("total_categories"),
         },
+        "task_queue": snap.get("task_queue"),
     }
 
 

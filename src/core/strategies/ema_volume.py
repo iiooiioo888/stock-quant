@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("ema_volume", "EMA量價確認策略")
 class EMAVolumeStrategy(OrderManagedStrategy):
     """EMA 交叉 + 成交量放大確認"""

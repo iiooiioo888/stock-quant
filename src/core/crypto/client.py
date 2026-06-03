@@ -2,10 +2,12 @@
 加密貨幣數據模塊 — Binance 公開 API（無需 API Key）
 支持：BTC/USDT, ETH/USDT, SOL/USDT 等主流交易對
 """
-import requests
-import pandas as pd
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+
+import pandas as pd
+import requests
+
 from src.utils.logger import logger
 
 BINANCE_BASE = "https://api.binance.com"
@@ -68,7 +70,7 @@ def _coingecko_quote(symbol: str) -> dict:
     if not cg_id:
         return {}
     try:
-        url = f"https://api.coingecko.com/api/v3/simple/price"
+        url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
             "ids": cg_id,
             "vs_currencies": "usd",
@@ -210,13 +212,13 @@ def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
         for row in data:
             if len(row) < 5:
                 continue
-            ts, o, h, l, c = row[0], float(row[1]), float(row[2]), float(row[3]), float(row[4])
+            ts, o, h, low_px, c = row[0], float(row[1]), float(row[2]), float(row[3]), float(row[4])
             dt = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
             records.append({
                 "date": dt,
                 "open": o,
                 "high": h,
-                "low": l,
+                "low": low_px,
                 "close": c,
                 "volume": 0.0,
                 "amount": 0.0,

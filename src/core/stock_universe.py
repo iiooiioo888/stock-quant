@@ -212,7 +212,8 @@ def enrich_universe_intros(
 ) -> dict:
     """為股票庫補充簡介（按 rank_mv 優先，東財 F10）。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    from src.core.task_manager import update_task, update_task_meta, is_task_cancelled
+
+    from src.core.task_manager import is_task_cancelled, update_task, update_task_meta
 
     cap = limit if limit is not None else settings.stock_universe_intro_enrich_limit
     if cap <= 0:
@@ -781,7 +782,7 @@ def refresh_universe_from_local_kline(task_id: str | None = None) -> dict:
     用本地 daily_kline 更新股票庫（全球/全市場下載完成後調用）。
     已存在則更新價格；不存在則新增。
     """
-    from src.core.task_manager import update_task, update_task_meta, is_task_cancelled
+    from src.core.task_manager import is_task_cancelled, update_task, update_task_meta
 
     init_stock_universe_table()
     updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1022,7 +1023,7 @@ def sync_stock_universe(
     """
     同步股票庫：按市值取前 max_count（默認 settings.stock_universe_max_count）。
     """
-    from src.core.task_manager import update_task, update_task_meta, is_task_cancelled
+    from src.core.task_manager import is_task_cancelled, update_task, update_task_meta
 
     max_count = max_count or settings.stock_universe_max_count
     init_stock_universe_table()

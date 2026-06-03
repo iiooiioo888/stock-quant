@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from src.core.stock_sectors import STOCK_SECTOR_LABELS, stock_sector, stock_sector_label
+from src.core.stock_sectors import stock_sector, stock_sector_label
 
 # 精選標的：一句話投資邏輯（覆蓋優先於自動生成）
 ONE_LINERS: dict[str, str] = {

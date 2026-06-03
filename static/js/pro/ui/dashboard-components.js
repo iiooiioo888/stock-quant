@@ -260,7 +260,25 @@
       )
     ));
 
-    UI.mount(el, UI.h('div', { class: 'quote-board-grouped' }, ...sections));
+    const totalCards = groupList.reduce((n, g) => n + g.items.length, 0);
+    if (totalCards <= 96) {
+      UI.mount(el, UI.h('div', { class: 'quote-board-grouped' }, ...sections));
+      return;
+    }
+
+    UI.clear(el);
+    const wrap = UI.h('div', { class: 'quote-board-grouped' });
+    el.appendChild(wrap);
+    let idx = 0;
+    const batch = 2;
+    const paint = () => {
+      const end = Math.min(idx + batch, sections.length);
+      for (; idx < end; idx += 1) wrap.appendChild(sections[idx]);
+      if (idx < sections.length) {
+        requestAnimationFrame(paint);
+      }
+    };
+    requestAnimationFrame(paint);
   };
 
   D.ProviderBadges = (providers = {}) => {

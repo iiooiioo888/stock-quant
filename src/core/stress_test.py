@@ -8,11 +8,10 @@
 """
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Any, Optional
-
-from src.utils.logger import logger
 
 
 def _generate_extreme_returns(mean: float, std: float, n: int, min_return: float) -> list[float]:
@@ -97,41 +96,41 @@ def monte_carlo_multi_asset(
          "percentiles": dict}
     """
     n_assets = returns_matrix.shape[1]
-    
+
     # 計算均值和協方差
     mu = np.mean(returns_matrix, axis=0)
     cov = np.cov(returns_matrix.T)
-    
+
     # Cholesky 分解（處理相關性）
     try:
         L = np.linalg.cholesky(cov + np.eye(n_assets) * 1e-8)
     except np.linalg.LinAlgError:
         L = np.eye(n_assets) * np.std(returns_matrix, axis=0)
-    
+
     # 模擬
     portfolio_returns = np.zeros((n_simulations, days))
     for i in range(n_simulations):
         z = np.random.randn(days, n_assets)
         asset_returns = mu + z @ L.T
         portfolio_returns[i] = asset_returns @ weights
-    
+
     # 累計收益
     cumulative = np.cumprod(1 + portfolio_returns, axis=1)
     final_values = initial_value * cumulative[:, -1]
     paths = initial_value * cumulative
-    
+
     # VaR / CVaR
     daily_pnl = portfolio_returns[:, -1]
     var_95 = float(np.percentile(daily_pnl, 5))
     cvar_95 = float(np.mean(daily_pnl[daily_pnl <= var_95]))
-    
+
     # 最大回撤（每條路徑）
     drawdowns = []
     for path in paths:
         peak = np.maximum.accumulate(path)
         dd = (peak - path) / peak
         drawdowns.append(float(np.max(dd)))
-    
+
     return {
         "n_simulations": n_simulations,
         "days": days,
@@ -176,29 +175,29 @@ def replay_extreme_scenario(
     """
     if scenario_id not in EXTREME_SCENARIOS:
         raise ValueError(f"未知場景: {scenario_id}，可用: {list(EXTREME_SCENARIOS.keys())}")
-    
+
     scenario = EXTREME_SCENARIOS[scenario_id]
     extreme_returns = scenario["daily_returns"]
-    
+
     # 計算策略的 beta（相對於極端場景）
     n = min(len(portfolio_returns), len(extreme_returns))
     if n < 5:
         return {"error": "策略收益數據不足"}
-    
+
     pr = np.array(portfolio_returns[:n])
     er = np.array(extreme_returns[:n])
-    
+
     beta = float(np.corrcoef(pr, er)[0, 1]) if np.std(pr) > 0 and np.std(er) > 0 else 1.0
-    
+
     # 用 beta 調整極端場景對策略的影響
     adjusted_returns = [r * beta for r in extreme_returns]
-    
+
     # 計算累計收益
     cumulative = initial_value
     peak = initial_value
     max_dd = 0.0
     values = [initial_value]
-    
+
     for r in adjusted_returns:
         cumulative *= (1 + r)
         values.append(cumulative)
@@ -207,7 +206,7 @@ def replay_extreme_scenario(
         dd = (peak - cumulative) / peak
         if dd > max_dd:
             max_dd = dd
-    
+
     return {
         "scenario": scenario["name"],
         "scenario_id": scenario_id,
@@ -261,13 +260,13 @@ def var_stress_test(
         confidence_levels = [0.90, 0.95, 0.99]
     if holding_periods is None:
         holding_periods = [1, 5, 10, 20]
-    
+
     arr = np.array(returns)
     arr = arr[~np.isnan(arr)]
-    
+
     if len(arr) < 30:
         return {"error": "收益率數據不足（需要至少 30 條）"}
-    
+
     results = {}
     for cl in confidence_levels:
         level_results = {}
@@ -276,7 +275,7 @@ def var_stress_test(
             scale = np.sqrt(hp)
             var_val = float(np.percentile(arr, (1 - cl) * 100)) * scale
             cvar_val = float(np.mean(arr[arr <= np.percentile(arr, (1 - cl) * 100)])) * scale
-            
+
             level_results[f"{hp}d"] = {
                 "var": round(var_val, 6),
                 "cvar": round(cvar_val, 6),
@@ -284,7 +283,7 @@ def var_stress_test(
                 "cvar_pct": round(cvar_val * 100, 4),
             }
         results[f"{int(cl*100)}%"] = level_results
-    
+
     return {
         "data_points": len(arr),
         "mean_daily_return_pct": round(float(np.mean(arr)) * 100, 4),

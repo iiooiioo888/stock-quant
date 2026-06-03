@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("volume_price", "量價齊升策略")
 class VolumePriceStrategy(OrderManagedStrategy):
     """量價策略 — 放量上漲買入，縮量下跌賣出"""

@@ -9,24 +9,21 @@
   TradeSignal  — 標準化的交易信號數據結構
   TradeOrder   — 經過風控後的最終下單指令
 """
-import math
-import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from src.config import settings
 from src.core.risk_manager import (
+    DrawdownProtector,
     PositionSizer,
     RiskBudget,
-    DrawdownProtector,
     calculate_atr,
     calculate_volatility,
 )
-from src.core.signals import SignalEngine, score_signal_strength
-from src.config import settings
+from src.core.signals import SignalEngine
 from src.utils.logger import logger
-
 
 # ============================================================
 # 數據結構
@@ -327,7 +324,7 @@ class RiskPipeline:
                 # 印花稅（賣出時）
                 commission = sell_shares * price * settings.backtest_commission
                 stamp = sell_shares * price * self.stamp_tax
-                proceeds = sell_shares * price - commission - stamp
+                sell_shares * price - commission - stamp
 
                 order = TradeOrder(
                     code=code, side=OrderSide.SELL, shares=sell_shares, price=price,

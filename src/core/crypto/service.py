@@ -11,23 +11,21 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Optional
 
 import numpy as np
 
 from src.config import settings
+from src.core.crypto.alerts import CryptoAlertEngine
 from src.core.crypto.client import (
     download_crypto_kline,
-    get_crypto_multi_realtime,
     get_crypto_realtime,
     get_crypto_symbols,
 )
-from src.core.crypto.ws_client import BinanceStreamClient
-from src.core.crypto.stream_manager import CryptoStreamManager
 from src.core.crypto.indicators import compute_all_crypto_indicators
 from src.core.crypto.microstructure import CryptoMicrostructureAnalyzer
-from src.core.crypto.alerts import CryptoAlertEngine
+from src.core.crypto.stream_manager import CryptoStreamManager
+from src.core.crypto.ws_client import BinanceStreamClient
 from src.utils.logger import logger
 
 _service_instance: Optional["CryptoService"] = None

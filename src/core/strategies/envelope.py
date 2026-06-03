@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("envelope", "均線通道策略")
 class EnvelopeStrategy(OrderManagedStrategy):
     """均线通道策略 — 基于均线的上下轨通道，触下轨买入，触上轨卖出"""

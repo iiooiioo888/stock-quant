@@ -6,16 +6,16 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional
 
 from src.config import settings
 from src.core.db import get_conn, load_daily_kline
 from src.core.exchange import SUPPORTED_CURRENCIES, get_exchange_service
-from src.core.result_cache import get_cached_compute, set_cached_compute
 from src.core.portfolio_ledger import import_settings_holdings_as_buys, recompute_holdings
 from src.core.portfolio_repo import get_portfolio_repo
+from src.core.result_cache import get_cached_compute, set_cached_compute
 from src.engine.fx.resolver import FXResolver
 from src.engine.portfolio.calculator import HoldingCalc, PortfolioCalculator
 from src.utils.logger import logger
@@ -35,6 +35,7 @@ class Holding:
 
 
 from src.core.portfolio_currency import infer_currency  # noqa: F401 — 對外相容
+
 
 def _normalize_currency(code: str) -> str:
     c = (code or "MOP").upper()
@@ -224,7 +225,6 @@ class PortfolioSettlementService:
         use_cache: bool = True,
     ) -> dict[str, Any]:
         target = _normalize_currency(currency or get_user_preferred_currency(user_id))
-        cache_key = f"port:sum:{user_id}:{target}"
         if use_cache:
             cached = get_cached_compute("portfolio_summary", {"user_id": user_id, "currency": target})
             if cached:

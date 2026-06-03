@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
     from src.core.auth import _validate_jwt_secret_for_production
     _validate_jwt_secret_for_production()
 
+    try:
+        from src.integrations.sentry_setup import init_sentry
+        init_sentry()
+    except Exception as e:
+        logger.debug(f"Sentry 初始化跳過: {e}")
+
     logger.info(f"🚀 {settings.app_name} v{settings.app_version} 啟動")
     logger.info(f"   http://{settings.web_host}:{settings.web_port}")
 

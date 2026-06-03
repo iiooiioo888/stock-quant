@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pickle
 import time
-from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -145,7 +144,7 @@ def prepare_train_data(df: pd.DataFrame, features: list[str] = None,
 
     available = [f for f in features if f in df.columns]
     data = df[available + ["target"]].dropna()
-    
+
     if data.empty:
         return np.array([]).reshape(0, len(available)), np.array([]), available
 
@@ -222,7 +221,7 @@ def train_model(X: np.ndarray, y: np.ndarray, feature_names: list[str],
 
 def evaluate_model(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
     """評估模型性能。"""
-    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
     y_pred = model.predict(X_test)
     return {

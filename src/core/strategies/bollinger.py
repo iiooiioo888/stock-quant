@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("bollinger", "布林帶突破策略")
 class BollingerStrategy(OrderManagedStrategy):
     """布林帶策略"""

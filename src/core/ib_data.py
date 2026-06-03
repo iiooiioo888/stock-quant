@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 import pandas as pd
 
@@ -361,19 +361,19 @@ def ib_reconnect():
     返回連接狀態。
     """
     global _last_connect_attempt, _connected
-    
+
     if not ib_available():
         return {"status": "disabled", "reason": "IB 未啟用或缺少依賴"}
-    
+
     # 重置冷卻計時器
     with _lock:
         _last_connect_attempt = 0.0
         _connected = False
-    
+
     # 嘗試連接
     ib = _get_ib()
     connected = bool(ib and ib.isConnected())
-    
+
     return {
         "status": "connected" if connected else "failed",
         "connected": connected,

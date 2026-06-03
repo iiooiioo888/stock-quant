@@ -6,15 +6,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Depends, HTTPException
 
-from src.core.auth import get_current_user, require_admin, require_auth
+from src.core.auth import require_auth
 from src.core.billing_plans import FEATURE_LABELS, plan_definition
 from src.core.db import get_conn
 from src.models.user import User
-from src.utils.logger import logger
 
 DEFAULT_BILLING = {
     "plan_id": "free",

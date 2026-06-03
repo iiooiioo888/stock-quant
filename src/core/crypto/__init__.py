@@ -10,6 +10,7 @@
 - alerts.py        — 多維度告警引擎（RSI/MACD/BB/大單/漲跌幅）
 - service.py       — 統一服務層（WS 優先 + REST 降級）
 """
+from src.core.crypto.alerts import AlertEvent, AlertRule, CryptoAlertEngine
 from src.core.crypto.client import (
     CRYPTO_SYMBOLS,
     download_crypto_kline,
@@ -17,12 +18,11 @@ from src.core.crypto.client import (
     get_crypto_realtime,
     get_crypto_symbols,
 )
-from src.core.crypto.service import CryptoDisabledError, CryptoService, get_crypto_service
-from src.core.crypto.ws_client import BinanceStreamClient
-from src.core.crypto.stream_manager import CryptoStreamManager, CryptoSnapshot
 from src.core.crypto.indicators import compute_all_crypto_indicators
 from src.core.crypto.microstructure import CryptoMicrostructureAnalyzer
-from src.core.crypto.alerts import CryptoAlertEngine, AlertRule, AlertEvent
+from src.core.crypto.service import CryptoDisabledError, CryptoService, get_crypto_service
+from src.core.crypto.stream_manager import CryptoSnapshot, CryptoStreamManager
+from src.core.crypto.ws_client import BinanceStreamClient
 
 __all__ = [
     # 原有

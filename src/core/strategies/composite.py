@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("composite", "多策略組合投票策略")
 class CompositeStrategy(OrderManagedStrategy):
     """多策略組合信號 — 綜合 dual_ma、macd、rsi、bollinger 四個子策略的買賣信號"""

@@ -62,12 +62,14 @@
   ];
 
   const STOCK_GROUPS = new Set(['a_share', 'hk_stock', 'us_stock']);
+  const RENDER_PAGE = 72;
 
   const state = {
     catalog: null,
     quotesBySym: {},
     /** stocks=僅三地股票 | tradeable=有詳情 | all=完整 Universe */
     viewScope: 'stocks',
+    listLimit: RENDER_PAGE,
     activeSector: 'all',
     activeTheme: 'all',
     // 1/2/3 級分類（l1=group；l2/l3 由後端提供，或前端推導）
@@ -264,7 +266,11 @@
       return;
     }
 
-    const cards = rows.map((inst) => {
+    const showAll = rows.length <= state.listLimit;
+    const visible = showAll ? rows : rows.slice(0, state.listLimit);
+    const hiddenN = rows.length - visible.length;
+
+    const cards = visible.map((inst) => {
       const q = state.quotesBySym[inst.symbol] || {};
       const norm = Dash?.normalizeQuote
         ? Dash.normalizeQuote({ ...inst, ...q, name: inst.name })
@@ -323,7 +329,20 @@
       );
     });
 
-    UI.mount(root, UI.h('div', { class: 'assets-grid-inner' }, ...cards));
+    const gridInner = UI.h('div', { class: 'assets-grid-inner' }, ...cards);
+    if (hiddenN > 0) {
+      gridInner.appendChild(UI.h('div', { class: 'assets-load-more-wrap' },
+        UI.h('button', {
+          type: 'button',
+          class: 'btn btn-s',
+          onClick: () => {
+            state.listLimit += RENDER_PAGE;
+            renderList();
+          },
+        }, `載入更多（還有 ${hiddenN} 檔）`),
+      ));
+    }
+    UI.mount(root, gridInner);
   }
 
   function renderThemePacks() {
@@ -389,13 +408,14 @@
       class: `cat-pill cat-pill--scope ${state.viewScope === s.id ? 'on' : ''}`,
       onClick: () => {
         state.viewScope = s.id;
+        state.listLimit = RENDER_PAGE;
         state.activeL1 = 'all';
         state.activeL2 = 'all';
         state.activeL3 = 'all';
         state.activeSector = 'all';
         state.activeTheme = 'all';
         renderGroupPills();
-        renderList();
+        loadQuotes();
       },
     }, s.label));
   }
@@ -697,10 +717,22 @@
     }
   }
 
+  function chartsScopeForView() {
+    if (state.viewScope === 'stocks') return 'stocks';
+    if (state.viewScope === 'tradeable') return 'tradeable';
+    return null;
+  }
+
   async function loadQuotes() {
+    const scope = chartsScopeForView();
+    if (!scope) {
+      state.quotesBySym = {};
+      renderList();
+      return;
+    }
     try {
       const days = Number(window.StockQPro?.Prefs?.get?.('chartDays')) || 90;
-      const data = await Api.getIndicesCharts(days, 'all');
+      const data = await Api.getIndicesCharts(days, scope);
       const map = {};
       (data.indices || []).forEach((item) => {
         if (item.symbol) map[item.symbol] = item;

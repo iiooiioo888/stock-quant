@@ -3,10 +3,10 @@
 找到共識最佳參數（跨股票的中位數），報告推薦但不自動寫回 config
 """
 import numpy as np
-from src.core.optimize import _run_single, _score, PARAM_RANGES
-from src.core.backtest import STRATEGIES
-from src.core.db import load_all_codes
+
 from src.config import settings
+from src.core.backtest import STRATEGIES
+from src.core.optimize import PARAM_RANGES, _run_single, _score
 from src.utils.logger import logger
 
 
@@ -34,7 +34,6 @@ def auto_optimize_watchlist(
         "summary": "..."
     }
     """
-    import optuna
 
     if codes is None:
         codes = settings.watchlist

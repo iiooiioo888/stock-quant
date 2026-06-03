@@ -1,10 +1,9 @@
 """
 基本面數據模塊 — PE、PB、ROE、市值、營收淨利等（akshare 多源降級 + SQLite 緩存）
 """
-import time
 import sqlite3
+import time
 from datetime import datetime
-from typing import Any, Optional
 
 import akshare as ak
 import pandas as pd
@@ -293,7 +292,7 @@ def screen_by_fundamentals(filters: dict) -> list[dict]:
     results = _screen_from_db(filters)
     if results:
         return results
-    
+
     # 數據庫無數據時，嘗試從實時行情中批量獲取
     logger.info("數據庫無基本面數據，嘗試從 API 篩選...")
     return _screen_from_api(filters)
@@ -303,7 +302,7 @@ def _screen_from_db(filters: dict) -> list[dict]:
     """從數據庫篩選"""
     conditions = []
     params = []
-    
+
     if "pe_max" in filters:
         conditions.append("pe_ttm IS NOT NULL AND pe_ttm > 0 AND pe_ttm <= ?")
         params.append(filters["pe_max"])
@@ -337,19 +336,19 @@ def _screen_from_db(filters: dict) -> list[dict]:
 
     if not conditions:
         return []
-    
+
     where = " AND ".join(conditions)
-    
+
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            f"""SELECT * FROM fundamentals 
+            f"""SELECT * FROM fundamentals
                 WHERE {where}
                 ORDER BY roe DESC NULLS LAST
                 LIMIT 100""",
             params
         ).fetchall()
-    
+
     return [dict(r) for r in rows]
 
 
@@ -360,7 +359,7 @@ def _screen_from_api(filters: dict) -> list[dict]:
         df = ak.stock_zh_a_spot_em()
         if df.empty:
             return []
-        
+
         # 列名映射
         col_map = {
             "代码": "code",
@@ -376,7 +375,7 @@ def _screen_from_api(filters: dict) -> list[dict]:
                     rename[col] = new
                     break
         df = df.rename(columns=rename)
-        
+
         # 篩選
         if "pe_max" in filters and "pe_ttm" in df.columns:
             df = df[(df["pe_ttm"].notna()) & (df["pe_ttm"] > 0) & (df["pe_ttm"] <= filters["pe_max"])]
@@ -384,7 +383,7 @@ def _screen_from_api(filters: dict) -> list[dict]:
             df = df[(df["pb"].notna()) & (df["pb"] > 0) & (df["pb"] <= filters["pb_max"])]
         if "mv_min" in filters and "total_mv_raw" in df.columns:
             df = df[(df["total_mv_raw"].notna()) & (df["total_mv_raw"] >= filters["mv_min"] * 1e8)]
-        
+
         result = []
         for _, row in df.head(50).iterrows():
             result.append({
@@ -394,9 +393,9 @@ def _screen_from_api(filters: dict) -> list[dict]:
                 "pb": float(row.get("pb", 0) or 0),
                 "total_mv": _to_yi(float(row.get("total_mv_raw", 0) or 0)),
             })
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"API 篩選基本面失敗: {e}")
         return []
@@ -471,8 +470,8 @@ def _load_fundamentals_from_db(code: str) -> dict:
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            """SELECT * FROM fundamentals 
-               WHERE code = ? 
+            """SELECT * FROM fundamentals
+               WHERE code = ?
                ORDER BY update_date DESC LIMIT 1""",
             (code,),
         ).fetchone()

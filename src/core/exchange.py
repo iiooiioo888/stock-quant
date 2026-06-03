@@ -3,14 +3,12 @@
 """
 from __future__ import annotations
 
-import json
 import time
 from decimal import Decimal
 from typing import Dict, Optional
 
 import requests
 
-from src.config import settings
 from src.core.cache import get_cache
 from src.utils.logger import logger
 

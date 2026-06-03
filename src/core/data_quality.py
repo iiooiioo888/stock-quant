@@ -9,12 +9,12 @@
   validate_all         — 批量校驗所有股票
   repair_data          — 自動修復可修復的問題
 """
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
-from src.core.db import load_daily_kline, get_conn, load_all_codes
-from src.utils.logger import logger
 
+import pandas as pd
+
+from src.core.db import get_conn, load_all_codes, load_daily_kline
+from src.utils.logger import logger
 
 # ============================================================
 # 數據質量問題定義

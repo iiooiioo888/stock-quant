@@ -116,13 +116,13 @@ def yahoo_chart(
                     continue
                 o = opens[i] if i < len(opens) else c
                 h = highs[i] if i < len(highs) else c
-                l = lows[i] if i < len(lows) else c
+                low_px = lows[i] if i < len(lows) else c
                 v = volumes[i] if i < len(volumes) else 0
                 records.append({
                     "date": datetime.fromtimestamp(t).strftime("%Y-%m-%d"),
                     "open": round(float(o or c), 4),
                     "high": round(float(h or c), 4),
-                    "low": round(float(l or c), 4),
+                    "low": round(float(low_px or c), 4),
                     "close": round(float(c), 4),
                     "volume": int(v or 0),
                     "amount": 0,
@@ -175,7 +175,7 @@ def yahoo_quote(symbol: str) -> dict:
             change_pct = (change / prev * 100) if prev > 0 else 0
 
             highs = [h for h in quote.get("high", []) if h is not None]
-            lows = [l for l in quote.get("low", []) if l is not None]
+            lows = [lv for lv in quote.get("low", []) if lv is not None]
             opens = [o for o in quote.get("open", []) if o is not None]
             volumes = [v for v in quote.get("volume", []) if v is not None]
 

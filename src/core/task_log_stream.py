@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import io
 import sys
-import threading
 from contextlib import contextmanager
 from typing import TextIO
 

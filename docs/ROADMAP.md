@@ -25,7 +25,7 @@
 1. **數據源穩定性**: 依賴單一 Yahoo Finance，需增加多源輪詢與降級機制
 2. **資料庫擴展性**: SQLite 在高併發寫入場景有瓶頸，需 PostgreSQL 遷移方案
 3. **過擬合防護**: 需強化 Walk-Forward 驗證與參數穩定性檢驗
-4. **文檔完整性**: 缺少貢獻指南、運維手冊、故障排除指南
+4. **文檔完整性**: 已有 RUNBOOKS / TROUBLESHOOTING / [PRODUCTION_READINESS](PRODUCTION_READINESS.md)；持續補架構圖與策略 Checklist
 
 ---
 

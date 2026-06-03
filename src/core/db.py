@@ -3,11 +3,13 @@
 """
 import sqlite3
 import time
-import pandas as pd
 from functools import lru_cache
+
+import pandas as pd
+
 from src.config import settings
-from src.core.database.connection import get_conn
 from src.core.database.bootstrap import init_database
+from src.core.database.connection import get_conn
 from src.utils.logger import logger
 
 _KLINE_COLS = "code, date, open, high, low, close, volume, amount, turnover, market"
@@ -431,10 +433,10 @@ def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limi
 def _load_minute_kline_cached(code: str, period: str) -> tuple:
     """緩存版本 — 返回 tuple 以便 hashable"""
     sql = "SELECT * FROM minute_kline WHERE code = ? AND period = ? ORDER BY datetime"
-    
+
     with get_conn() as conn:
         df = pd.read_sql(sql, conn, params=[code, period])
-    
+
     if df.empty:
         return ((), ())
     return (tuple(df.itertuples(index=False, name=None)), tuple(df.columns))
@@ -454,7 +456,7 @@ def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
     """
     if df.empty:
         return 0
-    
+
     records = []
     for _, row in df.iterrows():
         records.append((
@@ -468,7 +470,7 @@ def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
             float(row.get("volume", row.get("成交量", 0))),
             float(row.get("amount", row.get("成交额", 0))),
         ))
-    
+
     with get_conn() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO minute_kline

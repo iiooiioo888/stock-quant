@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("rsi", "RSI相對強弱策略")
 class RSIStrategy(OrderManagedStrategy):
     """RSI 策略"""

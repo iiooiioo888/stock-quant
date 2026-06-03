@@ -473,6 +473,7 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 |------|------|
 | [NEXT_PROMPT.md](NEXT_PROMPT.md) | 下一輪優化上下文（給 Agent / 協作者） |
 | [docs/runbooks/README.md](docs/runbooks/README.md) | 運維 SOP 總覽（決策樹、日常健檢、事故對照） |
+| [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) | 生產就緒路線圖（安全/效能/測試/監控對照與優先級） |
 | [docs/manual/README.md](docs/manual/README.md) | 說明書目錄（概覽、快速開始、架構、API、前端、部署、測試） |
 | [docs/manual/06-前端說明.md](docs/manual/06-前端說明.md) | Pro 工作站路由與模塊 |
 | [docs/manual/13-架構設計.md](docs/manual/13-架構設計.md) | 架構與設計決策 |

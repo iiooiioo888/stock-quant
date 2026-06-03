@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
     log_dir: str = str(BASE_DIR / "logs")
+    log_format: str = Field(default="text", pattern="^(text|json)$")
+    sentry_dsn: Optional[str] = Field(default=None, description="可選 Sentry DSN（SQ_SENTRY_DSN）")
 
     # ====== 數據庫 ======
     db_path: str = str(DATA_DIR / "stock.db")

@@ -324,11 +324,10 @@ class BinanceStreamClient:
 
         # 組合流格式：{"stream": "btcusdt@trade", "data": {...}}
         if "stream" in msg and "data" in msg:
-            stream_name = msg["stream"]
+            msg["stream"]
             data = msg["data"]
         elif "e" in msg:
             # 單流格式
-            stream_name = ""
             data = msg
         else:
             # 可能是 pong 或其他控制消息

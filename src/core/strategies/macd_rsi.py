@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("macd_rsi", "MACD+RSI過濾策略")
 class MacdRsiFilterStrategy(OrderManagedStrategy):
     """MACD 金叉 + RSI 過濾（避免追高）"""

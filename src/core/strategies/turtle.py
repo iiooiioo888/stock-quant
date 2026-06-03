@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("turtle", "海龜趨勢跟蹤策略")
 class TurtleStrategy(OrderManagedStrategy):
     """海龜交易策略"""

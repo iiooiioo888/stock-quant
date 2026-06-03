@@ -4,17 +4,19 @@
 用戶只需繼承 UserStrategy 並實現 buy_signal / sell_signal 即可。
 系統自動發現、加載、沙箱執行，並可無縫接入 Backtrader 回測。
 """
+import importlib.util
 import os
 import re
-import importlib.util
-import pandas as pd
-import backtrader as bt
 from pathlib import Path
-from src.utils.logger import logger
+
+import backtrader as bt
+import pandas as pd
+
 from src.core.strategy_sandbox import (
     validate_strategy_file,
     validate_strategy_source,
 )
+from src.utils.logger import logger
 
 
 def _check_strategy_safety(filepath: str) -> bool:
@@ -389,9 +391,10 @@ def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> 
 
     適用於簡單的信號邏輯驗證，不依賴 Backtrader。
     """
-    from src.core.db import load_daily_kline
-    from src.config import settings
     import numpy as np
+
+    from src.config import settings
+    from src.core.db import load_daily_kline
 
     df = load_daily_kline(code)
     if df.empty:

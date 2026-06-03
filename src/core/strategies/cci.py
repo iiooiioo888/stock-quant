@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("cci", "CCI商品通道策略")
 class CCIStrategy(OrderManagedStrategy):
     """CCI 商品通道 — 偏離均值反轉"""

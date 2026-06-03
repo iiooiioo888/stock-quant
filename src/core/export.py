@@ -4,7 +4,8 @@
 import csv
 import io
 import json
-from src.core.db import get_backtest_by_ids, get_conn
+
+from src.core.db import get_backtest_by_ids
 from src.utils.logger import logger
 
 

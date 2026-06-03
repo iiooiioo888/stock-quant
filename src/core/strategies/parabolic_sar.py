@@ -1,7 +1,7 @@
-import backtrader as bt
 
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
+
 
 @register_strategy("parabolic_sar", "拋物線SAR策略")
 class ParabolicSARStrategy(OrderManagedStrategy):
@@ -28,8 +28,8 @@ class ParabolicSARStrategy(OrderManagedStrategy):
 
         high = self.data.high[0]
         low = self.data.low[0]
-        prev_high = self.data.high[-1]
-        prev_low = self.data.low[-1]
+        self.data.high[-1]
+        self.data.low[-1]
 
         # 初始化
         if self.sar is None:

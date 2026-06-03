@@ -108,6 +108,26 @@ class TestSmokeAPI:
         assert data.get("scope") == "topbar"
         assert data.get("days") == 14
 
+    def test_indices_charts_all_excludes_placeholders(self, client):
+        """scope=all 僅拉可行情標的，避免 1600+ 占位條目拖垮前端。"""
+        resp = client.get("/api/indices/charts?days=30&scope=all")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("requested", 0) <= 500
+        syms = {i.get("symbol", "") for i in data.get("indices", [])}
+        assert not any(s.startswith("CN_OTC_OPT_") for s in syms)
+        assert not any(s.startswith("CN_CB_") for s in syms)
+
+    def test_indices_charts_dashboard_lightweight(self, client):
+        resp = client.get("/api/indices/charts?days=30&scope=dashboard")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("scope") == "dashboard"
+        assert data.get("requested", 0) <= 120
+        groups = {i.get("group") for i in data.get("indices", [])}
+        assert "us_stock" not in groups
+        assert "a_share" not in groups
+
     def test_indices_providers(self, client):
         resp = client.get("/api/indices/providers")
         assert resp.status_code == 200

@@ -87,7 +87,7 @@ def _register_defaults() -> None:
         return run_multi_strategy(p["code"], plot=False, task_id=task_id)
 
     def _optimize(p: dict, task_id: str):
-        from src.core.optimize import grid_search, optuna_search, optimize_all
+        from src.core.optimize import grid_search, optimize_all, optuna_search
         from src.core.risk_backtest import parse_risk_params
 
         code = p["code"]

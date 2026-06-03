@@ -2,7 +2,7 @@
 
 /**
  * 全球市場掛牌服務
- * - 啟動只拉 topbar（輕量），儀表盤進入時再拉 scope=all
+ * - 啟動只拉 topbar（輕量），儀表盤進入時再拉 scope=dashboard（核心掛牌 ~80 檔）
  * - 輪詢僅更新頂欄，避免每次刷新觸發全量指數爬蟲
  */
 (() => {
@@ -38,7 +38,7 @@
 
   async function fetchPayload(days = 90) {
     const data = await Api.get(
-      `/api/indices/charts?days=${days}&scope=all`,
+      `/api/indices/charts?days=${days}&scope=dashboard`,
       { silent: true },
     ).catch(() => null);
     if (!data || !Array.isArray(data.indices)) {

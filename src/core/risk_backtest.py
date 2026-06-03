@@ -62,8 +62,8 @@ def attach_risk_to_cerebro(
     sizer: bool = True,
 ) -> None:
     """在已有主策略後掛載 SLTP 層、滑點、倉位上限。"""
-    from src.core.strategies.base import StrategyWithSLTP
     from src.config import settings
+    from src.core.strategies.base import StrategyWithSLTP
 
     if sltp:
         sltp_params = {}

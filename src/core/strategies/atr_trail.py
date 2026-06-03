@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("atr_trail", "ATR移動止損趨勢策略")
 class ATRTrailTrendStrategy(OrderManagedStrategy):
     """均線趨勢 + ATR 移動止損（操作優化）"""

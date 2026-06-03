@@ -15,9 +15,6 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from src.utils.logger import logger
-
-
 # ============================================================
 # 因子定義
 # ============================================================
@@ -111,9 +108,12 @@ def compute_volatility_factors(closes: list[float], highs: list[float] = None,
     atr_ratio = None
     if highs and lows and len(highs) >= 14 and len(lows) >= 14:
         h = np.array(highs[-14:], dtype=float)
-        l = np.array(lows[-14:], dtype=float)
+        low_arr = np.array(lows[-14:], dtype=float)
         c = np.array(closes[-14:], dtype=float)
-        tr = np.maximum(h[1:] - l[1:], np.maximum(np.abs(h[1:] - c[:-1]), np.abs(l[1:] - c[:-1])))
+        tr = np.maximum(
+            h[1:] - low_arr[1:],
+            np.maximum(np.abs(h[1:] - c[:-1]), np.abs(low_arr[1:] - c[:-1])),
+        )
         atr = float(np.mean(tr))
         if closes[-1] > 0:
             atr_ratio = round(atr / closes[-1] * 100, 4)

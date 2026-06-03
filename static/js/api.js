@@ -938,7 +938,7 @@ const Api = {
     return this.get(`/api/strategies/leaderboard?sort_by=${sortBy}&limit=${limit}`);
   },
 
-  async getIndicesCharts(days = 90, scope = 'all') {
+  async getIndicesCharts(days = 90, scope = 'dashboard') {
     return this.get(`/api/indices/charts?days=${days}&scope=${encodeURIComponent(scope)}`);
   },
 

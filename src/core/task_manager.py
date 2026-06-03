@@ -11,13 +11,14 @@ import hashlib
 import json
 import math
 import os
-import time
 import threading
+import time
 import uuid
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Callable, Optional
+
 from src.utils.logger import logger
 
 STATUS_PENDING = "pending"
@@ -550,7 +551,7 @@ def _make_params_hash(params: dict) -> str:
 def _task_data_version(params: dict) -> str:
     """K 線最新日期等版本號；數據更新後應與舊任務結果脫鉤。"""
     try:
-        from src.core.result_cache import get_data_version, _code_from_params
+        from src.core.result_cache import _code_from_params, get_data_version
         return get_data_version(_code_from_params(params or {}))
     except Exception:
         return "v0"
@@ -627,7 +628,7 @@ def create_task(
         # 全局結果緩存命中 → 直接建立已完成任務（定時觸發跳過，確保列表有執行紀錄）
         if not scheduler_trigger:
             try:
-                from src.core.result_cache import get_cached_compute, _code_from_params
+                from src.core.result_cache import _code_from_params, get_cached_compute
                 cached = None
                 if not force_refresh:
                     cached = get_cached_compute(task_type, params, code=_code_from_params(params))

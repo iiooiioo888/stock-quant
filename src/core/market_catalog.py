@@ -320,7 +320,12 @@ GROUP_ORDER: list[str] = [
 
 STOCK_GROUPS = frozenset({"a_share", "hk_stock", "us_stock"})
 
-VALID_SCOPES = frozenset(["all", "topbar", "custom", "stocks", "tradeable", *GROUP_ORDER])
+# 儀表盤掛牌：指數/外匯/商品/ETF 等，不含三地個股 bulk（避免 300+ 卡片拖垮前端）
+DASHBOARD_CHART_GROUPS = frozenset({
+    "asia", "us", "europe", "forex", "crypto", "commodities", "utilities", "etf", "rates",
+})
+
+VALID_SCOPES = frozenset(["all", "dashboard", "topbar", "custom", "stocks", "tradeable", *GROUP_ORDER])
 
 ASSET_CLASS_LABELS: dict[str, str] = {
     "index": "指數",
@@ -834,12 +839,58 @@ TOPBAR_INSTRUMENTS = [i for i in MARKET_INSTRUMENTS if i.topbar]
 HOME_INDICES = [(i.symbol, i.name) for i in MARKET_INSTRUMENTS if i.group in ("asia", "us")][:8]
 
 
+def instruments_for_charts(scope: str, symbols: str | None = None) -> list[MarketInstrument]:
+    """
+    /api/indices/charts 拉取範圍。
+
+    - all / tradeable / stocks / 分組：僅 detail_supported（排除占位目錄 ~1200+ 條）
+    - topbar / custom：頂欄或自選
+    """
+    sc = (scope or "all").strip().lower()
+    if sc == "topbar":
+        return list(TOPBAR_INSTRUMENTS)
+    if sc == "custom":
+        raw = (symbols or "").strip()
+        if not raw:
+            return list(TOPBAR_INSTRUMENTS)
+        picked: list[MarketInstrument] = []
+        seen: set[str] = set()
+        for sym in raw.split(","):
+            s = sym.strip().upper()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            inst = lookup_instrument(s)
+            if inst and inst.detail_supported:
+                picked.append(inst)
+        return picked or list(TOPBAR_INSTRUMENTS)
+    if sc in ("all", "tradeable"):
+        return [i for i in MARKET_INSTRUMENTS if i.detail_supported]
+    if sc == "dashboard":
+        return [
+            i for i in MARKET_INSTRUMENTS
+            if i.detail_supported and i.group in DASHBOARD_CHART_GROUPS
+        ]
+    if sc == "stocks":
+        return [
+            i for i in MARKET_INSTRUMENTS
+            if i.group in STOCK_GROUPS and i.detail_supported
+        ]
+    if sc in GROUP_ORDER:
+        return [i for i in MARKET_INSTRUMENTS if i.group == sc and i.detail_supported]
+    return [i for i in MARKET_INSTRUMENTS if i.detail_supported]
+
+
+_SYMBOL_INDEX: dict[str, MarketInstrument] = {
+    inst.symbol.upper(): inst for inst in MARKET_INSTRUMENTS
+}
+
+
 def lookup_instrument(symbol: str) -> Optional[MarketInstrument]:
     sym = str(symbol).strip().upper()
-    for inst in MARKET_INSTRUMENTS:
-        if inst.symbol.upper() == sym:
-            return inst
-    return None
+    if not sym:
+        return None
+    return _SYMBOL_INDEX.get(sym)
 
 
 def instruments_by_group() -> dict[str, list[MarketInstrument]]:

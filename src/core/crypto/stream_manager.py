@@ -10,15 +10,11 @@
 """
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
-
-from src.utils.logger import logger
-
+from typing import Optional
 
 # ── 數據結構 ──────────────────────────────────────────────────
 

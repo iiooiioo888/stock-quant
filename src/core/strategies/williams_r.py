@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("williams_r", "威廉指標策略")
 class WilliamsRStrategy(OrderManagedStrategy):
     """威廉指標 %R 超買超賣反轉"""

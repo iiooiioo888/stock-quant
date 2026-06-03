@@ -1,21 +1,20 @@
 """
 認證模塊 — JWT Token + bcrypt 密碼處理
 """
-import os
-import time
 import json
+import os
 import secrets
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional
 
-import jwt
 import bcrypt
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.models.user import User
 from src.core.db import get_conn
+from src.models.user import User
 from src.utils.logger import logger
 
 # JWT 密鑰：優先從環境變量讀取，否則從文件持久化讀取/生成
@@ -148,12 +147,12 @@ async def get_current_user(
     """
     if not credentials:
         return None
-    
+
     token = credentials.credentials
     payload = verify_token(token)
     if not payload:
         return None
-    
+
     user = get_user_by_id(payload.get("user_id"))
     return user
 
@@ -169,16 +168,16 @@ async def require_auth(
     """
     if not credentials:
         raise HTTPException(status_code=401, detail="未登錄，請先獲取 Token")
-    
+
     token = credentials.credentials
     payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token 無效或已過期，請重新登錄")
-    
+
     user = get_user_by_id(payload.get("user_id"))
     if not user:
         raise HTTPException(status_code=401, detail="用戶不存在")
-    
+
     return user
 
 
@@ -257,10 +256,10 @@ def create_user(username: str, password: str, role: str = "user") -> User:
     existing = get_user_by_username(username)
     if existing:
         raise ValueError(f"用戶名 '{username}' 已存在")
-    
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pw_hash = hash_password(password)
-    
+
     with get_conn() as conn:
         cursor = conn.execute(
             """INSERT INTO users (username, password_hash, role, settings, created_at)
@@ -268,7 +267,7 @@ def create_user(username: str, password: str, role: str = "user") -> User:
             (username, pw_hash, role, now),
         )
         user_id = cursor.lastrowid
-    
+
     return User(id=user_id, username=username, password_hash=pw_hash, role=role, created_at=now, settings={})
 
 

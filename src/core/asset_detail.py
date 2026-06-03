@@ -2,38 +2,20 @@
 
 from __future__ import annotations
 
-
-
 from typing import Any, Optional
-
-
 
 import pandas as pd
 
-
-
 from src.core.market_catalog import GROUP_LABELS, lookup_instrument
-
 from src.core.market_fetch import (
-
     build_index_chart_item,
-
     df_to_kline_records,
-
     fetch_history_df,
-
     fetch_quote,
-
     symbol_to_a_share_code,
-
 )
-
 from src.core.stock_basics import _infer_market
-
 from src.utils.logger import logger
-
-
-
 
 
 def _normalize_symbol(symbol: str) -> str:

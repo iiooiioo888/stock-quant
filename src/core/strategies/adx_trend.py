@@ -3,6 +3,7 @@ import backtrader as bt
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
+
 @register_strategy("adx_trend", "ADX趨勢強度策略")
 class ADXTrendStrategy(OrderManagedStrategy):
     """ADX 趋势强度策略 — ADX 高于阈值时趋势交易，配合 +DI/-DI 交叉"""

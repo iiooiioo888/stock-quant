@@ -2,16 +2,16 @@
 參數優化模塊 — 網格搜索 + Optuna 貝葉斯優化（支持並行）
 """
 import itertools
-import os
-import backtrader as bt
-import pandas as pd
 import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from src.core.db import load_daily_kline
+
+import backtrader as bt
+import pandas as pd
+
 from src.config import settings
 from src.core.backtest import STRATEGIES, prepare_data
+from src.core.db import load_daily_kline
 from src.utils.logger import logger
-
 
 # 各策略參數搜索空間
 PARAM_GRIDS = {
@@ -210,8 +210,6 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
     if not results:
         return results
 
-    from src.core.db import load_daily_kline
-    import pandas as pd
 
     df = load_daily_kline(code)
     if df.empty or len(df) < 100:
@@ -383,8 +381,9 @@ def optuna_search(
     run_ctx: dict | None = None,
 ) -> list[dict]:
     """Optuna 貝葉斯優化"""
-    import optuna
     import threading
+
+    import optuna
 
     if strategy_name not in STRATEGIES:
         raise ValueError(f"未知策略: {strategy_name}")
@@ -482,7 +481,8 @@ def optimize_all(
 ) -> dict:
     """對所有策略做參數優化（默認串行策略 + 每策略進程池，可選策略級並行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    from src.core.compute_budget import should_parallelize_optimize_all, get_thread_workers
+
+    from src.core.compute_budget import get_thread_workers, should_parallelize_optimize_all
 
     names = list(STRATEGIES.keys())
     total = len(names)

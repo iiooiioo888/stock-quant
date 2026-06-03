@@ -2,9 +2,10 @@
 報告生成模塊 — 生成每日策略報告（文本格式，適合 Webhook 推送）
 """
 from datetime import datetime
-from src.core.backtest import run_backtest, STRATEGIES
-from src.core.db import get_alert_logs
+
 from src.config import settings
+from src.core.backtest import STRATEGIES, run_backtest
+from src.core.db import get_alert_logs
 from src.utils.logger import logger
 
 
@@ -22,7 +23,7 @@ def generate_daily_report(codes: list[str] = None) -> str:
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [
-        f"📊 每日策略報告",
+        "📊 每日策略報告",
         f"📅 {now}",
         f"{'='*40}",
     ]
@@ -116,7 +117,7 @@ def generate_backtest_report(result: dict) -> str:
     name = settings.alert_rules.get(code, {}).get("name", code)
 
     lines = [
-        f"📈 回測完成",
+        "📈 回測完成",
         f"股票: {name}({code})",
         f"策略: {strategy}",
         f"收益率: {result.get('total_return_pct', 0):+.2f}%",
