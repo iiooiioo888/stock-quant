@@ -75,19 +75,23 @@ async def system_status():
     stats = get_db_stats()
     uptime_sec = int(time.time() - state.start_time)
 
-    sop_summary = {}
+    sop_summary = {"verdict": None, "verdict_zh": "unavailable"}
     try:
+        from src.core.api_cache import cached_response
         from src.core.ops_health import build_health_sop_payload
 
-        sop_payload = build_health_sop_payload()
-        sop = sop_payload.get("sop") or {}
-        sop_summary = {
-            "verdict": sop.get("verdict"),
-            "verdict_zh": sop.get("verdict_zh"),
-            "checked_at": sop_payload.get("checked_at"),
-        }
+        def _sop_summary():
+            sop_payload = build_health_sop_payload()
+            sop = sop_payload.get("sop") or {}
+            return {
+                "verdict": sop.get("verdict"),
+                "verdict_zh": sop.get("verdict_zh"),
+                "checked_at": sop_payload.get("checked_at"),
+            }
+
+        sop_summary = cached_response("api:status:sop", ttl=5, builder=_sop_summary)
     except Exception:
-        sop_summary = {"verdict": None, "verdict_zh": "unavailable"}
+        pass
 
     return {
         "version": settings.app_version,

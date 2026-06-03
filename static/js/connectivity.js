@@ -27,15 +27,85 @@ const ConnectivityPage = {
     const regBtn = document.getElementById('extRegistryBtn');
     if (runBtn) runBtn.onclick = () => this.runFullCheck();
     if (regBtn) regBtn.onclick = () => this.loadRegistry();
+    if (!window._extOpsListener) {
+      window._extOpsListener = true;
+      window.addEventListener('stockq:ops-updated', () => {
+        if (document.getElementById('tab-connectivity')) {
+          ConnectivityPage._renderOpsBanner().catch(() => {});
+        }
+      });
+    }
   },
 
   init() {
     this.load();
   },
 
+  async _renderOpsBanner() {
+    const tab = document.getElementById('tab-connectivity');
+    if (!tab) return;
+    let host = document.getElementById('extOpsBanner');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'extOpsBanner';
+      host.className = 'ext-ops-banner';
+      const anchor = tab.querySelector('.fr');
+      if (anchor) tab.querySelector('.sec')?.insertBefore(host, anchor);
+      else tab.querySelector('.sec')?.prepend(host);
+    }
+    let data = null;
+    try {
+      data = window.StockQPro?.services?.opsMonitor?.getLast?.() || null;
+      if (!data?.sop) {
+        data = await (Api.getHealthSop?.() || Api.get('/api/health/sop', { silent: true }));
+      }
+    } catch (_) {
+      data = null;
+    }
+    const sop = data?.sop;
+    if (!sop?.verdict) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    const tone = sop.verdict === 'ok' ? 'gn' : sop.verdict === 'critical' ? 'rd' : 'ac';
+    const degraded = (data?.data_sources?.degraded_categories || []).length;
+    const hint = degraded > 0 ? ` · 數據源降級 ${degraded} 類` : '';
+    host.className = `ext-ops-banner ext-ops-banner--${tone}`;
+    host.innerHTML = (
+      `<span class="ext-ops-verdict">運維 SOP：${sop.verdict_zh || sop.verdict}${hint}</span>` +
+      '<button type="button" class="btn s ext-ops-btn" data-ext-ops-settings>運維詳情</button>' +
+      '<button type="button" class="btn s ext-ops-btn" data-ext-ops-refresh>刷新 SOP</button>'
+    );
+    if (!host.dataset.opsBound) {
+      host.dataset.opsBound = '1';
+      host.addEventListener('click', (e) => {
+        if (e.target.closest('[data-ext-ops-settings]')) {
+          if (window.StockQPro?.services?.opsMonitor?.navigateToOps) {
+            window.StockQPro.services.opsMonitor.navigateToOps();
+          } else if (window.StockQPro?.App?.nav) {
+            window.StockQPro.App.nav('settings', { syncHash: true });
+          }
+          return;
+        }
+        if (e.target.closest('[data-ext-ops-refresh]')) {
+          const mon = window.StockQPro?.services?.opsMonitor;
+          Promise.resolve(mon?.tick?.())
+            .then((d) => {
+              ConnectivityPage._renderOpsBanner();
+              const zh = d?.sop?.verdict_zh || '—';
+              window.StockQPro?.App?.toast?.(`運維：${zh}`, 'ok');
+            })
+            .catch(() => window.StockQPro?.App?.toast?.('SOP 刷新失敗', 'er'));
+        }
+      });
+    }
+  },
+
   load() {
     this._ensureBound();
     this.loadLastOrRegistry();
+    this._renderOpsBanner().catch(() => {});
   },
 
   /** 新 API 404 時降級到舊版 /api/data-sources */
@@ -124,6 +194,7 @@ const ConnectivityPage = {
         return;
       }
       this.renderResult(d);
+      this._renderOpsBanner().catch(() => {});
     } catch (e) {
       if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="err">${e.message || e}（演示模式需登錄）</td></tr>`;
     } finally {
@@ -184,6 +255,7 @@ const ConnectivityPage = {
       const box = document.getElementById('extRegistryBox');
       if (box) this.renderRegistryDetail(d.registry, null);
     }
+    this._renderOpsBanner().catch(() => {});
   },
 
   renderRegistry() {},

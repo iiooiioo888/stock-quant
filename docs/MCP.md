@@ -10,8 +10,9 @@ Model Context Protocol (MCP) 為 **整個 stock-quant 項目** 提供 stdio 工�
 |------|------|------|
 | **安裝** | `pip install -r requirements-mcp.txt` | 與 Web 依賴分離 |
 | **IDE** | 使用 `.cursor/mcp.json` | 工作區根為 `cwd` |
-| **手動檢查** | 依序呼叫 `sq_health` → `sq_pipeline_metrics` → `sq_db_index_audit` | 索引先勿 `apply_missing=true` |
+| **手動檢查** | 先 `sq_ops_check` → 必要時 `sq_pipeline_metrics` / `sq_db_index_audit` | 索引先勿 `apply_missing=true` |
 | **本機檢查** | `python main.py ops check` | 無需 API key / 無需啟動 Web |
+| **HTTP 探活** | `python main.py ops probe --ci` | 服務已啟動；同 `/api/health/sop` |
 | **自動檢查** | `scripts/cursor-agent` 內 `npm run ops-check` | 需 `CURSOR_API_KEY` |
 | **擴充** | 新增 `tools_<domain>.py` 並註冊 `registry.py` | 見 `.cursor/rules/mcp-tooling.mdc` |
 

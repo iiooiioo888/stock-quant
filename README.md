@@ -106,6 +106,10 @@ python main.py monitor
 python main.py ops check
 python main.py ops check --json
 python main.py ops check --ci
+python main.py ops probe --url http://127.0.0.1:8000/api/health/sop --ci
+python scripts/probe_health_sop_url.py --url http://127.0.0.1:8000/api/health/sop --ci
+python scripts/ops_audit.py --ci
+python scripts/ops_audit.py --with-probe --ci   # 需先 main.py serve
 
 # Walk-Forward 分析
 python main.py walkforward 600519 dual_ma

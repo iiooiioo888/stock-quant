@@ -143,7 +143,7 @@ jobs:
             stock-quant:test
           sleep 12
           curl -sf http://localhost:8000/api/health || exit 1
-          curl -sf http://localhost:8000/api/health/sop | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('sop',{}).get('verdict') in ('ok','attention','critical')"
+          python scripts/probe_health_sop_url.py --url http://127.0.0.1:8000/api/health/sop --ci --json
           docker exec sq-test python main.py ops check --ci --json > docker-ops-report.json
           python -c "import json; d=json.load(open('docker-ops-report.json')); print('docker ops:', d.get('verdict_zh')); assert d.get('verdict')!='critical'"
           python scripts/ci_ops_summary.py docker-ops-report.json >> "$GITHUB_STEP_SUMMARY"

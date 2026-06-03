@@ -306,6 +306,8 @@ class TestHealthEndpoints:
         client = TestClient(app)
         resp = client.get("/api/health/detailed")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("sop", {}).get("verdict") in ("ok", "attention", "critical")
 
     def test_100_concurrent_health(self):
         """100 個併發健康檢查。"""

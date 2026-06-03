@@ -14,7 +14,8 @@ stock-quant 主入口
   python main.py portfolio          # 組合回測
   python main.py monitor            # 實時盯盤
   python main.py config show        # 查看配置
-  python main.py ops check          # 運維健檢（SOP）
+  python main.py ops check          # 運維健檢（SOP，本機 DB）
+  python main.py ops probe          # HTTP 探活 /api/health/sop
   python main.py strategy list      # 列出策略
 
 實作位於 src/cli/（命令按領域拆分，run.py 統一分發）。

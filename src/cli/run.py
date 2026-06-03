@@ -187,7 +187,7 @@ def dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         if getattr(args, "ops_action", None):
             cmd_ops(args)
         else:
-            print("用法: python main.py ops check [--json] [--verbose]")
+            print("用法: python main.py ops {check|probe} [--json] [--ci]")
         return
 
     if cmd == "signals":

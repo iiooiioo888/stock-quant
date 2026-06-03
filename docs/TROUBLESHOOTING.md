@@ -22,8 +22,7 @@
 
 ## 🚨 快速診斷流程
 
-> **與 SOP 對齊**：不確定根因時，優先 scripts/cursor-agent 的 
-pm run ops-check，或 curl .../api/health/detailed；數據/K 線/財報類見 [data-pipeline Runbook](runbooks/data-pipeline.md)。
+> **與 SOP 對齊**：不確定根因時，優先 `python main.py ops check` 或 `cd scripts/cursor-agent && npm run ops-check`；線上探活用 `curl .../api/health/sop`；完整指標用 `/api/health/detailed`。數據/K 線/財報類見 [data-pipeline Runbook](runbooks/data-pipeline.md)。
 
 ### 第一步：檢查服務狀態
 
@@ -43,11 +42,29 @@ lsof -i :8000
 ### 第二步：查看健康檢查
 
 ```bash
-# 基礎健康檢查
+# 基礎健康檢查（進程存活）
 curl http://localhost:8000/api/health
 
-# 詳細健康檢查（含指標）
+# 運維 SOP（與 ops check 同規則；Render/Docker 探活）
+curl http://localhost:8000/api/health/sop | jq '.sop.verdict,.sop.verdict_zh'
+
+# 本機一鍵健檢
+python main.py ops check
+python main.py ops check --json
+
+# 遠端 HTTP 探活（cron / Uptime；退出碼同 ops check）
+python main.py ops probe --ci --json
+python scripts/probe_health_sop_url.py --url http://127.0.0.1:8000/api/health/sop --ci --json
+
+# 全面稽核（check + 可選 probe）
+python scripts/ops_audit.py --ci
+python scripts/ops_audit.py --with-probe --ci
+
+# 詳細健康檢查（磁碟、Redis、SOP、管線）
 curl http://localhost:8000/api/health/detailed | jq
+
+# 系統狀態（含 sop 摘要）
+curl http://localhost:8000/api/status | jq '.sop'
 
 # 數據源健康狀態
 curl http://localhost:8000/api/data-sources/health | jq

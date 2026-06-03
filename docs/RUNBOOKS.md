@@ -13,7 +13,7 @@
 | 1 | 服務存活：`curl -s http://localhost:8000/api/health` |
 | 2 | 深度指標：`curl -s http://localhost:8000/api/health/detailed`（或 MCP `sq_health`） |
 | 3 | 數據源：`curl -s http://localhost:8000/api/data-sources/health` |
-| 4 | 本機：`python main.py ops check`（無需 API key） |
+| 4 | 本機：`python main.py ops check` 或 `python scripts/ops_audit.py --ci` |
 | 5 | 可選：`cd scripts/cursor-agent && npm run ops-check`（見 [MCP.md](MCP.md)） |
 
 異常時依 [SOP 決策樹](runbooks/README.md#決策樹先對症再翻文檔) 跳至 [data-pipeline](runbooks/data-pipeline.md) 或 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
@@ -169,8 +169,15 @@
 # Prometheus 指標
 curl http://localhost:8000/metrics
 
-# 健康檢查詳情
+# 運維 SOP（輕量；attention 仍 HTTP 200，僅 verdict 判斷）
+curl http://localhost:8000/api/health/sop
+python main.py ops probe --ci --json
+
+# 健康檢查詳情（含 SOP、管線、索引）
 curl http://localhost:8000/api/health/detailed
+
+# 系統狀態（uptime + sop 摘要，5s 快取）
+curl http://localhost:8000/api/status
 
 # 數據源健康狀態
 curl http://localhost:8000/api/data-sources/health

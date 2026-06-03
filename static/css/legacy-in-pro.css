@@ -954,6 +954,15 @@
 }
 
 /* ═══ 數據源 / 對外接口檢查（#tab-connectivity） ═══ */
+.legacy-mount .ext-ops-banner{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  margin:0 0 12px;padding:10px 12px;border-radius:var(--rl,8px);
+  border:1px solid var(--bd,#2a2a2a);background:var(--bg0,#111)
+}
+.legacy-mount .ext-ops-banner--gn{border-color:rgba(52,211,153,.3)}
+.legacy-mount .ext-ops-banner--ac{border-color:rgba(232,184,48,.3)}
+.legacy-mount .ext-ops-banner--rd{border-color:rgba(248,113,113,.3)}
+.legacy-mount .ext-ops-verdict{font-size:12px;color:var(--t2,#ccc);flex:1;min-width:160px}
 .legacy-mount #tab-connectivity #extSummaryMeta {
   flex: 1;
   min-width: 220px;

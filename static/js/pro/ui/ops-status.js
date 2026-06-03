@@ -93,8 +93,10 @@
       UI.h('p', { class: 'set-ops-cli-hint' },
         '本機：',
         UI.h('code', {}, 'python main.py ops check'),
-        ' · CI：',
-        UI.h('code', {}, 'ops check --ci'),
+        ' · HTTP：',
+        UI.h('code', {}, 'python main.py ops probe --ci'),
+        ' · 全面：',
+        UI.h('code', {}, 'python scripts/ops_audit.py --with-probe'),
       ),
     ));
 

@@ -1,0 +1,43 @@
+# 每週一 UTC 02:00 對 main 分支程式碼做本機 SOP 健檢（無需啟動 Web）。
+# 部署環境請另用 Uptime / probe_health_sop_url 探 HTTP。
+name: Scheduled Ops Check
+
+on:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+jobs:
+  sop-check:
+    name: Weekly SOP (local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run ops check (CI mode)
+        env:
+          SQ_DB_PATH: /tmp/scheduled_ops_stock.db
+          SQ_REDIS_ENABLED: "false"
+          SQ_LOG_LEVEL: WARNING
+          SQ_DEBUG: "true"
+          SQ_DEMO_MODE: "true"
+          SQ_LOCAL_FIRST_AUTO_FETCH: "false"
+        run: |
+          python main.py ops check --ci --json > ops-report.json
+          python -c "import json; d=json.load(open('ops-report.json')); print('verdict:', d.get('verdict_zh'), d.get('verdict'))"
+      - name: Summary
+        if: always()
+        run: python scripts/ci_ops_summary.py ops-report.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-ops-report
+          path: ops-report.json
+          if-no-files-found: ignore

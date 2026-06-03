@@ -358,5 +358,18 @@ def build_parser():
         action="store_true",
         help="CI 模式：僅 critical 時非零退出碼",
     )
+    p_ops_probe = ops_sub.add_parser("probe", help="HTTP 探活 /api/health/sop（服務已啟動）")
+    p_ops_probe.add_argument(
+        "--url",
+        default="http://127.0.0.1:8000/api/health/sop",
+        help="SOP 端點 URL",
+    )
+    p_ops_probe.add_argument("--timeout", type=float, default=10.0, help="HTTP 逾時（秒）")
+    p_ops_probe.add_argument("--json", action="store_true", help="輸出 JSON")
+    p_ops_probe.add_argument(
+        "--ci",
+        action="store_true",
+        help="CI 模式：僅 critical 時非零退出碼",
+    )
 
     return parser

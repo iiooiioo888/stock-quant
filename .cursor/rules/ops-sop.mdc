@@ -4,6 +4,8 @@ globs:
   - src/core/ops_health.py
   - src/api/routers/health.py
   - scripts/ci_*.py
+  - scripts/ops_audit.py
+  - src/core/ops_probe_http.py
   - static/js/pro/**/ops*.js
   - docs/runbooks/**
 ---
@@ -13,5 +15,7 @@ globs:
 - **單一真相**：判定邏輯在 `src/core/ops_health.py`；REST/MCP/CLI 經 `build_health_sop_payload()` 或 `evaluate_ops_health()`，勿在各處複寫閾值。
 - **入口文檔**：[docs/runbooks/README.md](../../docs/runbooks/README.md)
 - **本機**：`python main.py ops check`；CI：`--ci`（僅 `critical` exit 2）
+- **HTTP 探活**：`src/core/ops_probe_http.py`；CLI `ops probe` / `scripts/probe_health_sop_url.py`
+- **全面稽核**：`python scripts/ops_audit.py [--with-probe] [--ci]`
 - **探活**：輕量 `GET /api/health/sop`；完整 `GET /api/health/detailed`
 - **Pro UI**：改運維展示時同步 `ops-monitor.js`、`ops-status.js`、設定 `#set-ops-panel`；勿新增可見滾動條（見 ui-no-scrollbar）

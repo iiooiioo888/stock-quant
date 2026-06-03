@@ -24,6 +24,13 @@ _EXIT_CODES = {
 }
 
 
+def exit_code_for_verdict(verdict: str, *, ci_mode: bool = False) -> int:
+    """CLI / HTTP probe / CI 共用退出碼。"""
+    if ci_mode and verdict == VERDICT_ATTENTION:
+        return 0
+    return _EXIT_CODES.get(verdict, 2)
+
+
 def collect_ops_snapshot() -> dict[str, Any]:
     """收集與日常健檢 SOP 一致的快照（不啟動 HTTP）。"""
     from src.config import settings
@@ -273,9 +280,7 @@ def evaluate_ops_health(
             seen.add(r)
             unique_recs.append(r)
 
-    exit_code = _EXIT_CODES[worst]
-    if ci_mode and worst != VERDICT_CRITICAL:
-        exit_code = 0
+    exit_code = exit_code_for_verdict(worst, ci_mode=ci_mode)
 
     return {
         "verdict": worst,

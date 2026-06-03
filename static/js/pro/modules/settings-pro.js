@@ -563,6 +563,9 @@
           .then(() => window.StockQPro?.App?.toast?.('已更新運維與數據源狀態', 'ok'))
           .catch(() => window.StockQPro?.App?.toast?.('檢測失敗', 'er'));
       });
+      $id('set-src-connectivity')?.addEventListener('click', () => {
+        window.StockQPro?.App?.nav?.('connectivity', { syncHash: true });
+      });
       $id('set-ops-refresh')?.addEventListener('click', () => {
         loadOpsSop()
           .then(() => window.StockQPro?.App?.toast?.('SOP 健檢已更新', 'ok'))
