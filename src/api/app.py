@@ -416,7 +416,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # 不需要認證的路徑前綴（白名單）
 AUTH_WHITELIST_PREFIX = (
-    "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/detailed", "/api/status",
+    "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/sop", "/api/health/detailed", "/api/status",
     "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/stock-universe", "/api/data-sources",
     "/api/markets", "/api/indices", "/api/assets", "/api/dashboard", "/api/data/", "/api/tasks",
     "/api/task-events",

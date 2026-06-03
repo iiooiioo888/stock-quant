@@ -887,7 +887,14 @@ function bindNotifButton() {
   const btn = $id('notif-btn');
   if (!btn || btn._tkBound) return;
   btn._tkBound = true;
-  btn.addEventListener('click', () => getProApp()?.nav?.('tasks', { syncHash: true }));
+  btn.addEventListener('click', () => {
+    const opsDot = document.getElementById('notif-ops-dot');
+    if (opsDot && opsDot.style.display !== 'none' && globalThis.StockQPro?.services?.opsMonitor?.navigateToOps) {
+      globalThis.StockQPro.services.opsMonitor.navigateToOps();
+      return;
+    }
+    getProApp()?.nav?.('tasks', { syncHash: true });
+  });
 }
 
 function initOnce() {

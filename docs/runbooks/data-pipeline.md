@@ -1,6 +1,18 @@
 # 數據管線 Runbook
 
-適用：`market_fetch`、`data_pipeline`、`local_kline`、`fundamental` 及相關 API。
+> **版本**: v1.1 | **最後更新**: 2026-06-03  
+> 適用：`market_fetch`、`data_pipeline`、`local_kline`、`fundamental` 及相關 API。  
+> 入口與決策樹：[runbooks/README.md](README.md)
+
+## 處置流程（建議順序）
+
+| 階段 | 動作 | 通過標準 |
+|------|------|----------|
+| 觀測 | `sq_health` 或 `GET /api/health/detailed` | 無 5xx；`pipeline_metrics` 可讀 |
+| 定位 | `sq_pipeline_metrics` | 對照下方「關鍵欄位」與症狀表 |
+| 索引 | `sq_db_index_audit`（先 `apply_missing=false`） | `missing` 為空或已排程修復 |
+| 修復 | 依「常見症狀」小節 | 症狀消失且 `pending_deferred=0` |
+| 驗證 | 重跑 `npm run ops-check` 或手動拉一筆 K 線 | 詳情頁/掛牌響應正常 |
 
 ## 架構速覽
 

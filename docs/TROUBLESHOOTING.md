@@ -1,8 +1,8 @@
 # 🔧 Stock-Quant 故障排除指南 (Troubleshooting)
 
-> **版本**: v1.0 | **最後更新**: 2026-05-29 | **適用對象**: 開發者、運維人員
+> **版本**: v1.1 | **最後更新**: 2026-06-03 | **適用對象**: 開發者、運維人員
 
-本指南提供常見問題的診斷步驟與解決方案，幫助快速恢復系統正常運行。
+本指南提供常見問題的診斷步驟與解決方案。若不知從哪查起，請先看 **[運維 SOP 總覽](runbooks/README.md)**（決策樹 + 症狀對照表）。
 
 ---
 
@@ -21,6 +21,9 @@
 ---
 
 ## 🚨 快速診斷流程
+
+> **與 SOP 對齊**：不確定根因時，優先 scripts/cursor-agent 的 
+pm run ops-check，或 curl .../api/health/detailed；數據/K 線/財報類見 [data-pipeline Runbook](runbooks/data-pipeline.md)。
 
 ### 第一步：檢查服務狀態
 

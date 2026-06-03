@@ -389,6 +389,15 @@
     setSourceRow('set-src-llm-dot', null, ready ? true : fail ? false : 'warn', null);
   }
 
+  async function loadOpsSop() {
+    const Ops = window.StockQPro?.UI?.OpsStatus;
+    const mon = window.StockQPro?.services?.opsMonitor;
+    if (!Ops?.renderExpanded) return null;
+    const data = mon?.getLast?.() || await (mon?.tick?.() || Ops.fetchSop?.());
+    Ops.renderExpanded?.('set-ops-root', 'set-ops-metrics', data);
+    return data;
+  }
+
   async function loadDataSourceHealth() {
     setSourceRow('set-src-tv-dot', 'set-src-tv', 'pending', '檢測中…');
     setSourceRow('set-src-ib-dot', 'set-src-ib', 'pending', '檢測中…');
@@ -456,7 +465,7 @@
         $id('set-max-parallel').value = Number(cfg.task_max_workers);
       }
     }
-    await loadDataSourceHealth();
+    await Promise.all([loadDataSourceHealth(), loadOpsSop()]);
     return cfg;
   }
 
@@ -464,7 +473,8 @@
     stopHealthPolling();
     _healthTimer = setInterval(() => {
       loadDataSourceHealth().catch(() => {});
-    }, 30000);
+      loadOpsSop().catch(() => {});
+    }, 60000);
   }
 
   function stopHealthPolling() {
@@ -549,9 +559,47 @@
       $id('set-llm-save')?.addEventListener('click', () => saveLlmSettings());
       $id('set-llm-clear')?.addEventListener('click', () => clearLlmKey());
       $id('set-src-refresh')?.addEventListener('click', () => {
-        loadDataSourceHealth()
-          .then(() => window.StockQPro?.App?.toast?.('已更新數據源狀態', 'ok'))
-          .catch(() => window.StockQPro?.App?.toast?.('數據源檢測失敗', 'er'));
+        Promise.all([loadDataSourceHealth(), loadOpsSop()])
+          .then(() => window.StockQPro?.App?.toast?.('已更新運維與數據源狀態', 'ok'))
+          .catch(() => window.StockQPro?.App?.toast?.('檢測失敗', 'er'));
+      });
+      $id('set-ops-refresh')?.addEventListener('click', () => {
+        loadOpsSop()
+          .then(() => window.StockQPro?.App?.toast?.('SOP 健檢已更新', 'ok'))
+          .catch(() => window.StockQPro?.App?.toast?.('SOP 健檢失敗', 'er'));
+      });
+      $id('set-ops-copy')?.addEventListener('click', async () => {
+        const data = window.StockQPro?.services?.opsMonitor?.getLast?.()
+          || await loadOpsSop();
+        if (!data) {
+          window.StockQPro?.App?.toast?.('尚無運維報告', 'warn');
+          return;
+        }
+        const text = JSON.stringify(data, null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          window.StockQPro?.App?.toast?.('已複製運維報告', 'ok');
+        } catch {
+          window.StockQPro?.App?.toast?.('複製失敗', 'er');
+        }
+      });
+      $id('set-ops-download')?.addEventListener('click', async () => {
+        const data = window.StockQPro?.services?.opsMonitor?.getLast?.()
+          || await loadOpsSop();
+        if (!data) {
+          window.StockQPro?.App?.toast?.('尚無運維報告', 'warn');
+          return;
+        }
+        const text = JSON.stringify(data, null, 2);
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `stock-quant-ops-sop-${ts}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        window.StockQPro?.App?.toast?.('已下載運維報告', 'ok');
       });
       bindSchemePreview();
     }
@@ -569,7 +617,16 @@
   function onShow() {
     startHealthPolling();
     loadDataSourceHealth().catch(() => {});
+    loadOpsSop().catch(() => {});
     loadBillingSummary().catch(() => {});
+    try {
+      if (sessionStorage.getItem('stockq:scroll-ops') === '1') {
+        sessionStorage.removeItem('stockq:scroll-ops');
+        requestAnimationFrame(() => {
+          window.StockQPro?.services?.opsMonitor?.scrollToOpsPanel?.();
+        });
+      }
+    } catch (_) {}
   }
 
   function onUnload() {

@@ -22,7 +22,8 @@
 | 14 | [MCP 集成](14-MCP集成.md) | Model Context Protocol Server |
 | 15 | [文件索引](15-文件索引.md) | 完整項目文件清單 |
 | 16 | [進化路線圖](../ROADMAP.md) | 版本迭代目標與發展規劃 |
-| 17 | [運維手冊](../RUNBOOKS.md) | SOP、故障排除、最佳實踐 |
+| 17 | [運維 SOP 總覽](../runbooks/README.md) | 場景入口、決策樹、日常健檢 |
+| 17b | [運維手冊](../RUNBOOKS.md) | 部署、監控、備份、升級深度程序 |
 | 18 | [故障排除](../TROUBLESHOOTING.md) | 常見問題診斷與解決方案 |
 | 19 | [貢獻指南](../../CONTRIBUTING.md) | 如何參與專案貢獻 |
 

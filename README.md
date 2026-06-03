@@ -102,6 +102,11 @@ python main.py portfolio
 # 實時盯盤
 python main.py monitor
 
+# 運維 SOP 健檢（部署前 / CI 同規則）
+python main.py ops check
+python main.py ops check --json
+python main.py ops check --ci
+
 # Walk-Forward 分析
 python main.py walkforward 600519 dual_ma
 
@@ -279,6 +284,7 @@ stock-quant/
 ├── requirements.txt
 ├── docs/
 │   ├── manual/             # 項目說明書（架構、API、前端、部署等）
+│   ├── runbooks/README.md  # 運維 SOP 總覽
 │   └── MCP.md              # MCP Server 文檔
 ├── src/
 │   ├── config.py
@@ -462,6 +468,7 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 | 文檔 | 說明 |
 |------|------|
 | [NEXT_PROMPT.md](NEXT_PROMPT.md) | 下一輪優化上下文（給 Agent / 協作者） |
+| [docs/runbooks/README.md](docs/runbooks/README.md) | 運維 SOP 總覽（決策樹、日常健檢、事故對照） |
 | [docs/manual/README.md](docs/manual/README.md) | 說明書目錄（概覽、快速開始、架構、API、前端、部署、測試） |
 | [docs/manual/06-前端說明.md](docs/manual/06-前端說明.md) | Pro 工作站路由與模塊 |
 | [docs/manual/13-架構設計.md](docs/manual/13-架構設計.md) | 架構與設計決策 |

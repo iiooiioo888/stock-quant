@@ -1,4 +1,5 @@
 """CLI 命令處理函數。"""
+from src.cli.commands.ops import cmd_ops
 from src.cli.commands.core import (
     cmd_config,
     cmd_serve,

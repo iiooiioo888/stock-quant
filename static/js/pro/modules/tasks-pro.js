@@ -953,7 +953,15 @@
     const btn = document.getElementById('notif-btn');
     if (!btn || btn._tkBound) return;
     btn._tkBound = true;
-    btn.addEventListener('click', () => proApp()?.nav?.('tasks', { syncHash: true }));
+    btn.addEventListener('click', () => {
+      const opsDot = document.getElementById('notif-ops-dot');
+      const opsVisible = opsDot && opsDot.style.display !== 'none';
+      if (opsVisible && window.StockQPro?.services?.opsMonitor?.navigateToOps) {
+        window.StockQPro.services.opsMonitor.navigateToOps();
+        return;
+      }
+      proApp()?.nav?.('tasks', { syncHash: true });
+    });
   }
 
   const page = {
@@ -975,6 +983,10 @@
       bindQuickFilters();
       bindStatCards();
       updateLiveDot();
+      const mon = window.StockQPro?.services?.opsMonitor;
+      const ops = mon?.getLast?.();
+      if (ops) mon.renderTasksStrip?.(ops);
+      else mon?.tick?.().catch(() => {});
       Tasks.load().catch(() => proApp()?.toast?.('任務中心載入失敗', 'er'));
       this._startBadgePoll();
       this._startLivePoll();

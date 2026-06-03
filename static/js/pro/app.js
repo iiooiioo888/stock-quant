@@ -21,9 +21,11 @@
       this._bindNav();
       this._bindModals();
       this._bindCmdPalette();
+      this._bindShortcutsHelp();
       this._bindKeyboard();
       this._bindLogo();
       this._connectWS();
+      try { window.StockQPro?.services?.opsMonitor?.init?.(); } catch (_) {}
       try { window.StockQPro?.Terms?.applyTerms?.(); } catch (_) {}
 
       // initial render（工作台預設總覽；產品介紹頁在 /）
@@ -355,6 +357,7 @@
         { n: '多市場', d: 'A股 / 美股 / 港股', p: 'markets' },
         { n: '加密行情', d: 'Binance 等', p: 'crypto' },
         { n: '連線檢查', d: '數據源可用性探測', p: 'connectivity' },
+        { n: '運維健檢', d: 'SOP 狀態 · 數據源 · 管線', act: 'ops', k: 'O' },
         { n: '定價', d: '方案', p: 'pricing' },
         { n: '設定', d: '全局設定', p: 'settings' },
       ];
@@ -377,6 +380,25 @@
               setTimeout(() => window.StockQPro?.showStratDetail?.(s.id), 50);
             },
           }));
+        }
+
+        if (!qq || /運維|sop|ops|健檢|health|維運/.test(qq)) {
+          extra.push({
+            n: '運維健檢（立即刷新）',
+            d: '重新拉取 SOP 並打開設定',
+            action: () => {
+              const mon = window.StockQPro?.services?.opsMonitor;
+              Promise.resolve(mon?.tick?.())
+                .then((d) => {
+                  const zh = d?.sop?.verdict_zh || '—';
+                  const v = d?.sop?.verdict;
+                  const tone = v === 'ok' ? 'ok' : v === 'critical' ? 'er' : 'warn';
+                  this.toast(`運維：${zh}`, tone);
+                  this.nav('settings', { syncHash: true });
+                })
+                .catch(() => this.toast('運維健檢失敗', 'er'));
+            },
+          });
         }
 
         // quick code to backtest
@@ -458,6 +480,20 @@
           window.StockQPro?.Allocation?.setOpen?.(true);
           return;
         }
+        if (act === 'ops') {
+          close();
+          const mon = window.StockQPro?.services?.opsMonitor;
+          Promise.resolve(mon?.tick?.())
+            .then((d) => {
+              const zh = d?.sop?.verdict_zh || '—';
+              const v = d?.sop?.verdict;
+              const tone = v === 'ok' ? 'ok' : v === 'critical' ? 'er' : 'warn';
+              this.toast(`運維：${zh}`, tone);
+              window.StockQPro?.services?.opsMonitor?.navigateToOps?.();
+            })
+            .catch(() => this.toast('運維健檢失敗', 'er'));
+          return;
+        }
         const p = item.getAttribute('data-cmd');
         if (!p) return;
         close();
@@ -465,6 +501,45 @@
       });
 
       this._cmd = { open, close };
+    },
+
+    _bindShortcutsHelp() {
+      const rows = [
+        ['Ctrl+K', '命令面板'],
+        ['?', '快捷鍵說明（本視窗）'],
+        ['O', '刷新運維 SOP 並開設定'],
+        ['T', '任務中心'],
+        ['1–9', '切換主要頁面'],
+        ['H', '產品介紹頁'],
+        ['S', '策略庫'],
+        ['R', '刷新任務（任務頁）'],
+        ['Esc', '關閉彈窗 / 命令面板'],
+      ];
+      const grid = rows.map(([k, d]) => (
+        `<div class="pro-shortcut-row"><span>${d}</span><kbd>${k}</kbd></div>`
+      )).join('');
+
+      const open = () => {
+        if (document.getElementById('pro-shortcuts-ov')) return;
+        const ov = document.createElement('div');
+        ov.id = 'pro-shortcuts-ov';
+        ov.className = 'modal-ov show';
+        ov.setAttribute('role', 'dialog');
+        ov.setAttribute('aria-label', '鍵盤快捷鍵');
+        ov.innerHTML = (
+          '<div class="modal pro-shortcuts-modal">' +
+          '<div class="modal-hd"><div class="modal-title">鍵盤快捷鍵</div>' +
+          '<button type="button" class="btn s" data-close-pro-shortcuts>關閉</button></div>' +
+          `<div class="modal-bd pro-shortcuts-grid">${grid}</div>` +
+          '</div>'
+        );
+        const close = () => ov.remove();
+        ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+        ov.querySelector('[data-close-pro-shortcuts]')?.addEventListener('click', close);
+        document.body.appendChild(ov);
+      };
+
+      this._shortcutsHelp = { open, close: () => document.getElementById('pro-shortcuts-ov')?.remove() };
     },
 
     _bindKeyboard() {
@@ -480,10 +555,14 @@
         }
         if (e.key === '?' || (e.shiftKey && e.key === '/')) {
           e.preventDefault();
-          this._cmd?.open?.();
+          this._shortcutsHelp?.open?.();
           return;
         }
         if (e.key === 'Escape') {
+          if (document.getElementById('pro-shortcuts-ov')) {
+            this._shortcutsHelp?.close?.();
+            return;
+          }
           document.querySelectorAll('.modal-ov.show').forEach((m) => m.classList.remove('show'));
           this._cmd?.close?.();
           return;
@@ -492,6 +571,21 @@
         const map = { '1':'dashboard','2':'backtest','3':'compare','4':'portfolio','5':'watchlist','6':'scanner','7':'alerts','8':'risk','9':'journal','0':'pricing' };
         if (map[e.key]) this.nav(map[e.key], { syncHash: true });
         if (e.key === 't' || e.key === 'T') this.nav('tasks', { syncHash: true });
+        if (e.key === 'o' || e.key === 'O') {
+          const mon = window.StockQPro?.services?.opsMonitor;
+          Promise.resolve(mon?.tick?.())
+            .then((d) => {
+              const zh = d?.sop?.verdict_zh || '—';
+              const v = d?.sop?.verdict;
+              const tone = v === 'ok' ? 'ok' : v === 'critical' ? 'er' : 'warn';
+              this.toast(`運維：${zh}`, tone);
+              this.nav('settings', { syncHash: true });
+              requestAnimationFrame(() => {
+                window.StockQPro?.services?.opsMonitor?.scrollToOpsPanel?.();
+              });
+            })
+            .catch(() => this.toast('運維健檢失敗', 'er'));
+        }
         if (e.key === 'h' || e.key === 'H') { window.location.href = '/'; return; }
         if (e.key === 's' || e.key === 'S') this.nav('strategies', { syncHash: true });
         if (e.key === 'r' || e.key === 'R') {

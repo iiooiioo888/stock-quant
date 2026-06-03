@@ -51,6 +51,7 @@ from src.cli.commands import (
     cmd_vol_target,
     cmd_voting_portfolio,
     cmd_walkforward,
+    cmd_ops,
 )
 
 Handler = Callable[[argparse.Namespace], None]
@@ -180,6 +181,13 @@ def dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             cmd_stock_universe(args)
         else:
             print("用法: python main.py stock-universe {sync|stats|list}")
+        return
+
+    if cmd == "ops":
+        if getattr(args, "ops_action", None):
+            cmd_ops(args)
+        else:
+            print("用法: python main.py ops check [--json] [--verbose]")
         return
 
     if cmd == "signals":

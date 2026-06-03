@@ -1,8 +1,22 @@
 # 📚 Stock-Quant 運維手冊 (Runbooks)
 
-> **版本**: v1.0 | **最後更新**: 2026-05-29 | **適用對象**: 系統管理員、DevOps 工程師
+> **版本**: v1.1 | **最後更新**: 2026-06-03 | **適用對象**: 系統管理員、DevOps 工程師
 
-本手冊提供 Stock-Quant 系統的標準作業程序 (SOP)、故障排除指南與最佳實踐。
+本手冊提供部署、監控、備份與升級的**深度程序**。日常怎麼走、先查哪份文檔，請從 **[運維 SOP 總覽](runbooks/README.md)** 進入（含決策樹與一鍵健檢）。
+
+---
+
+## ⚡ 日常運維速查（3 分鐘）
+
+| 步驟 | 動作 |
+|------|------|
+| 1 | 服務存活：`curl -s http://localhost:8000/api/health` |
+| 2 | 深度指標：`curl -s http://localhost:8000/api/health/detailed`（或 MCP `sq_health`） |
+| 3 | 數據源：`curl -s http://localhost:8000/api/data-sources/health` |
+| 4 | 本機：`python main.py ops check`（無需 API key） |
+| 5 | 可選：`cd scripts/cursor-agent && npm run ops-check`（見 [MCP.md](MCP.md)） |
+
+異常時依 [SOP 決策樹](runbooks/README.md#決策樹先對症再翻文檔) 跳至 [data-pipeline](runbooks/data-pipeline.md) 或 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
 
 ---
 
@@ -49,11 +63,12 @@
 
 | 路徑 | 說明 |
 |------|------|
-| `/workspace/data/` | 數據庫存儲目錄 |
-| `/workspace/logs/` | 日誌文件目錄 |
-| `/workspace/static/` | 前端靜態資源 |
-| `/workspace/strategies/` | 策略模組目錄 |
-| `/workspace/src/core/` | 核心業務邏輯 |
+| `data/` | SQLite（如 `stock.db`）與本地數據 |
+| `logs/` | 應用日誌 |
+| `static/` | 前端靜態資源（Pro 在 `static/js/pro/`） |
+| `src/core/strategies/` | 內建策略模組 |
+| `src/core/` | 核心業務邏輯 |
+| `scripts/cursor-agent/` | Cursor SDK 運維健檢腳本 |
 
 ---
 
@@ -85,11 +100,11 @@
 
 # 5. 數據庫初始化
 □ mkdir -p data
-□ python src/core/init_db.py（或自動遷移）
+□ 首次 `python main.py serve` 會自動 init_db / 遷移
 
 # 6. 服務啟動
-□ python main.py（單機模式）
-□ 或 docker-compose up -d（容器模式）
+□ python main.py serve（本機）
+□ 或 docker compose up -d --build（容器 + 可選 Redis）
 
 # 7. 健康檢查
 □ curl http://localhost:8000/api/health
@@ -580,6 +595,9 @@ journalctl -u stock-quant -f  # systemd
 
 ### C. 相關文檔
 
+- [運維 SOP 總覽](runbooks/README.md)（**建議入口**）
+- [數據管線 Runbook](runbooks/data-pipeline.md)
+- [MCP 與自動健檢](MCP.md)
 - [架構設計](../manual/13-架構設計.md)
 - [部署指南](../manual/09-部署指南.md)
 - [故障排除](TROUBLESHOOTING.md)
@@ -587,5 +605,5 @@ journalctl -u stock-quant -f  # systemd
 
 ---
 
-*最後更新*: 2026-05-29  
+*最後更新*: 2026-06-03  
 *維護者*: Stock-Quant DevOps Team

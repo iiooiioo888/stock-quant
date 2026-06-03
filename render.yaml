@@ -39,5 +39,6 @@ services:
         # 在 Render Dashboard 手動設置強密碼，勿使用公開默認值
       - key: SQ_HISTORY_START_DATE
         value: "20230101"
-    healthCheckPath: /api/health
+    # SOP 探活：attention 仍 200；Docker HEALTHCHECK 另判 critical
+    healthCheckPath: /api/health/sop
     autoDeploy: true

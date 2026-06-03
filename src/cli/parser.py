@@ -347,4 +347,16 @@ def build_parser():
     p_univ_list.add_argument("--limit", type=int, default=20)
     p_univ_list.add_argument("--keyword", default=None)
 
+    # ops（運維健檢，對齊 docs/runbooks）
+    p_ops = subparsers.add_parser("ops", help="運維健檢（無需 Cursor API key）")
+    ops_sub = p_ops.add_subparsers(dest="ops_action")
+    p_ops_check = ops_sub.add_parser("check", help="本機 SOP 健檢（DB/管線/索引/數據源）")
+    p_ops_check.add_argument("--json", action="store_true", help="輸出 JSON")
+    p_ops_check.add_argument("--verbose", action="store_true", help="附完整快照")
+    p_ops_check.add_argument(
+        "--ci",
+        action="store_true",
+        help="CI 模式：僅 critical 時非零退出碼",
+    )
+
     return parser

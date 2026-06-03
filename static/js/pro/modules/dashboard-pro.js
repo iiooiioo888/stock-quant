@@ -79,8 +79,17 @@
       ensureLayout();
       window.StockQPro?.CurrencyManager?.init('currency-toggle');
       const t0 = performance.now();
-      const [health, cfg] = await Promise.all([
+      const mon = window.StockQPro?.services?.opsMonitor;
+      const sopPromise = (async () => {
+        const cached = mon?.getLast?.();
+        if (cached) return cached;
+        return mon?.tick?.()
+          || window.StockQPro?.UI?.OpsStatus?.fetchSop?.()
+          || (Api.getHealthSop?.() || Api.get('/api/health/sop', { silent: true })).catch(() => null);
+      })();
+      const [health, sopPayload, cfg] = await Promise.all([
         Api.get('/api/health', { silent: true }).catch(() => null),
+        sopPromise,
         Api.getConfig().catch(() => null),
       ]);
       const latencyMs = Math.round(performance.now() - t0);
@@ -94,6 +103,7 @@
       }
       renderQuoteBoard(payload || { indices: ticker?.getQuotes?.() || [] });
       renderKpis(health, latencyMs, cfg);
+      window.StockQPro?.UI?.Dashboard?.renderOpsStatus?.(sopPayload);
       setUpdatedAt();
     })();
 
@@ -134,6 +144,9 @@
   }
 
   function onShow() {
+    const cached = window.StockQPro?.services?.opsMonitor?.getLast?.();
+    if (cached) window.StockQPro?.UI?.Dashboard?.renderOpsStatus?.(cached);
+    else window.StockQPro?.services?.opsMonitor?.tick?.().catch(() => {});
     const ticker = window.StockQPro?.services?.marketTicker;
     if (ticker?.ensureFullPayload) {
       ticker.ensureFullPayload().then(() => load()).catch((err) => console.warn('儀表盤刷新失敗', err));

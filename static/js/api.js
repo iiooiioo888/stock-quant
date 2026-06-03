@@ -14,6 +14,8 @@ const Api = {
   /** GET 緩存 TTL（毫秒） */
   _cacheTtl: {
     '/api/health': 3000,
+    '/api/health/detailed': 8000,
+    '/api/health/sop': 5000,
     '/api/strategies/list': 120000,
     '/api/config': 120000,
     '/api/stocks': 30000,
@@ -510,6 +512,9 @@ const Api = {
   // ====== 快捷方法 ======
 
   async getHealth() { return this.get('/api/health'); },
+
+  /** 輕量運維 SOP（與 ops check 同規則） */
+  async getHealthSop() { return this.get('/api/health/sop', { silent: true }); },
 
   /** 下載 A 股日 K 到本地庫（異步任務） */
   async downloadStocks(codes) {

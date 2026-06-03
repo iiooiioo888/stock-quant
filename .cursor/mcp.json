@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "stock-quant": {
+      "command": "python",
+      "args": ["-m", "src.integrations.mcp.server"]
+    }
+  }
+}

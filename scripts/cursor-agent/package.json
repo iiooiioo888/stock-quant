@@ -1,0 +1,18 @@
+{
+  "name": "stock-quant-cursor-agent",
+  "private": true,
+  "type": "module",
+  "description": "Cursor SDK automations for stock-quant (local runtime + project MCP)",
+  "scripts": {
+    "ops-check": "tsx quant-ops-check.ts",
+    "ops-check:verbose": "tsx quant-ops-check.ts --verbose"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

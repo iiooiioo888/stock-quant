@@ -75,11 +75,26 @@ async def system_status():
     stats = get_db_stats()
     uptime_sec = int(time.time() - state.start_time)
 
+    sop_summary = {}
+    try:
+        from src.core.ops_health import build_health_sop_payload
+
+        sop_payload = build_health_sop_payload()
+        sop = sop_payload.get("sop") or {}
+        sop_summary = {
+            "verdict": sop.get("verdict"),
+            "verdict_zh": sop.get("verdict_zh"),
+            "checked_at": sop_payload.get("checked_at"),
+        }
+    except Exception:
+        sop_summary = {"verdict": None, "verdict_zh": "unavailable"}
+
     return {
         "version": settings.app_version,
         "uptime_seconds": uptime_sec,
         "watchlist": settings.watchlist,
         "poll_interval": settings.poll_interval_sec,
+        "sop": sop_summary,
         **stats,
     }
 

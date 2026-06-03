@@ -44,6 +44,22 @@ async def health_check():
     return cached_response("api:health", ttl=3, builder=_build)
 
 
+@router.get("/api/health/sop")
+async def health_sop():
+    """
+    輕量 SOP 健檢 — 供 Pro 總覽/設定輪詢（不含磁碟/psutil 開銷）。
+    """
+    from src.core.api_cache import cached_response
+    from src.core.ops_health import build_health_sop_payload
+
+    def _build():
+        payload = build_health_sop_payload()
+        payload["version"] = settings.app_version
+        return payload
+
+    return cached_response("api:health:sop", ttl=5, builder=_build)
+
+
 @router.get("/api/health/detailed")
 async def health_detailed():
     """
@@ -70,15 +86,24 @@ async def health_detailed():
         result["database"] = {"status": "error", "error": str(e)}
         result["status"] = "degraded"
 
-    # ---- 數據管線 / 索引 ----
+    # ---- 數據管線 / 索引 / SOP 評估（單次快照）----
     try:
-        from src.core.pipeline_observability import get_pipeline_metrics
-        from src.core.database.index_audit import audit_indexes
+        from src.core.ops_health import build_health_sop_payload, collect_ops_snapshot
 
-        result["pipeline_metrics"] = get_pipeline_metrics()
-        result["index_audit"] = audit_indexes()
-        if not result["index_audit"].get("ok"):
+        snap = collect_ops_snapshot()
+        sop_payload = build_health_sop_payload(snapshot=snap)
+        result["pipeline_metrics"] = sop_payload.get("pipeline_metrics")
+        result["index_audit"] = snap.get("index_audit")
+        if isinstance(result["index_audit"], dict) and not result["index_audit"].get("ok"):
             result["status"] = "degraded"
+        result["sop"] = sop_payload.get("sop")
+        if (result.get("sop") or {}).get("verdict") == "critical" and result["status"] == "ok":
+            result["status"] = "degraded"
+        ds = snap.get("data_sources")
+        if isinstance(ds, dict) and ds.get("degraded_categories"):
+            if result["status"] == "ok":
+                result["status"] = "degraded"
+        result["sop_checked_at"] = sop_payload.get("checked_at")
     except Exception as e:
         result["pipeline_metrics"] = {"error": str(e)}
 
@@ -95,9 +120,12 @@ async def health_detailed():
     except Exception as e:
         result["redis"] = {"available": False, "error": str(e)}
 
-    # ---- 磁盤空間 ----
+    # ---- 磁盤空間（專案 data 目錄所在磁區）----
     try:
-        disk = shutil.disk_usage("/")
+        from src.config import DATA_DIR
+
+        disk_root = str(DATA_DIR.resolve().anchor or DATA_DIR.parent)
+        disk = shutil.disk_usage(disk_root)
         result["disk"] = {
             "total_gb": round(disk.total / (1024**3), 2),
             "used_gb": round(disk.used / (1024**3), 2),

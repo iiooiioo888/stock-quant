@@ -314,6 +314,21 @@
     })
   );
 
+  /** 運維 SOP 狀態卡（由 dashboard-pro 填入內容） */
+  D.OpsStatusCardShell = () => (
+    UI.Panel({
+      title: '運維狀態',
+      right: [UI.Badge({ text: 'SOP', tone: 'bl' })],
+      body: UI.h('div', { id: 'dash-ops-root', class: 'dash-ops-host' },
+        UI.h('p', { class: 'dash-ops-loading' }, '載入中…'),
+      ),
+    })
+  );
+
+  D.renderOpsStatus = (payload) => {
+    window.StockQPro?.UI?.OpsStatus?.renderCompact?.('dash-ops-root', payload);
+  };
+
   /** 儀表盤頁面骨架（組件組裝） */
   D.buildPageLayout = () => (
     UI.h('div', { class: 'dash-page' },
@@ -359,7 +374,10 @@
         ),
       ),
       UI.h('section', { class: 'dash-section dash-section--tight' },
-        UI.h('div', { class: 'dash-kpi-row', id: 'dash-kpi-row' }),
+        UI.h('div', { class: 'dash-ops-row' },
+          D.OpsStatusCardShell(),
+          UI.h('div', { class: 'dash-kpi-row', id: 'dash-kpi-row' }),
+        ),
       ),
     )
   );

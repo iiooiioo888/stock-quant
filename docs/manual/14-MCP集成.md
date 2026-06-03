@@ -1,8 +1,10 @@
 # 14. MCP 集成
 
+> **權威文檔**：Tool 名稱、運維 SOP、SDK 自動化以 **[docs/MCP.md](../../MCP.md)** 與 **[docs/runbooks/README.md](../runbooks/README.md)** 為準；本章保留概覽。
+
 ## 14.1 概述
 
-Stock-Quant 內建 **Model Context Protocol (MCP) Server**，允許 AI Agent（如 Cursor、Claude Desktop、Qwen Code）通過標準 MCP 協議直接調用系統功能。
+Stock-Quant 內建 **Model Context Protocol (MCP) Server**，允許 AI Agent（如 Cursor、Claude Desktop）通過 stdio 調用 `sq_*` 工具（以 `docs/MCP.md` 登記表為準）。
 
 ---
 

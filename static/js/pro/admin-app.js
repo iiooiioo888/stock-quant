@@ -265,13 +265,16 @@
         fetch('/api/health').then((r) => r.json()).catch(() => null),
         fetch('/api/health/detailed').then((r) => r.json()).catch(() => null),
       ]);
+      const sop = detailed?.sop;
       const items = [
+        ['SOP 總覽', sop?.verdict_zh || '--'],
         ['版本', health?.version || '--'],
         ['運行時間', health?.uptime || '--'],
         ['本地標的', health?.total_stocks ?? '--'],
         ['日 K 記錄', health?.total_klines ?? '--'],
         ['數據庫', detailed?.database?.status === 'ok' ? '已連接' : (detailed?.database?.status || '--')],
         ['庫大小 MB', detailed?.database?.db_size_mb ?? '--'],
+        ['快取待清理', detailed?.pipeline_metrics?.cache?.pending_deferred ?? '--'],
       ];
       grid.innerHTML = items.map(([l, v]) => `
         <div class="admin-stat"><div class="v">${escapeHtml(String(v))}</div><div class="l">${escapeHtml(l)}</div></div>
