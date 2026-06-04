@@ -122,9 +122,9 @@ def _get_pg_conn():
     conn = getattr(_pg_tls, "conn", None)
     if conn:
         try: conn.execute("SELECT 1"); return conn
-        except: 
+        except Exception:
             try: conn.close()
-            except: pass
+            except Exception: pass
             _pg_tls.conn = None
     import psycopg2
     url = settings.database_url
@@ -138,7 +138,7 @@ def _reset_pg():
     conn = getattr(_pg_tls, "conn", None)
     if conn:
         try: conn.close()
-        except: pass
+        except Exception: pass
         _pg_tls.conn = None
 
 _tls = threading.local()
@@ -163,11 +163,11 @@ def get_conn():
     if is_postgres():
         conn = _get_pg_conn()
         try: yield conn; conn.commit()
-        except: conn.rollback(); raise
+        except Exception: conn.rollback(); raise
     else:
         conn = _get_thread_conn()
         try: yield conn; conn.commit()
-        except: conn.rollback(); raise
+        except Exception: conn.rollback(); raise
 
 def reset_thread_connection():
     if is_postgres(): _reset_pg()
@@ -175,5 +175,5 @@ def reset_thread_connection():
         conn = getattr(_tls, "conn", None)
         if conn:
             try: conn.close()
-            except: pass
+            except Exception: pass
             _tls.conn = None

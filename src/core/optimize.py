@@ -230,6 +230,10 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
             from src.core.backtest import STRATEGIES
             strategy_cls = STRATEGIES[strategy_name]
             cerebro = bt.Cerebro()
+            # 過濾掉策略不支持的參數（避免 TypeError: unexpected keyword argument）
+            if hasattr(strategy_cls, 'params'):
+                valid_keys = {name for name, _ in strategy_cls.params._getpairs()}
+                params = {k: v for k, v in params.items() if k in valid_keys}
             cerebro.addstrategy(strategy_cls, **params)
 
             bt_df = oos_df[["open", "high", "low", "close", "volume"]].copy()

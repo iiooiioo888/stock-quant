@@ -1168,6 +1168,24 @@ def run_backtest(
     data._name = code
     cerebro.adddata(data)
 
+    # 數據長度校驗：確保 K 線條數 >= 策略最大指標週期
+    try:
+        strat_cls = cerebro.strats[0][0]
+        max_period = 0
+        if hasattr(strat_cls, 'params'):
+            for _name, default in strat_cls.params._getpairs():
+                if isinstance(default, int) and default > max_period:
+                    max_period = default
+        if max_period > 0 and len(data) < max_period:
+            raise ValueError(
+                f"數據不足：{code} 僅 {len(data)} 條 K 線，"
+                f"策略需要至少 {max_period} 條"
+            )
+    except ValueError:
+        raise
+    except Exception:
+        pass
+
     cerebro.broker.setcash(cash)
     # 設置手續費和滑點
     # Backtrader 的 slip_perc 只作用於價格，不作用於佣金
