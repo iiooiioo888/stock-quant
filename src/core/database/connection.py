@@ -11,6 +11,10 @@ from src.config import settings
 
 _thread_local = threading.local()
 
+# 追蹤所有活躍連接（sqlite3.Connection 不支持弱引用，用 list + ID 集合）
+_active_conns: list[sqlite3.Connection] = []
+_conns_lock = threading.Lock()
+
 # SQLite 頁大小默認 4KB；負數 cache_size 表示 KB（例：-64000 ≈ 64MB）
 _DEFAULT_CACHE_PAGES_KB = -64000
 _DEFAULT_MMAP_BYTES = 268435456  # 256MB
@@ -43,6 +47,8 @@ def _get_thread_conn() -> sqlite3.Connection:
         )
         _configure_connection(conn)
         _thread_local.conn = conn
+        with _conns_lock:
+            _active_conns.append(conn)
     return conn
 
 
@@ -66,4 +72,27 @@ def reset_thread_connection() -> None:
             conn.close()
         except Exception:
             pass
+        with _conns_lock:
+            try:
+                _active_conns.remove(conn)
+            except ValueError:
+                pass
         _thread_local.conn = None
+
+
+def close_idle_connections() -> int:
+    """關閉所有追蹤的連接（供生命週期管理或定期清理調用）。
+
+    返回關閉的連接數。
+    """
+    closed = 0
+    with _conns_lock:
+        conns_snapshot = list(_active_conns)
+        _active_conns.clear()
+    for conn in conns_snapshot:
+        try:
+            conn.close()
+            closed += 1
+        except Exception:
+            pass
+    return closed

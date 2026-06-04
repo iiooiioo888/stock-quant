@@ -208,6 +208,8 @@ _pipelines: dict[str, dict] = {}  # pipeline_id -> 編排狀態
 _watchdog_stop = threading.Event()
 _watchdog_thread: Optional[threading.Thread] = None
 _MAX_LOG_LINES = 500
+_MAX_COMPLETED_LOGS = 100   # 已結束任務最多保留的日誌條目數
+_MAX_PIPELINES = 50         # 管道狀態最大保留數
 
 # ── 任務事件推送（WebSocket / SSE 等）───────────────────────────
 _broadcasters: list[Callable] = []
@@ -373,7 +375,7 @@ def can_transition(from_status: str, to_status: str) -> bool:
 
 
 def transition_task(task_id: str, to_status: str, **kwargs) -> Optional[dict]:
-    """依狀態機校驗後更新任務。"""
+    """依狀態機校驗後更新任務（check + update 在同一把鎖內完成）。"""
     with _lock:
         task = _tasks.get(task_id)
         if not task:
@@ -383,7 +385,26 @@ def transition_task(task_id: str, to_status: str, **kwargs) -> Optional[dict]:
         if not can_transition(from_s, to_s):
             logger.warning(f"任務狀態轉換拒絕: {task_id} {from_s} → {to_s}")
             return task
-    return update_task(task_id, status=to_s, **kwargs)
+        # 在鎖內直接更新狀態
+        task["status"] = to_s
+        if "progress" in kwargs:
+            task["progress"] = kwargs["progress"]
+        if "result" in kwargs:
+            task["result"] = _to_json_safe(kwargs["result"])
+        if "error" in kwargs:
+            task["error"] = kwargs["error"]
+        if to_s in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
+            task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        task["last_accessed"] = time.time()
+        task_snapshot = dict(task)
+
+    # I/O 在鎖外執行
+    _save_task_to_db(task_snapshot, force=True)
+    if to_s in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
+        _notify_task_update(task_id, f"task_{to_s}")
+    elif to_s == STATUS_RUNNING:
+        _notify_task_update(task_id, "task_started")
+    return task_snapshot
 
 
 def _to_json_safe(obj):
@@ -731,6 +752,7 @@ def ensure_task_in_memory(task_id: str) -> bool:
 
 
 def _mark_running(task_id: str) -> bool:
+    task_snapshot = None
     with _lock:
         task = _tasks.get(task_id)
         if not task:
@@ -748,7 +770,11 @@ def _mark_running(task_id: str) -> bool:
         task["started_at"] = now
         task["progress"] = max(task.get("progress", 0), 1)
         task["last_accessed"] = time.time()
-        _save_task_to_db(task, force=True)
+        task_snapshot = dict(task)
+
+    # I/O 在鎖外執行
+    if task_snapshot:
+        _save_task_to_db(task_snapshot, force=True)
     _notify_task_update(task_id, "task_started")
     return True
 
@@ -757,6 +783,11 @@ def _on_task_finished(task_id: str):
     with _lock:
         _dispatched.discard(task_id)
         _progress_throttle.pop(task_id, None)
+        # 清理已結束任務的日誌（保留少量供查詢）
+        if task_id in _task_logs:
+            buf = _task_logs[task_id]
+            if len(buf) > _MAX_COMPLETED_LOGS:
+                _task_logs[task_id] = deque(list(buf)[-_MAX_COMPLETED_LOGS:], maxlen=_MAX_LOG_LINES)
     _drain_queue()
 
 
@@ -910,6 +941,7 @@ def update_task(task_id: str, status: str = None, progress: int = None,
         if not force_db and progress < 100:
             return _tasks.get(task_id)
 
+    task_snapshot = None
     with _lock:
         task = _tasks.get(task_id)
         if not task:
@@ -935,10 +967,13 @@ def update_task(task_id: str, status: str = None, progress: int = None,
             task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         task["last_accessed"] = time.time()
-        _save_task_to_db(task, force=force_db)
+        task_snapshot = dict(task)
 
-        if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
-            _evict_old_tasks_inner()
+    # I/O 在鎖外執行，避免 Redis/SQLite 阻塞導致全局任務系統卡死
+    _save_task_to_db(task_snapshot, force=force_db)
+
+    if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
+        _evict_old_tasks()
 
     # WebSocket 推送（鎖外執行，避免死鎖）
     if status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED):
@@ -952,7 +987,7 @@ def update_task(task_id: str, status: str = None, progress: int = None,
     elif progress is not None and progress >= 0:
         _notify_task_update(task_id, "task_progress")
 
-    return task
+    return task_snapshot
 
 
 def get_task(task_id: str) -> Optional[dict]:
@@ -1465,7 +1500,24 @@ def _evict_old_tasks_inner():
     to_remove = len(_tasks) - _MAX_TASKS
     for tid, _ in done_tasks[:to_remove]:
         del _tasks[tid]
+        _task_logs.pop(tid, None)
         logger.debug(f"任務淘汰: {tid}")
+    # 清理過多的管道狀態
+    if len(_pipelines) > _MAX_PIPELINES:
+        completed_pipes = [
+            (pid, p) for pid, p in _pipelines.items()
+            if p.get("status") in ("completed", "failed")
+        ]
+        completed_pipes.sort(key=lambda x: x[1].get("completed_at", ""), reverse=False)
+        excess = len(_pipelines) - _MAX_PIPELINES
+        for pid, _ in completed_pipes[:excess]:
+            del _pipelines[pid]
+
+
+def _evict_old_tasks():
+    """在鎖外安全調用的淘汰包裝器。"""
+    with _lock:
+        _evict_old_tasks_inner()
 
 
 def recover_stale_tasks_on_startup() -> int:
@@ -1518,33 +1570,57 @@ def stop_task_watchdog() -> None:
 
 
 def cancel_all_pending() -> int:
-    """取消所有排隊中的任務。"""
+    """取消所有排隊中的任務（在鎖內完成收集+取消，消除 TOCTOU）。"""
     cancelled = 0
+    tasks_to_save = []
     with _lock:
-        pending_ids = [
-            tid for tid, t in _tasks.items()
-            if t["status"] == STATUS_PENDING
-        ]
-    for tid in pending_ids:
-        if cancel_task(tid):
+        for tid, t in list(_tasks.items()):
+            if t["status"] != STATUS_PENDING:
+                continue
+            t["status"] = STATUS_CANCELLED
+            t["error"] = "用戶批量取消"
+            t["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            t.pop("_worker_fn", None)
+            _cancel_flags[tid] = True
+            _dispatched.discard(tid)
+            tasks_to_save.append(dict(t))
             cancelled += 1
+    # I/O 在鎖外執行
+    for task_snapshot in tasks_to_save:
+        _save_task_to_db(task_snapshot, force=True)
+        _notify_task_update(task_snapshot["task_id"], "task_cancelled")
     return cancelled
 
 
 def delete_all_completed(*, include_failed: bool = True, include_cancelled: bool = True) -> int:
-    """清空已結束的歷史任務（內存）。"""
+    """清空已結束的歷史任務（在鎖內完成收集+刪除，消除 TOCTOU）。"""
     removable = {STATUS_COMPLETED}
     if include_failed:
         removable.add(STATUS_FAILED)
     if include_cancelled:
         removable.add(STATUS_CANCELLED)
-    deleted = 0
+    deleted_ids = []
     with _lock:
-        ids = [tid for tid, t in _tasks.items() if t["status"] in removable]
-    for tid in ids:
-        if delete_task(tid):
-            deleted += 1
-    return deleted
+        for tid, t in list(_tasks.items()):
+            if t["status"] in removable and tid not in _dispatched:
+                del _tasks[tid]
+                _cancel_flags.pop(tid, None)
+                _progress_throttle.pop(tid, None)
+                _task_logs.pop(tid, None)
+                deleted_ids.append(tid)
+    # DB 刪除在鎖外執行
+    if deleted_ids:
+        try:
+            from src.core.db import get_conn
+            with get_conn() as conn:
+                conn.executemany(
+                    "DELETE FROM task_log WHERE task_id = ?",
+                    [(tid,) for tid in deleted_ids],
+                )
+        except Exception:
+            pass
+        logger.info(f"批量刪除 {len(deleted_ids)} 個已完成任務")
+    return len(deleted_ids)
 
 
 def create_pipeline(steps: list[dict], title: str = "任務管道") -> dict:

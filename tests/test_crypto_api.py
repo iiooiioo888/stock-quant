@@ -22,7 +22,8 @@ SAMPLE_TICKER = {
 
 class TestCryptoService:
     def test_get_realtime_mock(self):
-        with patch("src.core.crypto.service.get_crypto_multi_realtime", return_value=[SAMPLE_TICKER]):
+        with patch("src.core.crypto.service.get_crypto_realtime", return_value=SAMPLE_TICKER), \
+             patch("src.core.crypto.service.get_crypto_symbols", return_value={"BTCUSDT": "比特幣"}):
             data = CryptoService().get_realtime(["BTCUSDT"])
         assert len(data) == 1
         assert data[0]["symbol"] == "BTCUSDT"
@@ -63,7 +64,7 @@ class TestCryptoAPI:
 
     def test_markets_crypto_realtime_compat(self, client):
         with patch(
-            "src.core.crypto.service.get_crypto_multi_realtime",
+            "src.core.crypto.service.CryptoService.get_realtime",
             return_value=[SAMPLE_TICKER],
         ):
             resp = client.get("/api/markets/crypto/realtime")

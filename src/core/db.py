@@ -213,24 +213,27 @@ def save_realtime_snapshot(df: pd.DataFrame):
         )
 
 
-def log_alert(code: str, rule_type: str, message: str, price: float):
+def log_alert(code: str, rule_type: str, message: str, price: float, user_id: int = None):
     """記錄預警日誌"""
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO alert_log (code, rule_type, message, price, triggered_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (code, rule_type, message, price, now)
+            """INSERT INTO alert_log (code, rule_type, message, price, triggered_at, user_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (code, rule_type, message, price, now, user_id)
         )
 
 
-def get_alert_logs(limit: int = 100, code: str = None) -> list[dict]:
-    """獲取預警日誌"""
-    sql = "SELECT * FROM alert_log"
-    params = []
+def get_alert_logs(limit: int = 100, code: str = None, user_id: int = None) -> list[dict]:
+    """獲取預警日誌（支持按用戶過濾）"""
+    sql = "SELECT * FROM alert_log WHERE 1=1"
+    params: list = []
+    if user_id is not None:
+        sql += " AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
     if code:
-        sql += " WHERE code = ?"
+        sql += " AND code = ?"
         params.append(code)
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
@@ -277,8 +280,8 @@ def save_backtest_result(result: dict):
             """INSERT INTO backtest_results
                (code, strategy, params, total_return_pct, sharpe_ratio, max_drawdown_pct,
                 annual_return_pct, sortino_ratio, calmar_ratio, var_95, cvar_95,
-                total_trades, win_rate_pct, initial_cash, final_value, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                total_trades, win_rate_pct, initial_cash, final_value, created_at, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 result.get("code", ""),
                 result.get("strategy", ""),
@@ -296,14 +299,18 @@ def save_backtest_result(result: dict):
                 result.get("initial_cash"),
                 result.get("final_value"),
                 now,
+                result.get("user_id"),
             )
         )
 
 
-def count_backtest_history(code: str = None, strategy: str = None) -> int:
+def count_backtest_history(code: str = None, strategy: str = None, user_id: int = None) -> int:
     """回測歷史總筆數（分頁用）。"""
     sql = "SELECT COUNT(*) FROM backtest_results WHERE 1=1"
     params: list = []
+    if user_id is not None:
+        sql += " AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
     if code:
         sql += " AND code = ?"
         params.append(code)
@@ -320,10 +327,14 @@ def get_backtest_history(
     strategy: str = None,
     limit: int = 50,
     offset: int = 0,
+    user_id: int = None,
 ) -> list[dict]:
-    """查詢回測歷史"""
+    """查詢回測歷史（支持按用戶過濾）"""
     sql = "SELECT * FROM backtest_results WHERE 1=1"
-    params = []
+    params: list = []
+    if user_id is not None:
+        sql += " AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
     if code:
         sql += " AND code = ?"
         params.append(code)
@@ -397,10 +408,14 @@ def get_latest_date(code: str) -> str | None:
     return None
 
 
-def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limit: int = 500) -> list[dict]:
-    """查詢信號歷史記錄"""
+def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limit: int = 500, user_id: int = None) -> list[dict]:
+    """查詢信號歷史記錄（支持按用戶過濾）"""
     sql = "SELECT * FROM signal_log WHERE 1=1"
-    params = []
+    params: list = []
+
+    if user_id is not None:
+        sql += " AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
 
     if code:
         sql += " AND code = ?"

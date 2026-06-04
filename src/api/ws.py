@@ -2,7 +2,7 @@
 import asyncio
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -11,28 +11,58 @@ from src.utils.logger import logger
 
 router = APIRouter(tags=["websocket"])
 
+# 每用戶最大 WebSocket 連接數
+_PER_USER_MAX_CONNECTIONS = 5
+
 
 class ConnectionManager:
     MAX_CONNECTIONS = 50
 
     def __init__(self):
         self.active: list[WebSocket] = []
+        self._user_conns: dict[int, list[WebSocket]] = {}  # user_id -> [ws, ...]
+        self._ws_user: dict[int, int] = {}  # id(ws) -> user_id
 
-    async def connect(self, ws: WebSocket):
+    async def connect(self, ws: WebSocket, user_id: Optional[int] = None):
+        # 全局連接數限制
         if len(self.active) >= self.MAX_CONNECTIONS:
             await ws.close(code=4003, reason="連接數已達上限")
             logger.warning(f"WebSocket 連接拒絕：已達上限 {self.MAX_CONNECTIONS}")
             return
+        # 每用戶連接數限制
+        if user_id is not None:
+            user_conns = self._user_conns.get(user_id, [])
+            if len(user_conns) >= _PER_USER_MAX_CONNECTIONS:
+                await ws.close(code=4003, reason="該用戶連接數已達上限")
+                logger.warning(f"WebSocket 連接拒絕：用戶 {user_id} 達上限 {_PER_USER_MAX_CONNECTIONS}")
+                return
         await ws.accept()
         self.active.append(ws)
-        logger.info(f"WebSocket 連接: {len(self.active)} 個客戶端")
+        if user_id is not None:
+            self._user_conns.setdefault(user_id, []).append(ws)
+            self._ws_user[id(ws)] = user_id
+        logger.info(f"WebSocket 連接: {len(self.active)} 個客戶端 (user={user_id})")
 
     def disconnect(self, ws: WebSocket):
         try:
             self.active.remove(ws)
         except ValueError:
             pass
+        # 清理 per-user 追蹤
+        uid = self._ws_user.pop(id(ws), None)
+        if uid is not None:
+            conns = self._user_conns.get(uid)
+            if conns:
+                try:
+                    conns.remove(ws)
+                except ValueError:
+                    pass
+                if not conns:
+                    self._user_conns.pop(uid, None)
         logger.info(f"WebSocket 斷開: {len(self.active)} 個客戶端")
+
+    def count_for_user(self, user_id: int) -> int:
+        return len(self._user_conns.get(user_id, []))
 
     async def broadcast(self, data: dict):
         text = json.dumps(data, ensure_ascii=False)
@@ -176,6 +206,7 @@ async def ws_realtime_push():
 async def websocket_endpoint(ws: WebSocket, token: str = None):
     """WebSocket 實時行情推送（依 effective_ws_auth_required 決定是否強制認證）"""
     auth_required = settings.effective_ws_auth_required
+    user_id = None
 
     if auth_required:
         if not token:
@@ -199,18 +230,24 @@ async def websocket_endpoint(ws: WebSocket, token: str = None):
         if not payload:
             await ws.close(code=4001, reason="Token 無效或已過期")
             return
+        user_id = payload.get("user_id")
     elif token:
         from src.core.auth import verify_token
-        if not verify_token(token):
+        payload = verify_token(token)
+        if not payload:
             await ws.close(code=4001, reason="Token 無效或已過期")
             logger.warning("WebSocket 連接被拒絕：提供了無效 token")
             return
+        user_id = payload.get("user_id")
 
-    await manager.connect(ws)
+    await manager.connect(ws, user_id=user_id)
     try:
         while True:
             data = await ws.receive_text()
             if data == "ping":
                 await ws.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
+        manager.disconnect(ws)
+    except Exception:
+        # 修復：捕獲所有異常（ConnectionResetError 等），避免連接洩漏
         manager.disconnect(ws)

@@ -6,6 +6,7 @@ Redis 滑動窗口限流器 — 替代 app.py 的進程內存限流。
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional
 
@@ -15,35 +16,40 @@ _PREFIX = "rl:"
 _redis_client = None
 _available = False
 _initialized = False
+_init_lock = threading.Lock()
 
 
 def _get_redis():
     global _redis_client, _available, _initialized
     if _initialized:
         return _redis_client
-    _initialized = True
-    try:
-        from src.config import settings
-        if not getattr(settings, "redis_enabled", False):
+    with _init_lock:
+        # 雙重檢查：避免多線程同時初始化
+        if _initialized:
+            return _redis_client
+        _initialized = True
+        try:
+            from src.config import settings
+            if not getattr(settings, "redis_enabled", False):
+                return None
+            import redis as redis_lib
+            url = getattr(settings, "redis_url", "redis://localhost:6379/0")
+            pwd = getattr(settings, "redis_password", "")
+            _redis_client = redis_lib.from_url(
+                url,
+                password=pwd or None,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            _redis_client.ping()
+            _available = True
+            logger.info("✅ Rate Limiter: Redis 已連接")
+            return _redis_client
+        except Exception:
+            _redis_client = None
+            _available = False
             return None
-        import redis as redis_lib
-        url = getattr(settings, "redis_url", "redis://localhost:6379/0")
-        pwd = getattr(settings, "redis_password", "")
-        _redis_client = redis_lib.from_url(
-            url,
-            password=pwd or None,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
-        _redis_client.ping()
-        _available = True
-        logger.info("✅ Rate Limiter: Redis 已連接")
-        return _redis_client
-    except Exception:
-        _redis_client = None
-        _available = False
-        return None
 
 
 def is_available() -> bool:
@@ -87,6 +93,7 @@ end
 """
 
 _script_sha: Optional[str] = None
+_script_lock = threading.Lock()
 
 
 def _load_script(r) -> str:
@@ -98,11 +105,14 @@ def _load_script(r) -> str:
             return _script_sha
         except Exception:
             _script_sha = None
-    try:
-        _script_sha = r.script_load(_SLIDING_WINDOW_LUA)
-        return _script_sha
-    except Exception:
-        return ""
+    with _script_lock:
+        if _script_sha:
+            return _script_sha
+        try:
+            _script_sha = r.script_load(_SLIDING_WINDOW_LUA)
+            return _script_sha
+        except Exception:
+            return ""
 
 
 def check_rate_limit(
@@ -179,7 +189,7 @@ def reset(client_ip: str, namespace: str = "") -> None:
 # ---------------------------------------------------------------------------
 
 class _MemoryRateLimiter:
-    """有界滑動窗口限流器（進程內存）。"""
+    """有界滑動窗口限流器（進程內存，線程安全）。"""
 
     _MAX_IPS = 10000
     _EVICT_BATCH = 2000
@@ -189,31 +199,33 @@ class _MemoryRateLimiter:
         self._store: dict[str, list[float]] = {}
         self._last_seen: dict[str, float] = {}
         self._last_full_cleanup = time.time()
+        self._lock = threading.Lock()
 
     def check(self, client_ip: str, limit: int, window_sec: int = 60) -> tuple[bool, int]:
         now = time.time()
         window_start = now - window_sec
 
-        if now - self._last_full_cleanup > self._CLEANUP_INTERVAL:
-            self._full_cleanup(now)
-            self._last_full_cleanup = now
+        with self._lock:
+            if now - self._last_full_cleanup > self._CLEANUP_INTERVAL:
+                self._full_cleanup(now)
+                self._last_full_cleanup = now
 
-        if len(self._store) >= self._MAX_IPS:
-            self._evict_oldest()
+            if len(self._store) >= self._MAX_IPS:
+                self._evict_oldest()
 
-        timestamps = self._store.get(client_ip, [])
-        timestamps = [t for t in timestamps if t > window_start]
+            timestamps = self._store.get(client_ip, [])
+            timestamps = [t for t in timestamps if t > window_start]
 
-        if len(timestamps) >= limit:
-            retry_after = int(timestamps[0] - window_start) + 1
+            if len(timestamps) >= limit:
+                retry_after = int(timestamps[0] - window_start) + 1
+                self._store[client_ip] = timestamps
+                self._last_seen[client_ip] = now
+                return False, max(retry_after, 1)
+
+            timestamps.append(now)
             self._store[client_ip] = timestamps
             self._last_seen[client_ip] = now
-            return False, max(retry_after, 1)
-
-        timestamps.append(now)
-        self._store[client_ip] = timestamps
-        self._last_seen[client_ip] = now
-        return True, 0
+            return True, 0
 
     def _evict_oldest(self):
         if len(self._last_seen) < self._EVICT_BATCH:

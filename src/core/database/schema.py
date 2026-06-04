@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS minute_kline (
 DDL_ALERT_LOG = """
 CREATE TABLE IF NOT EXISTS alert_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER,
     code        TEXT    NOT NULL,
     rule_type   TEXT    NOT NULL,
     message     TEXT    NOT NULL,
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS alert_log (
 DDL_BACKTEST_RESULTS = """
 CREATE TABLE IF NOT EXISTS backtest_results (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER,
     code            TEXT NOT NULL,
     strategy        TEXT NOT NULL,
     params          TEXT,
@@ -91,6 +93,7 @@ CREATE TABLE IF NOT EXISTS backtest_results (
 DDL_SIGNAL_LOG = """
 CREATE TABLE IF NOT EXISTS signal_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER,
     code            TEXT NOT NULL,
     strategy        TEXT NOT NULL,
     signal          TEXT NOT NULL,
@@ -474,15 +477,18 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_bt_code ON backtest_results(code)",
     "CREATE INDEX IF NOT EXISTS idx_bt_created ON backtest_results(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy_created ON backtest_results(code, strategy, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_bt_user ON backtest_results(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sig_code ON signal_log(code)",
     "CREATE INDEX IF NOT EXISTS idx_sig_triggered ON signal_log(triggered_at)",
     "CREATE INDEX IF NOT EXISTS idx_sig_strategy ON signal_log(strategy)",
+    "CREATE INDEX IF NOT EXISTS idx_sig_user ON signal_log(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_minute_code ON minute_kline(code)",
     "CREATE INDEX IF NOT EXISTS idx_minute_period ON minute_kline(period)",
     "CREATE INDEX IF NOT EXISTS idx_user_username ON users(username)",
     "CREATE INDEX IF NOT EXISTS idx_watchlist_user ON user_watchlists(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_strategy_likes_key ON strategy_likes(strategy_key)",
     "CREATE INDEX IF NOT EXISTS idx_alert_user ON user_alert_rules(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)",
     "CREATE INDEX IF NOT EXISTS idx_sector_code ON sector_data(code)",
     "CREATE INDEX IF NOT EXISTS idx_snapshot_date ON sector_snapshot(snapshot_date)",

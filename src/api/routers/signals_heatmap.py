@@ -118,22 +118,20 @@ async def get_trading_signals():
 
 
 @router.get("/api/signals/history")
-async def get_signal_history(code: str = None, strategy: str = None, days: int = 30):
-    """獲取歷史信號記錄"""
+async def get_signal_history(code: str = None, strategy: str = None, days: int = 30, user = Depends(get_current_user)):
+    """獲取歷史信號記錄（登錄用戶優先看自己的數據）"""
     from src.core.signals import get_historical_signals
     from src.core.db import get_signal_logs
 
+    user_id = user.id if user else None
     try:
         if code:
-            # 先嘗試從數據庫讀取
-            logs = get_signal_logs(code=code, strategy=strategy, days=days)
+            logs = get_signal_logs(code=code, strategy=strategy, days=days, user_id=user_id)
             if not logs:
-                # 數據庫中沒有，回放計算
                 logs = get_historical_signals(code=code, days=days, strategy=strategy)
             return {"success": True, "signals": logs, "total": len(logs)}
         else:
-            # 無 code 時直接查數據庫
-            logs = get_signal_logs(strategy=strategy, days=days)
+            logs = get_signal_logs(strategy=strategy, days=days, user_id=user_id)
             return {"success": True, "signals": logs, "total": len(logs)}
     except Exception as e:
         logger.error(f"獲取歷史信號失敗: {e}")

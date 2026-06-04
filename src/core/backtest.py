@@ -1082,6 +1082,7 @@ def run_backtest(
     circuit_breaker_dd: float = None,
     max_position_pct: float = None,
     sandbox_mode: bool = False,
+    user_id: int = None,
 ) -> dict:
     """
     執行回測並返回結果。
@@ -1406,6 +1407,8 @@ def run_backtest(
         "t1_filter": t1_info,
         # 權益曲線分析
         "equity_analysis": equity_analysis,
+        # 用戶標記
+        "user_id": user_id,
     }
 
     if circuit_breaker_dd is not None and float(circuit_breaker_dd) > 0 and nav and dates:

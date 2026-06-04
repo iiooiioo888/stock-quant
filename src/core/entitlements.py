@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +15,20 @@ from src.core.auth import require_auth
 from src.core.billing_plans import FEATURE_LABELS, plan_definition
 from src.core.db import get_conn
 from src.models.user import User
+
+# ── 配額操作的 per-user 鎖（防止 read-modify-write 競態） ──────────
+_quota_locks_lock = threading.Lock()
+_quota_locks: dict[int, threading.Lock] = {}
+
+
+def _get_user_quota_lock(user_id: int) -> threading.Lock:
+    """獲取指定用戶的配額鎖（懶初始化，線程安全）。"""
+    with _quota_locks_lock:
+        lock = _quota_locks.get(user_id)
+        if lock is None:
+            lock = threading.Lock()
+            _quota_locks[user_id] = lock
+        return lock
 
 DEFAULT_BILLING = {
     "plan_id": "free",
@@ -154,9 +169,93 @@ def usage_snapshot(user_id: int) -> dict[str, int]:
 
 
 def record_usage(user: User, metric: str) -> None:
-    """記錄當日用量（提交任務前調用）。"""
+    """記錄當日用量（提交任務前調用）。使用 per-user 鎖保證原子性。"""
     if not user or not user.id:
         return
+    lock = _get_user_quota_lock(user.id)
+    with lock:
+        today = datetime.now().strftime("%Y-%m-%d")
+        st = _load_user_settings(user.id)
+        billing = st.get("billing") if isinstance(st.get("billing"), dict) else {}
+        usage = billing.get("usage") if isinstance(billing.get("usage"), dict) else {}
+        day = usage.get(today) if isinstance(usage.get(today), dict) else {}
+        day[metric] = int(day.get(metric) or 0) + 1
+        usage[today] = day
+        billing["usage"] = usage
+        st["billing"] = billing
+        _save_user_settings(user.id, st)
+
+
+def check_and_record_usage(user: User, metric: str) -> None:
+    """原子性地檢查配額並記錄用量（消除 check_quota + record_usage 的 TOCTOU）。
+
+    Raises HTTPException 429/403 if quota exceeded.
+    """
+    from src.config import settings as app_settings
+
+    if not user or not user.id:
+        return
+    lock = _get_user_quota_lock(user.id)
+    with lock:
+        if not app_settings.billing_quota_enforce:
+            # 不 enforce 時仍記錄用量
+            _record_usage_inner(user, metric)
+            return
+
+        plan = plan_definition(effective_plan_id(user))
+        limits = plan.limits
+        limit_map = {
+            "backtest": (limits.daily_backtests, "回測"),
+            "portfolio": (limits.daily_portfolio_runs, "組合回測"),
+            "optimize": (limits.daily_optimize_runs, "參數優化"),
+            "ai_query": (limits.daily_ai_queries, "AI 問答"),
+            "walkforward": (limits.daily_walkforward, "Walk-Forward"),
+            "monte_carlo": (limits.daily_monte_carlo, "蒙特卡羅"),
+            "signal_ranking": (limits.daily_signal_ranking, "信號排名"),
+            "full_report": (limits.daily_full_report, "全面報告"),
+        }
+        cap, label = limit_map.get(metric, limit_map["backtest"])
+        if cap <= 0:
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "plan_required",
+                    "message": f"當前方案不包含{label}功能，請升級方案",
+                    "plan_id": effective_plan_id(user),
+                    "upgrade_url": "/app#/pricing",
+                },
+            )
+
+        # 讀取當前用量（在同一把鎖內，不會被其他線程干擾）
+        st = _load_user_settings(user.id)
+        billing = st.get("billing") if isinstance(st.get("billing"), dict) else {}
+        usage = billing.get("usage") if isinstance(billing.get("usage"), dict) else {}
+        today = datetime.now().strftime("%Y-%m-%d")
+        day = usage.get(today) if isinstance(usage.get(today), dict) else {}
+        current = int(day.get(metric) or 0)
+
+        if current >= cap:
+            raise HTTPException(
+                429,
+                detail={
+                    "code": "quota_exceeded",
+                    "message": f"今日{label}次數已達上限（{cap} 次/日）",
+                    "used": current,
+                    "limit": cap,
+                    "upgrade_url": "/app#/pricing",
+                },
+            )
+
+        # 原子性地遞增
+        day[metric] = current + 1
+        usage[today] = day
+        billing["usage"] = usage
+        st["billing"] = billing
+        _save_user_settings(user.id, st)
+
+
+def _record_usage_inner(user: User, metric: str) -> None:
+    """在已持有 per-user 鎖的情況下記錄用量（不檢查配額）。"""
     today = datetime.now().strftime("%Y-%m-%d")
     st = _load_user_settings(user.id)
     billing = st.get("billing") if isinstance(st.get("billing"), dict) else {}
@@ -190,15 +289,13 @@ def gate_backtest_submit(user: User | None, *, advanced: bool = False) -> None:
         if not user_has_feature(user, "backtest_advanced"):
             _feature_locked("backtest_advanced", "進階風控回測需 Pro 方案", user)
     if user:
-        check_quota(user, "backtest")
-        record_usage(user, "backtest")
+        check_and_record_usage(user, "backtest")
 
 
 def gate_optimize_submit(user: User) -> None:
     if not user:
         raise HTTPException(status_code=401, detail="參數優化需登錄")
-    check_quota(user, "optimize")
-    record_usage(user, "optimize")
+    check_and_record_usage(user, "optimize")
 
 
 def gate_compare_submit(user: User | None, codes: list) -> None:
@@ -225,8 +322,7 @@ def gate_ai_assistant(user: User) -> None:
     if not user_has_feature(user, "ai_assistant"):
         _feature_locked("ai_assistant", "AI 投研助手需 Pro 方案", user)
     if user:
-        check_quota(user, "ai_query")
-        record_usage(user, "ai_query")
+        check_and_record_usage(user, "ai_query")
 
 
 def gate_ai_strategy_recommend(user: User) -> None:
@@ -235,8 +331,7 @@ def gate_ai_strategy_recommend(user: User) -> None:
         raise HTTPException(status_code=401, detail="AI 策略推薦需登錄")
     if not user_has_feature(user, "ai_strategy_recommend"):
         _feature_locked("ai_strategy_recommend", "AI 策略推薦需 Pro+AI 方案", user)
-    check_quota(user, "ai_query")
-    record_usage(user, "ai_query")
+    check_and_record_usage(user, "ai_query")
 
 
 def gate_ai_report_interpret(user: User) -> None:
@@ -245,8 +340,7 @@ def gate_ai_report_interpret(user: User) -> None:
         raise HTTPException(status_code=401, detail="AI 報告解讀需登錄")
     if not user_has_feature(user, "ai_report_interpret"):
         _feature_locked("ai_report_interpret", "AI 回測報告解讀需 Pro 方案", user)
-    check_quota(user, "ai_query")
-    record_usage(user, "ai_query")
+    check_and_record_usage(user, "ai_query")
 
 
 def gate_ai_code_generate(user: User) -> None:
@@ -255,8 +349,7 @@ def gate_ai_code_generate(user: User) -> None:
         raise HTTPException(status_code=401, detail="AI 代碼生成需登錄")
     if not user_has_feature(user, "ai_code_generate"):
         _feature_locked("ai_code_generate", "AI 策略代碼生成需 Pro+AI 方案", user)
-    check_quota(user, "ai_query")
-    record_usage(user, "ai_query")
+    check_and_record_usage(user, "ai_query")
 
 
 def gate_ai_param_suggest(user: User) -> None:
@@ -265,8 +358,7 @@ def gate_ai_param_suggest(user: User) -> None:
         raise HTTPException(status_code=401, detail="AI 參數建議需登錄")
     if not user_has_feature(user, "ai_param_suggest"):
         _feature_locked("ai_param_suggest", "AI 參數調優建議需 Pro+AI 方案", user)
-    check_quota(user, "ai_query")
-    record_usage(user, "ai_query")
+    check_and_record_usage(user, "ai_query")
 
 
 def gate_ai_market_report(user: User) -> None:
@@ -283,8 +375,7 @@ def gate_walkforward(user: User) -> None:
         raise HTTPException(status_code=401, detail="Walk-Forward 分析需登錄")
     if not user_has_feature(user, "walkforward"):
         _feature_locked("walkforward", "Walk-Forward 分析需 Pro 方案", user)
-    check_quota(user, "walkforward")
-    record_usage(user, "walkforward")
+    check_and_record_usage(user, "walkforward")
 
 
 def gate_monte_carlo(user: User) -> None:
@@ -293,8 +384,7 @@ def gate_monte_carlo(user: User) -> None:
         raise HTTPException(status_code=401, detail="蒙特卡羅模擬需登錄")
     if not user_has_feature(user, "monte_carlo"):
         _feature_locked("monte_carlo", "蒙特卡羅模擬需 Pro 方案", user)
-    check_quota(user, "monte_carlo")
-    record_usage(user, "monte_carlo")
+    check_and_record_usage(user, "monte_carlo")
 
 
 def gate_full_report(user: User) -> None:
@@ -303,8 +393,7 @@ def gate_full_report(user: User) -> None:
         raise HTTPException(status_code=401, detail="全面回測報告需登錄")
     if not user_has_feature(user, "full_report"):
         _feature_locked("full_report", "全面回測報告需 Pro 方案", user)
-    check_quota(user, "full_report")
-    record_usage(user, "full_report")
+    check_and_record_usage(user, "full_report")
 
 
 def gate_signal_ranking(user: User) -> None:
@@ -313,8 +402,7 @@ def gate_signal_ranking(user: User) -> None:
         raise HTTPException(status_code=401, detail="信號排名需登錄")
     if not user_has_feature(user, "signal_ranking"):
         _feature_locked("signal_ranking", "信號排名需 Pro 方案", user)
-    check_quota(user, "signal_ranking")
-    record_usage(user, "signal_ranking")
+    check_and_record_usage(user, "signal_ranking")
 
 
 def gate_risk_pipeline(user: User) -> None:
@@ -359,10 +447,34 @@ def check_position_cap(user: User, position_count: int) -> None:
 
 
 def gate_concurrent_tasks(user: User) -> None:
-    """限制同時進行中的任務數（僅統計本進程記憶體任務）。"""
+    """限制同時進行中的任務數（優先使用 Redis 跨進程計數，降級到本進程記憶體）。"""
     from src.core import task_manager as tm
 
     cap = plan_definition(effective_plan_id(user)).limits.concurrent_tasks
+
+    # 優先使用 Redis 跨進程計數（多 worker 部署下準確）
+    try:
+        from src.core import task_store
+        if task_store.is_available():
+            n = task_store.count_active_by_user(user.id)
+            if n >= cap:
+                raise HTTPException(
+                    429,
+                    detail={
+                        "code": "quota_exceeded",
+                        "message": f"同時進行中的任務已達上限（{cap} 個），請稍後或升級方案",
+                        "used": n,
+                        "limit": cap,
+                        "upgrade_url": "/app#/pricing",
+                    },
+                )
+            return
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    # 降級：本進程記憶體計數
     active_status = (tm.STATUS_PENDING, tm.STATUS_RUNNING, tm.STATUS_RETRYING)
     with tm._lock:
         n = sum(
@@ -423,8 +535,7 @@ def gate_portfolio_task(user: User, *, advanced: bool = False) -> None:
             },
         )
     gate_concurrent_tasks(user)
-    check_quota(user, "portfolio")
-    record_usage(user, "portfolio")
+    check_and_record_usage(user, "portfolio")
 
 
 def check_quota(user: User, metric: str) -> None:

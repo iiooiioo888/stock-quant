@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from src.config import settings
-from src.core.auth import require_auth, require_admin
+from src.core.auth import require_auth, require_admin, get_current_user
 from src.core.db import get_conn, get_alert_logs
 from src.utils.logger import logger
 from src.api.constants import STOCK_NAMES
@@ -12,9 +12,10 @@ from src.api.dispatch import dispatch_async_task
 router = APIRouter()
 
 @router.get("/api/alerts")
-async def list_alerts(limit: int = 50, code: str = None):
-    """獲取預警歷史"""
-    logs = get_alert_logs(limit=limit, code=code)
+async def list_alerts(limit: int = 50, code: str = None, user = Depends(get_current_user)):
+    """獲取預警歷史（登錄用戶僅看自己的數據）"""
+    user_id = user.id if user else None
+    logs = get_alert_logs(limit=limit, code=code, user_id=user_id)
     return {"alerts": logs, "total": len(logs)}
 
 
@@ -113,12 +114,13 @@ def _basic_alert_rule(code: str, name: str = "", change_pct: float = 5.0) -> dic
 
 
 @router.get("/api/watchlist")
-async def list_watchlist():
-    """自選股列表（含簡要行情）。"""
+async def list_watchlist(user = Depends(get_current_user)):
+    """自選股列表（含簡要行情）。登錄用戶返回個人 + 全局合併列表。"""
     from src.api.constants import STOCK_NAMES
-    from src.core.watchlist_store import list_codes
+    from src.core.watchlist_store import list_codes_for_user
 
-    codes = list_codes()
+    user_id = user.id if user else None
+    codes = list_codes_for_user(user_id)
     quotes: dict[str, dict] = {}
     try:
         from src.core.realtime import fetch_realtime
@@ -159,7 +161,7 @@ async def add_to_watchlist(
     user = Depends(require_auth),
 ):
     """添加股票到自選 / 監控列表（需登入）；auto_rule=true 時嘗試依最新價生成預警閾值"""
-    from src.core.watchlist_store import ensure_in_watchlist, save_runtime
+    from src.core.watchlist_store import ensure_in_watchlist_for_user, save_runtime
     from src.core.admin_controls import is_allowed
 
     # 檢查自選股加入開關
@@ -194,7 +196,7 @@ async def add_to_watchlist(
             rule_hint = "（已加入；未取得最新價，預警閾值請稍後編輯）"
 
     settings.alert_rules[code] = rule
-    ensure_in_watchlist(code)
+    ensure_in_watchlist_for_user(code, user.id)
     save_runtime()
     display = rule.get("name") or code
     return {
@@ -206,12 +208,13 @@ async def add_to_watchlist(
 
 
 @router.delete("/api/watchlist/{code}")
-async def remove_from_watchlist(code: str):
-    """從自選列表移除。"""
-    from src.core.watchlist_store import remove_from_watchlist as _remove
+async def remove_from_watchlist(code: str, user = Depends(get_current_user)):
+    """從自選列表移除。登錄用戶同時從個人列表移除。"""
+    from src.core.watchlist_store import remove_from_watchlist_for_user
 
     code = _normalize_watchlist_code(code)
-    if not _remove(code):
+    user_id = user.id if user else None
+    if not remove_from_watchlist_for_user(code, user_id):
         raise HTTPException(404, f"自選列表中無 {code}")
     return {
         "success": True,

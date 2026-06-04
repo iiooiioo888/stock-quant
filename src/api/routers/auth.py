@@ -286,12 +286,10 @@ async def user_delete_alert(alert_id: int, user = Depends(require_auth)):
 
 @router.get("/api/user/backtest-history")
 async def user_backtest_history(user = Depends(require_auth), limit: int = 50):
-    """獲取當前用戶的回測歷史（通過 user_id 標記）"""
-    # 注意：現有 backtest_results 表沒有 user_id 字段，
-    # 這裡返回全局歷史（向後兼容），未來可擴展為按用戶隔離
+    """獲取當前用戶的回測歷史"""
     from src.core.db import get_backtest_history
-    results = get_backtest_history(limit=limit)
-    return {"success": True, "results": results, "total": len(results), "note": "全局歷史（用戶隔離待擴展）"}
+    results = get_backtest_history(limit=limit, user_id=user.id)
+    return {"success": True, "results": results, "total": len(results)}
 
 
 # ====== 管理員 API ======

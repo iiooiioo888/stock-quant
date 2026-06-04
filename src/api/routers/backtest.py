@@ -78,6 +78,7 @@ async def run_backtest_api(
             trailing_stop_pct=trailing_stop_pct, benchmark=benchmark,
             timeframe=timeframe,
             task_id=task_id,
+            user_id=user.id if user else None,
         )
 
     return dispatch_async_task(
@@ -179,6 +180,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
             task_id=task_id,
             circuit_breaker_dd=circuit_breaker_dd,
             max_position_pct=max_position_pct,
+            user_id=user.id,
         )
 
     return dispatch_async_task(
@@ -369,16 +371,18 @@ async def backtest_history(
     limit: int = 50,
     offset: int = 0,
     page_size: int = None,
+    user = Depends(get_current_user),
 ):
-    """查詢回測歷史（limit/offset 或 page_size 分頁）"""
+    """查詢回測歷史（登錄用戶優先看自己的數據）"""
     from src.core.db import count_backtest_history, get_backtest_history
 
+    user_id = user.id if user else None
     page_limit = page_size if page_size is not None else limit
     page_limit = max(1, min(int(page_limit), 100))
     page_offset = max(0, int(offset))
-    total = count_backtest_history(code=code, strategy=strategy)
+    total = count_backtest_history(code=code, strategy=strategy, user_id=user_id)
     results = get_backtest_history(
-        code=code, strategy=strategy, limit=page_limit, offset=page_offset,
+        code=code, strategy=strategy, limit=page_limit, offset=page_offset, user_id=user_id,
     )
     return {
         "results": results,

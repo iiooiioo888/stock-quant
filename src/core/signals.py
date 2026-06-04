@@ -369,13 +369,14 @@ def _save_signals(signals: list[dict]):
     try:
         with get_conn() as conn:
             conn.executemany(
-                """INSERT INTO signal_log (code, strategy, signal, price, strength, params, triggered_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO signal_log (code, strategy, signal, price, strength, params, triggered_at, user_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         s["code"], s["strategy"], s["signal"],
                         s.get("price"), s.get("strength", 0),
                         s.get("params", "{}"), s["triggered_at"],
+                        s.get("user_id"),
                     )
                     for s in rows
                 ],

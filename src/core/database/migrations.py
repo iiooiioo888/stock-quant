@@ -172,6 +172,27 @@ def _migration_008_strategy_likes(conn: sqlite3.Connection) -> None:
         logger.debug(f"strategy_likes 索引跳過: {e}")
 
 
+def _migration_009_user_isolation(conn: sqlite3.Connection) -> None:
+    """回測/預警/信號添加 user_id 列，實現多用戶數據隔離。"""
+    for table in ("backtest_results", "alert_log", "signal_log"):
+        if _table_exists(conn, table) and not _column_exists(conn, table, "user_id"):
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER")
+            except sqlite3.OperationalError as e:
+                logger.debug(f"{table}.user_id 欄位: {e}")
+
+    extra_indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_bt_user ON backtest_results(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_alert_user_id ON alert_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sig_user ON signal_log(user_id)",
+    ]
+    for idx in extra_indexes:
+        try:
+            conn.execute(idx)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"user_isolation 索引跳過: {e}")
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline_schema", _migration_001_baseline),
     (2, "legacy_column_patches", _migration_002_legacy_columns),
@@ -181,6 +202,7 @@ MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (6, "multi_currency_settlement", _migration_006_multi_currency),
     (7, "portfolio_transaction_ledger", _migration_007_portfolio_ledger),
     (8, "strategy_likes", _migration_008_strategy_likes),
+    (9, "user_isolation_backtest_alerts_signals", _migration_009_user_isolation),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

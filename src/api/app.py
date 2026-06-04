@@ -124,14 +124,30 @@ async def lifespan(app: FastAPI):
 
     # 啟動 WebSocket 後台推送
     import asyncio
-    from src.api.ws import set_event_loop, sync_broadcast
+    from src.api.ws import set_event_loop, sync_broadcast, ws_realtime_push
     from src.api.sse import set_event_loop as set_sse_loop, sync_publish as sse_publish
     from src.core.task_manager import register_ws_broadcaster, register_task_broadcaster
     set_event_loop(asyncio.get_running_loop())
     set_sse_loop(asyncio.get_running_loop())
     register_ws_broadcaster(sync_broadcast)
     register_task_broadcaster(sse_publish)
-    _ws_task = asyncio.create_task(ws_realtime_push())
+
+    async def _ws_push_with_restart():
+        """WebSocket 推送任務：異常時自動重啟（最多連續 5 次）。"""
+        consecutive_failures = 0
+        max_failures = 5
+        while consecutive_failures < max_failures:
+            try:
+                await ws_realtime_push()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                consecutive_failures += 1
+                logger.warning(f"WebSocket 推送任務異常（{consecutive_failures}/{max_failures}）: {e}")
+                await asyncio.sleep(min(5 * consecutive_failures, 30))
+        logger.error(f"WebSocket 推送任務連續失敗 {max_failures} 次，已停止重啟")
+
+    _ws_task = asyncio.create_task(_ws_push_with_restart())
 
     try:
         from src.core.task_manager import (
