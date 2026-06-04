@@ -662,8 +662,10 @@ def setup_from_settings():
 
     if settings.scheduler_job_daily_download:
         enable_daily_full_download()
+        enable_crypto_5m_download()
     else:
         disable_daily_full_download()
+        disable_crypto_5m_download()
 
     jobs = list_jobs()
     logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")
@@ -706,6 +708,48 @@ def enable_daily_full_download(codes: list[str] = None):
         name="每日數據爬取",
     )
     logger.info("已啟用每日數據爬取 (09:00)")
+
+
+
+
+def enable_crypto_5m_download(symbols: list[str] = None):
+    """啟用加密貨幣 5 分鐘 K 線下載（每天 09:05）"""
+    from src.config import settings
+
+    scheduler = _get_scheduler()
+    _remove_job_safe("crypto_5m_download")
+
+    def _job_impl(task_id: str):
+        logger.info("執行加密貨幣 5 分鐘 K 線下載...")
+        from src.core.crypto_5m_download import download_crypto_5m_all
+        result = download_crypto_5m_all(symbols=symbols, days=7)
+        updated = result.get("updated", 0)
+        total = result.get("total", 0)
+        logger.info(f"5 分鐘 K 線下載完成: {updated} 只, {total} 條記錄")
+        return result
+
+    scheduler.add_job(
+        _wrap_scheduled_job(
+            "crypto_5m_download",
+            "加密貨幣5分鐘K線",
+            _job_impl,
+            task_type="data_incremental",
+            extra_params={"symbols": symbols or ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]},
+            pass_task_id=True,
+        ),
+        "cron",
+        hour=9,
+        minute=5,
+        id="crypto_5m_download",
+        replace_existing=True,
+        name="加密貨幣5分鐘K線",
+    )
+    logger.info("已啟用加密貨幣 5 分鐘 K 線下載 (09:05)")
+
+
+def disable_crypto_5m_download():
+    _remove_job_safe("crypto_5m_download")
+    logger.info("已禁用加密貨幣 5 分鐘 K 線下載")
 
 
 def disable_daily_full_download():
