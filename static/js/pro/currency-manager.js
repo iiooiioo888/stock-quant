@@ -90,6 +90,7 @@
       const allocEl = document.getElementById('portfolio-allocation');
       const fxTime = document.getElementById('fx-time');
       try {
+        if (!(typeof Api !== 'undefined' && Api._token)) return;
         const data = await Api.get(`/api/portfolio/summary?currency=${this.current}`, { silent: true });
         if (!data?.success) return;
         this.lastSummary = data;

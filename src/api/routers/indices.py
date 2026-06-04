@@ -53,7 +53,7 @@ async def get_indices_charts(
 
         instruments = _pick_instruments()
         indices = []
-        workers = min(12, max(4, len(instruments) // 8 + 4))
+        workers = min(6, max(2, len(instruments) // 12 + 2))
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {
@@ -107,7 +107,7 @@ async def get_indices_charts(
             "providers": _provider_status(indices),
         }
 
-    ttl = 45 if scope == "topbar" else 120
+    ttl = 120 if scope == "topbar" else 300
     return cached_response(cache_key, ttl=ttl, builder=_build)
 
 

@@ -236,6 +236,11 @@
       return;
     }
     try {
+      if (!(typeof Api !== 'undefined' && Api._token)) {
+        el.innerHTML = `<span class="alloc-rail-total">${totalMv > 0 ? totalMv.toLocaleString() : '—'}</span>`
+          + `<span class="alloc-rail-sub">${rows.length} 檔 · ${weightLabel()}</span>`;
+        return;
+      }
       const curr = window.StockQPro?.CurrencyManager?.current || 'MOP';
       const d = await Api.get(`/api/portfolio/summary?currency=${curr}`, { silent: true });
       const fmt = window.StockQPro?.CurrencyManager?.format?.bind(window.StockQPro.CurrencyManager)

@@ -387,7 +387,7 @@ def _fetch_catalog_primary(symbol: str, days: int) -> tuple[pd.DataFrame, dict, 
 
 
 def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
-    """首頁指數卡片：K 線 + 報價（IB → TV → 多源降級）"""
+    """首頁指數卡片：K 線 + 報價（本地優先 → 外部降級）"""
     from src.core.market_catalog import lookup_instrument
 
     inst = lookup_instrument(symbol)
@@ -395,16 +395,25 @@ def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
     tv_symbol = inst.tv if inst else ""
     topbar = inst.topbar if inst else True
 
-    df, quote, primary_source = _fetch_catalog_primary(symbol, days)
-    hist_source = primary_source
-    quote_source = primary_source
+    quote = {}
+    quote_source = ""
 
+    # 1. 先查本地數據庫（最快）
+    df, hist_source = fetch_history_df(symbol, days, skip_catalog=True)
+    
+    # 2. 本地無數據時才打外部 API
     if df.empty or len(df) < 2:
-        df, hist_source = fetch_history_df(symbol, days, skip_catalog=True)
+        df_ext, quote_ext, primary_source = _fetch_catalog_primary(symbol, days)
+        if not df_ext.empty and len(df_ext) >= 2:
+            df = df_ext
+            hist_source = primary_source
+            quote = quote_ext or {}
+            quote_source = primary_source
         if df.empty or len(df) < 2:
             return None
 
-    if not quote:
+    # 3. 只在沒有報價時才單獨請求
+    if not quote or not quote.get("price"):
         quote, quote_source = fetch_quote(symbol)
 
     latest, change, change_pct = _metrics_from_df(df)
