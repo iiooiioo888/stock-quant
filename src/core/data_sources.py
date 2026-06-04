@@ -4,12 +4,36 @@
 集中管理所有數據源的配置、健康檢查、自動降級邏輯。
 每個數據源統一接口：fetch_quote(symbol) / fetch_history(symbol, start)
 """
+import os
+import random
 import time
 from typing import Optional
 
 import requests
 
 from src.utils.logger import logger
+
+# ── UA 池（隨機指紋） ────────────────────────────────────────
+
+_UA_POOL = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+]
+
+_ACCEPT_LANGS = [
+    "zh-CN,zh;q=0.9,en;q=0.8",
+    "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "en-US,en;q=0.9,zh-CN;q=0.8",
+    "en-GB,en;q=0.9",
+]
+
+_PROXY_URL = os.environ.get("SQ_PROXY_URL", "").strip()
+_PROXY_POOL_URL = os.environ.get("SQ_PROXY_POOL_URL", "").strip()
 
 
 class DataSource:
@@ -106,13 +130,31 @@ class DataSource:
 _session_pool: dict[str, requests.Session] = {}
 
 
+def _apply_proxy(session: requests.Session) -> None:
+    """為 Session 配置代理（單 proxy 或 proxy pool）。"""
+    if _PROXY_URL:
+        session.proxies = {"http": _PROXY_URL, "https": _PROXY_URL}
+        return
+    if _PROXY_POOL_URL:
+        try:
+            resp = requests.get(_PROXY_POOL_URL, timeout=5)
+            resp.raise_for_status()
+            proxy = resp.text.strip()
+            if proxy:
+                session.proxies = {"http": proxy, "https": proxy}
+        except Exception as e:
+            logger.debug(f"代理池 { _PROXY_POOL_URL} 獲取失敗: {e}")
+
+
 def _get_session(name: str, headers: dict = None) -> requests.Session:
-    """獲取或創建共享 Session"""
+    """獲取或創建共享 Session（隨機 UA + 可選代理）。"""
     if name not in _session_pool:
         s = requests.Session()
         s.headers.update(headers or {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": random.choice(_UA_POOL),
+            "Accept-Language": random.choice(_ACCEPT_LANGS),
         })
+        _apply_proxy(s)
         _session_pool[name] = s
     return _session_pool[name]
 

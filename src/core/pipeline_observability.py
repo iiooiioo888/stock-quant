@@ -95,7 +95,7 @@ def get_pipeline_metrics() -> dict[str, Any]:
     from src.core.data_pipeline import get_deferred_cache_clear_count
 
     with _lock:
-        return {
+        metrics = {
             "uptime_sec": int(time.time() - _started_at),
             "cache": {
                 "defer_total": _cache_defer,
@@ -111,6 +111,22 @@ def get_pipeline_metrics() -> dict[str, Any]:
                 "resolve_financials": dict(sorted(_financials_resolve.items())),
             },
         }
+
+    # 熔斷器狀態（無需鎖，內部自行同步）
+    try:
+        from src.core.circuit_breaker import get_all_breakers
+
+        breakers = get_all_breakers()
+        tripped = {k: v for k, v in breakers.items() if v.get("is_open")}
+        metrics["circuit_breakers"] = {
+            "total": len(breakers),
+            "tripped": len(tripped),
+            "sources": breakers,
+        }
+    except Exception:
+        metrics["circuit_breakers"] = {"total": 0, "tripped": 0, "sources": {}}
+
+    return metrics
 
 
 def reset_pipeline_metrics() -> None:

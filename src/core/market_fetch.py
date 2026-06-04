@@ -15,6 +15,7 @@ from typing import Optional
 
 import pandas as pd
 
+from src.core.circuit_breaker import CircuitBreakerOpenError, circuit_breaker
 from src.core.data_sources import get_session
 from src.core.yahoo_finance import (
     a_share_to_yahoo,
@@ -99,6 +100,7 @@ def _fetch_local_kline(symbol: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@circuit_breaker("eastmoney", failure_threshold=3, recovery_timeout=120)
 def _fetch_eastmoney_kline(symbol: str, days: int) -> pd.DataFrame:
     secid = _em_secid_for_kline(symbol)
     if not secid:
@@ -145,6 +147,42 @@ def _fetch_eastmoney_kline(symbol: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+# ── 外部調用熔斷封裝 ─────────────────────────────────────────
+
+@circuit_breaker("yahoo_chart", failure_threshold=5, recovery_timeout=180)
+def _fetch_yahoo_chart(symbol: str, range_str: str, interval: str) -> pd.DataFrame:
+    return yahoo_chart(symbol, range_str=range_str, interval=interval)
+
+
+@circuit_breaker("yahoo_quote", failure_threshold=5, recovery_timeout=180)
+def _fetch_yahoo_quote(symbol: str) -> dict:
+    return yahoo_quote(symbol) or {}
+
+
+@circuit_breaker("global_download", failure_threshold=3, recovery_timeout=120)
+def _fetch_global_download(symbol: str, start_date: str) -> pd.DataFrame:
+    from src.core.global_market import download_global_symbol
+    return download_global_symbol(symbol, start_date=start_date)
+
+
+@circuit_breaker("global_realtime", failure_threshold=3, recovery_timeout=120)
+def _fetch_global_realtime(symbols: list[str]) -> list[dict]:
+    from src.core.global_market import get_global_realtime
+    return get_global_realtime(symbols)
+
+
+@circuit_breaker("ib_bundle", failure_threshold=3, recovery_timeout=300)
+def _fetch_ib_bundle(ib_symbol: str, days: int) -> tuple:
+    from src.core.ib_data import fetch_ib_bundle
+    return fetch_ib_bundle(ib_symbol, days)
+
+
+@circuit_breaker("tv_bundle", failure_threshold=3, recovery_timeout=180)
+def _fetch_tv_bundle(tv_symbol: str, scanner: str, days: int, symbol: str) -> tuple:
+    from src.core.tradingview_data import fetch_tv_bundle
+    return fetch_tv_bundle(tv_symbol, scanner, days, symbol)
+
+
 def fetch_history_df(
     symbol: str,
     days: int = 90,
@@ -188,7 +226,12 @@ def fetch_history_df(
 
     # 2. Yahoo Finance
     yahoo_sym = a_share_to_yahoo(symbol) if code else symbol
-    df = yahoo_chart(yahoo_sym, range_str=days_to_yahoo_range(days), interval="1d")
+    try:
+        df = _fetch_yahoo_chart(yahoo_sym, range_str=days_to_yahoo_range(days), interval="1d")
+    except CircuitBreakerOpenError:
+        df = pd.DataFrame()
+    except Exception:
+        df = pd.DataFrame()
     if not df.empty:
         df = df.tail(days).reset_index(drop=True)
         out, src = _return_online(df, "yahoo")
@@ -196,7 +239,12 @@ def fetch_history_df(
             return out, src
 
     # 3. 東方財富
-    df = _fetch_eastmoney_kline(symbol, days)
+    try:
+        df = _fetch_eastmoney_kline(symbol, days)
+    except CircuitBreakerOpenError:
+        df = pd.DataFrame()
+    except Exception:
+        df = pd.DataFrame()
     if not df.empty and len(df) >= 2:
         out, src = _return_online(df, "eastmoney")
         if not out.empty:
@@ -204,15 +252,15 @@ def fetch_history_df(
 
     # 4. 全球模塊（Yahoo + Twelve Data）
     try:
-        from src.core.global_market import download_global_symbol
-
         start = (datetime.now() - timedelta(days=days + 60)).strftime("%Y%m%d")
-        df = download_global_symbol(yahoo_sym, start_date=start)
+        df = _fetch_global_download(yahoo_sym, start_date=start)
         if not df.empty:
             df = df.tail(days).reset_index(drop=True)
             out, src = _return_online(df, "global")
             if not out.empty:
                 return out, src
+    except CircuitBreakerOpenError:
+        pass
     except Exception as e:
         logger.debug(f"全球下載 {symbol} 失敗: {e}")
 
@@ -235,17 +283,22 @@ def fetch_quote(symbol: str) -> tuple[dict, str]:
         except Exception as e:
             logger.debug(f"A 股實時 {code} 失敗: {e}")
 
-    q = yahoo_quote(yahoo_sym) or {}
+    try:
+        q = _fetch_yahoo_quote(yahoo_sym)
+    except CircuitBreakerOpenError:
+        q = {}
+    except Exception:
+        q = {}
     if q.get("price"):
         q.setdefault("source", "yahoo")
         return q, "yahoo"
 
     try:
-        from src.core.global_market import get_global_realtime
-
-        rows = get_global_realtime([yahoo_sym])
+        rows = _fetch_global_realtime([yahoo_sym])
         if rows:
             return rows[0], rows[0].get("source", "global")
+    except CircuitBreakerOpenError:
+        pass
     except Exception as e:
         logger.debug(f"全球報價 {symbol} 失敗: {e}")
 
@@ -311,22 +364,22 @@ def _fetch_catalog_primary(symbol: str, days: int) -> tuple[pd.DataFrame, dict, 
     # 1. Interactive Brokers
     if inst.ib and settings and getattr(settings, "ib_enabled", False):
         try:
-            from src.core.ib_data import fetch_ib_bundle
-
-            df, quote, src = fetch_ib_bundle(inst.ib, days)
+            df, quote, src = _fetch_ib_bundle(inst.ib, days)
             if not df.empty or quote.get("price"):
                 return df, quote, src
+        except CircuitBreakerOpenError:
+            pass
         except Exception as e:
             logger.debug(f"IB 目錄 {symbol} 失敗: {e}")
 
     # 2. TradingView
     if inst.tv and (not settings or getattr(settings, "tradingview_enabled", True)):
         try:
-            from src.core.tradingview_data import fetch_tv_bundle
-
-            df, quote, src = fetch_tv_bundle(inst.tv, inst.scanner, days, inst.symbol)
+            df, quote, src = _fetch_tv_bundle(inst.tv, inst.scanner, days, inst.symbol)
             if not df.empty or quote.get("price"):
                 return df, quote, src
+        except CircuitBreakerOpenError:
+            pass
         except Exception as e:
             logger.debug(f"TradingView 目錄 {symbol} 失敗: {e}")
 

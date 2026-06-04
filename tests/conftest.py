@@ -18,6 +18,7 @@ os.environ.setdefault("SQ_DEMO_MODE", "true")
 os.environ.setdefault("SQ_LOCAL_FIRST_AUTO_FETCH", "false")
 os.environ.setdefault("SQ_BILLING_QUOTA_ENFORCE", "false")
 os.environ.setdefault("SQ_RATE_LIMIT_PER_MINUTE", "10000")
+os.environ.setdefault("SQ_WRITE_QUEUE", "0")  # 測試環境禁用寫入隊列，確保同步寫入
 
 import pytest
 from fastapi.testclient import TestClient

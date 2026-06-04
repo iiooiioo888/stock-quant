@@ -1,7 +1,10 @@
 """
-數據庫操作層 — SQLite 讀寫封裝（含 LRU 緩存 + 線程本地連接池）
+數據庫操作層 — SQLite 讀寫封裝（含 LRU 緩存 + 線程本地連接池 + 寫入隊列）
 """
+import os
+import queue
 import sqlite3
+import threading
 import time
 from functools import lru_cache
 
@@ -17,6 +20,123 @@ _codes_cache: dict = {"ts": 0.0, "data": []}
 _db_stats_cache: dict = {"ts": 0.0, "data": {}}
 _STATS_CACHE_TTL = 5.0
 _CODES_CACHE_TTL = 30.0
+
+# ============================================================
+# Writer Queue — 批量寫入，降低 SQLite 併發鎖競爭
+# ============================================================
+_WRITE_QUEUE_ENABLED = os.environ.get("SQ_WRITE_QUEUE", "1").strip().lower() in ("1", "true", "yes")
+_write_queue: queue.Queue = queue.Queue(maxsize=5000)
+_write_flush_event = threading.Event()
+_writer_started = False
+_writer_lock = threading.Lock()
+
+# SQL 模板（供 writer thread 批量執行）
+_SQL_KLINE_UPSERT = """INSERT OR REPLACE INTO daily_kline
+    (code, date, open, high, low, close, volume, amount, turnover, market)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+_SQL_BACKTEST_INSERT = """INSERT INTO backtest_results
+    (code, strategy, params, total_return_pct, sharpe_ratio, max_drawdown_pct,
+     annual_return_pct, sortino_ratio, calmar_ratio, var_95, cvar_95,
+     total_trades, win_rate_pct, initial_cash, final_value, created_at, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+_SQL_REALTIME_UPSERT = """INSERT OR REPLACE INTO realtime_snapshot
+    (code, name, price, change_pct, volume, amount,
+     high, low, open, prev_close, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+_SQL_MINUTE_UPSERT = """INSERT OR REPLACE INTO minute_kline
+    (code, datetime, period, open, high, low, close, volume, amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+_SQL_ALERT_INSERT = """INSERT INTO alert_log
+    (code, rule_type, message, price, triggered_at, user_id)
+    VALUES (?, ?, ?, ?, ?, ?)"""
+
+
+def _ensure_writer() -> None:
+    global _writer_started
+    if _writer_started:
+        return
+    with _writer_lock:
+        if _writer_started:
+            return
+        t = threading.Thread(target=_writer_loop, daemon=True, name="db-writer")
+        t.start()
+        _writer_started = True
+
+
+def _writer_loop() -> None:
+    while True:
+        _write_flush_event.clear()
+        first = _write_queue.get()
+        if first is None:
+            _drain_queue()
+            _write_flush_event.set()
+            return
+        batch = [first]
+        try:
+            while len(batch) < 100:
+                batch.append(_write_queue.get_nowait())
+        except queue.Empty:
+            pass
+        _execute_batch(batch)
+        if _write_queue.empty():
+            _write_flush_event.set()
+
+
+def _drain_queue() -> None:
+    remaining = []
+    try:
+        while True:
+            remaining.append(_write_queue.get_nowait())
+    except queue.Empty:
+        pass
+    if remaining:
+        _execute_batch(remaining)
+
+
+def _execute_batch(batch: list) -> None:
+    by_type: dict[str, list] = {}
+    for item in batch:
+        by_type.setdefault(item[0], []).append(item[1])
+
+    for retries in range(3):
+        try:
+            with get_conn() as conn:
+                for op, rows in by_type.items():
+                    if op == "kline":
+                        conn.executemany(_SQL_KLINE_UPSERT, rows)
+                    elif op == "backtest":
+                        conn.executemany(_SQL_BACKTEST_INSERT, rows)
+                    elif op == "realtime":
+                        conn.executemany(_SQL_REALTIME_UPSERT, rows)
+                    elif op == "minute":
+                        conn.executemany(_SQL_MINUTE_UPSERT, rows)
+                    elif op == "alert":
+                        conn.executemany(_SQL_ALERT_INSERT, rows)
+            return
+        except Exception as e:
+            if retries < 2:
+                time.sleep(0.05 * (retries + 1))
+            else:
+                logger.error(f"寫入隊列批量失敗 ({len(batch)} 條): {e}")
+
+
+def flush_write_queue(timeout: float = 10.0) -> bool:
+    """等待寫入隊列排空（用於進程退出前）。"""
+    if not _WRITE_QUEUE_ENABLED or not _writer_started:
+        return True
+    _write_flush_event.clear()
+    _write_queue.put(None)
+    return _write_flush_event.wait(timeout=timeout)
+
+
+def _enqueue(op: str, rows: list) -> None:
+    _ensure_writer()
+    for row in rows:
+        _write_queue.put((op, row))
 
 
 # get_conn 由 src.core.database.connection 提供（向後兼容 re-export）
@@ -109,13 +229,11 @@ def save_daily_kline(df: pd.DataFrame, code: str, market: str = "a_share") -> in
         [market] * len(df),
     ))
 
-    with get_conn() as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO daily_kline
-               (code, date, open, high, low, close, volume, amount, turnover, market)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            records
-        )
+    if _WRITE_QUEUE_ENABLED:
+        _enqueue("kline", records)
+    else:
+        with get_conn() as conn:
+            conn.executemany(_SQL_KLINE_UPSERT, records)
     logger.debug(f"保存 {code} 日K: {len(records)} 條 (market={market})")
     return len(records)
 
@@ -203,26 +321,23 @@ def save_realtime_snapshot(df: pd.DataFrame):
         [now] * len(df),
     ))
 
-    with get_conn() as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO realtime_snapshot
-               (code, name, price, change_pct, volume, amount,
-                high, low, open, prev_close, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            records
-        )
+    if _WRITE_QUEUE_ENABLED:
+        _enqueue("realtime", records)
+    else:
+        with get_conn() as conn:
+            conn.executemany(_SQL_REALTIME_UPSERT, records)
 
 
 def log_alert(code: str, rule_type: str, message: str, price: float, user_id: int = None):
     """記錄預警日誌"""
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with get_conn() as conn:
-        conn.execute(
-            """INSERT INTO alert_log (code, rule_type, message, price, triggered_at, user_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (code, rule_type, message, price, now, user_id)
-        )
+    row = (code, rule_type, message, price, now, user_id)
+    if _WRITE_QUEUE_ENABLED:
+        _enqueue("alert", [row])
+    else:
+        with get_conn() as conn:
+            conn.execute(_SQL_ALERT_INSERT, row)
 
 
 def get_alert_logs(limit: int = 100, code: str = None, user_id: int = None) -> list[dict]:
@@ -275,33 +390,30 @@ def save_backtest_result(result: dict):
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     params_json = json.dumps(result.get("params", {}), ensure_ascii=False)
-    with get_conn() as conn:
-        conn.execute(
-            """INSERT INTO backtest_results
-               (code, strategy, params, total_return_pct, sharpe_ratio, max_drawdown_pct,
-                annual_return_pct, sortino_ratio, calmar_ratio, var_95, cvar_95,
-                total_trades, win_rate_pct, initial_cash, final_value, created_at, user_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                result.get("code", ""),
-                result.get("strategy", ""),
-                params_json,
-                result.get("total_return_pct"),
-                result.get("sharpe_ratio"),
-                result.get("max_drawdown_pct"),
-                result.get("annual_return_pct"),
-                result.get("sortino_ratio"),
-                result.get("calmar_ratio"),
-                result.get("var_95"),
-                result.get("cvar_95"),
-                result.get("total_trades"),
-                result.get("win_rate_pct"),
-                result.get("initial_cash"),
-                result.get("final_value"),
-                now,
-                result.get("user_id"),
-            )
-        )
+    row = (
+        result.get("code", ""),
+        result.get("strategy", ""),
+        params_json,
+        result.get("total_return_pct"),
+        result.get("sharpe_ratio"),
+        result.get("max_drawdown_pct"),
+        result.get("annual_return_pct"),
+        result.get("sortino_ratio"),
+        result.get("calmar_ratio"),
+        result.get("var_95"),
+        result.get("cvar_95"),
+        result.get("total_trades"),
+        result.get("win_rate_pct"),
+        result.get("initial_cash"),
+        result.get("final_value"),
+        now,
+        result.get("user_id"),
+    )
+    if _WRITE_QUEUE_ENABLED:
+        _enqueue("backtest", [row])
+    else:
+        with get_conn() as conn:
+            conn.execute(_SQL_BACKTEST_INSERT, row)
 
 
 def count_backtest_history(code: str = None, strategy: str = None, user_id: int = None) -> int:
@@ -486,13 +598,11 @@ def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
             float(row.get("amount", row.get("成交额", 0))),
         ))
 
-    with get_conn() as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO minute_kline
-               (code, datetime, period, open, high, low, close, volume, amount)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            records
-        )
+    if _WRITE_QUEUE_ENABLED:
+        _enqueue("minute", records)
+    else:
+        with get_conn() as conn:
+            conn.executemany(_SQL_MINUTE_UPSERT, records)
     logger.debug(f"保存 {code} {period} 分鐘K: {len(records)} 條")
     return len(records)
 
