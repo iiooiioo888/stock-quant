@@ -1,7 +1,7 @@
 /* global Api */
 
 /**
- * NDJSON ReadableStream 增量解析（配合 /api/*/stream 端點）
+ * NDJSON ReadableStream 增量解析（配合 /api/…/stream 端點）
  */
 (() => {
   async function fetchStream(url, onChunk, onComplete, opts = {}) {

@@ -26,7 +26,7 @@
     '/static/js/signal-labels.js?v=legacy-pro-20260527',
     '/static/js/stock-picker.js?v=pf-grid-20260527',
     '/static/js/backtest.js?v=legacy-pro-20260527',
-    '/static/js/optimize.js?v=legacy-pro-20260527',
+    '/static/js/optimize.js?v=fix-comment-20260530',
     '/static/js/portfolio.js?v=pf-method-20260527',
     '/static/js/signals.js?v=legacy-pro-20260527',
     '/static/js/heatmap.js?v=legacy-pro-20260527',
@@ -36,7 +36,7 @@
     '/static/js/scheduler.js?v=legacy-pro-20260527',
     '/static/js/crypto.js?v=legacy-pro-20260527',
     '/static/js/connectivity.js?v=legacy-pro-20260527',
-    '/static/js/app.js?v=ws-fix-20260527',
+    '/static/js/app.js?v=fix-comment-20260530',
   ];
 
   const Bridge = {
