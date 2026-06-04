@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StockQ Pro — A 股量化回測與實時盯盤</title>
+  <script>
+    if (!(/[?&]debug/.test(location.search)) && !localStorage.getItem('stockq:debug')) {
+      var noop = function() {};
+      console.log = noop;
+      console.warn = noop;
+      console.info = noop;
+      console.debug = noop;
+    }
+  </script>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />

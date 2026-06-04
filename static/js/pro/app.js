@@ -78,7 +78,7 @@
       this._disposeWs(this._ws);
       this._ws = null;
 
-      const token = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
+      const token = (typeof Api !== 'undefined' && Api._token) || SecureStore.getItem('sq_token') || '';
       const conn = document.getElementById('conn-status');
       const connFooter = document.getElementById('conn-status-footer');
       const _setConn = (txt) => { if (conn) conn.textContent = txt; if (connFooter) connFooter.textContent = txt; };
@@ -122,7 +122,7 @@
       ws.onclose = () => {
         if (this._ws !== ws || this._wsGen !== gen) return;
         this._ws = null;
-        const still = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
+        const still = (typeof Api !== 'undefined' && Api._token) || SecureStore.getItem('sq_token') || '';
         if (!still) {
           _setConn('未登錄');
           return;

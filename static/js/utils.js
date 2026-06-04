@@ -20,6 +20,39 @@ const Utils = {
   },
 
   /**
+   * 自定義確認對話框 — 替代原生 confirm()
+   * @param {string} msg  提示文字
+   * @param {object} opts  { okText, cancelText, variant }
+   * @returns {Promise<boolean>}
+   */
+  confirm(msg, opts = {}) {
+    const { okText = '確定', cancelText = '取消', variant = 'warning' } = opts;
+    return new Promise(resolve => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;animation:mi .18s ease';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:var(--bg1,#1e1e2e);border:1px solid var(--bf,#333);border-radius:12px;padding:24px 28px;max-width:420px;width:90vw;box-shadow:0 12px 48px rgba(0,0,0,.5);color:var(--text,#e0e0e0);font-size:14px;line-height:1.6';
+      const icon = variant === 'danger' ? '🗑️' : variant === 'warning' ? '⚠️' : 'ℹ️';
+      box.innerHTML = `<div style="margin-bottom:20px;white-space:pre-wrap">${icon} ${Utils.escapeHtml ? Utils.escapeHtml(msg) : msg}</div>` +
+        '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+        `<button data-c="0" style="padding:8px 20px;border-radius:8px;border:1px solid var(--bf,#444);background:transparent;color:var(--text,#ccc);cursor:pointer;font-size:13px">${cancelText}</button>` +
+        `<button data-c="1" style="padding:8px 20px;border-radius:8px;border:none;background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:13px;font-weight:600">${okText}</button>` +
+        '</div>';
+      ov.appendChild(box);
+      document.body.appendChild(ov);
+      const done = (val) => { ov.remove(); resolve(val); };
+      ov.addEventListener('click', e => { if (e.target === ov) done(false); });
+      box.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        if (btn) done(btn.dataset.c === '1');
+      });
+      const onKey = e => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); done(false); } };
+      document.addEventListener('keydown', onKey);
+      box.querySelector('[data-c="1"]').focus();
+    });
+  },
+
+  /**
    * 格式化百分比
    */
   formatPct(v) {
@@ -838,6 +871,57 @@ const Utils = {
     el.style.backgroundPosition = 'center';
   },
 };
+
+/**
+ * SecureStore — localStorage 敏感數據加密封裝
+ * 使用 XOR + Base64 混淆，密鑰存於 sessionStorage（關頁即失效）
+ * 適用於 JWT token、API Key 等不宜明文存儲的數據
+ */
+const SecureStore = {
+  _key: null,
+
+  _getKey() {
+    if (this._key) return this._key;
+    let raw = sessionStorage.getItem('_sq_sk');
+    if (!raw) {
+      const arr = new Uint8Array(32);
+      (crypto.getRandomValues || function(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); })(arr);
+      raw = btoa(String.fromCharCode(...arr));
+      sessionStorage.setItem('_sq_sk', raw);
+    }
+    this._key = raw;
+    return raw;
+  },
+
+  _xor(str, key) {
+    let out = '';
+    for (let i = 0; i < str.length; i++) {
+      out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return out;
+  },
+
+  setItem(k, v) {
+    const key = this._getKey();
+    const encrypted = btoa(this._xor(String(v), key));
+    localStorage.setItem(k, encrypted);
+  },
+
+  getItem(k) {
+    const raw = localStorage.getItem(k);
+    if (raw == null) return null;
+    try {
+      const key = this._getKey();
+      return this._xor(atob(raw), key);
+    } catch {
+      return raw;
+    }
+  },
+
+  removeItem(k) { localStorage.removeItem(k); },
+};
+
+window.SecureStore = SecureStore;
 
 // Make globally available
 window.Utils = Utils;

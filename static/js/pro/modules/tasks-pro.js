@@ -650,7 +650,7 @@
     async batchCancel() {
       const ids = [...this._selectedIds];
       if (!ids.length) return;
-      if (!confirm(`確定取消 ${ids.length} 個任務？`)) return;
+      if (!await Utils.confirm(`確定取消 ${ids.length} 個任務？`)) return;
       const d = await Api.batchCancelTasks(ids);
       if (d?.success) {
         this.toast(`已取消 ${(d.cancelled || []).length} 個`, 'success');
@@ -663,7 +663,7 @@
     async batchDelete() {
       const ids = [...this._selectedIds];
       if (!ids.length) return;
-      if (!confirm(`確定刪除 ${ids.length} 個任務？`)) return;
+      if (!await Utils.confirm(`確定刪除 ${ids.length} 個任務？`, { variant: 'danger' })) return;
       const d = await Api.batchDeleteTasks(ids);
       if (d?.success) {
         this.toast(`已刪除 ${(d.deleted || []).length} 個`, 'success');
@@ -678,7 +678,7 @@
     },
 
     async cancelAllPending() {
-      if (!confirm('確定取消所有排隊中的任務？')) return;
+      if (!await Utils.confirm('確定取消所有排隊中的任務？')) return;
       const d = await Api.cancelAllPendingTasks();
       if (d?.success) {
         this.toast(`已取消 ${d.cancelled || 0} 個排隊任務`, 'success');
@@ -687,7 +687,7 @@
     },
 
     async clearCompleted() {
-      if (!confirm('確定清空已結束的任務記錄？')) return;
+      if (!await Utils.confirm('確定清空已結束的任務記錄？')) return;
       const d = await Api.clearCompletedTasks(true, true);
       if (d?.success) {
         this.toast(`已清除 ${d.deleted || 0} 條`, 'success');

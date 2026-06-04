@@ -134,7 +134,7 @@
       tbody.querySelectorAll('[data-del]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-del');
-          if (!confirm('確定刪除此用戶？')) return;
+          if (!await Utils.confirm('確定刪除此用戶？', { variant: 'danger' })) return;
           try {
             await Api.delete(`/api/admin/users/${id}`);
             Utils.toast?.('用戶已刪除', 2500, 'success');
@@ -178,7 +178,7 @@
       tbody.querySelectorAll('[data-del-invite]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const code = btn.getAttribute('data-del-invite');
-          if (!confirm(`確定刪除邀請碼 ${code}？`)) return;
+          if (!await Utils.confirm(`確定刪除邀請碼 ${code}？`, { variant: 'danger' })) return;
           try {
             await Api.delete(`/api/admin/invite-codes/${code}`);
             Utils.toast?.('邀請碼已刪除', 2500, 'success');
@@ -242,7 +242,7 @@
           const sid = btn.getAttribute('data-del-strategy');
           const strat = data.strategies.find(s => s.id === sid);
           if (!strat) return;
-          if (!confirm(`確定刪除策略「${strat.name}」（${sid}）？`)) return;
+          if (!await Utils.confirm(`確定刪除策略「${strat.name}」（${sid}）？`, { variant: 'danger' })) return;
           try {
             await Api.delete(`/api/admin/strategies/${sid}`);
             Utils.toast?.('策略已刪除', 2500, 'success');

@@ -861,7 +861,7 @@ const App = {
       return window.StockQPro.App._connectWS();
     }
 
-    let token = localStorage.getItem('sq_token') || Api._token;
+    let token = SecureStore.getItem('sq_token') || Api._token;
     if (token && typeof Api.isTokenExpired === 'function' && Api.isTokenExpired(token)) {
       Api.setToken(null);
       token = null;
@@ -906,7 +906,7 @@ const App = {
       this._ws = null;
       this._setWsStatus(false);
 
-      const cur = localStorage.getItem('sq_token') || Api._token;
+      const cur = SecureStore.getItem('sq_token') || Api._token;
       if (cur && typeof Api.isTokenExpired === 'function' && Api.isTokenExpired(cur)) {
         Api.setToken(null);
         this._setWsStatus(false, '登錄已過期');
@@ -1104,7 +1104,7 @@ const App = {
     const bar = document.getElementById('dlAllBar');
     const resultEl = document.getElementById('dlMarketResult');
 
-    if (!confirm('將下載所有市場的股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
+    if (!await Utils.confirm('將下載所有市場的股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
 
     return Api.runExclusive('download-all', async () => {
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ld"></span> 下載中...'; }
@@ -1171,7 +1171,7 @@ const App = {
     const detail = document.getElementById('dlDetail');
     const qaBtn = document.getElementById('qaDownload');
 
-    if (!confirm('將下載全市場股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
+    if (!await Utils.confirm('將下載全市場股票數據（A股、美股、港股、指數、ETF、商品、加密貨幣、外匯），耗時較長，確定？')) return;
 
     if (section) section.style.display = 'block';
     if (qaBtn) { qaBtn.disabled = true; qaBtn.style.opacity = '0.6'; }

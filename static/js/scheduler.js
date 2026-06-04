@@ -151,7 +151,7 @@ const SchedulerTab = {
   },
 
   async disableAll() {
-    if (!confirm('確定禁用全部定時任務？')) return;
+    if (!await Utils.confirm('確定禁用全部定時任務？')) return;
     const d = await Api.disableScheduler();
     if (d) {
       Utils.toast(d.message || '已全部禁用', 3000, 'success');

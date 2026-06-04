@@ -1202,7 +1202,7 @@ const Dashboard = {
   },
 
   async deleteRule(code) {
-    if (!confirm(`確定刪除 ${code} 的預警規則？`)) return;
+    if (!await Utils.confirm(`確定刪除 ${code} 的預警規則？`, { variant: 'danger' })) return;
     const result = await Api.deleteAlertRule(code);
     if (result) {
       Utils.toast('已刪除', 3000, 'success');

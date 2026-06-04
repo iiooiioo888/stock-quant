@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StockQ Pro — 量化工作台 v4.0</title>
+  <script>
+    if (!(/[?&]debug/.test(location.search)) && !localStorage.getItem('stockq:debug')) {
+      var noop = function() {};
+      console.log = noop;
+      console.warn = noop;
+      console.info = noop;
+      console.debug = noop;
+    }
+  </script>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

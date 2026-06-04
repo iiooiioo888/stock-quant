@@ -286,15 +286,19 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     # CSP：允許 inline script（前端 IIFE 架構需要）+ unsafe-eval（ECharts）
+    # script-src 去掉 fonts.googleapis.com（僅 style 需要）
+    # connect-src 收緊為僅自身 + WebSocket（前端不直接調用外部 API）
     if not response.headers.get("Content-Security-Policy"):
         csp = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https: blob:; "
             "font-src 'self' https://fonts.gstatic.com data:; "
-            "connect-src 'self' ws: wss: https:; "
-            "frame-ancestors 'self'"
+            "connect-src 'self' ws: wss:; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
         )
         response.headers["Content-Security-Policy"] = csp
     return response

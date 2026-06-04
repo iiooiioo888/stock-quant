@@ -21,7 +21,7 @@
     tb.querySelectorAll('[data-del]').forEach((b) => {
       b.addEventListener('click', async () => {
         const code = b.getAttribute('data-del');
-        const ok = window.confirm(`刪除 ${code} 預警規則？`);
+        const ok = await Utils.confirm(`刪除 ${code} 預警規則？`, { variant: 'danger' });
         if (!ok) return;
         const d = await Api.deleteAlertRule(code).catch((e) => ({ error: e?.message || e }));
         if (d?.success) window.StockQPro?.App?.toast?.('已刪除', 'ok');

@@ -6,7 +6,7 @@
 (() => {
   async function fetchStream(url, onChunk, onComplete, opts = {}) {
     const headers = { Accept: 'application/x-ndjson', ...(opts.headers || {}) };
-    const token = (typeof Api !== 'undefined' && Api._token) || localStorage.getItem('sq_token') || '';
+    const token = (typeof Api !== 'undefined' && Api._token) || SecureStore.getItem('sq_token') || '';
     if (token) headers.Authorization = `Bearer ${token}`;
 
     const res = await fetch(url, { ...opts, headers });

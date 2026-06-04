@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Stock Quant — 智能量化交易系統</title>
+<script>
+  if (!(/[?&]debug/.test(location.search)) && !localStorage.getItem('stockq:debug')) {
+    var noop = function() {};
+    console.log = noop;
+    console.warn = noop;
+    console.info = noop;
+    console.debug = noop;
+  }
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 
 <!-- Fonts -->

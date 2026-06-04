@@ -45,9 +45,9 @@ const Api = {
    * 初始化：從 localStorage 載入 token
    */
   init() {
-    const stored = localStorage.getItem('sq_token');
+    const stored = SecureStore.getItem('sq_token');
     if (stored && this.isTokenExpired(stored)) {
-      localStorage.removeItem('sq_token');
+      SecureStore.removeItem('sq_token');
       this._token = null;
     } else {
       this._token = stored;
@@ -84,9 +84,9 @@ const Api = {
     }
     this._token = token;
     if (token) {
-      localStorage.setItem('sq_token', token);
+      SecureStore.setItem('sq_token', token);
     } else {
-      localStorage.removeItem('sq_token');
+      SecureStore.removeItem('sq_token');
     }
     this._updateAuthUI();
     this.reconnectWebSocket();
@@ -305,8 +305,8 @@ const Api = {
       if (detail.code !== 'quota_exceeded') {
         setTimeout(nav, 600);
       } else {
-        setTimeout(() => {
-          if (window.confirm(`${msg}\n\n是否前往方案頁查看配額？`)) nav();
+        setTimeout(async () => {
+          if (await Utils.confirm(`${msg}\n\n是否前往方案頁查看配額？`)) nav();
         }, 200);
       }
     }
@@ -993,7 +993,7 @@ const Api = {
 
   getLlmConfig() {
     try {
-      const raw = localStorage.getItem('stockq:llm_config_v1');
+      const raw = SecureStore.getItem('stockq:llm_config_v1');
       return raw ? JSON.parse(raw) : {};
     } catch (_) {
       return {};
@@ -1004,7 +1004,7 @@ const Api = {
     const cur = this.getLlmConfig();
     const next = { ...cur, ...partial };
     if (!next.api_key) delete next.api_key;
-    localStorage.setItem('stockq:llm_config_v1', JSON.stringify(next));
+    SecureStore.setItem('stockq:llm_config_v1', JSON.stringify(next));
     return next;
   },
 
