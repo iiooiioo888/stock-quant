@@ -239,8 +239,12 @@ def list_user_strategies(directory: str = None) -> list[dict]:
         return []
 
     results = []
+    # 跳過非策略的模板/示例文件
+    _SKIP_FILES = {"template_strategy.py", "example_strategy.py", "sample_strategy.py"}
     for fname in sorted(os.listdir(directory)):
         if not fname.endswith(".py") or fname.startswith("_"):
+            continue
+        if fname in _SKIP_FILES:
             continue
         filepath = os.path.join(directory, fname)
         strategy_classes = load_user_strategy(filepath)

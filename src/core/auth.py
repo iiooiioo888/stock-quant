@@ -213,18 +213,21 @@ def ensure_default_admin():
 
     with get_conn() as conn:
         if existing:
-            conn.execute(
-                "UPDATE users SET password_hash = ?, role = 'admin' WHERE username = ?",
-                (pw_hash, DEFAULT_ADMIN_USERNAME),
-            )
-        else:
-            conn.execute(
-                """INSERT INTO users (username, password_hash, role, settings, created_at)
-                   VALUES (?, ?, 'admin', '{}', ?)""",
-                (DEFAULT_ADMIN_USERNAME, pw_hash, now),
-            )
+            # 僅確保 role 為 admin，不重置密碼（避免每次啟動覆蓋用戶修改的密碼）
+            if existing.get("role") != "admin":
+                conn.execute(
+                    "UPDATE users SET role = 'admin' WHERE username = ?",
+                    (DEFAULT_ADMIN_USERNAME,),
+                )
+            logger.info(f"管理員賬號 {DEFAULT_ADMIN_USERNAME} 已存在，跳過初始化。")
+            return
+        conn.execute(
+            """INSERT INTO users (username, password_hash, role, settings, created_at)
+               VALUES (?, ?, 'admin', '{}', ?)""",
+            (DEFAULT_ADMIN_USERNAME, pw_hash, now),
+        )
 
-    # 將密碼寫入本地文件
+    # 僅首次創建時寫入密碼文件
     from pathlib import Path
     pw_file = Path(__file__).resolve().parent.parent.parent / "data" / ".admin_password"
     pw_file.parent.mkdir(parents=True, exist_ok=True)
@@ -233,8 +236,7 @@ def ensure_default_admin():
         os.chmod(pw_file, 0o600)
     except Exception:
         pass
-    action = "已更新" if existing else "已創建"
-    logger.warning(f"{action}默認管理員賬號 {DEFAULT_ADMIN_USERNAME}，密碼已寫入: {pw_file}")
+    logger.warning(f"已創建默認管理員賬號 {DEFAULT_ADMIN_USERNAME}，密碼已寫入: {pw_file}")
     logger.warning("默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。")
 
 

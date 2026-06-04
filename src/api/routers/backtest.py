@@ -12,6 +12,16 @@ from src.api.dispatch import dispatch_async_task
 router = APIRouter()
 
 
+def _normalize_code(code: str) -> str:
+    """清洗股票代碼：strip + A股6位補零；空值拋 400"""
+    code = str(code).strip()
+    if not code:
+        raise HTTPException(400, "股票代碼不能為空")
+    if code.isdigit() and len(code) < 6:
+        code = code.zfill(6)
+    return code
+
+
 @router.get("/api/backtest/timeframes")
 async def list_backtest_timeframes():
     """回測可選 K 線週期"""
@@ -195,8 +205,7 @@ async def run_multi_backtest_api(code: str):
     from src.core.backtest import run_multi_strategy
     from src.core.task_manager import create_task
 
-    if not code:
-        raise HTTPException(400, "請提供股票代碼")
+    code = _normalize_code(code)
 
     task_params = {"code": code}
     task = create_task("backtest_multi", task_params, title=f"多策略對比 {code}")
