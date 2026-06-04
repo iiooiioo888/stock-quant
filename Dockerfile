@@ -9,7 +9,7 @@ WORKDIR /build
 
 # 系統依賴（僅構建時需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ && \
+    gcc g++ libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # 安裝 Python 依賴到 /install 目錄

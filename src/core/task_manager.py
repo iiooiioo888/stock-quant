@@ -325,7 +325,7 @@ def _resolve_max_workers() -> int:
     if configured and configured > 0:
         return configured
     cpu = os.cpu_count() or 4
-    return max(1, min(4, max(1, cpu - 1)))
+    return max(4, min(8, max(1, cpu - 1)))
 
 
 def _resolve_heavy_max_concurrent() -> int:
@@ -1485,8 +1485,12 @@ def _save_task_to_db(task: dict, force: bool = False):
 
 
 def _column_exists_conn(conn, table: str, column: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(r[1] == column for r in rows)
+    if is_postgres():
+        rows = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s AND column_name = %s", (table, column)).fetchall()
+        return len(rows) > 0
+    else:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(r[1] == column for r in rows)
 
 
 def _evict_old_tasks_inner():

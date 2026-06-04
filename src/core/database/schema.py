@@ -1,8 +1,9 @@
 """
 集中式 SQLite Schema 定義 — 所有表與索引的唯一來源
 """
-
 from __future__ import annotations
+
+from src.core.database.connection import is_postgres
 
 # ── 核心行情 ──────────────────────────────────────────────
 
@@ -437,6 +438,16 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at  TEXT NOT NULL
 )
 """
+
+def get_table_ddl():
+    import re as _re
+    if is_postgres(): return TABLE_DDL
+    r = []
+    for n, d in TABLE_DDL:
+        s = _re.sub(r"SERIAL\\s+PRIMARY\\s+KEY","INTEGER PRIMARY KEY AUTOINCREMENT",d,flags=_re.I)
+        s = _re.sub(r"\\bDOUBLE\\s+PRECISION\\b","REAL",s,flags=_re.I)
+        r.append((n,s))
+    return r
 
 # 建表順序（尊重外鍵依賴）
 TABLE_DDL: list[tuple[str, str]] = [

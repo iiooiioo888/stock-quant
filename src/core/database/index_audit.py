@@ -7,7 +7,7 @@ import re
 import sqlite3
 from typing import Any
 
-from src.core.database.connection import get_conn
+from src.core.database.connection import get_conn, is_postgres
 from src.core.database.schema import INDEX_DDL
 from src.utils.logger import logger
 

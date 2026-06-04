@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     sentry_dsn: Optional[str] = Field(default=None, description="可選 Sentry DSN（SQ_SENTRY_DSN）")
 
     # ====== 數據庫 ======
+    database_url: str = Field(default="", description="PostgreSQL URL; postgresql://user:pass@host:port/dbname")
     db_path: str = str(DATA_DIR / "stock.db")
     sqlite_cache_size_kb: int = Field(default=64000, ge=1024, le=512000)
     sqlite_mmap_size: int = Field(default=268435456, ge=0, le=1073741824)
@@ -256,7 +257,7 @@ class Settings(BaseSettings):
     # ====== Web 服務 ======
     web_host: str = "0.0.0.0"
     web_port: int = Field(default=8000, ge=1, le=65535)
-    web_workers: int = Field(default=1, ge=1, le=16)
+    web_workers: int = Field(default=4, ge=1, le=16)
     cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://localhost:5173"
 
     # ====== 策略參數（全部 29 個內置策略） ======
@@ -383,6 +384,13 @@ class Settings(BaseSettings):
         "case_sensitive": False,
     }
 
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        if v and not v.startswith(("postgresql://","postgres://")):
+            raise ValueError("database_url 必須以 postgresql:// 開頭")
+        return v
+
     @field_validator("redis_url")
     @classmethod
     def validate_redis_url(cls, v: str) -> str:
@@ -415,7 +423,7 @@ class Settings(BaseSettings):
         lines = [
             f"📊 {self.app_name} v{self.app_version}",
             f"   端口: {self.web_port} | Workers: {self.web_workers}",
-            f"   數據庫: {self.db_path}",
+            f"   數據庫: {'PostgreSQL' if self.database_url else self.db_path}",
             f"   盯盤: {len(self.watchlist)} 只 A股 + {len(self.crypto_watchlist)} 加密 + {len(self.forex_watchlist)} 外匯",
             f"   輪詢: {self.poll_interval_sec}s | 預警冷卻: {self.alert_cooldown_sec}s",
             f"   回測資金: ¥{self.backtest_cash:,.0f} | 佣金: {self.backtest_commission:.1%} | 印花稅: {self.backtest_stamp_tax:.1%}",

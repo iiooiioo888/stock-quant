@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime
 from typing import Callable
 
-from src.core.database.connection import get_conn
+from src.core.database.connection import get_conn, is_postgres
 from src.core.database.schema import INDEX_DDL, TABLE_DDL
 from src.utils.logger import logger
 
@@ -15,16 +15,21 @@ MigrationFn = Callable[[sqlite3.Connection], None]
 
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (name,),
-    ).fetchone()
-    return row is not None
+    if is_postgres():
+        cur = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name = %s",(name,))
+        return cur.fetchone() is not None
+    else:
+        row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+        return row is not None
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(r[1] == column for r in rows)
+    if is_postgres():
+        cur = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s", (table, column))
+        return cur.fetchone() is not None
+    else:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(r[1] == column for r in rows)
 
 
 def _migration_001_baseline(conn: sqlite3.Connection) -> None:
@@ -219,8 +224,10 @@ def _record_migration(conn: sqlite3.Connection, version: int, name: str) -> None
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         """
-        INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
-        VALUES (?, ?, ?)
+        if is_postgres():
+            conn.execute("INSERT INTO schema_migrations (version, name, applied_at) VALUES (%s, %s, %s) ON CONFLICT (version) DO NOTHING", (version, name, now))
+        else:
+            conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", (version, name, now))
         """,
         (version, name, now),
     )

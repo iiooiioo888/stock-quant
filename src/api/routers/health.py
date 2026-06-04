@@ -41,7 +41,7 @@ async def health_check():
             **stats,
         }
 
-    return cached_response("api:health", ttl=3, builder=_build)
+    return cached_response("api:health", ttl=10, builder=_build)
 
 
 @router.get("/api/health/sop")
@@ -57,7 +57,7 @@ async def health_sop():
         payload["version"] = settings.app_version
         return payload
 
-    return cached_response("api:health:sop", ttl=5, builder=_build)
+    return cached_response("api:health:sop", ttl=30, builder=_build)
 
 
 @router.get("/api/health/detailed")

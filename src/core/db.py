@@ -12,14 +12,14 @@ import pandas as pd
 
 from src.config import settings
 from src.core.database.bootstrap import init_database
-from src.core.database.connection import get_conn
+from src.core.database.connection import get_conn, is_postgres
 from src.utils.logger import logger
 
 _KLINE_COLS = "code, date, open, high, low, close, volume, amount, turnover, market"
 _codes_cache: dict = {"ts": 0.0, "data": []}
 _db_stats_cache: dict = {"ts": 0.0, "data": {}}
-_STATS_CACHE_TTL = 5.0
-_CODES_CACHE_TTL = 30.0
+_STATS_CACHE_TTL = 60.0
+_CODES_CACHE_TTL = 300.0
 
 # ============================================================
 # Writer Queue — 批量寫入，降低 SQLite 併發鎖競爭
