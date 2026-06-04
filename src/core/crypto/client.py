@@ -19,21 +19,40 @@ _http.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) A
 
 # 常用交易對（顯示名）
 CRYPTO_SYMBOLS = {
+    # === Layer 1 主鏈 ===
     "BTCUSDT": "比特幣",
     "ETHUSDT": "以太坊",
     "BNBUSDT": "幣安幣",
     "SOLUSDT": "Solana",
     "XRPUSDT": "瑞波幣",
     "ADAUSDT": "卡爾達諾",
-    "DOGEUSDT": "狗狗幣",
-    "DOTUSDT": "波卡",
     "AVAXUSDT": "雪崩",
-    "MATICUSDT": "Polygon",
+    "DOTUSDT": "波卡",
+    "NEARUSDT": "NEAR",
+    "ATOMUSDT": "Cosmos",
+    "TRXUSDT": "波場",
+    "TONUSDT": "Toncoin",
+    "SUIUSDT": "Sui",
+    "APTUSDT": "Aptos",
+    "ARBUSDT": "Arbitrum",
+    "OPUSDT": "Optimism",
+    # === DeFi ===
     "LINKUSDT": "Chainlink",
     "UNIUSDT": "Uniswap",
+    "AAVEUSDT": "Aave",
+    "MKRUSDT": "Maker",
+    "CRVUSDT": "Curve",
+    "COMPUSDT": "Compound",
+    # === Meme / 社區 ===
+    "DOGEUSDT": "狗狗幣",
+    "SHIBUSDT": "柴犬幣",
+    "PEPEUSDT": "Pepe",
+    # === 基礎設施 ===
+    "FILUSDT": "Filecoin",
     "LTCUSDT": "萊特幣",
-    "ATOMUSDT": "Cosmos",
-    "NEARUSDT": "NEAR",
+    "ETCUSDT": "以太坊經典",
+    "XLMUSDT": "恆星幣",
+    "ALGOUSDT": "Algorand",
 }
 
 

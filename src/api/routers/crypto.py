@@ -210,3 +210,23 @@ async def api_crypto_ws_unsubscribe(req: SubscribeRequest):
         _handle_disabled(e)
     except Exception as e:
         raise HTTPException(500, str(e))
+
+# ============================================================
+# 自定義分析指數端點
+# ============================================================
+
+@router.get("/api/crypto/indices")
+async def crypto_custom_indices():
+    """獲取所有自定義分析指數"""
+    from src.core.crypto.custom_indices import get_all_custom_indices
+    return get_all_custom_indices()
+
+
+@router.get("/api/crypto/indices/{index_name}")
+async def crypto_custom_index(index_name: str):
+    """按名稱獲取單個自定義指數"""
+    from src.core.crypto.custom_indices import get_index_by_name
+    result = get_index_by_name(index_name)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+    return result
