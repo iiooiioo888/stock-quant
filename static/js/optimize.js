@@ -76,7 +76,7 @@ const Optimize = {
         }
       } else {
         const d = await Api.runOptimize({ code: codes[0], strategy, method, objective, n_trials: 50, ...risk });
-        if (!d || !d.success) return;
+        if (!d || !d.success) { Utils.toast(d?.error || d?.message || '優化請求失敗', 3000, 'error'); return; }
         if (d.is_duplicate) {
           Utils.toast('⏳ ' + (d.message || '相同優化執行中，等待完成...'), 3000, 'warning');
         } else if (d.async && d.task_id) {
@@ -97,6 +97,20 @@ const Optimize = {
       Utils.btnLoading(btn, false, '🔍 開始優化');
     }
   },
+
+  renderResults(results, strategy) {
+    const el = document.getElementById('optOutput');
+    if (!el) return;
+    let h = '';
+
+    if (strategy === 'all') {
+      for (const [name, rl] of Object.entries(results)) {
+        if (!rl || !rl.length) continue;
+        const b = rl[0];
+        h += `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>${name}</strong>
+            <span class="b ${Utils.badgeClass(b.total_return_pct)}">${Utils.formatPct(b.total_return_pct)}</span>
           </div>
           <div style="margin-top:4px;font-size:10px;color:var(--text-dim)">${Object.entries(b.params).map(([k, v]) => k + '=' + v).join(', ')}</div>
         </div>`;

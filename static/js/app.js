@@ -223,6 +223,7 @@ const App = {
       }
     } catch (e) {
       console.warn('載入策略列表失敗:', e);
+      if (typeof Utils !== 'undefined') Utils.toast('載入策略列表失敗，部分功能可能不可用', 3000, 'error');
     }
   },
 
