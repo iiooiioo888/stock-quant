@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     scheduler_job_degradation: bool = False
     scheduler_job_correlation: bool = False
     scheduler_job_leaderboard: bool = True
+    scheduler_job_daily_download: bool = True  # 每天 09:00 爬取數據
     scheduler_incremental_hour: int = Field(default=8, ge=0, le=23)
     scheduler_incremental_minute: int = Field(default=5, ge=0, le=59)
 

@@ -660,6 +660,54 @@ def setup_from_settings():
     else:
         disable_leaderboard_refresh()
 
+    if settings.scheduler_job_daily_download:
+        enable_daily_full_download()
+    else:
+        disable_daily_full_download()
+
     jobs = list_jobs()
     logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")
     return jobs
+
+
+def enable_daily_full_download(codes: list[str] = None):
+    """啟用每日完整數據爬取（每天 09:00）"""
+    from src.config import settings
+
+    scheduler = _get_scheduler()
+    _remove_job_safe("daily_full_download")
+
+    watch_codes = codes or settings.watchlist
+
+    def _job_impl(task_id: str):
+        logger.info("執行每日完整數據爬取...")
+        from src.core.download_tasks import run_incremental
+        # 強制模式：重新下載最近的數據，確保完整性
+        result = run_incremental(codes=watch_codes, force=False, task_id=task_id)
+        updated = result.get("updated", 0)
+        total = result.get("total_records", 0)
+        logger.info(f"每日數據爬取完成: 更新 {updated} 只, 共 {total} 條記錄")
+        return result
+
+    scheduler.add_job(
+        _wrap_scheduled_job(
+            "daily_full_download",
+            "每日數據爬取",
+            _job_impl,
+            task_type="data_incremental",
+            extra_params={"codes": watch_codes},
+            pass_task_id=True,
+        ),
+        "cron",
+        hour=9,
+        minute=0,
+        id="daily_full_download",
+        replace_existing=True,
+        name="每日數據爬取",
+    )
+    logger.info("已啟用每日數據爬取 (09:00)")
+
+
+def disable_daily_full_download():
+    _remove_job_safe("daily_full_download")
+    logger.info("已禁用每日數據爬取")
