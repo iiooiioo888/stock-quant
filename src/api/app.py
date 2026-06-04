@@ -278,6 +278,29 @@ async def static_cache_middleware(request: Request, call_next):
 
 
 @app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """安全響應頭 — 防禦 XSS / Clickjacking / MIME sniffing"""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # CSP：允許 inline script（前端 IIFE 架構需要）+ unsafe-eval（ECharts）
+    if not response.headers.get("Content-Security-Policy"):
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "img-src 'self' data: https: blob:; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "connect-src 'self' ws: wss: https:; "
+            "frame-ancestors 'self'"
+        )
+        response.headers["Content-Security-Policy"] = csp
+    return response
+
+
+@app.middleware("http")
 async def admin_controls_middleware(request: Request, call_next):
     """
     管理員全域控制開關：

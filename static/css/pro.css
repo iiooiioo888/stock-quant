@@ -130,7 +130,7 @@ a.logo{text-decoration:none;color:var(--ac)}
 .sbi{display:flex;align-items:center;gap:4px}
 
 /* ── MAIN ── */
-.main{overflow-y:auto;padding:var(--gap);display:grid;gap:var(--gap);align-content:start;background:var(--bg)}
+.main{overflow-y:auto;overflow-x:hidden;padding:var(--gap);display:grid;gap:var(--gap);align-content:start;background:var(--bg);grid-column:2;grid-row:2;min-width:0}
 .pg{display:none}.pg.on{display:grid;gap:var(--gap);align-content:start;animation:fu .3s cubic-bezier(.22,1,.36,1) both}
 @keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 

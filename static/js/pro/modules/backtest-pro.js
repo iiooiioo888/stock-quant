@@ -2,7 +2,7 @@
 
 (() => {
   const $id = (id) => document.getElementById(id);
-  const charts = {};
+  let charts = {};
   let running = false;
   let lastResult = null;
   let activeTab = 'equity';
@@ -20,7 +20,8 @@
     const t = nowHHMM();
     const div = document.createElement('div');
     div.className = 'll';
-    div.innerHTML = `<span class="lt">${t}</span><span class="lm ${cls}">${msg}</span>`;
+    const safeMsg = (typeof UI !== 'undefined' && UI.escapeHtml) ? UI.escapeHtml(msg) : String(msg);
+    div.innerHTML = `<span class="lt">${t}</span><span class="lm ${cls}">${safeMsg}</span>`;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
   }

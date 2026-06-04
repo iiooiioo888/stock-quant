@@ -191,6 +191,14 @@ async def data_sources_health():
                 degraded_categories.append(category)
                 overall_status = "degraded"
         
+        # 熔斷器狀態（與數據源健康並列顯示）
+        circuit_breakers = {}
+        try:
+            from src.core.circuit_breaker import get_all_breakers
+            circuit_breakers = get_all_breakers()
+        except Exception:
+            pass
+
         return {
             "status": overall_status,
             "timestamp": time.time(),
@@ -198,6 +206,7 @@ async def data_sources_health():
             "degraded_categories": degraded_categories,
             "total_categories": len(health),
             "healthy_categories": len(health) - len(degraded_categories),
+            "circuit_breakers": circuit_breakers,
         }
     except Exception as e:
         logger.error(f"數據源健康檢查失敗：{e}", exc_info=True)

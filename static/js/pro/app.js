@@ -287,7 +287,8 @@
       const el = document.createElement('div');
       el.className = `toast ${type}`;
       const icon = type === 'ok' ? '✓' : type === 'er' ? '✕' : 'ℹ';
-      el.innerHTML = `<span>${icon}</span><span>${String(msg || '')}</span><button type="button" style="border:none;background:none;color:var(--t3);cursor:pointer;font-size:.9rem;padding:0 0 0 6px;line-height:1" aria-label="關閉">×</button>`;
+      const safeMsg = (typeof UI !== 'undefined' && UI.escapeHtml) ? UI.escapeHtml(msg || '') : String(msg || '');
+      el.innerHTML = `<span>${icon}</span><span>${safeMsg}</span><button type="button" style="border:none;background:none;color:var(--t3);cursor:pointer;font-size:.9rem;padding:0 0 0 6px;line-height:1" aria-label="關閉">×</button>`;
       el.querySelector('button').addEventListener('click', () => el.remove());
       c.appendChild(el);
       setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; }, 3000);

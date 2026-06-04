@@ -346,7 +346,8 @@
       }
       const list = document.getElementById('tkTaskList');
       if (list) {
-        list.innerHTML = `<div class="tk-empty"><span class="tk-empty-icon">⚠️</span><p>${this._loadError}</p><button type="button" class="btn s" id="tk-retry-load">重試</button></div>`;
+        const safeErr = (typeof UI !== 'undefined' && UI.escapeHtml) ? UI.escapeHtml(this._loadError || '') : String(this._loadError || '');
+        list.innerHTML = `<div class="tk-empty"><span class="tk-empty-icon">⚠️</span><p>${safeErr}</p><button type="button" class="btn s" id="tk-retry-load">重試</button></div>`;
         document.getElementById('tk-retry-load')?.addEventListener('click', () => this.refresh());
       }
     },
