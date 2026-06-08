@@ -1,8 +1,37 @@
 /**
  * charts.js — 圖表函數 (Chart.js + Lightweight Charts)
+ * 性能優化：記憶體管理、惰性渲染、防抖節流
  */
 
+// 性能監控
+const ChartPerf = {
+  _renderTimes: [],
+  record(ms) { this._renderTimes.push(ms); if (this._renderTimes.length > 100) this._renderTimes.shift(); },
+  getAvg() { return this._renderTimes.length ? this._renderTimes.reduce((a, b) => a + b, 0) / this._renderTimes.length : 0; },
+};
+
 const CHART_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#ef4444', '#a78bfa', '#ec4899', '#06b6d4', '#84cc16'];
+
+// 防抖函數 - 用於 resize 等頻繁操作
+function debounce(fn, delay = 150) {
+  let timer = null;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// 节流函數 - 用於 scroll/resize 等事件
+function throttle(fn, limit = 300) {
+  let inThrottle = false;
+  return function(...args) {
+    if (!inThrottle) {
+      fn.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
 
 function _chartLabel(text) {
   if (typeof SignalLabels !== 'undefined' && SignalLabels.label) {
@@ -30,6 +59,65 @@ function _applyChartJsStableDefaults() {
 const Charts = {
   _lwCharts: {},
   _lwFitOnResize: new Set(),
+  _destroyedCharts: new Set(), // 追蹤已銷毀的圖表避免重複操作
+  _resizeObserver: null, // 共享 ResizeObserver
+  
+  // 獲取或創建共享的 ResizeObserver
+  _getResizeObserver() {
+    if (!this._resizeObserver) {
+      this._resizeObserver = new ResizeObserver(debounce(entries => {
+        for (const entry of entries) {
+          const chart = this._lwCharts[entry.target.id];
+          if (chart) {
+            chart.applyOptions({
+              width: entry.contentRect.width,
+              height: entry.contentRect.height || 400,
+            });
+          }
+        }
+      }, 100));
+    }
+    return this._resizeObserver;
+  },
+  
+  // 清理圖表資源
+  destroyChart(chartId) {
+    if (this._destroyedCharts.has(chartId)) return;
+    
+    const chart = this._lwCharts[chartId];
+    if (chart) {
+      try {
+        // 移除 ResizeObserver
+        const container = document.getElementById(chartId);
+        if (container?._resizeObserver) {
+          container._resizeObserver.disconnect();
+          container._resizeObserver = null;
+        }
+        chart.remove();
+      } catch (e) { /* ignore */ }
+      delete this._lwCharts[chartId];
+      this._destroyedCharts.add(chartId);
+    }
+    
+    // 清理 Chart.js 圖表
+    const canvas = document.getElementById(chartId);
+    if (canvas) {
+      const old = Chart.getChart(canvas);
+      if (old) old.destroy();
+    }
+    
+    // 定期清理已銷毀集合防止記憶體洩漏
+    if (this._destroyedCharts.size > 100) {
+      this._destroyedCharts.clear();
+    }
+  },
+  
+  // 批量銷毀圖表
+  destroyChartsByPrefix(prefix) {
+    Object.keys(this._lwCharts).forEach(id => {
+      if (id.startsWith(prefix)) this.destroyChart(id);
+    });
+  },
 
   _chartJsReady() {
     _applyChartJsStableDefaults();
