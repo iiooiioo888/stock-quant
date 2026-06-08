@@ -1,6 +1,7 @@
 """
 實時交易信號引擎 — 基於內置策略在最後一根 K 線上的買賣信號
 """
+
 import sqlite3
 import threading
 import time
@@ -170,15 +171,17 @@ class SignalEngine:
                 else:
                     base = 50.0 if signal_type == "buy" else -50.0
                     strength = round(base * weight, 2)
-                signals.append({
-                    "code": code,
-                    "strategy": strategy_name,
-                    "signal": signal_type,
-                    "price": latest_price,
-                    "strength": strength,
-                    "params": "{}",
-                    "triggered_at": triggered_at,
-                })
+                signals.append(
+                    {
+                        "code": code,
+                        "strategy": strategy_name,
+                        "signal": signal_type,
+                        "price": latest_price,
+                        "strength": strength,
+                        "params": "{}",
+                        "triggered_at": triggered_at,
+                    }
+                )
             except Exception as e:
                 logger.debug(f"策略 {strategy_name} 在 {code} 上失敗: {e}")
 
@@ -199,7 +202,9 @@ class SignalEngine:
             for code in codes:
                 try:
                     history = get_backtest_history(
-                        code=code, strategy=strategy_name, limit=3,
+                        code=code,
+                        strategy=strategy_name,
+                        limit=3,
                     )
                     sharpes.extend(
                         [float(h.get("sharpe_ratio") or 0) for h in history if h]
@@ -209,7 +214,8 @@ class SignalEngine:
             if sharpes:
                 avg_sharpe = float(np.mean(sharpes))
                 self._strategy_weights[strategy_name] = max(
-                    0.2, min(3.0, 1.0 + avg_sharpe),
+                    0.2,
+                    min(3.0, 1.0 + avg_sharpe),
                 )
 
     @property
@@ -244,8 +250,11 @@ def score_signal_strength(signals: list[dict]) -> float:
 
 
 def get_historical_signals(
-    code: str, start_date: str = None, end_date: str = None,
-    strategy: str = None, days: int = 30
+    code: str,
+    start_date: str = None,
+    end_date: str = None,
+    strategy: str = None,
+    days: int = 30,
 ) -> list[dict]:
     """
     獲取歷史信號記錄。
@@ -261,8 +270,11 @@ def get_historical_signals(
 
 
 def _load_signals_from_db(
-    code: str, start_date: str = None, end_date: str = None,
-    strategy: str = None, days: int = 30
+    code: str,
+    start_date: str = None,
+    end_date: str = None,
+    strategy: str = None,
+    days: int = 30,
 ) -> list[dict]:
     """從數據庫讀取歷史信號"""
     sql = "SELECT * FROM signal_log WHERE code = ?"
@@ -321,7 +333,7 @@ def _replay_historical_signals(
                 if len(idx) == 0:
                     continue
                 end_idx = idx[0]
-                window = df.iloc[max(0, end_idx - 199):end_idx + 1]
+                window = df.iloc[max(0, end_idx - 199) : end_idx + 1]
 
                 if len(window) < 30:
                     continue
@@ -342,15 +354,19 @@ def _replay_historical_signals(
                 cerebro.addanalyzer(_LastBarOrderCapture, _name="lastbar")
                 results = cerebro.run()
                 sig = results[0].analyzers.lastbar.signal_type or "hold"
-                all_signals.append({
-                    "code": code,
-                    "strategy": strat_name,
-                    "signal": sig,
-                    "price": bar_price,
-                    "strength": 50.0 if sig == "buy" else (-50.0 if sig == "sell" else 0.0),
-                    "params": "{}",
-                    "triggered_at": bar_date,
-                })
+                all_signals.append(
+                    {
+                        "code": code,
+                        "strategy": strat_name,
+                        "signal": sig,
+                        "price": bar_price,
+                        "strength": (
+                            50.0 if sig == "buy" else (-50.0 if sig == "sell" else 0.0)
+                        ),
+                        "params": "{}",
+                        "triggered_at": bar_date,
+                    }
+                )
             except Exception as e:
                 logger.debug(f"回放信號失敗 {code}/{strat_name}/{bar_date}: {e}")
 
@@ -373,9 +389,13 @@ def _save_signals(signals: list[dict]):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
-                        s["code"], s["strategy"], s["signal"],
-                        s.get("price"), s.get("strength", 0),
-                        s.get("params", "{}"), s["triggered_at"],
+                        s["code"],
+                        s["strategy"],
+                        s["signal"],
+                        s.get("price"),
+                        s.get("strength", 0),
+                        s.get("params", "{}"),
+                        s["triggered_at"],
                         s.get("user_id"),
                     )
                     for s in rows
@@ -418,18 +438,22 @@ def get_current_signals_for_codes(codes: list[str] = None) -> list[dict]:
     result = []
     for code in codes:
         sigs = by_code.get(code, [])
-        result.append({
-            "code": code,
-            "signals": sigs,
-            "strength": score_signal_strength(sigs),
-            "updated_at": sigs[0]["triggered_at"] if sigs else None,
-        })
+        result.append(
+            {
+                "code": code,
+                "signals": sigs,
+                "strength": score_signal_strength(sigs),
+                "updated_at": sigs[0]["triggered_at"] if sigs else None,
+            }
+        )
 
     _set_cached_snapshot(codes, result)
     return result
 
 
-def compute_and_push_signals(engine: SignalEngine, codes: list[str] = None) -> list[dict]:
+def compute_and_push_signals(
+    engine: SignalEngine, codes: list[str] = None
+) -> list[dict]:
     """
     計算信號並返回推送數據（用於 WebSocket / API）。
     返回格式: [{"code": "600519", "signals": [...], "strength": 75.0}, ...]
@@ -452,6 +476,7 @@ def compute_and_push_signals(engine: SignalEngine, codes: list[str] = None) -> l
 # ============================================================
 # 信號增強功能 — 回測驗證、熱力圖、綜合排名
 # ============================================================
+
 
 def backtest_signals(
     codes: list[str] = None,
@@ -595,14 +620,16 @@ def backtest_signals(
 
                     # 記錄明細（只保留最近 500 條）
                     if len(all_details) < 500:
-                        all_details.append({
-                            "code": code,
-                            "strategy": strat_name,
-                            "signal": signal_type,
-                            "date": sig_date,
-                            "price": float(sig.get("price", 0)),
-                            f"return_{key}": round(fwd_return, 2),
-                        })
+                        all_details.append(
+                            {
+                                "code": code,
+                                "strategy": strat_name,
+                                "signal": signal_type,
+                                "date": sig_date,
+                                "price": float(sig.get("price", 0)),
+                                f"return_{key}": round(fwd_return, 2),
+                            }
+                        )
 
         except Exception as e:
             logger.debug(f"信號回測失敗 {code}: {e}")
@@ -633,20 +660,28 @@ def backtest_signals(
             total_correct[key] += correct
             total_count[key] += count
 
-            strat_result[f"accuracy_{key}"] = round(correct / count, 4) if count > 0 else 0
-            strat_result[f"avg_return_{key}"] = round(np.mean(returns), 4) if returns else 0
+            strat_result[f"accuracy_{key}"] = (
+                round(correct / count, 4) if count > 0 else 0
+            )
+            strat_result[f"avg_return_{key}"] = (
+                round(np.mean(returns), 4) if returns else 0
+            )
 
             # 買入/賣出分開的準確率
             buy_rets = stats["buy_returns"][key]
             sell_rets = stats["sell_returns"][key]
             if buy_rets:
                 buy_correct = sum(1 for r in buy_rets if r > 0)
-                strat_result[f"buy_accuracy_{key}"] = round(buy_correct / len(buy_rets), 4)
+                strat_result[f"buy_accuracy_{key}"] = round(
+                    buy_correct / len(buy_rets), 4
+                )
             else:
                 strat_result[f"buy_accuracy_{key}"] = 0
             if sell_rets:
                 sell_correct = sum(1 for r in sell_rets if r > 0)
-                strat_result[f"sell_accuracy_{key}"] = round(sell_correct / len(sell_rets), 4)
+                strat_result[f"sell_accuracy_{key}"] = round(
+                    sell_correct / len(sell_rets), 4
+                )
             else:
                 strat_result[f"sell_accuracy_{key}"] = 0
 
@@ -657,7 +692,8 @@ def backtest_signals(
     for key in ["1d", "3d", "5d", "10d"]:
         overall[f"accuracy_{key}"] = (
             round(total_correct[key] / total_count[key], 4)
-            if total_count[key] > 0 else 0
+            if total_count[key] > 0
+            else 0
         )
 
     return {
@@ -703,7 +739,13 @@ def signal_heatmap(codes: list[str] = None, days: int = 30) -> dict:
             pass
 
     if not all_dates:
-        return {"codes": codes, "dates": [], "matrix": [], "max_score": 0, "min_score": 0}
+        return {
+            "codes": codes,
+            "dates": [],
+            "matrix": [],
+            "max_score": 0,
+            "min_score": 0,
+        }
 
     sorted_dates = sorted(all_dates)
     # 限制日期數量
@@ -780,6 +822,7 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
     """
     if codes is None:
         from src.core.db import load_all_codes
+
         try:
             codes = load_all_codes()
         except Exception:
@@ -817,10 +860,9 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
                 if signal_type == "hold":
                     continue
 
-                combined_weight = (
-                    strategy_weights.get(strat_name, 1.0)
-                    * accuracy_weights.get(strat_name, 1.0)
-                )
+                combined_weight = strategy_weights.get(
+                    strat_name, 1.0
+                ) * accuracy_weights.get(strat_name, 1.0)
                 weighted_sum += strength * combined_weight
                 weight_total += abs(combined_weight)
                 strategy_details[strat_name] = {
@@ -846,15 +888,17 @@ def composite_signal_ranking(codes: list[str] = None) -> list[dict]:
             else:
                 recommendation = "強烈賣出"
 
-            rankings.append({
-                "code": code,
-                "composite_score": round(composite_score, 1),
-                "recommendation": recommendation,
-                "signal_count": len(code_signals),
-                "strategy_details": strategy_details,
-                "latest_price": code_signals[0].get("price", 0),
-                "updated_at": code_signals[0].get("triggered_at"),
-            })
+            rankings.append(
+                {
+                    "code": code,
+                    "composite_score": round(composite_score, 1),
+                    "recommendation": recommendation,
+                    "signal_count": len(code_signals),
+                    "strategy_details": strategy_details,
+                    "latest_price": code_signals[0].get("price", 0),
+                    "updated_at": code_signals[0].get("triggered_at"),
+                }
+            )
 
         except Exception as e:
             logger.debug(f"綜合排名計算失敗 {code}: {e}")
@@ -882,7 +926,9 @@ def _compute_accuracy_weights(codes: list[str]) -> dict[str, float]:
         for code in codes:
             try:
                 history = get_backtest_history(
-                    code=code, strategy=strat_name, limit=5,
+                    code=code,
+                    strategy=strat_name,
+                    limit=5,
                 )
                 for h in history or []:
                     wr = h.get("win_rate_pct")

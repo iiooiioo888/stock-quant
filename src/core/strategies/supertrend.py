@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("supertrend", "超級趨勢策略")
 class SuperTrendStrategy(OrderManagedStrategy):
     """超級趨勢（ATR 軌跡翻轉）"""
+
     params = (("period", 10), ("multiplier", 3.0))
 
     def __init__(self):
@@ -30,4 +31,3 @@ class SuperTrendStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.direction == -1 and self.position:
             self.order = self.sell()
-

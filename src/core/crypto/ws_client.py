@@ -9,6 +9,7 @@
 - 24 小時強制斷線前監聽 serverShutdown 事件
 - 每 IP 每 5 分鐘最多 300 次連接
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,6 +48,7 @@ ErrorCallback = Callable[[str, Exception], Coroutine[Any, Any, None]]
 @dataclass
 class StreamConfig:
     """單個串流的訂閱配置。"""
+
     symbol: str  # 如 "BTCUSDT"
     stream_types: list[str] = field(default_factory=lambda: ["trade", "ticker"])
     kline_intervals: list[str] = field(default_factory=lambda: ["1m"])
@@ -55,6 +57,7 @@ class StreamConfig:
 @dataclass
 class WSClientStats:
     """連接統計。"""
+
     total_connections: int = 0
     total_reconnects: int = 0
     total_messages: int = 0
@@ -138,8 +141,12 @@ class BinanceStreamClient:
 
     # ── 訂閱管理 ──────────────────────────────────────────────
 
-    def add_subscription(self, symbol: str, stream_types: list[str] = None,
-                         kline_intervals: list[str] = None) -> list[str]:
+    def add_subscription(
+        self,
+        symbol: str,
+        stream_types: list[str] = None,
+        kline_intervals: list[str] = None,
+    ) -> list[str]:
         """
         添加訂閱。返回新增的 stream names。
 
@@ -180,7 +187,9 @@ class BinanceStreamClient:
         """移除某交易對的所有訂閱。返回被移除的 stream names。"""
         symbol = symbol.lower()
         removed = [s for s in self._subscriptions if s.startswith(f"{symbol}@")]
-        self._subscriptions = [s for s in self._subscriptions if not s.startswith(f"{symbol}@")]
+        self._subscriptions = [
+            s for s in self._subscriptions if not s.startswith(f"{symbol}@")
+        ]
         self._stream_configs.pop(symbol, None)
         return removed
 
@@ -245,7 +254,9 @@ class BinanceStreamClient:
                 self._reconnect_base * (2 ** (self._reconnect_attempts - 1)),
                 self._reconnect_max,
             )
-            logger.info(f"[BinanceWS] {delay}s 後重連（第 {self._reconnect_attempts} 次）")
+            logger.info(
+                f"[BinanceWS] {delay}s 後重連（第 {self._reconnect_attempts} 次）"
+            )
             await asyncio.sleep(delay)
 
     async def _connect_and_listen(self):
@@ -533,7 +544,9 @@ class BinanceStreamClient:
                 else None
             ),
             "connected_since": (
-                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.stats.connected_at))
+                time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(self.stats.connected_at)
+                )
                 if self.stats.connected_at > 0
                 else None
             ),

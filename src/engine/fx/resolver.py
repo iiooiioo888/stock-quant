@@ -1,4 +1,5 @@
 """匯率解析：即時 vs 歷史（禁止用當前匯率回溯歷史淨值）。"""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -34,7 +35,11 @@ class FXResolver:
         if on_date is None:
             return self.spot_rate(target, base)
 
-        d = on_date.strftime("%Y-%m-%d") if isinstance(on_date, date) else str(on_date)[:10]
+        d = (
+            on_date.strftime("%Y-%m-%d")
+            if isinstance(on_date, date)
+            else str(on_date)[:10]
+        )
         today = datetime.now().strftime("%Y-%m-%d")
         if d >= today:
             return self.spot_rate(target, base)

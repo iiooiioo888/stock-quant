@@ -2,6 +2,7 @@
 回測引擎測試 — 使用合成數據測試雙均線策略
 無需外部服務，純本地運行
 """
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -42,17 +43,19 @@ def _generate_synthetic_kline(
         high = max(open_p, close) * (1 + abs(np.random.normal(0, 0.005)))
         low = min(open_p, close) * (1 - abs(np.random.normal(0, 0.005)))
         volume = int(np.random.uniform(500000, 2000000))
-        records.append({
-            "code": code,
-            "date": dt.strftime("%Y-%m-%d"),
-            "open": round(open_p, 2),
-            "high": round(high, 2),
-            "low": round(low, 2),
-            "close": round(close, 2),
-            "volume": volume,
-            "amount": round(volume * close, 2),
-            "turnover": round(np.random.uniform(0.5, 5.0), 2),
-        })
+        records.append(
+            {
+                "code": code,
+                "date": dt.strftime("%Y-%m-%d"),
+                "open": round(open_p, 2),
+                "high": round(high, 2),
+                "low": round(low, 2),
+                "close": round(close, 2),
+                "volume": volume,
+                "amount": round(volume * close, 2),
+                "turnover": round(np.random.uniform(0.5, 5.0), 2),
+            }
+        )
 
     return pd.DataFrame(records)
 
@@ -150,8 +153,13 @@ class TestDualMAStrategy:
         # 需同時 patch local_kline（源）和 kline_timeframe（from-import 引用）。
         synthetic_df = _generate_synthetic_kline(code="TEST001", days=250, trend="up")
 
-        with patch("src.core.local_kline.ensure_daily_kline", return_value=(synthetic_df, "mock")), \
-             patch("src.core.kline_timeframe.ensure_daily_kline", return_value=(synthetic_df, "mock")):
+        with patch(
+            "src.core.local_kline.ensure_daily_kline",
+            return_value=(synthetic_df, "mock"),
+        ), patch(
+            "src.core.kline_timeframe.ensure_daily_kline",
+            return_value=(synthetic_df, "mock"),
+        ):
             result = run_backtest("TEST001", strategy_name="dual_ma", cash=100000)
 
         assert "total_return_pct" in result

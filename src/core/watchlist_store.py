@@ -1,4 +1,5 @@
 """自選股持久化（DB + data/runtime_watchlist.json）— 重啟後保留用戶添加的標的"""
+
 from __future__ import annotations
 
 import json
@@ -64,6 +65,7 @@ def apply_runtime_on_startup() -> None:
 
 # ── 全局自選（settings.watchlist，向後兼容） ──────────────────
 
+
 def list_codes() -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -102,6 +104,7 @@ def remove_from_watchlist(code: str) -> bool:
 
 
 # ── DB 驅動的用戶自選（user_watchlists 表） ──────────────────
+
 
 def _get_user_default_watchlist_codes(user_id: int) -> list[str]:
     """從 DB 獲取用戶的默認監控列表代碼。"""

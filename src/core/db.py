@@ -1,6 +1,7 @@
 """
 數據庫操作層 — SQLite 讀寫封裝（含 LRU 緩存 + 線程本地連接池 + 寫入隊列）
 """
+
 import os
 import queue
 import sqlite3
@@ -24,7 +25,11 @@ _CODES_CACHE_TTL = 300.0
 # ============================================================
 # Writer Queue — 批量寫入，降低 SQLite 併發鎖競爭
 # ============================================================
-_WRITE_QUEUE_ENABLED = os.environ.get("SQ_WRITE_QUEUE", "1").strip().lower() in ("1", "true", "yes")
+_WRITE_QUEUE_ENABLED = os.environ.get("SQ_WRITE_QUEUE", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 _write_queue: queue.Queue = queue.Queue(maxsize=5000)
 _write_flush_event = threading.Event()
 _writer_started = False
@@ -145,8 +150,11 @@ def _enqueue(op: str, rows: list) -> None:
 # LRU 緩存層
 # ============================================================
 
+
 @lru_cache(maxsize=256)
-def _load_daily_kline_cached(code: str, start_date: str = None, end_date: str = None) -> tuple:
+def _load_daily_kline_cached(
+    code: str, start_date: str = None, end_date: str = None
+) -> tuple:
     """緩存版本 — 返回 tuple 以便 hashable"""
     sql = f"SELECT {_KLINE_COLS} FROM daily_kline WHERE code = ?"
     params = [code]
@@ -176,11 +184,13 @@ def clear_data_cache(quiet: bool = False, reason: str = ""):
     _db_stats_cache = {"ts": 0.0, "data": {}}
     try:
         from src.core.backtest import clear_prepare_cache
+
         clear_prepare_cache()
     except Exception:
         pass
     try:
         from src.core.api_cache import clear_all
+
         clear_all()
     except Exception:
         pass
@@ -190,6 +200,7 @@ def clear_data_cache(quiet: bool = False, reason: str = ""):
         pass
     try:
         from src.core.result_cache import invalidate_compute
+
         invalidate_compute()
     except Exception:
         pass
@@ -211,23 +222,37 @@ def save_daily_kline(df: pd.DataFrame, code: str, market: str = "a_share") -> in
         return 0
 
     # 統一列名
-    col_map = {"日期": "date", "开盘": "open", "最高": "high", "最低": "low",
-               "收盘": "close", "成交量": "volume", "成交额": "amount", "换手率": "turnover"}
+    col_map = {
+        "日期": "date",
+        "开盘": "open",
+        "最高": "high",
+        "最低": "low",
+        "收盘": "close",
+        "成交量": "volume",
+        "成交额": "amount",
+        "换手率": "turnover",
+    }
     df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
 
     # 向量化構建 records — 比 iterrows() 快 10 倍+
-    records = list(zip(
-        [code] * len(df),
-        df["date"].astype(str),
-        pd.to_numeric(df["open"], errors="coerce").fillna(0),
-        pd.to_numeric(df["high"], errors="coerce").fillna(0),
-        pd.to_numeric(df["low"], errors="coerce").fillna(0),
-        pd.to_numeric(df["close"], errors="coerce").fillna(0),
-        pd.to_numeric(df["volume"], errors="coerce").fillna(0),
-        pd.to_numeric(df.get("amount", pd.Series(0, index=df.index)), errors="coerce").fillna(0),
-        pd.to_numeric(df.get("turnover", pd.Series(0, index=df.index)), errors="coerce").fillna(0),
-        [market] * len(df),
-    ))
+    records = list(
+        zip(
+            [code] * len(df),
+            df["date"].astype(str),
+            pd.to_numeric(df["open"], errors="coerce").fillna(0),
+            pd.to_numeric(df["high"], errors="coerce").fillna(0),
+            pd.to_numeric(df["low"], errors="coerce").fillna(0),
+            pd.to_numeric(df["close"], errors="coerce").fillna(0),
+            pd.to_numeric(df["volume"], errors="coerce").fillna(0),
+            pd.to_numeric(
+                df.get("amount", pd.Series(0, index=df.index)), errors="coerce"
+            ).fillna(0),
+            pd.to_numeric(
+                df.get("turnover", pd.Series(0, index=df.index)), errors="coerce"
+            ).fillna(0),
+            [market] * len(df),
+        )
+    )
 
     if _WRITE_QUEUE_ENABLED:
         _enqueue("kline", records)
@@ -238,7 +263,9 @@ def save_daily_kline(df: pd.DataFrame, code: str, market: str = "a_share") -> in
     return len(records)
 
 
-def load_daily_kline(code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+def load_daily_kline(
+    code: str, start_date: str = None, end_date: str = None
+) -> pd.DataFrame:
     """讀取日K數據（帶 LRU 緩存）"""
     rows, cols = _load_daily_kline_cached(code, start_date, end_date)
     if not rows:
@@ -253,7 +280,9 @@ def load_all_codes() -> list[str]:
     if _codes_cache["data"] and now - _codes_cache["ts"] < _CODES_CACHE_TTL:
         return list(_codes_cache["data"])
     with get_conn() as conn:
-        rows = conn.execute("SELECT DISTINCT code FROM daily_kline ORDER BY code").fetchall()
+        rows = conn.execute(
+            "SELECT DISTINCT code FROM daily_kline ORDER BY code"
+        ).fetchall()
     codes = [r[0] for r in rows]
     _codes_cache = {"ts": now, "data": codes}
     return codes
@@ -264,7 +293,7 @@ def load_all_codes_by_market(market: str = "a_share") -> list[str]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT DISTINCT code FROM daily_kline WHERE market = ? ORDER BY code",
-            (market,)
+            (market,),
         ).fetchall()
     return [r[0] for r in rows]
 
@@ -282,8 +311,7 @@ def get_market_for_code(code: str) -> str:
     """根據代碼判斷市場類型"""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT market FROM daily_kline WHERE code = ? LIMIT 1",
-            (code,)
+            "SELECT market FROM daily_kline WHERE code = ? LIMIT 1", (code,)
         ).fetchone()
     if row:
         return row[0]
@@ -292,7 +320,17 @@ def get_market_for_code(code: str) -> str:
         return "a_share"
     if code.endswith("USDT") or code.endswith("BTC") or code.endswith("ETH"):
         return "crypto"
-    if len(code) == 6 and code[:3] in ("USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "CNY", "HKD"):
+    if len(code) == 6 and code[:3] in (
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CHF",
+        "AUD",
+        "CAD",
+        "CNY",
+        "HKD",
+    ):
         return "forex"
     return "a_share"
 
@@ -300,26 +338,38 @@ def get_market_for_code(code: str) -> str:
 def save_realtime_snapshot(df: pd.DataFrame):
     """保存實時行情快照"""
     from datetime import datetime
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # 向量化構建 records
-    for col in ("price", "change_pct", "volume", "amount", "high", "low", "open", "prev_close"):
+    for col in (
+        "price",
+        "change_pct",
+        "volume",
+        "amount",
+        "high",
+        "low",
+        "open",
+        "prev_close",
+    ):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    records = list(zip(
-        df.get("code", pd.Series("", index=df.index)).astype(str),
-        df.get("name", pd.Series("", index=df.index)).astype(str),
-        df.get("price", pd.Series(0, index=df.index)),
-        df.get("change_pct", pd.Series(0, index=df.index)),
-        df.get("volume", pd.Series(0, index=df.index)),
-        df.get("amount", pd.Series(0, index=df.index)),
-        df.get("high", pd.Series(0, index=df.index)),
-        df.get("low", pd.Series(0, index=df.index)),
-        df.get("open", pd.Series(0, index=df.index)),
-        df.get("prev_close", pd.Series(0, index=df.index)),
-        [now] * len(df),
-    ))
+    records = list(
+        zip(
+            df.get("code", pd.Series("", index=df.index)).astype(str),
+            df.get("name", pd.Series("", index=df.index)).astype(str),
+            df.get("price", pd.Series(0, index=df.index)),
+            df.get("change_pct", pd.Series(0, index=df.index)),
+            df.get("volume", pd.Series(0, index=df.index)),
+            df.get("amount", pd.Series(0, index=df.index)),
+            df.get("high", pd.Series(0, index=df.index)),
+            df.get("low", pd.Series(0, index=df.index)),
+            df.get("open", pd.Series(0, index=df.index)),
+            df.get("prev_close", pd.Series(0, index=df.index)),
+            [now] * len(df),
+        )
+    )
 
     if _WRITE_QUEUE_ENABLED:
         _enqueue("realtime", records)
@@ -328,9 +378,12 @@ def save_realtime_snapshot(df: pd.DataFrame):
             conn.executemany(_SQL_REALTIME_UPSERT, records)
 
 
-def log_alert(code: str, rule_type: str, message: str, price: float, user_id: int = None):
+def log_alert(
+    code: str, rule_type: str, message: str, price: float, user_id: int = None
+):
     """記錄預警日誌"""
     from datetime import datetime
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     row = (code, rule_type, message, price, now, user_id)
     if _WRITE_QUEUE_ENABLED:
@@ -340,7 +393,9 @@ def log_alert(code: str, rule_type: str, message: str, price: float, user_id: in
             conn.execute(_SQL_ALERT_INSERT, row)
 
 
-def get_alert_logs(limit: int = 100, code: str = None, user_id: int = None) -> list[dict]:
+def get_alert_logs(
+    limit: int = 100, code: str = None, user_id: int = None
+) -> list[dict]:
     """獲取預警日誌（支持按用戶過濾）"""
     sql = "SELECT * FROM alert_log WHERE 1=1"
     params: list = []
@@ -367,10 +422,15 @@ def get_db_stats() -> dict:
         return dict(_db_stats_cache["data"])
 
     import os
-    db_size = os.path.getsize(settings.db_path) if os.path.exists(settings.db_path) else 0
+
+    db_size = (
+        os.path.getsize(settings.db_path) if os.path.exists(settings.db_path) else 0
+    )
 
     with get_conn() as conn:
-        stock_count = conn.execute("SELECT COUNT(DISTINCT code) FROM daily_kline").fetchone()[0]
+        stock_count = conn.execute(
+            "SELECT COUNT(DISTINCT code) FROM daily_kline"
+        ).fetchone()[0]
         kline_count = conn.execute("SELECT COUNT(*) FROM daily_kline").fetchone()[0]
         alert_count = conn.execute("SELECT COUNT(*) FROM alert_log").fetchone()[0]
 
@@ -388,6 +448,7 @@ def save_backtest_result(result: dict):
     """保存回測結果到數據庫"""
     import json
     from datetime import datetime
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     params_json = json.dumps(result.get("params", {}), ensure_ascii=False)
     row = (
@@ -416,7 +477,9 @@ def save_backtest_result(result: dict):
             conn.execute(_SQL_BACKTEST_INSERT, row)
 
 
-def count_backtest_history(code: str = None, strategy: str = None, user_id: int = None) -> int:
+def count_backtest_history(
+    code: str = None, strategy: str = None, user_id: int = None
+) -> int:
     """回測歷史總筆數（分頁用）。"""
     sql = "SELECT COUNT(*) FROM backtest_results WHERE 1=1"
     params: list = []
@@ -463,6 +526,7 @@ def get_backtest_history(
     for r in rows:
         d = dict(r)
         import json
+
         d["params"] = json.loads(d["params"]) if d.get("params") else {}
         _attach_strategy_display_name(d)
         results.append(d)
@@ -482,6 +546,7 @@ def _attach_strategy_display_name(row: dict) -> None:
     """為回測記錄附加策略中文顯示名。"""
     try:
         from src.core.backtest import STRATEGY_NAMES
+
         key = row.get("strategy") or ""
         if key and not row.get("strategy_name"):
             row["strategy_name"] = STRATEGY_NAMES.get(key, key)
@@ -503,6 +568,7 @@ def get_backtest_by_ids(ids: list[int]) -> list[dict]:
     for r in rows:
         d = dict(r)
         import json
+
         d["params"] = json.loads(d["params"]) if d.get("params") else {}
         _attach_strategy_display_name(d)
         results.append(d)
@@ -520,7 +586,13 @@ def get_latest_date(code: str) -> str | None:
     return None
 
 
-def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limit: int = 500, user_id: int = None) -> list[dict]:
+def get_signal_logs(
+    code: str = None,
+    strategy: str = None,
+    days: int = 30,
+    limit: int = 500,
+    user_id: int = None,
+) -> list[dict]:
     """查詢信號歷史記錄（支持按用戶過濾）"""
     sql = "SELECT * FROM signal_log WHERE 1=1"
     params: list = []
@@ -539,6 +611,7 @@ def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limi
     # 按天數過濾
     if days:
         from datetime import datetime, timedelta
+
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         sql += " AND triggered_at >= ?"
         params.append(cutoff)
@@ -556,6 +629,7 @@ def get_signal_logs(code: str = None, strategy: str = None, days: int = 30, limi
 # 分鐘 K 線數據
 # ============================================================
 
+
 @lru_cache(maxsize=32)
 def _load_minute_kline_cached(code: str, period: str) -> tuple:
     """緩存版本 — 返回 tuple 以便 hashable"""
@@ -572,12 +646,12 @@ def _load_minute_kline_cached(code: str, period: str) -> tuple:
 def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
     """
     保存分鐘 K 線數據（upsert）
-    
+
     Args:
         df: K 線 DataFrame
         code: 股票代碼
         period: 週期 '1m','5m','15m','30m','60m'
-    
+
     Returns:
         保存的記錄數
     """
@@ -586,17 +660,19 @@ def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
 
     records = []
     for _, row in df.iterrows():
-        records.append((
-            code,
-            str(row.get("datetime", row.get("时间", ""))),
-            period,
-            float(row.get("open", row.get("开盘", 0))),
-            float(row.get("high", row.get("最高", 0))),
-            float(row.get("low", row.get("最低", 0))),
-            float(row.get("close", row.get("收盘", 0))),
-            float(row.get("volume", row.get("成交量", 0))),
-            float(row.get("amount", row.get("成交额", 0))),
-        ))
+        records.append(
+            (
+                code,
+                str(row.get("datetime", row.get("时间", ""))),
+                period,
+                float(row.get("open", row.get("开盘", 0))),
+                float(row.get("high", row.get("最高", 0))),
+                float(row.get("low", row.get("最低", 0))),
+                float(row.get("close", row.get("收盘", 0))),
+                float(row.get("volume", row.get("成交量", 0))),
+                float(row.get("amount", row.get("成交额", 0))),
+            )
+        )
 
     if _WRITE_QUEUE_ENABLED:
         _enqueue("minute", records)
@@ -610,11 +686,11 @@ def save_minute_kline(df: pd.DataFrame, code: str, period: str) -> int:
 def load_minute_kline(code: str, period: str = "5m") -> pd.DataFrame:
     """
     讀取分鐘 K 線數據（帶 LRU 緩存）
-    
+
     Args:
         code: 股票代碼
         period: 週期 '1m','5m','15m','30m','60m'
-    
+
     Returns:
         分鐘 K 線 DataFrame
     """

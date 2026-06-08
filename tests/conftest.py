@@ -1,6 +1,7 @@
 """
 測試配置 — 設置測試環境變量
 """
+
 import os
 import sys
 import tempfile
@@ -47,6 +48,7 @@ def _reset_task_manager_state():
 def _reset_rate_limiters():
     """每個用例清空限流桶，避免 register/login 連續觸發 429"""
     from src.core.rate_limiter import _memory_limiters
+
     for limiter in _memory_limiters.values():
         limiter._store.clear()
         limiter._last_seen.clear()
@@ -63,19 +65,49 @@ _TEST_CONTROLS = {
     "users_enabled": True,
     "watchlist_enabled": True,
     "scopes": {
-        "features": {"enabled": True, "backtest": True, "backtest_advanced": True,
-                     "backtest_multi": True, "optimize": True, "portfolio": True,
-                     "walkforward": True, "auto_optimize": True, "target_search": True},
-        "strategies": {"enabled": True, "list": True, "params": True, "create": True,
-                       "builtin_enabled": True, "user_enabled": True,
-                       "allowed_names": [], "blocked_names": []},
+        "features": {
+            "enabled": True,
+            "backtest": True,
+            "backtest_advanced": True,
+            "backtest_multi": True,
+            "optimize": True,
+            "portfolio": True,
+            "walkforward": True,
+            "auto_optimize": True,
+            "target_search": True,
+        },
+        "strategies": {
+            "enabled": True,
+            "list": True,
+            "params": True,
+            "create": True,
+            "builtin_enabled": True,
+            "user_enabled": True,
+            "allowed_names": [],
+            "blocked_names": [],
+        },
         "users": {"enabled": True, "register": True, "invite_only": False},
         "watchlist": {"enabled": True, "add": True},
-        "tasks": {"enabled": True, "list": True, "queue": True, "types": True, "stats": True,
-                  "detail": True, "params": True, "full": True, "logs": True,
-                  "cancel": True, "delete": True, "retry": True, "pipeline": True,
-                  "batch_cancel": True, "batch_delete": True, "cancel_pending": True,
-                  "clear_completed": True, "cleanup": True},
+        "tasks": {
+            "enabled": True,
+            "list": True,
+            "queue": True,
+            "types": True,
+            "stats": True,
+            "detail": True,
+            "params": True,
+            "full": True,
+            "logs": True,
+            "cancel": True,
+            "delete": True,
+            "retry": True,
+            "pipeline": True,
+            "batch_cancel": True,
+            "batch_delete": True,
+            "cancel_pending": True,
+            "clear_completed": True,
+            "cleanup": True,
+        },
     },
 }
 
@@ -86,7 +118,9 @@ def client(monkeypatch):
     # API 單元測試只驗證路由契約，避免儀表盤/數據中心端點觸發外部行情源。
     monkeypatch.setattr("src.core.capital_flow.get_market_capital_flow", lambda: [])
     monkeypatch.setattr("src.core.capital_flow.get_north_flow", lambda days=30: [])
-    monkeypatch.setattr("src.core.sector.get_sector_capital_flow_rank", lambda top_n=20: [])
+    monkeypatch.setattr(
+        "src.core.sector.get_sector_capital_flow_rank", lambda top_n=20: []
+    )
     monkeypatch.setattr(
         "src.core.sector.get_sector_change_flow_matrix",
         lambda sector_type="industry", top_n=40: [],
@@ -101,9 +135,11 @@ def client(monkeypatch):
     )
     # monkeypatch load_controls 使得 lifespan 中 apply_controls_on_startup 使用測試配置
     import src.core.admin_controls as ac
+
     monkeypatch.setattr(ac, "load_controls", lambda: dict(_TEST_CONTROLS))
     ac._controls = dict(_TEST_CONTROLS)
     from src.api.app import app
+
     yield TestClient(app)
     ac._controls = None
 
@@ -112,6 +148,7 @@ def client(monkeypatch):
 def _init_test_db():
     """Session 級別：確保測試數據庫已初始化"""
     from src.core.db import init_db
+
     init_db()
 
 
@@ -120,6 +157,7 @@ def _ensure_db_tables():
     """每個用例前確認 DB 表存在（防止並行測試清空 DB）"""
     import sqlite3
     from src.config import settings
+
     db_path = settings.db_path
     try:
         conn = sqlite3.connect(db_path)
@@ -129,8 +167,10 @@ def _ensure_db_tables():
         conn.close()
         if not has_users:
             from src.core.db import init_db
+
             init_db()
     except Exception:
         from src.core.db import init_db
+
         init_db()
     yield

@@ -1,6 +1,7 @@
 """
 Celery 任務定義 — Worker 進程執行已註冊的 task_type。
 """
+
 from __future__ import annotations
 
 from src.core.celery_app import get_celery_app
@@ -17,7 +18,10 @@ def execute_task_celery(self, task_id: str):
 
     init_database()
     try:
-        from src.core.task_manager import ensure_task_in_memory, load_recent_tasks_from_db
+        from src.core.task_manager import (
+            ensure_task_in_memory,
+            load_recent_tasks_from_db,
+        )
 
         load_recent_tasks_from_db(limit=50)
         ensure_task_in_memory(task_id)

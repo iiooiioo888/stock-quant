@@ -1,6 +1,7 @@
 """
 LLM 運行時配置：請求覆寫 > 用戶設置 > 環境變量。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -76,7 +77,11 @@ def resolve_llm_config(
         api_key=api_key,
         api_base=api_base,
         model=model,
-        temperature=float(req.get("temperature") if req.get("temperature") is not None else settings.llm_temperature),
+        temperature=float(
+            req.get("temperature")
+            if req.get("temperature") is not None
+            else settings.llm_temperature
+        ),
         max_tokens=int(req.get("max_tokens") or settings.llm_max_tokens),
         timeout_sec=int(req.get("timeout_sec") or settings.llm_timeout_sec),
         max_tool_rounds=int(req.get("max_tool_rounds") or settings.llm_max_tool_rounds),

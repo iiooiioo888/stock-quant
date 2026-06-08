@@ -1,6 +1,7 @@
 """
 預警引擎 — 支持多種規則 + 冷卻 + 日誌 + 多通知渠道
 """
+
 import time
 from datetime import datetime
 
@@ -54,13 +55,15 @@ def _should_throttle(message: str) -> bool:
 # 通知渠道實現
 # ============================================================
 
+
 def send_wechat_work(webhook_url: str, message: str) -> bool:
     """發送企業微信機器人消息"""
     try:
-        resp = requests.post(webhook_url, json={
-            "msgtype": "text",
-            "text": {"content": message}
-        }, timeout=10)
+        resp = requests.post(
+            webhook_url,
+            json={"msgtype": "text", "text": {"content": message}},
+            timeout=10,
+        )
         data = resp.json()
         if data.get("errcode") == 0:
             logger.info("企業微信通知發送成功")
@@ -76,10 +79,11 @@ def send_wechat_work(webhook_url: str, message: str) -> bool:
 def send_dingtalk(webhook_url: str, message: str) -> bool:
     """發送釘釘機器人消息"""
     try:
-        resp = requests.post(webhook_url, json={
-            "msgtype": "text",
-            "text": {"content": message}
-        }, timeout=10)
+        resp = requests.post(
+            webhook_url,
+            json={"msgtype": "text", "text": {"content": message}},
+            timeout=10,
+        )
         data = resp.json()
         if data.get("errcode") == 0:
             logger.info("釘釘通知發送成功")
@@ -96,11 +100,15 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
     """發送 Telegram Bot 消息"""
     try:
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        resp = requests.post(url, json={
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML",
-        }, timeout=10)
+        resp = requests.post(
+            url,
+            json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            },
+            timeout=10,
+        )
         data = resp.json()
         if data.get("ok"):
             logger.info("Telegram 通知發送成功")
@@ -128,10 +136,11 @@ def send_notification(message: str, msg_type: str = "alert"):
     # Webhook
     if settings.notify_webhook and settings.webhook_url:
         try:
-            requests.post(settings.webhook_url, json={
-                "msgtype": "text",
-                "text": {"content": f"[股票預警] {rendered}"}
-            }, timeout=5)
+            requests.post(
+                settings.webhook_url,
+                json={"msgtype": "text", "text": {"content": f"[股票預警] {rendered}"}},
+                timeout=5,
+            )
         except Exception as e:
             logger.error(f"Webhook 推送失敗: {e}")
 
@@ -144,7 +153,11 @@ def send_notification(message: str, msg_type: str = "alert"):
         send_dingtalk(settings.dingtalk_webhook, rendered)
 
     # Telegram
-    if settings.notify_telegram and settings.telegram_bot_token and settings.telegram_chat_id:
+    if (
+        settings.notify_telegram
+        and settings.telegram_bot_token
+        and settings.telegram_chat_id
+    ):
         send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, rendered)
 
 
@@ -179,7 +192,9 @@ def get_notification_channels() -> list[dict]:
             "name": "Telegram",
             "key": "telegram",
             "enabled": settings.notify_telegram,
-            "configured": bool(settings.telegram_bot_token and settings.telegram_chat_id),
+            "configured": bool(
+                settings.telegram_bot_token and settings.telegram_chat_id
+            ),
         },
     ]
 
@@ -200,9 +215,11 @@ def test_all_channels() -> dict:
                 logger.info(f"[測試] {test_msg}")
                 results[ch["key"]] = "ok"
             elif ch["key"] == "webhook":
-                requests.post(settings.webhook_url, json={
-                    "msgtype": "text", "text": {"content": test_msg}
-                }, timeout=5)
+                requests.post(
+                    settings.webhook_url,
+                    json={"msgtype": "text", "text": {"content": test_msg}},
+                    timeout=5,
+                )
                 results[ch["key"]] = "ok"
             elif ch["key"] == "wechat_work":
                 ok = send_wechat_work(settings.wechat_work_webhook, test_msg)
@@ -211,7 +228,9 @@ def test_all_channels() -> dict:
                 ok = send_dingtalk(settings.dingtalk_webhook, test_msg)
                 results[ch["key"]] = "ok" if ok else "failed"
             elif ch["key"] == "telegram":
-                ok = send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, test_msg)
+                ok = send_telegram(
+                    settings.telegram_bot_token, settings.telegram_chat_id, test_msg
+                )
                 results[ch["key"]] = "ok" if ok else "failed"
         except Exception as e:
             results[ch["key"]] = f"error: {e}"
@@ -222,6 +241,7 @@ def test_all_channels() -> dict:
 # ============================================================
 # AlertEngine（原有功能 + 新增通知分發）
 # ============================================================
+
 
 class AlertEngine:
     def __init__(self):

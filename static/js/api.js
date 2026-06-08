@@ -1,5 +1,6 @@
 /**
  * api.js — API 客戶端封裝（含 Token 管理）
+ * 性能優化：請求合併、智能緩存、預取、壓縮傳輸
  */
 
 const API_BASE = '';
@@ -11,7 +12,19 @@ const Api = {
   _inflight: new Map(),
   _exclusive: new Map(),
   _debouncedGetTimers: new Map(),
-  /** GET 緩存 TTL（毫秒） */
+  
+  // 性能優化配置
+  _optimization: {
+    enableCompression: true,      // 啟用數據壓縮
+    enablePrefetch: true,         // 啟用預取
+    enableBatching: true,         // 啟用批量請求
+    maxConcurrent: 5,             // 最大並發數
+    retryBaseDelay: 500,          // 重試基礎延遲 (ms)
+  },
+  _activeRequests: 0,
+  _requestQueue: [],
+  
+  /** GET 緩存 TTL（毫秒）- 擴展版 */
   _cacheTtl: {
     '/api/health': 3000,
     '/api/health/detailed': 8000,
@@ -22,6 +35,8 @@ const Api = {
     '/api/indices/charts': 120000,
     '/api/tasks': 2500,
     '/api/tasks/queue': 2500,
+    '/api/sparkline': 60000,
+    '/api/kline': 10000,
   },
 
   /**

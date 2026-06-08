@@ -8,6 +8,7 @@
 - 歷史 trade 滾動窗口
 - K 線聚合器：從 trade 流實時聚合出 1m/5m/15m/1h K 線
 """
+
 from __future__ import annotations
 
 import time
@@ -18,9 +19,11 @@ from typing import Optional
 
 # ── 數據結構 ──────────────────────────────────────────────────
 
+
 @dataclass
 class CryptoSnapshot:
     """單交易對實時快照。"""
+
     symbol: str
     price: float = 0.0
     open: float = 0.0
@@ -48,7 +51,7 @@ class CryptoSnapshot:
     sell_volume: float = 0.0
     buy_count: int = 0
     sell_count: int = 0
-    large_orders: int = 0       # 大單筆數
+    large_orders: int = 0  # 大單筆數
     large_order_volume: float = 0.0  # 大單成交量
 
     def to_dict(self) -> dict:
@@ -86,6 +89,7 @@ class CryptoSnapshot:
 @dataclass
 class AggregatedKline:
     """聚合 K 線。"""
+
     symbol: str
     interval: str
     open_time: int  # 毫秒
@@ -112,7 +116,9 @@ class AggregatedKline:
             "quote_volume": round(self.quote_volume, 2),
             "trades_count": self.trades_count,
             "is_closed": self.is_closed,
-            "date": datetime.fromtimestamp(self.open_time / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+            "date": datetime.fromtimestamp(
+                self.open_time / 1000, tz=timezone.utc
+            ).strftime("%Y-%m-%d %H:%M"),
         }
 
 

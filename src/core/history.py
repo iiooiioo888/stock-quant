@@ -1,6 +1,7 @@
 """
 歷史數據下載模塊（支持增量更新，多市場：A股/加密貨幣/外匯）
 """
+
 import random
 import time
 from datetime import datetime, timedelta
@@ -17,31 +18,38 @@ MAX_RETRIES = 3
 RETRY_DELAY = 5  # 基礎重試間隔（秒），配合指數退避
 
 _REQ_SESSION = requests.Session()
-_REQ_SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-})
+_REQ_SESSION.headers.update(
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+)
 
 
 def _patch_akshare_session():
     """修復 akshare 的 requests Session，避免東方財富 API 斷開連接"""
     try:
         session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate",
-            "Connection": "keep-alive",
-        })
+        session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            }
+        )
         # 替換 akshare 內部的 requests 模塊 session
         import akshare.core.stock_zh_a_hist as _mod
-        if hasattr(_mod, 'requests'):
+
+        if hasattr(_mod, "requests"):
             _mod.requests = session
         # 也嘗試 patch 全局 requests
         import requests as _req
+
         _req.Session = lambda: session
     except Exception:
         pass  # patch 失敗不影響正常功能
+
 
 # 啟動時 patch 一次
 _patch_akshare_session()
@@ -51,10 +59,29 @@ def detect_market(code: str) -> str:
     """根據代碼格式自動判斷市場類型"""
     code = code.upper().strip()
     # 加密貨幣：以 USDT/BTC/ETH 結尾
-    if code.endswith("USDT") or code.endswith("BTC") or code.endswith("ETH") or code.endswith("BNB"):
+    if (
+        code.endswith("USDT")
+        or code.endswith("BTC")
+        or code.endswith("ETH")
+        or code.endswith("BNB")
+    ):
         return "crypto"
     # 外匯：6 字符，前 3 後 3 都是貨幣代碼
-    if len(code) == 6 and code[:3] in ("USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "CNY", "HKD", "SGD", "NZD", "SEK", "NOK"):
+    if len(code) == 6 and code[:3] in (
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CHF",
+        "AUD",
+        "CAD",
+        "CNY",
+        "HKD",
+        "SGD",
+        "NZD",
+        "SEK",
+        "NOK",
+    ):
         return "forex"
     # Yahoo 全球標的
     if code.endswith(".HK") or code.endswith(".SS") or code.endswith(".SZ"):
@@ -82,7 +109,9 @@ def download_one(code: str, start_date: str = None, market: str = None) -> int:
 
 
 def download_one_with_source(
-    code: str, start_date: str = None, market: str = None,
+    code: str,
+    start_date: str = None,
+    market: str = None,
 ) -> tuple[int, str]:
     """下載單標的日 K，返回 (條數, source_slug)。"""
     from src.core.auto_kline_fetch import download_one_auto
@@ -93,6 +122,7 @@ def download_one_with_source(
 def _download_crypto(code: str, start_date: str = None) -> int:
     """下載加密貨幣歷史數據"""
     from src.core.crypto import download_crypto_kline
+
     try:
         df = download_crypto_kline(symbol=code, start_date=start_date)
         if df.empty:
@@ -108,6 +138,7 @@ def _download_crypto(code: str, start_date: str = None) -> int:
 def _download_forex(code: str, start_date: str = None) -> int:
     """下載外匯歷史數據"""
     from src.core.forex import download_forex_kline
+
     try:
         df = download_forex_kline(pair=code, start_date=start_date)
         if df.empty:
@@ -247,12 +278,14 @@ def _download_a_share(code: str, start_date: str = None) -> int:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             from src.core.yahoo_finance import download_a_share_daily
+
             df = download_a_share_daily(code, start_date=start_date)
             if not df.empty:
                 count = save_daily_kline(df, code)
                 logger.info(f"{code}: {count} 條記錄 (Yahoo)")
                 try:
                     from src.core.data_sources import record_outcome
+
                     record_outcome("a_share_history", "Yahoo Finance", ok=True)
                 except Exception:
                     pass
@@ -260,21 +293,27 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             logger.warning(f"{code}: Yahoo 無數據")
             try:
                 from src.core.data_sources import record_outcome
+
                 # 無數據多半等價於「該標的不支援/不存在」：視作 404 降分
-                record_outcome("a_share_history", "Yahoo Finance", ok=False, status_code=404)
+                record_outcome(
+                    "a_share_history", "Yahoo Finance", ok=False, status_code=404
+                )
             except Exception:
                 pass
             break
         except Exception as e:
             if attempt < MAX_RETRIES:
                 delay = RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(0.5, 2.0)
-                logger.warning(f"{code}: Yahoo 失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})")
+                logger.warning(
+                    f"{code}: Yahoo 失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})"
+                )
                 time.sleep(delay)
             else:
                 logger.warning(f"{code}: Yahoo 全部失敗，嘗試 AKShare 備選... ({e})")
                 time.sleep(random.uniform(1.0, 2.0))
                 try:
                     from src.core.data_sources import record_outcome
+
                     record_outcome("a_share_history", "Yahoo Finance", ok=False)
                 except Exception:
                     pass
@@ -285,23 +324,31 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             # 每次重試前重新 patch session
             _patch_akshare_session()
             df = ak.stock_zh_a_hist(
-                symbol=code, period="daily",
-                start_date=start_date, adjust="qfq",
+                symbol=code,
+                period="daily",
+                start_date=start_date,
+                adjust="qfq",
             )
             if df.empty:
                 logger.warning(f"{code}: 無數據")
                 return 0
 
             col_map = {
-                "日期": "date", "开盘": "open", "最高": "high",
-                "最低": "low", "收盘": "close", "成交量": "volume",
-                "成交额": "amount", "换手率": "turnover",
+                "日期": "date",
+                "开盘": "open",
+                "最高": "high",
+                "最低": "low",
+                "收盘": "close",
+                "成交量": "volume",
+                "成交额": "amount",
+                "换手率": "turnover",
             }
             df = df.rename(columns=col_map)
             count = save_daily_kline(df, code)
             logger.info(f"{code}: {count} 條記錄 (東財 AKShare)")
             try:
                 from src.core.data_sources import record_outcome
+
                 record_outcome("a_share_history", "東方財富", ok=True)
             except Exception:
                 pass
@@ -310,13 +357,16 @@ def _download_a_share(code: str, start_date: str = None) -> int:
         except Exception as e:
             if attempt < MAX_RETRIES:
                 delay = RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(0.5, 2.0)
-                logger.warning(f"{code}: 東財失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})")
+                logger.warning(
+                    f"{code}: 東財失敗(第{attempt}次)，{delay:.1f}秒後重試... ({e})"
+                )
                 time.sleep(delay)
             else:
                 logger.warning(f"{code}: 東財全部失敗，嘗試其他備選...")
                 time.sleep(random.uniform(3.0, 6.0))
                 try:
                     from src.core.data_sources import record_outcome
+
                     record_outcome("a_share_history", "東方財富", ok=False)
                 except Exception:
                     pass
@@ -329,14 +379,23 @@ def _download_a_share(code: str, start_date: str = None) -> int:
         if df.empty:
             logger.warning(f"{code}: 新浪備選接口無數據")
         else:
-            col_map = {"date": "date", "open": "open", "high": "high",
-                        "low": "low", "close": "close", "volume": "volume",
-                        "amount": "amount", "turnover": "turnover"}
+            col_map = {
+                "date": "date",
+                "open": "open",
+                "high": "high",
+                "low": "low",
+                "close": "close",
+                "volume": "volume",
+                "amount": "amount",
+                "turnover": "turnover",
+            }
             df = df.rename(columns=col_map)
 
             if start_date:
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-                df = df[df["date"] >= f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"]
+                df = df[
+                    df["date"] >= f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+                ]
 
             count = save_daily_kline(df, code)
             logger.info(f"{code}: {count} 條記錄 (新浪備選)")
@@ -357,8 +416,12 @@ def _download_a_share(code: str, start_date: str = None) -> int:
             )
             if not df.empty:
                 col_map = {
-                    "日期": "date", "开盘": "open", "最高": "high",
-                    "最低": "low", "收盘": "close", "成交量": "volume",
+                    "日期": "date",
+                    "开盘": "open",
+                    "最高": "high",
+                    "最低": "low",
+                    "收盘": "close",
+                    "成交量": "volume",
                     "成交额": "amount",
                 }
                 df = df.rename(columns=col_map)
@@ -377,13 +440,15 @@ def _download_a_share(code: str, start_date: str = None) -> int:
     try:
         logger.info(f"{code}: 嘗試騰訊備選接口...")
         _patch_akshare_session()
-        df = ak.stock_zh_a_hist_tx(
-            symbol=symbol, start_date=start_date, adjust="qfq"
-        )
+        df = ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start_date, adjust="qfq")
         if not df.empty:
             col_map = {
-                "date": "date", "open": "open", "high": "high",
-                "low": "low", "close": "close", "volume": "volume",
+                "date": "date",
+                "open": "open",
+                "high": "high",
+                "low": "low",
+                "close": "close",
+                "volume": "volume",
                 "amount": "amount",
             }
             df = df.rename(columns=col_map)
@@ -432,8 +497,8 @@ def _download_a_share_http(code: str, start_date: str = None) -> "pd.DataFrame |
         "secid": secid,
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-        "klt": "101",        # 日 K
-        "fqt": "1",          # 前復權
+        "klt": "101",  # 日 K
+        "fqt": "1",  # 前復權
         "beg": start_date,
         "end": "20500101",
         "lmt": "5000",
@@ -451,16 +516,18 @@ def _download_a_share_http(code: str, start_date: str = None) -> "pd.DataFrame |
         for line in klines:
             parts = line.split(",")
             if len(parts) >= 7:
-                rows.append({
-                    "date": parts[0],
-                    "open": float(parts[1]),
-                    "close": float(parts[2]),
-                    "high": float(parts[3]),
-                    "low": float(parts[4]),
-                    "volume": float(parts[5]),
-                    "amount": float(parts[6]),
-                    "turnover": float(parts[10]) if len(parts) > 10 else 0,
-                })
+                rows.append(
+                    {
+                        "date": parts[0],
+                        "open": float(parts[1]),
+                        "close": float(parts[2]),
+                        "high": float(parts[3]),
+                        "low": float(parts[4]),
+                        "volume": float(parts[5]),
+                        "amount": float(parts[6]),
+                        "turnover": float(parts[10]) if len(parts) > 10 else 0,
+                    }
+                )
 
         df = pd.DataFrame(rows)
         return df
@@ -501,11 +568,11 @@ def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
     """
     增量下載歷史數據。
     檢查每只股票的最新日期，只下載之後的數據。
-    
+
     Args:
         codes: 股票代碼列表，為 None 時使用 watchlist
         force: 強制重新下載全部數據
-    
+
     Returns:
         {"updated": int, "skipped": int, "total_records": int, "details": [...]}
     """
@@ -531,7 +598,9 @@ def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
                     # 如果最新數據距今不到 1 天，跳過
                     if dt.date() >= datetime.now().date():
                         skipped += 1
-                        details.append({"code": code, "status": "skipped", "reason": "已是最新"})
+                        details.append(
+                            {"code": code, "status": "skipped", "reason": "已是最新"}
+                        )
                         continue
                 except ValueError:
                     start_date = settings.history_start_date
@@ -561,7 +630,9 @@ def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
         "details": details,
     }
 
-    logger.info(f"增量更新完成: {updated} 只更新, {skipped} 只跳過, {total_records} 條新數據")
+    logger.info(
+        f"增量更新完成: {updated} 只更新, {skipped} 只跳過, {total_records} 條新數據"
+    )
     return result
 
 
@@ -582,12 +653,12 @@ MINUTE_PERIODS = {
 def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> int:
     """
     下載單只股票的分鐘 K 線數據
-    
+
     Args:
         code: 股票代碼
         period: 週期 '1m','5m','15m','30m','60m'
         adjust: 復權方式 'qfq'=前復權, 'hfq'=後復權, ''=不復權
-    
+
     Returns:
         保存的記錄數
     """
@@ -622,11 +693,13 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
             df = df.rename(columns=col_map)
 
             from src.core.db import save_minute_kline
+
             count = save_minute_kline(df, code, period)
             logger.info(f"{code} {period}: {count} 條分鐘K線")
 
             # 清除分鐘K線緩存
             from src.core.db import _load_minute_kline_cached
+
             _load_minute_kline_cached.cache_clear()
 
             time.sleep(_RATE_LIMIT)
@@ -634,7 +707,9 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
 
         except Exception as e:
             if attempt < MAX_RETRIES:
-                logger.warning(f"{code} {period}: 分鐘K線下載失敗(第{attempt}次)，重試... ({e})")
+                logger.warning(
+                    f"{code} {period}: 分鐘K線下載失敗(第{attempt}次)，重試... ({e})"
+                )
                 time.sleep(RETRY_DELAY * attempt)
             else:
                 logger.error(f"{code} {period}: 分鐘K線下載全部失敗: {e}")
@@ -646,15 +721,17 @@ def download_minute_data(code: str, period: str = "5m", adjust: str = "qfq") -> 
 _RATE_LIMIT = 0.5
 
 
-def download_minute_batch(codes: list[str], period: str = "5m", adjust: str = "qfq") -> dict:
+def download_minute_batch(
+    codes: list[str], period: str = "5m", adjust: str = "qfq"
+) -> dict:
     """
     批量下載分鐘 K 線數據
-    
+
     Args:
         codes: 股票代碼列表
         period: 週期
         adjust: 復權方式
-    
+
     Returns:
         {"total": int, "success": int, "failed": int, "details": [...]}
     """
@@ -691,11 +768,14 @@ def download_minute_batch(codes: list[str], period: str = "5m", adjust: str = "q
     logger.info(f"分鐘K線下載完成: {success} 成功, {failed} 失敗, 共 {total} 條")
     return result
 
-async def preload_kline_range(code: str, start_date: str = None, end_date: str = None) -> int:
+
+async def preload_kline_range(
+    code: str, start_date: str = None, end_date: str = None
+) -> int:
     """異步預載 K 線至 LRU（不阻塞事件循環）。"""
     import asyncio
 
     from src.core.db import preload_kline_range as _sync_preload
+
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _sync_preload, code, start_date, end_date)
-

@@ -1,7 +1,17 @@
 """回測與優化"""
+
 import json
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request, Body
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    Query,
+    UploadFile,
+    File,
+    Request,
+    Body,
+)
 from src.config import settings
 from src.core.auth import require_auth, require_admin, get_current_user
 from src.core.db import get_conn
@@ -52,6 +62,7 @@ async def run_backtest_api(
     gate_backtest_submit(user, advanced=False)
     if user:
         from src.core.entitlements import gate_concurrent_tasks
+
         gate_concurrent_tasks(user)
 
     try:
@@ -60,11 +71,16 @@ async def run_backtest_api(
         raise HTTPException(400, str(e))
 
     if strategy not in STRATEGIES:
-        raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
+        raise HTTPException(
+            400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}"
+        )
 
     force_refresh = False
     task_params = {
-        "code": code, "strategy": strategy, "params": params, "cash": cash,
+        "code": code,
+        "strategy": strategy,
+        "params": params,
+        "cash": cash,
         "timeframe": timeframe,
         "stop_loss_pct": stop_loss_pct,
         "take_profit_pct": take_profit_pct,
@@ -72,28 +88,44 @@ async def run_backtest_api(
         "benchmark": benchmark,
     }
     task = create_task(
-        "backtest", task_params, title=f"回測 {code}/{strategy}",
-        force_refresh=force_refresh, user_id=user.id if user else None,
+        "backtest",
+        task_params,
+        title=f"回測 {code}/{strategy}",
+        force_refresh=force_refresh,
+        user_id=user.id if user else None,
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同回測正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同回測正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
     def _work():
         return run_backtest(
-            code, strategy_name=strategy, params=params, cash=cash,
-            stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
-            trailing_stop_pct=trailing_stop_pct, benchmark=benchmark,
+            code,
+            strategy_name=strategy,
+            params=params,
+            cash=cash,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            trailing_stop_pct=trailing_stop_pct,
+            benchmark=benchmark,
             timeframe=timeframe,
             task_id=task_id,
             user_id=user.id if user else None,
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="backtest", cache_params=task_params, cache_code=code,
+        task_id,
+        _work,
+        cache_namespace="backtest",
+        cache_params=task_params,
+        cache_code=code,
     )
 
 
@@ -124,6 +156,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
 
     gate_backtest_submit(user, advanced=True)
     from src.core.entitlements import gate_concurrent_tasks
+
     gate_concurrent_tasks(user)
 
     code = body.get("code", "")
@@ -149,43 +182,66 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     if strategy not in STRATEGIES:
-        raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
+        raise HTTPException(
+            400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}"
+        )
 
     force_refresh = bool(body.get("force_refresh") or body.get("force"))
 
     # 任務去重（params 須含全部影響回測的欄位，否則會命中錯誤的舊結果）
     task_params = {
-        "code": code, "strategy": strategy, "params": params, "cash": cash,
+        "code": code,
+        "strategy": strategy,
+        "params": params,
+        "cash": cash,
         "commission": commission,
         "stop_loss_pct": stop_loss_pct,
         "take_profit_pct": take_profit_pct,
         "trailing_stop_pct": trailing_stop_pct,
         "benchmark": benchmark,
-        "slippage_pct": slippage_pct, "enable_t1": enable_t1, "enable_limit": enable_limit,
+        "slippage_pct": slippage_pct,
+        "enable_t1": enable_t1,
+        "enable_limit": enable_limit,
         "timeframe": timeframe,
         "circuit_breaker_dd": circuit_breaker_dd,
         "max_position_pct": max_position_pct,
     }
     if force_refresh:
         from src.core.result_cache import drop_cached_compute
+
         drop_cached_compute("backtest_advanced", task_params, code=code)
     task = create_task(
-        "backtest_advanced", task_params, title=f"進階回測 {code}/{strategy}",
-        force_refresh=force_refresh, user_id=user.id,
+        "backtest_advanced",
+        task_params,
+        title=f"進階回測 {code}/{strategy}",
+        force_refresh=force_refresh,
+        user_id=user.id,
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同進階回測正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同進階回測正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
     def _work():
         return run_backtest(
-            code, strategy_name=strategy, params=params, cash=cash,
-            commission=commission, stop_loss_pct=stop_loss_pct,
-            take_profit_pct=take_profit_pct, trailing_stop_pct=trailing_stop_pct,
-            benchmark=benchmark, slippage_pct=slippage_pct,
-            enable_t1=enable_t1, enable_limit=enable_limit,
+            code,
+            strategy_name=strategy,
+            params=params,
+            cash=cash,
+            commission=commission,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            trailing_stop_pct=trailing_stop_pct,
+            benchmark=benchmark,
+            slippage_pct=slippage_pct,
+            enable_t1=enable_t1,
+            enable_limit=enable_limit,
             timeframe=timeframe,
             task_id=task_id,
             circuit_breaker_dd=circuit_breaker_dd,
@@ -194,8 +250,11 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="backtest_advanced", cache_params=task_params, cache_code=code,
+        task_id,
+        _work,
+        cache_namespace="backtest_advanced",
+        cache_params=task_params,
+        cache_code=code,
     )
 
 
@@ -210,8 +269,13 @@ async def run_multi_backtest_api(code: str):
     task_params = {"code": code}
     task = create_task("backtest_multi", task_params, title=f"多策略對比 {code}")
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同多策略對比正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同多策略對比正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     return dispatch_async_task(
@@ -224,6 +288,7 @@ async def run_multi_backtest_api(code: str):
 
 
 # ====== 優化 ======
+
 
 @router.post("/api/optimize")
 async def run_optimize_api(
@@ -256,6 +321,7 @@ async def run_optimize_api(
 
     gate_optimize_submit(user)
     from src.core.entitlements import gate_concurrent_tasks
+
     gate_concurrent_tasks(user)
 
     merged = {
@@ -279,11 +345,19 @@ async def run_optimize_api(
     task_params = {**merged, **risk_cfg.to_dict()}
     display_strategy = strategy if strategy != "all" else "全部策略"
     task = create_task(
-        "optimize", task_params, title=f"參數優化 {code}/{display_strategy}", user_id=user.id,
+        "optimize",
+        task_params,
+        title=f"參數優化 {code}/{display_strategy}",
+        user_id=user.id,
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同優化正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同優化正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     run_ctx = risk_cfg.to_dict()
@@ -291,8 +365,13 @@ async def run_optimize_api(
     def _work():
         if strategy == "all":
             results = optimize_all(
-                code, objective=objective, method=method,
-                n_trials=n_trials, top_n=top_n, task_id=task_id, run_ctx=run_ctx,
+                code,
+                objective=objective,
+                method=method,
+                n_trials=n_trials,
+                top_n=top_n,
+                task_id=task_id,
+                run_ctx=run_ctx,
             )
             serialized = {}
             for name, res_list in results.items():
@@ -300,21 +379,33 @@ async def run_optimize_api(
             return serialized
         if method == "optuna":
             return optuna_search(
-                code, strategy, objective=objective, n_trials=n_trials,
-                task_id=task_id, run_ctx=run_ctx,
+                code,
+                strategy,
+                objective=objective,
+                n_trials=n_trials,
+                task_id=task_id,
+                run_ctx=run_ctx,
             )
         return grid_search(
-            code, strategy, objective=objective, top_n=top_n,
-            task_id=task_id, run_ctx=run_ctx,
+            code,
+            strategy,
+            objective=objective,
+            top_n=top_n,
+            task_id=task_id,
+            run_ctx=run_ctx,
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="optimize", cache_params=task_params, cache_code=code,
+        task_id,
+        _work,
+        cache_namespace="optimize",
+        cache_params=task_params,
+        cache_code=code,
     )
 
 
 # ====== 組合 ======
+
 
 @router.post("/api/portfolio")
 async def run_portfolio_api(
@@ -347,11 +438,19 @@ async def run_portfolio_api(
         "count": len(allocations),
     }
     task = create_task(
-        "portfolio", task_params, title=f"組合回測 · 基礎等權 ({len(allocations)}子)", user_id=user.id,
+        "portfolio",
+        task_params,
+        title=f"組合回測 · 基礎等權 ({len(allocations)}子)",
+        user_id=user.id,
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同組合回測正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同組合回測正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
@@ -365,8 +464,11 @@ async def run_portfolio_api(
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="portfolio", cache_params=task_params, cache_code=codes[0] if codes else None,
+        task_id,
+        _work,
+        cache_namespace="portfolio",
+        cache_params=task_params,
+        cache_code=codes[0] if codes else None,
     )
 
 
@@ -380,7 +482,7 @@ async def backtest_history(
     limit: int = 50,
     offset: int = 0,
     page_size: int = None,
-    user = Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     """查詢回測歷史（登錄用戶優先看自己的數據）"""
     from src.core.db import count_backtest_history, get_backtest_history
@@ -391,7 +493,11 @@ async def backtest_history(
     page_offset = max(0, int(offset))
     total = count_backtest_history(code=code, strategy=strategy, user_id=user_id)
     results = get_backtest_history(
-        code=code, strategy=strategy, limit=page_limit, offset=page_offset, user_id=user_id,
+        code=code,
+        strategy=strategy,
+        limit=page_limit,
+        offset=page_offset,
+        user_id=user_id,
     )
     return {
         "results": results,
@@ -406,6 +512,7 @@ async def backtest_history(
 async def backtest_compare(ids: str = ""):
     """對比指定回測結果"""
     from src.core.db import get_backtest_by_ids
+
     if not ids:
         return {"results": []}
     id_list = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
@@ -429,7 +536,9 @@ async def get_backtest_result_detail(result_id: int):
     cache_params = {
         "code": code,
         "strategy": strategy,
-        "params": params.get("params") if isinstance(params.get("params"), dict) else params,
+        "params": (
+            params.get("params") if isinstance(params.get("params"), dict) else params
+        ),
         "cash": params.get("cash"),
         "timeframe": params.get("timeframe", "1d"),
     }
@@ -450,6 +559,7 @@ async def get_backtest_result_detail(result_id: int):
 
 
 # ====== Walk-Forward ======
+
 
 @router.post("/api/walkforward")
 async def run_walkforward(
@@ -472,32 +582,54 @@ async def run_walkforward(
 
     gate_backtest_submit(user, advanced=True)
     from src.core.entitlements import gate_concurrent_tasks
+
     gate_concurrent_tasks(user)
 
-    task_params = {"code": code, "strategy": strategy, "train_days": train_days, "test_days": test_days}
+    task_params = {
+        "code": code,
+        "strategy": strategy,
+        "train_days": train_days,
+        "test_days": test_days,
+    }
     task = create_task(
-        "walkforward", task_params, title=f"Walk-Forward {code}/{strategy}", user_id=user.id,
+        "walkforward",
+        task_params,
+        title=f"Walk-Forward {code}/{strategy}",
+        user_id=user.id,
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同 Walk-Forward 正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同 Walk-Forward 正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
     def _work():
         return walk_forward(
-            code=code, strategy_name=strategy,
-            train_days=train_days, test_days=test_days, step_days=step_days,
-            objective=objective, n_trials=n_trials,
+            code=code,
+            strategy_name=strategy,
+            train_days=train_days,
+            test_days=test_days,
+            step_days=step_days,
+            objective=objective,
+            n_trials=n_trials,
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="walkforward", cache_params=task_params, cache_code=code,
+        task_id,
+        _work,
+        cache_namespace="walkforward",
+        cache_params=task_params,
+        cache_code=code,
     )
 
 
 # ====== 自動優化 ======
+
 
 @router.post("/api/auto-optimize")
 async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
@@ -508,16 +640,28 @@ async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
 
     gate_optimize_submit(user)
     from src.core.entitlements import gate_concurrent_tasks
+
     gate_concurrent_tasks(user)
 
     if body is None:
         body = {}
 
-    task_params = {"codes": body.get("codes"), "strategies": body.get("strategies"), "method": body.get("method", "optuna")}
-    task = create_task("auto_optimize", task_params, title="全自動參數優化", user_id=user.id)
+    task_params = {
+        "codes": body.get("codes"),
+        "strategies": body.get("strategies"),
+        "method": body.get("method", "optuna"),
+    }
+    task = create_task(
+        "auto_optimize", task_params, title="全自動參數優化", user_id=user.id
+    )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "全自動優化正在執行中，請等待完成", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "全自動優化正在執行中，請等待完成",
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
@@ -531,8 +675,10 @@ async def run_auto_optimize(body: dict = None, user=Depends(require_auth)):
         )
 
     return dispatch_async_task(
-        task_id, _work,
-        cache_namespace="auto_optimize", cache_params=task_params,
+        task_id,
+        _work,
+        cache_namespace="auto_optimize",
+        cache_params=task_params,
     )
 
 
@@ -550,14 +696,14 @@ async def run_sandbox_backtest_api(
 ):
     """
     沙箱模式回測（Phase 1 穩定性優化）
-    
+
     允許用戶上傳自定義策略源碼，在隔離環境中執行回測：
     - AST 白名單校驗：僅允許安全庫（numpy/pandas/backtrader 等）
     - 危險語法攔截：禁止 open/eval/exec/__import__ 等
     - 檔案大小限制：最大 64KB
     - AST 節點數限制：防止複雜度爆炸
     - 生產數據隔離：沙箱回測不污染正式回測記錄
-    
+
     請求體：
         code: 股票代碼
         strategy_code: 用戶策略源碼（必須繼承 UserStrategy）
@@ -567,7 +713,7 @@ async def run_sandbox_backtest_api(
         take_profit_pct: 止盈百分比（可選）
         benchmark: 是否對比基準
         timeframe: K 線週期
-    
+
     返回：
         任務 ID（異步執行），可通過 /api/tasks/{task_id} 查詢進度
     """
@@ -575,22 +721,22 @@ async def run_sandbox_backtest_api(
     from src.core.kline_timeframe import normalize_timeframe
     from src.core.task_manager import create_task
     from src.core.entitlements import gate_backtest_submit, gate_concurrent_tasks
-    
+
     # 權限檢查
     gate_backtest_submit(user, advanced=True)
     gate_concurrent_tasks(user)
-    
+
     # 驗證策略源碼
     validation = validate_strategy_source(strategy_code)
     if not validation.ok:
         raise HTTPException(400, f"策略源碼校驗失敗：{validation.error}")
-    
+
     # 標準化時間框架
     try:
         timeframe = normalize_timeframe(timeframe)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    
+
     # 創建沙箱任務
     task_params = {
         "code": code,
@@ -603,14 +749,14 @@ async def run_sandbox_backtest_api(
         "timeframe": timeframe,
         "sandbox_mode": True,  # 標記為沙箱模式
     }
-    
+
     task = create_task(
         "sandbox_backtest",
         task_params,
         title=f"沙箱回測 {code}",
         user_id=user.id,
     )
-    
+
     if task.get("is_duplicate"):
         return {
             "success": True,
@@ -619,12 +765,13 @@ async def run_sandbox_backtest_api(
             "message": "相同沙箱回測正在執行中，請等待完成",
             "async": True,
         }
-    
+
     task_id = task["task_id"]
-    
+
     def _work():
         """執行沙箱回測"""
         from src.core.backtest_sandbox_executor import run_sandbox_backtest
+
         return run_sandbox_backtest(
             code=code,
             strategy_code=strategy_code,
@@ -637,7 +784,7 @@ async def run_sandbox_backtest_api(
             task_id=task_id,
             user_id=user.id,
         )
-    
+
     return dispatch_async_task(
         task_id,
         _work,
@@ -651,7 +798,7 @@ async def run_sandbox_backtest_api(
 async def get_sandbox_examples():
     """
     獲取沙箱策略示例代碼
-    
+
     返回多個示例策略，供用戶參考學習如何編寫自定義策略。
     """
     examples = [
@@ -775,11 +922,10 @@ class MyBollinger(UserStrategy):
 ''',
         },
     ]
-    
+
     return {
         "success": True,
         "examples": examples,
         "total": len(examples),
         "note": "這些示例僅供參考，實際使用請根據需求調整參數",
     }
-

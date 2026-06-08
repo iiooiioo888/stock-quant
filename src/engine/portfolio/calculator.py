@@ -1,4 +1,5 @@
 """持倉估值與 P&L — 純函數，全程 Decimal。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,7 +47,9 @@ class PortfolioCalculator:
         if display_fx <= 0:
             display_fx = Decimal("1")
 
-        total_display = (total_usd / display_fx).quantize(PortfolioCalculator._Q, ROUND_HALF_UP)
+        total_display = (total_usd / display_fx).quantize(
+            PortfolioCalculator._Q, ROUND_HALF_UP
+        )
         alloc_pct: dict[str, float] = {}
         if total_usd > 0:
             for k, v in allocation_usd.items():
@@ -54,7 +57,11 @@ class PortfolioCalculator:
 
         return {
             "total_value": float(total_display),
-            "unrealized_pnl": float(unrealized.quantize(PortfolioCalculator._Q, ROUND_HALF_UP)),
-            "realized_pnl": float(realized_pnl.quantize(PortfolioCalculator._Q, ROUND_HALF_UP)),
+            "unrealized_pnl": float(
+                unrealized.quantize(PortfolioCalculator._Q, ROUND_HALF_UP)
+            ),
+            "realized_pnl": float(
+                realized_pnl.quantize(PortfolioCalculator._Q, ROUND_HALF_UP)
+            ),
             "allocation": alloc_pct,
         }

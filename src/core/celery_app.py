@@ -1,6 +1,7 @@
 """
 Celery 應用 — 使用 Redis Broker（與緩存分庫）
 """
+
 from __future__ import annotations
 
 from src.config import settings
@@ -62,6 +63,7 @@ def celery_available() -> bool:
         return False
     try:
         import redis
+
         client = redis.from_url(_broker_url(), socket_connect_timeout=2)
         client.ping()
         return True

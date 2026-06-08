@@ -1,4 +1,5 @@
 """market_catalog instruments_for_charts 篩選邏輯"""
+
 from src.core.market_catalog import (
     DASHBOARD_CHART_GROUPS,
     MARKET_INSTRUMENTS,

@@ -1,6 +1,7 @@
 """
 [iconfont.cn](https://www.iconfont.cn/) 圖標資源：本地 SVG、專案 Symbol JS、代碼映射。
 """
+
 from __future__ import annotations
 
 import json

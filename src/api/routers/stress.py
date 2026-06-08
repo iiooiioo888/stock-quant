@@ -1,6 +1,7 @@
 """
 壓力測試 API — 蒙特卡洛模擬、歷史極端行情重放、VaR/CVaR
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,7 @@ router = APIRouter()
 async def stress_scenarios():
     """列出所有歷史極端行情場景。"""
     from src.core.stress_test import list_scenarios
+
     return {"success": True, "scenarios": list_scenarios()}
 
 

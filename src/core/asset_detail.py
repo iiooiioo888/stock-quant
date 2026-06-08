@@ -23,10 +23,9 @@ def _normalize_symbol(symbol: str) -> str:
     return str(symbol).strip().upper()
 
 
-
-
-
-def _external_links(symbol: str, name: str, tv: str = "", market: str = "") -> list[dict]:
+def _external_links(
+    symbol: str, name: str, tv: str = "", market: str = ""
+) -> list[dict]:
 
     sym = _normalize_symbol(symbol)
 
@@ -34,17 +33,14 @@ def _external_links(symbol: str, name: str, tv: str = "", market: str = "") -> l
 
     if tv:
 
-        links.append({
-
-            "title": f"TradingView · {name or sym}",
-
-            "url": f"https://www.tradingview.com/chart/?symbol={tv.replace(':', '%3A')}",
-
-            "source": "TradingView",
-
-            "time": "",
-
-        })
+        links.append(
+            {
+                "title": f"TradingView · {name or sym}",
+                "url": f"https://www.tradingview.com/chart/?symbol={tv.replace(':', '%3A')}",
+                "source": "TradingView",
+                "time": "",
+            }
+        )
 
     yahoo = sym
 
@@ -52,64 +48,49 @@ def _external_links(symbol: str, name: str, tv: str = "", market: str = "") -> l
 
         yahoo = f"{sym}.SS" if sym.startswith(("5", "6", "9")) else f"{sym}.SZ"
 
-    links.append({
-
-        "title": f"Yahoo Finance · {name or sym}",
-
-        "url": f"https://finance.yahoo.com/quote/{yahoo}",
-
-        "source": "Yahoo",
-
-        "time": "",
-
-    })
+    links.append(
+        {
+            "title": f"Yahoo Finance · {name or sym}",
+            "url": f"https://finance.yahoo.com/quote/{yahoo}",
+            "source": "Yahoo",
+            "time": "",
+        }
+    )
 
     if sym.endswith(".HK"):
 
         code = sym.replace(".HK", "").lstrip("0") or "0"
 
-        links.append({
+        links.append(
+            {
+                "title": f"東方財富 · {name or sym}",
+                "url": f"https://quote.eastmoney.com/hk/{code}.html",
+                "source": "東財",
+                "time": "",
+            }
+        )
 
-            "title": f"東方財富 · {name or sym}",
-
-            "url": f"https://quote.eastmoney.com/hk/{code}.html",
-
-            "source": "東財",
-
-            "time": "",
-
-        })
-
-        links.append({
-
-            "title": f"AASTOCKS · {name or sym}",
-
-            "url": f"http://www.aastocks.com/tc/stocks/quote/detail-quote.aspx?symbol={code.zfill(4)}",
-
-            "source": "AASTOCKS",
-
-            "time": "",
-
-        })
+        links.append(
+            {
+                "title": f"AASTOCKS · {name or sym}",
+                "url": f"http://www.aastocks.com/tc/stocks/quote/detail-quote.aspx?symbol={code.zfill(4)}",
+                "source": "AASTOCKS",
+                "time": "",
+            }
+        )
 
     elif market == "us_stock" and sym.replace(".US", "").isalpha():
 
-        links.append({
-
-            "title": f"東方財富 · {name or sym}",
-
-            "url": f"https://quote.eastmoney.com/us/{sym.replace('.US', '')}.html",
-
-            "source": "東財",
-
-            "time": "",
-
-        })
+        links.append(
+            {
+                "title": f"東方財富 · {name or sym}",
+                "url": f"https://quote.eastmoney.com/us/{sym.replace('.US', '')}.html",
+                "source": "東財",
+                "time": "",
+            }
+        )
 
     return links
-
-
-
 
 
 def _fetch_a_share_news(code: str, limit: int = 12) -> list[dict]:
@@ -117,8 +98,6 @@ def _fetch_a_share_news(code: str, limit: int = 12) -> list[dict]:
     try:
 
         import akshare as ak
-
-
 
         df = ak.stock_news_em(symbol=code)
 
@@ -136,17 +115,16 @@ def _fetch_a_share_news(code: str, limit: int = 12) -> list[dict]:
 
                 continue
 
-            items.append({
-
-                "title": title,
-
-                "url": str(row.get("新闻链接") or row.get("url") or "").strip(),
-
-                "source": str(row.get("文章来源") or row.get("source") or "東財").strip(),
-
-                "time": str(row.get("发布时间") or row.get("date") or "").strip(),
-
-            })
+            items.append(
+                {
+                    "title": title,
+                    "url": str(row.get("新闻链接") or row.get("url") or "").strip(),
+                    "source": str(
+                        row.get("文章来源") or row.get("source") or "東財"
+                    ).strip(),
+                    "time": str(row.get("发布时间") or row.get("date") or "").strip(),
+                }
+            )
 
         return items
 
@@ -155,9 +133,6 @@ def _fetch_a_share_news(code: str, limit: int = 12) -> list[dict]:
         logger.debug(f"A股新聞 {code} 失敗: {e}")
 
         return []
-
-
-
 
 
 def _load_financials(symbol: str) -> dict:
@@ -172,8 +147,6 @@ def _load_financials(symbol: str) -> dict:
 
         from src.core.data_pipeline import resolve_financials
 
-
-
         return resolve_financials(code, allow_fetch=True, max_age_days=7) or {}
 
     except Exception as e:
@@ -183,18 +156,12 @@ def _load_financials(symbol: str) -> dict:
         return {}
 
 
-
-
-
 def _fetch_em_snapshot(symbol: str) -> dict:
-
     """東財 push2 快照（港股/美股估值與當日行情）。"""
 
     try:
 
         from src.core.global_market import _to_em_secid
-
-
 
         secid = _to_em_secid(symbol)
 
@@ -204,26 +171,16 @@ def _fetch_em_snapshot(symbol: str) -> dict:
 
         from src.core.data_sources import get_session
 
-
-
         http = get_session("asset_detail")
 
         resp = http.get(
-
             "https://push2.eastmoney.com/api/qt/stock/get",
-
             params={
-
                 "secid": secid,
-
                 "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f84,f85,f92,f116,f117,f162,f167,f168,f169,f170",
-
                 "ut": "fa5fd1943c7b386f172d6893dbbd1",
-
             },
-
             timeout=10,
-
         )
 
         data = resp.json().get("data") or {}
@@ -231,8 +188,6 @@ def _fetch_em_snapshot(symbol: str) -> dict:
         if not data:
 
             return {}
-
-
 
         sym = _normalize_symbol(symbol)
 
@@ -254,8 +209,6 @@ def _fetch_em_snapshot(symbol: str) -> dict:
 
             mv_div = 1e8
 
-
-
         def _f(key: str, scale: float = 1.0) -> Optional[float]:
 
             raw = data.get(key)
@@ -272,42 +225,24 @@ def _fetch_em_snapshot(symbol: str) -> dict:
 
                 return None
 
-
-
         pe = _f("f167", 10.0) or _f("f162", 100.0)
         pb = _f("f168", 10.0) or _f("f85", 100.0)
         total_mv = _f("f116", mv_div) or _f("f117", mv_div)
 
-
-
         return {
-
             "name": str(data.get("f58") or "").strip(),
-
             "price": _f("f43", divisor),
-
             "open": _f("f46", divisor),
-
             "high": _f("f44", divisor),
-
             "low": _f("f45", divisor),
-
             "prev_close": _f("f44", divisor),
-
             "volume": int(data.get("f47") or 0),
-
             "amount": _f("f48", 1.0),
-
             "change_pct": _f("f170", 100.0),
-
             "pe_ttm": pe,
-
             "pb": pb,
-
             "total_mv": total_mv,
-
             "source": "eastmoney",
-
         }
 
     except Exception as e:
@@ -317,11 +252,9 @@ def _fetch_em_snapshot(symbol: str) -> dict:
         return {}
 
 
-
-
-
-def _merge_financials(symbol: str, market: str, base: dict, em: dict, profile: dict) -> dict:
-
+def _merge_financials(
+    symbol: str, market: str, base: dict, em: dict, profile: dict
+) -> dict:
     """合併 A 股財報、東財快照與 stock_universe 欄位。"""
 
     out = dict(base) if base else {}
@@ -338,8 +271,6 @@ def _merge_financials(symbol: str, market: str, base: dict, em: dict, profile: d
 
                 out[k] = v
 
-
-
     if em.get("pe_ttm") is not None:
 
         out["pe_ttm"] = em["pe_ttm"]
@@ -352,9 +283,11 @@ def _merge_financials(symbol: str, market: str, base: dict, em: dict, profile: d
 
         out["total_mv"] = em["total_mv"]
 
-
-
-    if out.get("pe_ttm") is not None or out.get("pb") is not None or out.get("total_mv") is not None:
+    if (
+        out.get("pe_ttm") is not None
+        or out.get("pb") is not None
+        or out.get("total_mv") is not None
+    ):
 
         out["has_data"] = True
 
@@ -367,11 +300,7 @@ def _merge_financials(symbol: str, market: str, base: dict, em: dict, profile: d
     return out
 
 
-
-
-
 def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
-
     """簡介 / 行業 / 市值等（含港股東財 F10）。"""
 
     sym = _normalize_symbol(symbol)
@@ -382,8 +311,6 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
 
         from src.core.stock_basics import load_stock_profile
 
-
-
         profile = load_stock_profile(sym) or {}
 
     except Exception as e:
@@ -392,17 +319,17 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
 
         profile = {"code": sym, "market": market}
 
-
-
     if inst_name and not profile.get("name"):
 
         profile["name"] = inst_name
 
-
-
     intro = (profile.get("intro") or "").strip()
 
-    if not intro and market == "a_share" and sym.replace(".SS", "").replace(".SZ", "").isdigit():
+    if (
+        not intro
+        and market == "a_share"
+        and sym.replace(".SS", "").replace(".SZ", "").isdigit()
+    ):
         try:
             from src.core.stock_universe import _fetch_intro_a_share
 
@@ -418,8 +345,6 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
         try:
 
             from src.core.stock_universe import _fetch_intro_hk
-
-
 
             hk_num = sym.replace(".HK", "").lstrip("0") or "0"
 
@@ -439,8 +364,6 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
 
             from src.core.stock_universe import _fetch_intro_us
 
-
-
             code = sym.replace(".US", "")
 
             intro = _fetch_intro_us(code)
@@ -453,35 +376,27 @@ def _load_profile_enhanced(symbol: str, inst_name: str = "") -> dict:
 
             logger.debug(f"美股簡介 {sym}: {e}")
 
-
-
     profile.setdefault("market", market)
 
-    profile.setdefault("market_label", profile.get("market_label") or GROUP_LABELS.get(market, market))
+    profile.setdefault(
+        "market_label", profile.get("market_label") or GROUP_LABELS.get(market, market)
+    )
 
     return profile
 
 
-
-
-
 def _stats_from_kline(kline: list[dict], quote: dict, days: int) -> dict:
-
     """從 K 線計算區間統計與簡單技術指標。"""
 
     if not kline or len(kline) < 2:
 
         return {}
 
-
-
     df = pd.DataFrame(kline)
 
     if "close" not in df.columns:
 
         return {}
-
-
 
     df["close"] = pd.to_numeric(df["close"], errors="coerce")
 
@@ -491,15 +406,11 @@ def _stats_from_kline(kline: list[dict], quote: dict, days: int) -> dict:
 
         return {}
 
-
-
     closes = df["close"].astype(float)
 
     latest = float(closes.iloc[-1])
 
     n = len(closes)
-
-
 
     def _ret(period: int) -> Optional[float]:
 
@@ -515,44 +426,29 @@ def _stats_from_kline(kline: list[dict], quote: dict, days: int) -> dict:
 
         return round((latest / base - 1) * 100, 2)
 
-
-
     high_col = pd.to_numeric(df.get("high", closes), errors="coerce")
 
     low_col = pd.to_numeric(df.get("low", closes), errors="coerce")
 
     vol_col = pd.to_numeric(df.get("volume", 0), errors="coerce").fillna(0)
 
-
-
     ma20 = float(closes.tail(20).mean()) if n >= 20 else None
 
     ma60 = float(closes.tail(60).mean()) if n >= 60 else None
 
-
-
     stats: dict[str, Any] = {
-
         "bars": n,
-
         "period_days": days,
-
         "period_high": round(float(high_col.max()), 4),
-
         "period_low": round(float(low_col.min()), 4),
-
         "return_1w": _ret(5),
-
         "return_1m": _ret(21),
-
         "return_3m": _ret(63),
-
         "return_6m": _ret(126),
-
-        "avg_volume_20": int(vol_col.tail(20).mean()) if n >= 5 else int(vol_col.mean()),
-
+        "avg_volume_20": (
+            int(vol_col.tail(20).mean()) if n >= 5 else int(vol_col.mean())
+        ),
         "latest_volume": int(vol_col.iloc[-1]) if len(vol_col) else 0,
-
     }
 
     if ma20:
@@ -566,8 +462,6 @@ def _stats_from_kline(kline: list[dict], quote: dict, days: int) -> dict:
         stats["ma60"] = round(ma60, 4)
 
         stats["dist_ma60_pct"] = round((latest / ma60 - 1) * 100, 2)
-
-
 
     last = df.iloc[-1]
     prev_row = df.iloc[-2] if n >= 2 else last
@@ -586,16 +480,24 @@ def _stats_from_kline(kline: list[dict], quote: dict, days: int) -> dict:
     return stats
 
 
-
-
-
 def _enrich_quote(quote: dict, em: dict, chart: dict) -> dict:
 
     out = dict(quote or {})
 
     for src in (em, chart):
 
-        for k in ("price", "change", "change_pct", "open", "high", "low", "volume", "prev_close", "currency", "source"):
+        for k in (
+            "price",
+            "change",
+            "change_pct",
+            "open",
+            "high",
+            "low",
+            "volume",
+            "prev_close",
+            "currency",
+            "source",
+        ):
 
             if out.get(k) is None and src.get(k) is not None:
 
@@ -608,11 +510,9 @@ def _enrich_quote(quote: dict, em: dict, chart: dict) -> dict:
     return out
 
 
-
-
-
-def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = True) -> Optional[dict]:
-
+def build_asset_detail(
+    symbol: str, days: int = 180, *, include_thesis: bool = True
+) -> Optional[dict]:
     """單一資產完整詳情包。"""
 
     symbol = _normalize_symbol(symbol)
@@ -620,8 +520,6 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
     if not symbol:
 
         return None
-
-
 
     inst = lookup_instrument(symbol)
 
@@ -634,8 +532,6 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
     tv_symbol = inst.tv if inst else ""
 
     market = _infer_market(symbol)
-
-
 
     chart = build_index_chart_item(symbol, name, days)
 
@@ -668,30 +564,17 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
             change_pct = float(quote_raw["change_pct"])
 
         chart = {
-
             "symbol": symbol,
-
             "name": name,
-
             "latest": round(latest, 4),
-
             "change": round(change, 4),
-
             "change_pct": round(change_pct, 2),
-
             "source": quote_src or hist_src,
-
             "kline": df_to_kline_records(df),
-
             "group": group,
-
             "asset_class": asset_class,
-
             "currency": quote_raw.get("currency", ""),
-
         }
-
-
 
     em_snap = _fetch_em_snapshot(symbol) if market in ("hk_stock", "us_stock") else {}
 
@@ -699,31 +582,17 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
 
         name = em_snap["name"]
 
-
-
     quote = _enrich_quote(
-
         {
-
             "price": chart.get("latest"),
-
             "change": chart.get("change"),
-
             "change_pct": chart.get("change_pct"),
-
             "source": chart.get("source"),
-
             "currency": chart.get("currency", ""),
-
         },
-
         em_snap,
-
         chart,
-
     )
-
-
 
     kline = chart.get("kline") or []
 
@@ -731,25 +600,15 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
 
     profile = _load_profile_enhanced(symbol, name)
 
-
-
     code = symbol_to_a_share_code(symbol)
 
     financials = _merge_financials(
-
         symbol,
-
         market,
-
         _load_financials(symbol) if code else {},
-
         em_snap,
-
         profile,
-
     )
-
-
 
     news = _fetch_a_share_news(code) if code else []
 
@@ -757,53 +616,31 @@ def build_asset_detail(symbol: str, days: int = 180, *, include_thesis: bool = T
 
         news = _external_links(symbol, name, tv_symbol, market)
 
-
-
     links = _external_links(symbol, chart.get("name") or name, tv_symbol, market)
 
-
-
     detail = {
-
         "symbol": symbol,
-
         "name": chart.get("name") or name,
-
         "group": group,
-
         "group_label": GROUP_LABELS.get(group, group),
-
         "asset_class": asset_class,
-
         "market": market,
-
         "market_label": GROUP_LABELS.get(group, profile.get("market_label", market)),
-
         "tv_symbol": tv_symbol,
-
         "quote": quote,
-
         "kline": kline,
-
         "kline_source": chart.get("source", ""),
-
         "stats": stats,
-
         "profile": profile,
-
         "financials": financials,
-
         "news": news,
-
         "links": links,
-
     }
 
     if include_thesis:
         from src.core.stock_insights import enrich_detail_thesis
+
         return enrich_detail_thesis(detail, inst)
     detail["investment_thesis_locked"] = True
     detail["investment_thesis_upgrade_url"] = "/app#/pricing"
     return detail
-
-

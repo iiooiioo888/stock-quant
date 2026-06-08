@@ -1,4 +1,5 @@
 """全球主要指數 K 線 API（儀表盤首頁）"""
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, HTTPException, Query
@@ -24,7 +25,9 @@ HOME_INDICES = [(i.symbol, i.name) for i in MARKET_INSTRUMENTS]
 async def get_indices_charts(
     days: int = Query(90, ge=1, le=365),
     scope: str = Query("all"),
-    symbols: str | None = Query(None, description="custom scope symbols, comma-separated"),
+    symbols: str | None = Query(
+        None, description="custom scope symbols, comma-separated"
+    ),
 ):
     """
     全球掛牌：IB → TradingView → Yahoo / 東財 / Twelve Data。
@@ -33,7 +36,9 @@ async def get_indices_charts(
     完整元數據見 /api/indices/catalog。topbar 允許 1–14 日（頂欄輕量）；其餘 scope 至少 30 日。
     """
     if scope not in VALID_SCOPES:
-        raise HTTPException(400, detail=f"invalid scope; use one of: {sorted(VALID_SCOPES)}")
+        raise HTTPException(
+            400, detail=f"invalid scope; use one of: {sorted(VALID_SCOPES)}"
+        )
 
     if scope in ("topbar", "custom"):
         days = min(max(days, 1), 14)
@@ -57,7 +62,9 @@ async def get_indices_charts(
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {
-                    pool.submit(build_index_chart_item, inst.symbol, inst.name, days): inst
+                    pool.submit(
+                        build_index_chart_item, inst.symbol, inst.name, days
+                    ): inst
                     for inst in instruments
                 }
                 for fut in as_completed(futures):
@@ -114,7 +121,8 @@ async def get_indices_charts(
 def _provider_status(indices: list) -> dict:
     tv_count = sum(1 for i in indices if "TradingView" in (i.get("source") or ""))
     ib_count = sum(
-        1 for i in indices
+        1
+        for i in indices
         if i.get("source") == "IB" or str(i.get("source", "")).startswith("IB")
     )
 

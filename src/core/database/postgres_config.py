@@ -3,6 +3,7 @@
 支持雙後端：SQLite（開發）+ PostgreSQL（生產）。
 通過 SQ_DATABASE_URL 環境變量切換。
 """
+
 from __future__ import annotations
 
 import os

@@ -3,6 +3,7 @@
 
 與 tests/test_strategies.py 使用相同合成邏輯（np.random.seed(42)）。
 """
+
 from __future__ import annotations
 
 import os
@@ -13,7 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 os.environ.setdefault("SQ_DB_PATH", "/tmp/test_stock.db")
 os.environ.setdefault("SQ_REDIS_ENABLED", "false")
 os.environ.setdefault("SQ_LOG_LEVEL", "WARNING")

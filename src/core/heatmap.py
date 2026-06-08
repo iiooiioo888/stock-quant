@@ -1,6 +1,7 @@
 """
 策略熱力圖 — 參數敏感度分析
 """
+
 import numpy as np
 
 from src.core.backtest import STRATEGIES
@@ -11,9 +12,17 @@ from src.utils.logger import logger
 def _params_valid(params: dict) -> bool:
     if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
         return False
-    if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+    if (
+        "entry_period" in params
+        and "exit_period" in params
+        and params["entry_period"] <= params["exit_period"]
+    ):
         return False
-    if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+    if (
+        "overbought" in params
+        and "oversold" in params
+        and params["overbought"] <= params["oversold"]
+    ):
         return False
     return True
 
@@ -78,13 +87,18 @@ def param_heatmap(
         raise ValueError(f"未知策略: {strategy_name}，可選: {list(STRATEGIES.keys())}")
 
     from src.core.optimize import PARAM_RANGES
+
     ranges = PARAM_RANGES.get(strategy_name, {})
     default_params = _get_default_params(strategy_name)
 
     if param_x not in default_params:
-        raise ValueError(f"策略 {strategy_name} 沒有參數 {param_x}，可選: {list(default_params.keys())}")
+        raise ValueError(
+            f"策略 {strategy_name} 沒有參數 {param_x}，可選: {list(default_params.keys())}"
+        )
     if param_y not in default_params:
-        raise ValueError(f"策略 {strategy_name} 沒有參數 {param_y}，可選: {list(default_params.keys())}")
+        raise ValueError(
+            f"策略 {strategy_name} 沒有參數 {param_y}，可選: {list(default_params.keys())}"
+        )
 
     # 確定 X, Y 範圍
     def _resolve_range(param_name, user_range):
@@ -136,7 +150,14 @@ def param_heatmap(
     def _run_job(job):
         yi, xi, y_val, x_val = job
         cell, score, bp = _eval_heatmap_point(
-            code, strategy_name, default_params, param_x, param_y, x_val, y_val, objective,
+            code,
+            strategy_name,
+            default_params,
+            param_x,
+            param_y,
+            x_val,
+            y_val,
+            objective,
         )
         return yi, xi, cell, score, bp
 

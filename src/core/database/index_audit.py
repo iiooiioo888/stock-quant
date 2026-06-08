@@ -1,6 +1,7 @@
 """
 SQLite 索引健檢 — 對照 schema.INDEX_DDL，發現缺失並可選修復。
 """
+
 from __future__ import annotations
 
 import re
@@ -28,12 +29,10 @@ def expected_index_names() -> set[str]:
 
 
 def _list_existing_indexes(conn: sqlite3.Connection) -> set[str]:
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT name FROM sqlite_master
         WHERE type = 'index' AND name NOT LIKE 'sqlite_%'
-        """
-    ).fetchall()
+        """).fetchall()
     return {r[0] for r in rows}
 
 
@@ -50,10 +49,7 @@ def audit_indexes(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
         existing = _list_existing_indexes(c)
         present = expected & existing
         missing = sorted(expected - existing)
-        extra = sorted(
-            n for n in (existing - expected)
-            if n.startswith("idx_")
-        )
+        extra = sorted(n for n in (existing - expected) if n.startswith("idx_"))
         return {
             "ok": len(missing) == 0,
             "expected_count": len(expected),

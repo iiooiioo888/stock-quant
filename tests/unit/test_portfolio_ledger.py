@@ -1,4 +1,5 @@
 """組合帳本 Ledger 純函數單測（P1）。"""
+
 from decimal import Decimal
 
 from src.core.portfolio_ledger import _roll_symbol

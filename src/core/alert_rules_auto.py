@@ -1,6 +1,7 @@
 """
 根據最新價自動生成預警規則（突破/跌破/漲跌幅閾值）
 """
+
 from __future__ import annotations
 
 from src.api.constants import STOCK_NAMES
@@ -45,9 +46,7 @@ def _resolve_name(code: str, quote: dict | None = None) -> str:
     if quote and quote.get("name"):
         return str(quote["name"])
     return (
-        settings.alert_rules.get(code, {}).get("name")
-        or STOCK_NAMES.get(code)
-        or code
+        settings.alert_rules.get(code, {}).get("name") or STOCK_NAMES.get(code) or code
     )
 
 

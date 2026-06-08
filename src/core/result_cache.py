@@ -4,6 +4,7 @@
 - 默認使用 cache.CacheManager（本地 LRU，可選 Redis）
 - 緩存 key 含參數哈希 + 數據版本（K 線最新日期），數據更新後自動失效
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,6 +32,7 @@ _NS_TTL_ATTR = {
 def is_cache_enabled() -> bool:
     try:
         from src.config import settings
+
         return bool(getattr(settings, "cache_enabled", True))
     except Exception:
         return True
@@ -38,6 +40,7 @@ def is_cache_enabled() -> bool:
 
 def _ttl_for_namespace(namespace: str) -> int:
     from src.config import settings
+
     attr = _NS_TTL_ATTR.get(namespace, "cache_backtest_ttl")
     return int(getattr(settings, attr, 3600))
 
@@ -64,10 +67,12 @@ def get_data_version(code: Optional[str] = None) -> str:
     try:
         if code:
             from src.core.db import get_latest_date
+
             latest = get_latest_date(code)
             if latest:
                 return f"{code}:{latest}"
         from src.config import settings
+
         db_path = settings.db_path
         if os.path.exists(db_path):
             return f"db:{int(os.path.getmtime(db_path))}"
@@ -96,6 +101,7 @@ def get_cached_compute(
     if not is_cache_enabled():
         return None
     from src.core.cache import get_cache
+
     key = make_compute_key(namespace, params, code=code)
     hit = get_cache().get(key)
     if hit is not None:
@@ -131,6 +137,7 @@ def drop_cached_compute(
     if not is_cache_enabled():
         return False
     from src.core.cache import get_cache
+
     key = make_compute_key(namespace, params, code=code)
     get_cache().delete(key)
     logger.info(f"緩存已刪除: {namespace} ({key[-32:]})")
@@ -142,6 +149,7 @@ def invalidate_compute(code: Optional[str] = None) -> int:
     清除計算緩存。code 不為空時僅清除含該代碼版本前綴的項（LRU 全掃；Redis 按前綴刪除）。
     """
     from src.core.cache import get_cache
+
     cache = get_cache()
     removed = 0
 
@@ -152,7 +160,9 @@ def invalidate_compute(code: Optional[str] = None) -> int:
                 pattern = f"{PREFIX_COMPUTE}*:{code}:*"
             cursor = 0
             while True:
-                cursor, keys = cache._redis_client.scan(cursor, match=pattern, count=200)
+                cursor, keys = cache._redis_client.scan(
+                    cursor, match=pattern, count=200
+                )
                 if keys:
                     cache._redis_client.delete(*keys)
                     removed += len(keys)
@@ -176,12 +186,15 @@ def invalidate_compute(code: Optional[str] = None) -> int:
         removed += 1
 
     if removed:
-        logger.info(f"計算緩存已清除: {removed} 項" + (f" (code={code})" if code else ""))
+        logger.info(
+            f"計算緩存已清除: {removed} 項" + (f" (code={code})" if code else "")
+        )
     return removed
 
 
 def cache_stats() -> dict:
     from src.core.cache import get_cache
+
     base = get_cache().stats()
     base["enabled"] = is_cache_enabled()
     base["prefix"] = PREFIX_COMPUTE

@@ -7,10 +7,11 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("adx_trend", "ADX趨勢強度策略")
 class ADXTrendStrategy(OrderManagedStrategy):
     """ADX 趋势强度策略 — ADX 高于阈值时趋势交易，配合 +DI/-DI 交叉"""
+
     params = (
-        ("adx_period", 14),    # ADX 周期
-        ("adx_threshold", 25), # ADX 阈值（高于此值视为强趋势）
-        ("di_period", 14),     # DI 周期
+        ("adx_period", 14),  # ADX 周期
+        ("adx_threshold", 25),  # ADX 阈值（高于此值视为强趋势）
+        ("di_period", 14),  # DI 周期
     )
 
     def __init__(self):
@@ -34,13 +35,18 @@ class ADXTrendStrategy(OrderManagedStrategy):
 
         if not self.position:
             # 买入：ADX > 阈值（强趋势）且 +DI 上穿 -DI
-            if adx_val > self.p.adx_threshold and plus_di_prev <= minus_di_prev and plus_di > minus_di:
+            if (
+                adx_val > self.p.adx_threshold
+                and plus_di_prev <= minus_di_prev
+                and plus_di > minus_di
+            ):
                 cash = self.broker.getcash()
                 shares = int(cash * 0.95 / self.data.close[0] / 100) * 100
                 if shares >= 100:
                     self.order = self.buy(size=shares)
         else:
             # 卖出：ADX 回落 或 -DI 上穿 +DI
-            if adx_val < self.p.adx_threshold or (minus_di_prev <= plus_di_prev and minus_di > plus_di):
+            if adx_val < self.p.adx_threshold or (
+                minus_di_prev <= plus_di_prev and minus_di > plus_di
+            ):
                 self.order = self.sell()
-

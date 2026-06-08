@@ -1,4 +1,3 @@
-
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
@@ -6,16 +5,17 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("parabolic_sar", "拋物線SAR策略")
 class ParabolicSARStrategy(OrderManagedStrategy):
     """抛物线 SAR 策略 — 趋势跟踪，SAR 翻转时交易"""
+
     params = (
-        ("af_start", 0.02),   # 加速因子初始值
-        ("af_step", 0.02),    # 加速因子步长
-        ("af_max", 0.20),     # 加速因子最大值
+        ("af_start", 0.02),  # 加速因子初始值
+        ("af_step", 0.02),  # 加速因子步长
+        ("af_max", 0.20),  # 加速因子最大值
     )
 
     def __init__(self):
         super().__init__()
         self.sar = None
-        self.ep = None       # 极值点
+        self.ep = None  # 极值点
         self.af = self.p.af_start
         self.is_long = True  # 当前方向
 
@@ -46,7 +46,11 @@ class ParabolicSARStrategy(OrderManagedStrategy):
 
             # SAR 不能高于前两根K线的最低点
             if len(self.data) >= 2:
-                self.sar = min(self.sar, self.data.low[-1], self.data.low[-2] if len(self.data) >= 3 else self.data.low[-1])
+                self.sar = min(
+                    self.sar,
+                    self.data.low[-1],
+                    self.data.low[-2] if len(self.data) >= 3 else self.data.low[-1],
+                )
 
             if low < self.sar:
                 # 翻转为下降趋势
@@ -68,7 +72,11 @@ class ParabolicSARStrategy(OrderManagedStrategy):
 
             # SAR 不能低于前两根K线的最高点
             if len(self.data) >= 2:
-                self.sar = max(self.sar, self.data.high[-1], self.data.high[-2] if len(self.data) >= 3 else self.data.high[-1])
+                self.sar = max(
+                    self.sar,
+                    self.data.high[-1],
+                    self.data.high[-2] if len(self.data) >= 3 else self.data.high[-1],
+                )
 
             if high > self.sar:
                 # 翻转为上升趋势
@@ -87,4 +95,3 @@ class ParabolicSARStrategy(OrderManagedStrategy):
                 if low < self.ep:
                     self.ep = low
                     self.af = min(self.af + self.p.af_step, self.p.af_max)
-

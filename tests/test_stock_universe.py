@@ -1,32 +1,35 @@
 """股票庫"""
+
 import pandas as pd
 
 from src.core import stock_universe as su
 
 
 def test_parse_a_share_spot():
-    df = pd.DataFrame([
-        {
-            "代码": "000001",
-            "名称": "平安银行",
-            "最新价": 10.5,
-            "涨跌幅": 1.2,
-            "总市值": 2_000_000_000_000,
-            "流通市值": 1_800_000_000_000,
-            "市盈率-动态": 8.5,
-            "市净率": 0.9,
-        },
-        {
-            "代码": "600519",
-            "名称": "贵州茅台",
-            "最新价": 1600,
-            "涨跌幅": -0.5,
-            "总市值": 2_500_000_000_000,
-            "流通市值": 2_500_000_000_000,
-            "市盈率-动态": 25,
-            "市净率": 8,
-        },
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "代码": "000001",
+                "名称": "平安银行",
+                "最新价": 10.5,
+                "涨跌幅": 1.2,
+                "总市值": 2_000_000_000_000,
+                "流通市值": 1_800_000_000_000,
+                "市盈率-动态": 8.5,
+                "市净率": 0.9,
+            },
+            {
+                "代码": "600519",
+                "名称": "贵州茅台",
+                "最新价": 1600,
+                "涨跌幅": -0.5,
+                "总市值": 2_500_000_000_000,
+                "流通市值": 2_500_000_000_000,
+                "市盈率-动态": 25,
+                "市净率": 8,
+            },
+        ]
+    )
     rows = su._parse_spot_df(df, "a_share", "CN", "test")
     assert len(rows) == 2
     assert rows[0]["code"] == "000001"
@@ -38,14 +41,42 @@ def test_sync_stock_universe_mock(monkeypatch):
 
     def fake_fetch():
         return [
-            {"code": "000001", "market": "a_share", "name": "A", "exchange": "CN",
-             "industry": "", "list_date": "", "price": 1, "change_pct": 0,
-             "total_mv": 100, "circulating_mv": 90, "pe_ttm": 1, "pb": 1,
-             "volume": 0, "amount": 0, "turnover": 0, "source": "test"},
-            {"code": "600519", "market": "a_share", "name": "B", "exchange": "CN",
-             "industry": "", "list_date": "", "price": 2, "change_pct": 0,
-             "total_mv": 200, "circulating_mv": 180, "pe_ttm": 2, "pb": 2,
-             "volume": 0, "amount": 0, "turnover": 0, "source": "test"},
+            {
+                "code": "000001",
+                "market": "a_share",
+                "name": "A",
+                "exchange": "CN",
+                "industry": "",
+                "list_date": "",
+                "price": 1,
+                "change_pct": 0,
+                "total_mv": 100,
+                "circulating_mv": 90,
+                "pe_ttm": 1,
+                "pb": 1,
+                "volume": 0,
+                "amount": 0,
+                "turnover": 0,
+                "source": "test",
+            },
+            {
+                "code": "600519",
+                "market": "a_share",
+                "name": "B",
+                "exchange": "CN",
+                "industry": "",
+                "list_date": "",
+                "price": 2,
+                "change_pct": 0,
+                "total_mv": 200,
+                "circulating_mv": 180,
+                "pe_ttm": 2,
+                "pb": 2,
+                "volume": 0,
+                "amount": 0,
+                "turnover": 0,
+                "source": "test",
+            },
         ]
 
     monkeypatch.setattr(su, "fetch_all_market_basics", fake_fetch)
@@ -71,10 +102,28 @@ def test_refresh_universe_from_local_kline():
     init_db()
     su.init_stock_universe_table()
 
-    df = pd.DataFrame([
-        {"date": "2026-05-19", "open": 99, "high": 101, "low": 98, "close": 100, "volume": 1000, "amount": 0},
-        {"date": "2026-05-20", "open": 100, "high": 106, "low": 99, "close": 105, "volume": 1200, "amount": 0},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "date": "2026-05-19",
+                "open": 99,
+                "high": 101,
+                "low": 98,
+                "close": 100,
+                "volume": 1000,
+                "amount": 0,
+            },
+            {
+                "date": "2026-05-20",
+                "open": 100,
+                "high": 106,
+                "low": 99,
+                "close": 105,
+                "volume": 1200,
+                "amount": 0,
+            },
+        ]
+    )
     save_daily_kline(df, "TEST1", market="us_stock")
 
     result = su.refresh_universe_from_local_kline()
@@ -103,10 +152,12 @@ def test_fetch_intro_a_share(monkeypatch):
             @staticmethod
             def json():
                 return {
-                    "jbzl": [{
-                        "BUSINESS_SCOPE": "茅台酒及系列酒的生产与销售",
-                        "ORG_PROFILE": "贵州茅台酒股份有限公司…",
-                    }],
+                    "jbzl": [
+                        {
+                            "BUSINESS_SCOPE": "茅台酒及系列酒的生产与销售",
+                            "ORG_PROFILE": "贵州茅台酒股份有限公司…",
+                        }
+                    ],
                 }
 
         return Resp()
@@ -117,9 +168,15 @@ def test_fetch_intro_a_share(monkeypatch):
 
 
 def test_stock_universe_api(client, monkeypatch):
-    df = pd.DataFrame([{
-        "代码": "000001", "名称": "測試", "总市值": 1e11,
-    }])
+    df = pd.DataFrame(
+        [
+            {
+                "代码": "000001",
+                "名称": "測試",
+                "总市值": 1e11,
+            }
+        ]
+    )
     monkeypatch.setattr(
         su,
         "fetch_all_market_basics",

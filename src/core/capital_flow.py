@@ -3,6 +3,7 @@
 
 優先：東方財富 HTTP 直連 → AKShare → 本地庫緩存
 """
+
 import sqlite3
 import time
 
@@ -71,7 +72,9 @@ def _save_capital_flow(records: list[dict], flow_type: str):
         conn.commit()
 
 
-def load_capital_flow_by_type(flow_type: str, code: str = None, days: int = 30) -> list[dict]:
+def load_capital_flow_by_type(
+    flow_type: str, code: str = None, days: int = 30
+) -> list[dict]:
     """從本地庫讀取資金流向緩存"""
     init_capital_flow_table()
     with get_conn() as conn:
@@ -92,18 +95,20 @@ def load_capital_flow_by_type(flow_type: str, code: str = None, days: int = 30) 
             ).fetchall()
     out = []
     for r in rows:
-        out.append({
-            "code": r["code"],
-            "date": r["date"],
-            "close": r["close"],
-            "change_pct": r["change_pct"],
-            "main_net": r["main_net"],
-            "super_net": r["super_net"],
-            "big_net": r["big_net"],
-            "mid_net": r["mid_net"],
-            "small_net": r["small_net"],
-            "source": "local_db",
-        })
+        out.append(
+            {
+                "code": r["code"],
+                "date": r["date"],
+                "close": r["close"],
+                "change_pct": r["change_pct"],
+                "main_net": r["main_net"],
+                "super_net": r["super_net"],
+                "big_net": r["big_net"],
+                "mid_net": r["mid_net"],
+                "small_net": r["small_net"],
+                "source": "local_db",
+            }
+        )
     out.sort(key=lambda x: x["date"])
     return out
 
@@ -111,7 +116,9 @@ def load_capital_flow_by_type(flow_type: str, code: str = None, days: int = 30) 
 def get_capital_flow(code: str, days: int = 30) -> list[dict]:
     """個股資金流向"""
     try:
-        df = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith("6") else "sz")
+        df = ak.stock_individual_fund_flow(
+            stock=code, market="sh" if code.startswith("6") else "sz"
+        )
         if df.empty:
             return load_capital_flow_by_type("individual", code, days)
 
@@ -137,18 +144,20 @@ def get_capital_flow(code: str, days: int = 30) -> list[dict]:
 
         result = []
         for _, row in df.iterrows():
-            result.append({
-                "code": code,
-                "date": str(row.get("date", "")),
-                "close": float(row.get("close", 0) or 0),
-                "change_pct": float(row.get("change_pct", 0) or 0),
-                "main_net": float(row.get("main_net", 0) or 0),
-                "super_net": float(row.get("super_net", 0) or 0),
-                "big_net": float(row.get("big_net", 0) or 0),
-                "mid_net": float(row.get("mid_net", 0) or 0),
-                "small_net": float(row.get("small_net", 0) or 0),
-                "source": "akshare",
-            })
+            result.append(
+                {
+                    "code": code,
+                    "date": str(row.get("date", "")),
+                    "close": float(row.get("close", 0) or 0),
+                    "change_pct": float(row.get("change_pct", 0) or 0),
+                    "main_net": float(row.get("main_net", 0) or 0),
+                    "super_net": float(row.get("super_net", 0) or 0),
+                    "big_net": float(row.get("big_net", 0) or 0),
+                    "mid_net": float(row.get("mid_net", 0) or 0),
+                    "small_net": float(row.get("small_net", 0) or 0),
+                    "source": "akshare",
+                }
+            )
         _save_capital_flow(result, "individual")
         _rate_sleep()
         return result
@@ -214,7 +223,10 @@ def get_north_flow(days: int = 30) -> list[dict]:
     """北向資金（多源）"""
     from src.core.eastmoney_flow import fetch_north_flow, fetch_north_flow_akshare
 
-    for fetcher in (lambda: fetch_north_flow(days), lambda: fetch_north_flow_akshare(days)):
+    for fetcher in (
+        lambda: fetch_north_flow(days),
+        lambda: fetch_north_flow_akshare(days),
+    ):
         try:
             result = fetcher() or []
         except Exception as e:

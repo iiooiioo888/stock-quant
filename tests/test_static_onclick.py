@@ -1,4 +1,5 @@
 """靜態檢查：inline onclick 引用的全域函數與 App 方法是否存在。"""
+
 import re
 from pathlib import Path
 
@@ -45,7 +46,11 @@ def _scan_onclick_handlers() -> list[tuple[str, str]]:
 
 def _resolve_call(expr: str) -> tuple[str, str] | None:
     expr = expr.split(";")[0].strip()
-    if expr.startswith("event.") or expr.startswith("if(") or expr.startswith("document."):
+    if (
+        expr.startswith("event.")
+        or expr.startswith("if(")
+        or expr.startswith("document.")
+    ):
         return None
     m = re.match(r"App\.(\w+)\s*\(", expr)
     if m:
@@ -79,7 +84,10 @@ class TestStaticOnclick:
         missing = []
         skip_prefixes = ("return ", "if(", "document.", "event.")
         for location, handler in _scan_onclick_handlers():
-            if any(handler.startswith(p) for p in skip_prefixes) or "preventDefault" in handler:
+            if (
+                any(handler.startswith(p) for p in skip_prefixes)
+                or "preventDefault" in handler
+            ):
                 continue
             resolved = _resolve_call(handler)
             if not resolved:

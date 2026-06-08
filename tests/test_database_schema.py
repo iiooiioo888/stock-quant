@@ -1,4 +1,5 @@
 """資料庫集中 schema 與版本化遷移測試"""
+
 import os
 import sqlite3
 import tempfile
@@ -35,7 +36,11 @@ def _table_names(conn: sqlite3.Connection) -> set[str]:
 
 
 def test_init_database_creates_core_tables(isolated_db):
-    from src.core.database import init_database, get_schema_version, CURRENT_SCHEMA_VERSION
+    from src.core.database import (
+        init_database,
+        get_schema_version,
+        CURRENT_SCHEMA_VERSION,
+    )
     from src.core.database.connection import get_conn
 
     init_database()
@@ -76,8 +81,7 @@ def test_legacy_column_patch(isolated_db):
     from src.core.database.migrations import run_migrations
 
     with get_conn() as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE daily_kline (
                 code TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -85,10 +89,8 @@ def test_legacy_column_patch(isolated_db):
                 volume REAL, amount REAL, turnover REAL,
                 PRIMARY KEY (code, date)
             )
-            """
-        )
-        conn.execute(
-            """
+            """)
+        conn.execute("""
             CREATE TABLE task_log (
                 task_id TEXT PRIMARY KEY,
                 task_type TEXT NOT NULL,
@@ -100,13 +102,14 @@ def test_legacy_column_patch(isolated_db):
                 created_at TEXT,
                 completed_at TEXT
             )
-            """
-        )
+            """)
 
     run_migrations()
 
     with get_conn() as conn:
-        dk_cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_kline)").fetchall()}
+        dk_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(daily_kline)").fetchall()
+        }
         tl_cols = {r[1] for r in conn.execute("PRAGMA table_info(task_log)").fetchall()}
 
     assert "market" in dk_cols
@@ -118,7 +121,5 @@ def test_init_db_compat(isolated_db):
 
     init_db()
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()
+        row = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()
     assert row[0] >= 1

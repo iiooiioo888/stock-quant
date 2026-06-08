@@ -10,6 +10,7 @@
 - Taker Buy/Sell Ratio、大單偵測
 - 波動率百分位
 """
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -27,6 +28,7 @@ from src.core.indicators.fast_indicators import (
 # 趨勢指標
 # ============================================================
 
+
 def compute_ema(close: np.ndarray, period: int) -> np.ndarray:
     """指數移動平均線（EMA）。"""
     c = np.asarray(close, dtype=np.float64).ravel()
@@ -42,7 +44,9 @@ def compute_ema(close: np.ndarray, period: int) -> np.ndarray:
     return out
 
 
-def compute_ema_multi(close: np.ndarray, periods: list[int] = None) -> dict[str, np.ndarray]:
+def compute_ema_multi(
+    close: np.ndarray, periods: list[int] = None
+) -> dict[str, np.ndarray]:
     """多週期 EMA。"""
     periods = periods or [9, 21, 55, 200]
     return {f"ema_{p}": compute_ema(close, p) for p in periods}
@@ -133,7 +137,10 @@ def compute_ichimoku(
     def _donchian(data: np.ndarray, period: int) -> np.ndarray:
         out = np.full(n, np.nan)
         for i in range(period - 1, n):
-            out[i] = (np.max(data[i - period + 1:i + 1]) + np.min(data[i - period + 1:i + 1])) / 2.0
+            out[i] = (
+                np.max(data[i - period + 1 : i + 1])
+                + np.min(data[i - period + 1 : i + 1])
+            ) / 2.0
         return out
 
     tenkan_sen = _donchian((h + lows) / 2.0, tenkan)
@@ -148,7 +155,7 @@ def compute_ichimoku(
 
     chikou = np.full(n, np.nan)
     if n > kijun:
-        chikou[:n - kijun] = c[kijun:]
+        chikou[: n - kijun] = c[kijun:]
 
     return {
         "tenkan_sen": tenkan_sen,
@@ -162,6 +169,7 @@ def compute_ichimoku(
 # ============================================================
 # 動量指標
 # ============================================================
+
 
 def compute_stoch_rsi(
     close: np.ndarray,
@@ -177,7 +185,7 @@ def compute_stoch_rsi(
 
     stoch = np.full(n, np.nan)
     for i in range(stoch_period - 1, n):
-        window = rsi[i - stoch_period + 1:i + 1]
+        window = rsi[i - stoch_period + 1 : i + 1]
         valid = window[~np.isnan(window)]
         if len(valid) > 0:
             r_min = np.min(valid)
@@ -205,8 +213,8 @@ def compute_williams_r(
     n = len(c)
     out = np.full(n, np.nan)
     for i in range(period - 1, n):
-        hh = np.max(h[i - period + 1:i + 1])
-        ll = np.min(lows[i - period + 1:i + 1])
+        hh = np.max(h[i - period + 1 : i + 1])
+        ll = np.min(lows[i - period + 1 : i + 1])
         if hh != ll:
             out[i] = (hh - c[i]) / (hh - ll) * -100
         else:
@@ -228,7 +236,7 @@ def compute_cci(
     n = len(tp)
     out = np.full(n, np.nan)
     for i in range(period - 1, n):
-        window = tp[i - period + 1:i + 1]
+        window = tp[i - period + 1 : i + 1]
         mean = np.mean(window)
         mad = np.mean(np.abs(window - mean))
         if mad > 0:
@@ -242,6 +250,7 @@ def compute_cci(
 # 波動指標
 # ============================================================
 
+
 def compute_bollinger_bands(
     close: np.ndarray,
     period: int = 20,
@@ -254,7 +263,7 @@ def compute_bollinger_bands(
     upper = np.full(n, np.nan)
     lower = np.full(n, np.nan)
     for i in range(period - 1, n):
-        window = c[i - period + 1:i + 1]
+        window = c[i - period + 1 : i + 1]
         std = np.std(window, ddof=0)
         upper[i] = middle[i] + std_dev * std
         lower[i] = middle[i] - std_dev * std
@@ -301,7 +310,7 @@ def compute_volatility_percentile(closes: np.ndarray, window: int = 30) -> float
     current_vol = np.std(returns[-20:]) * np.sqrt(252)
     historical_vols = []
     for i in range(len(returns) - window, -1, -1):
-        hist_ret = returns[i:i + 20]
+        hist_ret = returns[i : i + 20]
         if len(hist_ret) == 20:
             historical_vols.append(np.std(hist_ret) * np.sqrt(252))
 
@@ -315,6 +324,7 @@ def compute_volatility_percentile(closes: np.ndarray, window: int = 30) -> float
 # ============================================================
 # 量價指標
 # ============================================================
+
 
 def compute_obv(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
     """OBV（On-Balance Volume）。"""
@@ -426,6 +436,7 @@ def compute_adosc(
 # 加密專用指標
 # ============================================================
 
+
 def compute_taker_buy_sell_ratio(trades: list[dict]) -> dict:
     """
     從 trade 列表計算 Taker Buy/Sell Ratio。
@@ -476,20 +487,23 @@ def detect_large_orders(
     large = []
     for t in trades:
         if t.get("qty", 0) >= threshold:
-            large.append({
-                "price": t.get("price", 0),
-                "qty": t.get("qty", 0),
-                "quote_qty": t.get("quote_qty", 0),
-                "is_buyer_maker": t.get("is_buyer_maker", False),
-                "trade_time": t.get("trade_time", 0),
-                "direction": "sell" if t.get("is_buyer_maker", False) else "buy",
-            })
+            large.append(
+                {
+                    "price": t.get("price", 0),
+                    "qty": t.get("qty", 0),
+                    "quote_qty": t.get("quote_qty", 0),
+                    "is_buyer_maker": t.get("is_buyer_maker", False),
+                    "trade_time": t.get("trade_time", 0),
+                    "direction": "sell" if t.get("is_buyer_maker", False) else "buy",
+                }
+            )
     return large
 
 
 # ============================================================
 # 綜合計算接口
 # ============================================================
+
 
 def compute_all_crypto_indicators(
     closes: np.ndarray,
@@ -614,12 +628,13 @@ def compute_all_crypto_indicators(
 # 輔助函數
 # ============================================================
 
+
 def _sma_nan(arr: np.ndarray, period: int) -> np.ndarray:
     """帶 NaN 的簡單移動平均。"""
     n = len(arr)
     out = np.full(n, np.nan)
     for i in range(period - 1, n):
-        window = arr[i - period + 1:i + 1]
+        window = arr[i - period + 1 : i + 1]
         valid = window[~np.isnan(window)]
         if len(valid) > 0:
             out[i] = np.mean(valid)

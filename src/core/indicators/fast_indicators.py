@@ -2,6 +2,7 @@
 RSI / MACD / ATR / SMA — NumPy 實現，可選 Numba 加速。
 與 pandas.rolling 結果在常見週期下誤差 < 1e-6。
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -92,7 +93,9 @@ def _ema_core(close: np.ndarray, period: int) -> np.ndarray:
 
 
 @jit(nopython=True, cache=True)
-def _atr_core(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -> np.ndarray:
+def _atr_core(
+    high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int
+) -> np.ndarray:
     n = len(close)
     tr = np.empty(n, dtype=np.float64)
     tr[0] = high[0] - low[0]

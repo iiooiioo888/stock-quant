@@ -1,4 +1,5 @@
 """WebSocket 實時推送"""
+
 import asyncio
 import json
 from datetime import datetime
@@ -34,7 +35,9 @@ class ConnectionManager:
             user_conns = self._user_conns.get(user_id, [])
             if len(user_conns) >= _PER_USER_MAX_CONNECTIONS:
                 await ws.close(code=4003, reason="該用戶連接數已達上限")
-                logger.warning(f"WebSocket 連接拒絕：用戶 {user_id} 達上限 {_PER_USER_MAX_CONNECTIONS}")
+                logger.warning(
+                    f"WebSocket 連接拒絕：用戶 {user_id} 達上限 {_PER_USER_MAX_CONNECTIONS}"
+                )
                 return
         await ws.accept()
         self.active.append(ws)
@@ -122,7 +125,9 @@ async def ws_realtime_push():
 
     # 加密貨幣 WS 初始化
     crypto_push_counter = 0
-    crypto_push_interval = max(1, settings.crypto_push_interval_sec // settings.poll_interval_sec)
+    crypto_push_interval = max(
+        1, settings.crypto_push_interval_sec // settings.poll_interval_sec
+    )
     crypto_ws_started = False
 
     while True:
@@ -135,11 +140,13 @@ async def ws_realtime_push():
             try:
                 df = fetch_realtime(settings.watchlist)
                 if not df.empty:
-                    await manager.broadcast({
-                        "type": "quotes",
-                        "data": df.to_dict(orient="records"),
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    await manager.broadcast(
+                        {
+                            "type": "quotes",
+                            "data": df.to_dict(orient="records"),
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"WebSocket 推送失敗: {e}")
 
@@ -147,13 +154,17 @@ async def ws_realtime_push():
             if signal_push_counter >= signal_push_interval:
                 signal_push_counter = 0
                 try:
-                    signals_data = compute_and_push_signals(signal_engine, settings.watchlist)
+                    signals_data = compute_and_push_signals(
+                        signal_engine, settings.watchlist
+                    )
                     if signals_data:
-                        await manager.broadcast({
-                            "type": "signals",
-                            "data": signals_data,
-                            "timestamp": datetime.now().isoformat(),
-                        })
+                        await manager.broadcast(
+                            {
+                                "type": "signals",
+                                "data": signals_data,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
                 except Exception as e:
                     logger.debug(f"WebSocket 信號推送失敗: {e}")
 
@@ -163,6 +174,7 @@ async def ws_realtime_push():
             if not crypto_ws_started:
                 try:
                     from src.core.crypto.service import get_crypto_service
+
                     svc = get_crypto_service()
                     await svc.start_ws()
                     crypto_ws_started = True
@@ -174,29 +186,38 @@ async def ws_realtime_push():
                 crypto_push_counter = 0
                 try:
                     from src.core.crypto.service import get_crypto_service
+
                     svc = get_crypto_service()
 
                     push_types = settings.crypto_push_types
 
                     # 實時行情快照
                     if "quotes" in push_types:
-                        snapshots = svc._stream_manager.get_all_snapshots() if svc._stream_manager else []
+                        snapshots = (
+                            svc._stream_manager.get_all_snapshots()
+                            if svc._stream_manager
+                            else []
+                        )
                         if snapshots:
-                            await manager.broadcast({
-                                "type": "crypto_quotes",
-                                "data": snapshots,
-                                "timestamp": datetime.now().isoformat(),
-                            })
+                            await manager.broadcast(
+                                {
+                                    "type": "crypto_quotes",
+                                    "data": snapshots,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
 
                     # 告警推送
                     if "alerts" in push_types:
                         alerts = svc.get_alerts()
                         if alerts:
-                            await manager.broadcast({
-                                "type": "crypto_alerts",
-                                "data": alerts,
-                                "timestamp": datetime.now().isoformat(),
-                            })
+                            await manager.broadcast(
+                                {
+                                    "type": "crypto_alerts",
+                                    "data": alerts,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
 
                 except Exception as e:
                     logger.debug(f"[CryptoWS] 推送失敗: {e}")
@@ -233,6 +254,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = None):
         user_id = payload.get("user_id")
     elif token:
         from src.core.auth import verify_token
+
         payload = verify_token(token)
         if not payload:
             await ws.close(code=4001, reason="Token 無效或已過期")

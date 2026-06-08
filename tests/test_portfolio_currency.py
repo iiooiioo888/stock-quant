@@ -1,4 +1,5 @@
 """多幣種結算 — 匯率與 Decimal 換算。"""
+
 from decimal import Decimal
 
 import pytest

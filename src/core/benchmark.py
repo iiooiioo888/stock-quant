@@ -1,6 +1,7 @@
 """
 基準對比 — 滬深300 基準比較
 """
+
 from datetime import datetime
 
 import akshare as ak
@@ -16,11 +17,11 @@ BENCHMARK_CODE = "000300"
 def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
     """
     獲取滬深300 日收益率數據。
-    
+
     Args:
         start_date: 起始日期 (YYYY-MM-DD 或 YYYYMMDD)
         end_date: 結束日期
-    
+
     Returns:
         {"dates": [...], "prices": [...], "returns": [...], "nav": [...]}
     """
@@ -31,6 +32,7 @@ def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
         # 主源：Yahoo Finance（000300.SS）
         try:
             from src.core.yahoo_finance import a_share_to_yahoo, yahoo_chart
+
             sd = start_date.replace("-", "") if start_date else "20200101"
             symbol = a_share_to_yahoo(BENCHMARK_CODE)
             range_str = "max"
@@ -49,12 +51,24 @@ def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
             logger.warning(f"Yahoo 滬深300 失敗，嘗試 AKShare: {e}")
             try:
                 sd = start_date.replace("-", "") if start_date else "20200101"
-                ed = end_date.replace("-", "") if end_date else datetime.now().strftime("%Y%m%d")
+                ed = (
+                    end_date.replace("-", "")
+                    if end_date
+                    else datetime.now().strftime("%Y%m%d")
+                )
                 raw = ak.stock_zh_index_daily(symbol="sh000300")
                 if raw.empty:
                     return {"dates": [], "prices": [], "returns": [], "nav": []}
-                raw = raw.rename(columns={"date": "date", "open": "open", "high": "high",
-                                           "low": "low", "close": "close", "volume": "volume"})
+                raw = raw.rename(
+                    columns={
+                        "date": "date",
+                        "open": "open",
+                        "high": "high",
+                        "low": "low",
+                        "close": "close",
+                        "volume": "volume",
+                    }
+                )
                 raw["date"] = pd.to_datetime(raw["date"]).dt.strftime("%Y-%m-%d")
                 if start_date:
                     sd_fmt = f"{sd[:4]}-{sd[4:6]}-{sd[6:]}" if len(sd) == 8 else sd
@@ -97,10 +111,10 @@ def get_benchmark_returns(start_date: str = None, end_date: str = None) -> dict:
 def compare_with_benchmark(backtest_result: dict) -> dict:
     """
     將回測結果與滬深300 基準進行比較。
-    
+
     Args:
         backtest_result: run_backtest() 返回的結果字典
-    
+
     Returns:
         {"alpha": ..., "beta": ..., "information_ratio": ..., "tracking_error": ...,
          "benchmark_return": ..., "excess_return": ...}
@@ -148,11 +162,19 @@ def compare_with_benchmark(backtest_result: dict) -> dict:
     tracking_error = float(np.std(excess) * np.sqrt(252))
 
     # Information ratio
-    information_ratio = float(np.mean(excess) / np.std(excess) * np.sqrt(252)) if np.std(excess) > 0 else 0
+    information_ratio = (
+        float(np.mean(excess) / np.std(excess) * np.sqrt(252))
+        if np.std(excess) > 0
+        else 0
+    )
 
     # 總收益對比
     bt_total = backtest_result.get("total_return_pct", 0)
-    bm_total = float((benchmark["nav"][-1] / benchmark["nav"][0] - 1) * 100) if benchmark["nav"] else 0
+    bm_total = (
+        float((benchmark["nav"][-1] / benchmark["nav"][0] - 1) * 100)
+        if benchmark["nav"]
+        else 0
+    )
 
     result = {
         "alpha": round(float(alpha_annual), 4),

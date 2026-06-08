@@ -151,7 +151,7 @@ def is_scope_enabled(scope: str, user: Any = None) -> bool:
         return True
     if not c.get("public_enabled", True):
         return False
-    scopes = (c.get("scopes") or {})
+    scopes = c.get("scopes") or {}
     s = scopes.get(scope) if isinstance(scopes, dict) else None
     if isinstance(s, dict) and "enabled" in s:
         return bool(s.get("enabled", True))
@@ -169,7 +169,9 @@ def is_scope_enabled(scope: str, user: Any = None) -> bool:
     return True
 
 
-def is_allowed(scope: str, action: str | None = None, *, user: Any = None, name: str | None = None) -> bool:
+def is_allowed(
+    scope: str, action: str | None = None, *, user: Any = None, name: str | None = None
+) -> bool:
     """
     更細粒度判定：
     - scope: features / strategies / tasks
@@ -217,7 +219,9 @@ def _normalize_controls(raw: dict[str, Any]) -> dict[str, Any]:
     out["strategies_enabled"] = _bool("strategies_enabled", out["strategies_enabled"])
     out["tasks_enabled"] = _bool("tasks_enabled", out["tasks_enabled"])
     out["users_enabled"] = _bool("users_enabled", out.get("users_enabled", True))
-    out["watchlist_enabled"] = _bool("watchlist_enabled", out.get("watchlist_enabled", True))
+    out["watchlist_enabled"] = _bool(
+        "watchlist_enabled", out.get("watchlist_enabled", True)
+    )
 
     scopes = raw.get("scopes")
     if isinstance(scopes, dict):
@@ -228,23 +232,44 @@ def _normalize_controls(raw: dict[str, Any]) -> dict[str, Any]:
             for k in list(scope_def.keys()):
                 if k in incoming:
                     if k in ("allowed_names", "blocked_names"):
-                        scope_def[k] = incoming.get(k) if isinstance(incoming.get(k), list) else scope_def[k]
+                        scope_def[k] = (
+                            incoming.get(k)
+                            if isinstance(incoming.get(k), list)
+                            else scope_def[k]
+                        )
                     else:
                         scope_def[k] = bool(incoming.get(k))
 
     # v1 映射到 v2 scopes.enabled（若使用者只傳 v1）
-    out["scopes"]["features"]["enabled"] = bool(out["features_enabled"]) and bool(out["scopes"]["features"]["enabled"])
-    out["scopes"]["strategies"]["enabled"] = bool(out["strategies_enabled"]) and bool(out["scopes"]["strategies"]["enabled"])
-    out["scopes"]["tasks"]["enabled"] = bool(out["tasks_enabled"]) and bool(out["scopes"]["tasks"]["enabled"])
-    out["scopes"]["users"]["enabled"] = bool(out["users_enabled"]) and bool(out["scopes"]["users"]["enabled"])
-    out["scopes"]["watchlist"]["enabled"] = bool(out["watchlist_enabled"]) and bool(out["scopes"]["watchlist"]["enabled"])
+    out["scopes"]["features"]["enabled"] = bool(out["features_enabled"]) and bool(
+        out["scopes"]["features"]["enabled"]
+    )
+    out["scopes"]["strategies"]["enabled"] = bool(out["strategies_enabled"]) and bool(
+        out["scopes"]["strategies"]["enabled"]
+    )
+    out["scopes"]["tasks"]["enabled"] = bool(out["tasks_enabled"]) and bool(
+        out["scopes"]["tasks"]["enabled"]
+    )
+    out["scopes"]["users"]["enabled"] = bool(out["users_enabled"]) and bool(
+        out["scopes"]["users"]["enabled"]
+    )
+    out["scopes"]["watchlist"]["enabled"] = bool(out["watchlist_enabled"]) and bool(
+        out["scopes"]["watchlist"]["enabled"]
+    )
     return out
 
 
 def _merge_controls(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     merged = _normalize_controls(current)
     # 允許直接更新 v1 欄位
-    for k in ("public_enabled", "features_enabled", "strategies_enabled", "tasks_enabled", "users_enabled", "watchlist_enabled"):
+    for k in (
+        "public_enabled",
+        "features_enabled",
+        "strategies_enabled",
+        "tasks_enabled",
+        "users_enabled",
+        "watchlist_enabled",
+    ):
         if k in patch:
             merged[k] = bool(patch.get(k))
     # 允許更新 scopes（巢狀）
@@ -253,4 +278,3 @@ def _merge_controls(current: dict[str, Any], patch: dict[str, Any]) -> dict[str,
         merged["scopes"] = tmp["scopes"]
     # 最後再跑一次 v1→v2 映射
     return _normalize_controls(merged)
-

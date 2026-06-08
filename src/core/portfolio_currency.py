@@ -1,4 +1,5 @@
 """持倉幣種推斷 — 供結算與流水遷移共用。"""
+
 from __future__ import annotations
 
 
@@ -14,7 +15,15 @@ def infer_currency(code: str) -> str:
         market = detect_market(code)
         if market in ("hk_stock",):
             return "HKD"
-        if market in ("us_stock", "global", "crypto", "forex", "forex_yahoo", "commodity", "index"):
+        if market in (
+            "us_stock",
+            "global",
+            "crypto",
+            "forex",
+            "forex_yahoo",
+            "commodity",
+            "index",
+        ):
             return "USD"
         if market in ("forex",):
             return "USD"

@@ -1,6 +1,6 @@
 """CLI 共用工具。"""
-import argparse
 
+import argparse
 
 DEFAULT_ALLOCATIONS = [
     {"strategy": "dual_ma", "code": "000001"},
@@ -35,15 +35,16 @@ def parse_allocations(alloc_str: str) -> list[dict]:
 def add_alloc_arg(parser):
     """為子命令添加 --alloc 參數"""
     parser.add_argument(
-        "--alloc", type=str, default="",
+        "--alloc",
+        type=str,
+        default="",
         help='組合分配，格式: "strategy:code,strategy:code,..."（留空使用默認）',
     )
 
 
-
-
 def ensure_db():
     from src.core.db import init_db
+
     init_db()
 
 
@@ -73,6 +74,7 @@ def fail_result(result, *, label: str = "操作") -> bool:
 
 def is_a_share_trading_now(now=None) -> bool:
     from datetime import datetime as dt
+
     now = now or dt.now()
     if now.weekday() >= 5:
         return False

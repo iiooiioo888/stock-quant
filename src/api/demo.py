@@ -1,4 +1,5 @@
 """演示模式數據填充"""
+
 import threading
 
 from src.utils.logger import logger

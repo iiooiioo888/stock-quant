@@ -1,4 +1,5 @@
 """portfolio 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -21,8 +22,6 @@ async def get_portfolio_presets():
     return {"presets": settings.portfolio_presets}
 
 
-
-
 @router.post("/api/portfolio/preset/{preset_name}")
 async def run_preset_portfolio(
     preset_name: str,
@@ -35,7 +34,10 @@ async def run_preset_portfolio(
     gate_portfolio_task(user, advanced=False)
     preset = settings.portfolio_presets.get(preset_name)
     if not preset:
-        raise HTTPException(404, f"預設組合不存在: {preset_name}，可選: {list(settings.portfolio_presets.keys())}")
+        raise HTTPException(
+            404,
+            f"預設組合不存在: {preset_name}，可選: {list(settings.portfolio_presets.keys())}",
+        )
 
     allocations = preset["allocations"]
     rebalance = preset.get("rebalance", "none")
@@ -75,7 +77,6 @@ async def run_preset_portfolio(
 # ====== 進階組合功能 ======
 
 
-
 @router.post("/api/portfolio/dynamic")
 async def run_dynamic_portfolio(body: dict, user: User = Depends(require_auth)):
     """動態權重組合回測 — 根據滾動夏普自動調整子策略權重"""
@@ -111,8 +112,6 @@ async def run_dynamic_portfolio(body: dict, user: User = Depends(require_auth)):
     )
 
 
-
-
 @router.post("/api/portfolio/kelly")
 async def run_kelly_criterion(body: dict, user: User = Depends(require_auth)):
     """Kelly 公式計算最優倉位比例"""
@@ -140,8 +139,6 @@ async def run_kelly_criterion(body: dict, user: User = Depends(require_auth)):
         task_extra={"cash": cash, "fraction_limit": fraction_limit},
         title="組合回測 · Kelly",
     )
-
-
 
 
 @router.post("/api/portfolio/degradation")
@@ -182,8 +179,6 @@ async def run_degradation_detection(body: dict, user: User = Depends(require_aut
     )
 
 
-
-
 @router.post("/api/portfolio/arbitrate")
 async def run_signal_arbitration(body: dict, user: User = Depends(require_auth)):
     """信號衝突仲裁 — 多策略矛盾信號加權投票"""
@@ -220,8 +215,6 @@ async def run_signal_arbitration(body: dict, user: User = Depends(require_auth))
     )
 
 
-
-
 @router.post("/api/portfolio/risk-parity")
 async def run_risk_parity(body: dict, user: User = Depends(require_auth)):
     """風險平價組合 — 每個策略對總風險貢獻相等"""
@@ -246,8 +239,6 @@ async def run_risk_parity(body: dict, user: User = Depends(require_auth)):
     )
 
 
-
-
 @router.post("/api/portfolio/mvo")
 async def run_mean_variance(body: dict, user: User = Depends(require_auth)):
     """均值-方差優化 — Markowitz 最優權重"""
@@ -264,8 +255,10 @@ async def run_mean_variance(body: dict, user: User = Depends(require_auth)):
 
     def _work():
         return mean_variance_optimize(
-            allocations=allocations, objective=objective,
-            cash=cash, n_simulations=n_simulations,
+            allocations=allocations,
+            objective=objective,
+            cash=cash,
+            n_simulations=n_simulations,
         )
 
     return dispatch_portfolio_async(
@@ -279,8 +272,6 @@ async def run_mean_variance(body: dict, user: User = Depends(require_auth)):
         },
         title="組合回測 · 均值方差(MVO)",
     )
-
-
 
 
 @router.post("/api/portfolio/vol-target")
@@ -299,8 +290,10 @@ async def run_vol_targeting(body: dict, user: User = Depends(require_auth)):
 
     def _work():
         return volatility_targeting(
-            allocations=allocations, target_vol=target_vol,
-            lookback_days=lookback_days, cash=cash,
+            allocations=allocations,
+            target_vol=target_vol,
+            lookback_days=lookback_days,
+            cash=cash,
         )
 
     return dispatch_portfolio_async(
@@ -314,8 +307,6 @@ async def run_vol_targeting(body: dict, user: User = Depends(require_auth)):
         },
         title="組合回測 · 波動目標",
     )
-
-
 
 
 @router.post("/api/portfolio/max-diversification")
@@ -332,7 +323,9 @@ async def run_max_diversification(body: dict):
 
     def _work():
         return max_diversification_portfolio(
-            allocations=allocations, cash=cash, n_simulations=n_simulations,
+            allocations=allocations,
+            cash=cash,
+            n_simulations=n_simulations,
         )
 
     return dispatch_portfolio_async(
@@ -342,8 +335,6 @@ async def run_max_diversification(body: dict):
         task_extra={"cash": cash, "n_simulations": n_simulations},
         title="組合回測 · 最大分散化",
     )
-
-
 
 
 @router.post("/api/portfolio/anti-correlation")
@@ -360,7 +351,9 @@ async def run_anti_correlation(body: dict):
 
     def _work():
         return anti_correlation_portfolio(
-            allocations=allocations, cash=cash, n_simulations=n_simulations,
+            allocations=allocations,
+            cash=cash,
+            n_simulations=n_simulations,
         )
 
     return dispatch_portfolio_async(
@@ -370,8 +363,6 @@ async def run_anti_correlation(body: dict):
         task_extra={"cash": cash, "n_simulations": n_simulations},
         title="組合回測 · 低相關",
     )
-
-
 
 
 @router.post("/api/portfolio/regime-switch")
@@ -389,8 +380,10 @@ async def run_regime_switch(body: dict):
 
     def _work():
         return regime_switch_portfolio(
-            allocations=allocations, regime_method=regime_method,
-            lookback_days=lookback_days, cash=cash,
+            allocations=allocations,
+            regime_method=regime_method,
+            lookback_days=lookback_days,
+            cash=cash,
         )
 
     return dispatch_portfolio_async(
@@ -404,8 +397,6 @@ async def run_regime_switch(body: dict):
         },
         title="組合回測 · 狀態切換",
     )
-
-
 
 
 @router.post("/api/portfolio/black-litterman")
@@ -425,8 +416,10 @@ async def run_black_litterman(body: dict):
 
     def _work():
         return black_litterman_portfolio(
-            allocations=allocations, views=views,
-            confidence=confidence, cash=cash,
+            allocations=allocations,
+            views=views,
+            confidence=confidence,
+            cash=cash,
         )
 
     return dispatch_portfolio_async(
@@ -436,8 +429,6 @@ async def run_black_litterman(body: dict):
         task_extra={"views": views, "confidence": confidence, "cash": cash},
         title="組合回測 · Black-Litterman",
     )
-
-
 
 
 @router.post("/api/portfolio/hrp")
@@ -461,8 +452,6 @@ async def run_hrp(body: dict):
         task_extra={"cash": cash},
         title="組合回測 · HRP",
     )
-
-
 
 
 @router.post("/api/portfolio/cvar-optimize")
@@ -489,8 +478,6 @@ async def run_cvar_optimize(body: dict):
     )
 
 
-
-
 @router.post("/api/portfolio/multi-timeframe")
 async def run_multi_timeframe(body: dict):
     """多時間框架信號確認 — 多窗口投票確認交易信號"""
@@ -504,7 +491,9 @@ async def run_multi_timeframe(body: dict):
         raise HTTPException(400, "請提供 allocations")
 
     def _work():
-        return multi_timeframe_signal(allocations=allocations, windows=windows, cash=cash)
+        return multi_timeframe_signal(
+            allocations=allocations, windows=windows, cash=cash
+        )
 
     return dispatch_portfolio_async(
         "multi-timeframe",
@@ -513,8 +502,6 @@ async def run_multi_timeframe(body: dict):
         task_extra={"windows": windows, "cash": cash},
         title="組合回測 · 多週期",
     )
-
-
 
 
 @router.post("/api/portfolio/dynamic-rebalance")
@@ -532,8 +519,10 @@ async def run_dynamic_rebalance(body: dict):
 
     def _work():
         return dynamic_rebalance_trigger(
-            allocations=allocations, threshold_pct=threshold_pct,
-            vol_window=vol_window, cash=cash,
+            allocations=allocations,
+            threshold_pct=threshold_pct,
+            vol_window=vol_window,
+            cash=cash,
         )
 
     return dispatch_portfolio_async(
@@ -547,8 +536,6 @@ async def run_dynamic_rebalance(body: dict):
         },
         title="組合回測 · 動態再平衡",
     )
-
-
 
 
 @router.post("/api/portfolio/sector-limit")
@@ -565,7 +552,9 @@ async def run_sector_limit(body: dict):
 
     def _work():
         return sector_exposure_limit(
-            allocations=allocations, max_sector_pct=max_sector_pct, cash=cash,
+            allocations=allocations,
+            max_sector_pct=max_sector_pct,
+            cash=cash,
         )
 
     return dispatch_portfolio_async(
@@ -575,8 +564,6 @@ async def run_sector_limit(body: dict):
         task_extra={"max_sector_pct": max_sector_pct, "cash": cash},
         title="組合回測 · 板塊限制",
     )
-
-
 
 
 @router.post("/api/portfolio/voting")
@@ -607,8 +594,6 @@ async def run_voting_portfolio(body: dict):
     )
 
 
-
-
 @router.post("/api/portfolio/momentum-of-momentum")
 async def run_momentum_of_momentum(body: dict):
     """動量的動量組合 — 二階動量加權，策略改善趨勢越好權重越高"""
@@ -635,8 +620,6 @@ async def run_momentum_of_momentum(body: dict):
         task_extra={"lookback": lookback, "cash": cash},
         title="組合回測 · 動量動量",
     )
-
-
 
 
 @router.post("/api/portfolio/adaptive-regime")
@@ -668,7 +651,6 @@ async def run_adaptive_regime(body: dict):
 # ====== 熱力圖 ======
 
 
-
 @router.post("/api/portfolio/frontier")
 async def run_portfolio_frontier(body: dict):
     """有效前沿分析"""
@@ -693,6 +675,3 @@ async def run_portfolio_frontier(body: dict):
 
 
 # ====== 策略開發框架 ======
-
-
-

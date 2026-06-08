@@ -10,6 +10,7 @@
   - 日誌環形緩衝
   - 任務刪除邊界
 """
+
 from __future__ import annotations
 
 import threading
@@ -20,15 +21,19 @@ import pytest
 
 import src.core.task_manager as tm
 
-
 # ── 狀態機轉換矩陣 ──────────────────────────────────────────────
+
 
 class TestTransitionMatrix:
     """驗證 _VALID_TRANSITIONS 與 can_transition 的一致性。"""
 
     ALL_STATUSES = [
-        tm.STATUS_PENDING, tm.STATUS_RUNNING, tm.STATUS_COMPLETED,
-        tm.STATUS_FAILED, tm.STATUS_CANCELLED, tm.STATUS_RETRYING,
+        tm.STATUS_PENDING,
+        tm.STATUS_RUNNING,
+        tm.STATUS_COMPLETED,
+        tm.STATUS_FAILED,
+        tm.STATUS_CANCELLED,
+        tm.STATUS_RETRYING,
     ]
 
     def test_same_status_always_allowed(self):
@@ -40,8 +45,9 @@ class TestTransitionMatrix:
             for target in self.ALL_STATUSES:
                 if target == terminal:
                     continue
-                assert not tm.can_transition(terminal, target), \
-                    f"終態 {terminal} 不應轉到 {target}"
+                assert not tm.can_transition(
+                    terminal, target
+                ), f"終態 {terminal} 不應轉到 {target}"
 
     def test_pending_can_go_to_running_completed_cancelled_retrying(self):
         allowed = tm._VALID_TRANSITIONS[tm.STATUS_PENDING]
@@ -52,7 +58,12 @@ class TestTransitionMatrix:
 
     def test_running_can_go_to_all_terminal_plus_retrying(self):
         allowed = tm._VALID_TRANSITIONS[tm.STATUS_RUNNING]
-        for s in (tm.STATUS_COMPLETED, tm.STATUS_FAILED, tm.STATUS_CANCELLED, tm.STATUS_RETRYING):
+        for s in (
+            tm.STATUS_COMPLETED,
+            tm.STATUS_FAILED,
+            tm.STATUS_CANCELLED,
+            tm.STATUS_RETRYING,
+        ):
             assert s in allowed
 
     def test_retrying_can_go_to_running_failed_cancelled(self):
@@ -69,24 +80,28 @@ class TestTransitionMatrix:
         assert tm.normalize_status("") == ""
         assert tm.normalize_status("pending") == tm.STATUS_PENDING
 
-    @pytest.mark.parametrize("from_s,to_s,expected", [
-        ("pending", "running", True),
-        ("pending", "completed", True),
-        ("pending", "failed", False),
-        ("running", "completed", True),
-        ("running", "failed", True),
-        ("running", "pending", False),
-        ("completed", "running", False),
-        ("failed", "pending", False),
-        ("cancelled", "running", False),
-        ("retrying", "running", True),
-        ("retrying", "completed", False),
-    ])
+    @pytest.mark.parametrize(
+        "from_s,to_s,expected",
+        [
+            ("pending", "running", True),
+            ("pending", "completed", True),
+            ("pending", "failed", False),
+            ("running", "completed", True),
+            ("running", "failed", True),
+            ("running", "pending", False),
+            ("completed", "running", False),
+            ("failed", "pending", False),
+            ("cancelled", "running", False),
+            ("retrying", "running", True),
+            ("retrying", "completed", False),
+        ],
+    )
     def test_transition_cases(self, from_s, to_s, expected):
         assert tm.can_transition(from_s, to_s) == expected
 
 
 # ── 任務創建與去重 ──────────────────────────────────────────────
+
 
 class TestTaskCreation:
     """任務創建、去重、緩存命中。"""
@@ -134,6 +149,7 @@ class TestTaskCreation:
 
 # ── 任務更新 ────────────────────────────────────────────────────
 
+
 class TestTaskUpdate:
     """任務狀態更新、進度節流。"""
 
@@ -147,7 +163,9 @@ class TestTaskUpdate:
     def test_update_to_completed(self):
         r = tm.create_task("backtest", {"code": "000006"})
         tid = r["task_id"]
-        tm.update_task(tid, status=tm.STATUS_COMPLETED, progress=100, result={"total_return": 15.0})
+        tm.update_task(
+            tid, status=tm.STATUS_COMPLETED, progress=100, result={"total_return": 15.0}
+        )
         task = tm.get_task(tid)
         assert task["status"] == tm.STATUS_COMPLETED
         assert task["result"]["total_return"] == 15.0
@@ -166,6 +184,7 @@ class TestTaskUpdate:
 
 
 # ── transition_task ─────────────────────────────────────────────
+
 
 class TestTransitionTask:
     """通過 transition_task 進行狀態轉換。"""
@@ -198,6 +217,7 @@ class TestTransitionTask:
 
 
 # ── 取消任務 ────────────────────────────────────────────────────
+
 
 class TestTaskCancellation:
     """取消邏輯 — pending 直接取消，running 協作式取消。"""
@@ -234,6 +254,7 @@ class TestTaskCancellation:
 
 
 # ── 並發操作 ────────────────────────────────────────────────────
+
 
 class TestConcurrentOperations:
     """並發創建、更新、取消 — 驗證線程安全。"""
@@ -343,7 +364,10 @@ class TestConcurrentOperations:
                 with dispatch_lock:
                     dispatched.append(task_id)
                 time.sleep(0.05)
-                tm.update_task(task_id, status=tm.STATUS_COMPLETED, progress=100, result={})
+                tm.update_task(
+                    task_id, status=tm.STATUS_COMPLETED, progress=100, result={}
+                )
+
             return _work
 
         tasks = []
@@ -360,10 +384,15 @@ class TestConcurrentOperations:
         for tid in tasks:
             task = tm.get_task(tid)
             if task:
-                assert task["status"] in (tm.STATUS_COMPLETED, tm.STATUS_RUNNING, tm.STATUS_PENDING)
+                assert task["status"] in (
+                    tm.STATUS_COMPLETED,
+                    tm.STATUS_RUNNING,
+                    tm.STATUS_PENDING,
+                )
 
 
 # ── 任務日誌 ────────────────────────────────────────────────────
+
 
 class TestTaskLogs:
     """日誌環形緩衝。"""
@@ -403,6 +432,7 @@ class TestTaskLogs:
 
 # ── 任務刪除 ────────────────────────────────────────────────────
 
+
 class TestTaskDeletion:
     """刪除已終結任務。"""
 
@@ -424,6 +454,7 @@ class TestTaskDeletion:
 
 # ── 超時清理 ────────────────────────────────────────────────────
 
+
 class TestStaleCleanup:
     """超時任務清理。"""
 
@@ -441,6 +472,7 @@ class TestStaleCleanup:
 
 
 # ── 統計 ────────────────────────────────────────────────────────
+
 
 class TestTaskStats:
     """任務統計。"""
@@ -461,14 +493,22 @@ class TestTaskStats:
 
 # ── 管道 ────────────────────────────────────────────────────────
 
+
 class TestPipeline:
     """任務管道創建。"""
 
     def test_create_pipeline(self):
-        p = tm.create_pipeline([
-            {"task_type": "stock_universe_sync", "params": {}, "title": "同步"},
-            {"task_type": "backtest", "params": {"code": "000001"}, "title": "回測"},
-        ], title="測試管道")
+        p = tm.create_pipeline(
+            [
+                {"task_type": "stock_universe_sync", "params": {}, "title": "同步"},
+                {
+                    "task_type": "backtest",
+                    "params": {"code": "000001"},
+                    "title": "回測",
+                },
+            ],
+            title="測試管道",
+        )
         assert "pipeline_id" in p
         assert p["status"] in ("pending", "running", "completed")
 
@@ -478,6 +518,7 @@ class TestPipeline:
 
 
 # ── get_tasks 列表 ──────────────────────────────────────────────
+
 
 class TestGetTasks:
     """任務列表查詢。"""
@@ -510,6 +551,7 @@ class TestGetTasks:
 
 
 # ── update_task_meta ────────────────────────────────────────────
+
 
 class TestUpdateTaskMeta:
     """任務運行時展示信息更新。"""
@@ -550,6 +592,7 @@ class TestUpdateTaskMeta:
 
 # ── get_task_full / get_task_params ─────────────────────────────
 
+
 class TestGetTaskFullAndParams:
     """完整任務信息與輕量參數查詢。"""
 
@@ -573,7 +616,9 @@ class TestGetTaskFullAndParams:
         assert tm.get_task_full("nonexistent") is None
 
     def test_get_task_params_basic(self):
-        r = tm.create_task("backtest", {"code": "000112", "strategy": "dual_ma"}, title="參數查詢")
+        r = tm.create_task(
+            "backtest", {"code": "000112", "strategy": "dual_ma"}, title="參數查詢"
+        )
         tid = r["task_id"]
         params = tm.get_task_params(tid)
         assert params is not None
@@ -585,6 +630,7 @@ class TestGetTaskFullAndParams:
 
 
 # ── get_running_tasks / count_in_flight / is_task_running ──────
+
 
 class TestRunningAndInFlight:
     """運行中任務查詢。"""
@@ -633,6 +679,7 @@ class TestRunningAndInFlight:
 
 # ── recover_stale_tasks_on_startup ──────────────────────────────
 
+
 class TestRecoverStale:
     """啟動自癒。"""
 
@@ -657,6 +704,7 @@ class TestRecoverStale:
 
 
 # ── delete_all_completed ────────────────────────────────────────
+
 
 class TestDeleteAllCompleted:
     """批量刪除已結束任務。"""
@@ -684,14 +732,25 @@ class TestDeleteAllCompleted:
 
 # ── submit_pipeline_step / get_pipeline ─────────────────────────
 
+
 class TestPipelineAdvanced:
     """管道進階操作。"""
 
     def test_submit_pipeline_step(self):
-        p = tm.create_pipeline([
-            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
-            {"task_type": "backtest", "params": {"code": "000001"}, "title": "步驟2"},
-        ])
+        p = tm.create_pipeline(
+            [
+                {
+                    "task_type": "download",
+                    "params": {"code": "000001"},
+                    "title": "步驟1",
+                },
+                {
+                    "task_type": "backtest",
+                    "params": {"code": "000001"},
+                    "title": "步驟2",
+                },
+            ]
+        )
         pid = p["pipeline_id"]
         task_id = tm.submit_pipeline_step(pid, 0, lambda: None)
         assert task_id is not None
@@ -701,16 +760,28 @@ class TestPipelineAdvanced:
             tm.submit_pipeline_step("nonexistent", 0, lambda: None)
 
     def test_submit_step_invalid_index(self):
-        p = tm.create_pipeline([
-            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
-        ])
+        p = tm.create_pipeline(
+            [
+                {
+                    "task_type": "download",
+                    "params": {"code": "000001"},
+                    "title": "步驟1",
+                },
+            ]
+        )
         with pytest.raises(ValueError):
             tm.submit_pipeline_step(p["pipeline_id"], 5, lambda: None)
 
     def test_get_pipeline(self):
-        p = tm.create_pipeline([
-            {"task_type": "download", "params": {"code": "000001"}, "title": "步驟1"},
-        ])
+        p = tm.create_pipeline(
+            [
+                {
+                    "task_type": "download",
+                    "params": {"code": "000001"},
+                    "title": "步驟1",
+                },
+            ]
+        )
         pipe = tm.get_pipeline(p["pipeline_id"])
         assert pipe is not None
         assert "task_ids" in pipe
@@ -720,6 +791,7 @@ class TestPipelineAdvanced:
 
 
 # ── task_type_label / get_task_types ────────────────────────────
+
 
 class TestTaskTypeMeta:
     """任務類型元數據。"""
@@ -748,6 +820,7 @@ class TestTaskTypeMeta:
 
 # ── _to_json_safe ───────────────────────────────────────────────
 
+
 class TestJsonSafe:
     """JSON 安全轉換。"""
 
@@ -760,6 +833,7 @@ class TestJsonSafe:
 
     def test_nan_cleaned(self):
         import math
+
         data = {"val": float("nan")}
         result = tm._to_json_safe(data)
         assert result["val"] is None
@@ -777,6 +851,7 @@ class TestJsonSafe:
 
     def test_numpy_types(self):
         import numpy as np
+
         data = {"int": np.int64(42), "float": np.float64(3.14)}
         result = tm._to_json_safe(data)
         assert result["int"] == 42
@@ -784,12 +859,14 @@ class TestJsonSafe:
 
     def test_datetime_serialized(self):
         from datetime import datetime
+
         data = {"ts": datetime(2024, 6, 15, 10, 30, 0)}
         result = tm._to_json_safe(data)
         assert "2024-06-15" in result["ts"]
 
 
 # ── _make_params_hash ───────────────────────────────────────────
+
 
 class TestParamsHash:
     """參數哈希一致性。"""
@@ -815,6 +892,7 @@ class TestParamsHash:
 
 # ── _calc_elapsed / _calc_eta ───────────────────────────────────
 
+
 class TestCalcElapsedAndETA:
     """運行時間與 ETA 計算。"""
 
@@ -831,13 +909,18 @@ class TestCalcElapsedAndETA:
         assert abs(elapsed - 300.0) < 1.0
 
     def test_calc_eta_low_progress(self):
-        assert tm._calc_eta({"progress": 3, "started_at": "2024-01-01 10:00:00"}) is None
+        assert (
+            tm._calc_eta({"progress": 3, "started_at": "2024-01-01 10:00:00"}) is None
+        )
 
     def test_calc_eta_completed(self):
-        assert tm._calc_eta({"progress": 100, "started_at": "2024-01-01 10:00:00"}) is None
+        assert (
+            tm._calc_eta({"progress": 100, "started_at": "2024-01-01 10:00:00"}) is None
+        )
 
 
 # ── get_queue_snapshot ──────────────────────────────────────────
+
 
 class TestQueueSnapshot:
     """隊列快照。"""
@@ -858,6 +941,7 @@ class TestQueueSnapshot:
 
 
 # ── 大規模併發 ──────────────────────────────────────────────────
+
 
 class TestMassiveConcurrency:
     """100+ 併發任務。"""

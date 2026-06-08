@@ -1,4 +1,5 @@
 """依 task_type + params 重建異步任務 worker（供任務重試）。"""
+
 from __future__ import annotations
 
 from typing import Callable
@@ -10,7 +11,9 @@ class RetryWorkerError(ValueError):
     """無法為該任務類型建立重試 worker。"""
 
 
-def build_retry_worker(task_type: str, params: dict, task_id: str) -> Callable[[], object]:
+def build_retry_worker(
+    task_type: str, params: dict, task_id: str
+) -> Callable[[], object]:
     """根據原任務類型與參數建立可提交至 task_manager 的 work_fn。"""
     params = params or {}
     builders = {
@@ -93,9 +96,15 @@ def _retry_optimize(params: dict, task_id: str):
         }
     if method == "optuna":
         return optuna_search(
-            code, strategy, objective=objective, n_trials=n_trials, task_id=task_id,
+            code,
+            strategy,
+            objective=objective,
+            n_trials=n_trials,
+            task_id=task_id,
         )
-    return grid_search(code, strategy, objective=objective, top_n=top_n, task_id=task_id)
+    return grid_search(
+        code, strategy, objective=objective, top_n=top_n, task_id=task_id
+    )
 
 
 def _retry_walkforward(params: dict, task_id: str):

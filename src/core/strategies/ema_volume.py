@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("ema_volume", "EMA量價確認策略")
 class EMAVolumeStrategy(OrderManagedStrategy):
     """EMA 交叉 + 成交量放大確認"""
+
     params = (("fast", 12), ("slow", 26), ("vol_ma", 20), ("vol_ratio", 1.2))
 
     def __init__(self):
@@ -24,4 +25,3 @@ class EMAVolumeStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.crossover < 0 and self.position:
             self.order = self.sell()
-

@@ -3,6 +3,7 @@
 
 供「接口檢查」頁與 /api/external/check 使用。
 """
+
 from __future__ import annotations
 
 import time
@@ -116,20 +117,65 @@ def probe_registry() -> dict:
 # ====== 目錄（供前端展示） ======
 PROBE_CATALOG: list[dict] = [
     {"id": "registry", "name": "數據源註冊表", "category": "system", "active": True},
-    {"id": "eastmoney_sector", "name": "東財板塊列表", "category": "a_share", "active": True},
-    {"id": "yahoo_a_share", "name": "Yahoo A股行情", "category": "a_share", "active": True},
-    {"id": "binance_ping", "name": "Binance Ping", "category": "crypto", "active": True},
-    {"id": "frankfurter", "name": "Frankfurter 匯率", "category": "forex", "active": True},
-    {"id": "ib_tws", "name": "Interactive Brokers", "category": "system", "active": True},
+    {
+        "id": "eastmoney_sector",
+        "name": "東財板塊列表",
+        "category": "a_share",
+        "active": True,
+    },
+    {
+        "id": "yahoo_a_share",
+        "name": "Yahoo A股行情",
+        "category": "a_share",
+        "active": True,
+    },
+    {
+        "id": "binance_ping",
+        "name": "Binance Ping",
+        "category": "crypto",
+        "active": True,
+    },
+    {
+        "id": "frankfurter",
+        "name": "Frankfurter 匯率",
+        "category": "forex",
+        "active": True,
+    },
+    {
+        "id": "ib_tws",
+        "name": "Interactive Brokers",
+        "category": "system",
+        "active": True,
+    },
     # 官方/持牌/權威渠道（以可達性探測為主，不抓取/解析行情）
     {"id": "sse_home", "name": "上交所 SSE", "category": "exchange", "active": True},
     {"id": "szse_home", "name": "深交所 SZSE", "category": "exchange", "active": True},
     {"id": "bse_home", "name": "北交所 BSE", "category": "exchange", "active": True},
-    {"id": "chinamoney_home", "name": "中國貨幣網", "category": "bond_fx", "active": True},
-    {"id": "chinabond_home", "name": "中國債券信息網", "category": "bond_fx", "active": True},
-    {"id": "chinawealth_home", "name": "中國理財網", "category": "wealth", "active": True},
+    {
+        "id": "chinamoney_home",
+        "name": "中國貨幣網",
+        "category": "bond_fx",
+        "active": True,
+    },
+    {
+        "id": "chinabond_home",
+        "name": "中國債券信息網",
+        "category": "bond_fx",
+        "active": True,
+    },
+    {
+        "id": "chinawealth_home",
+        "name": "中國理財網",
+        "category": "wealth",
+        "active": True,
+    },
     {"id": "amac_home", "name": "基金業協會 AMAC", "category": "fund", "active": True},
-    {"id": "iachina_home", "name": "保險行業協會", "category": "insurance", "active": True},
+    {
+        "id": "iachina_home",
+        "name": "保險行業協會",
+        "category": "insurance",
+        "active": True,
+    },
     {"id": "sge_home", "name": "上金所 SGE", "category": "metals", "active": True},
     {"id": "shfe_home", "name": "上期所 SHFE", "category": "futures", "active": True},
 ]
@@ -153,7 +199,9 @@ def probe_eastmoney_sector() -> dict:
         )
     except Exception as e:
         elapsed = (time.perf_counter() - t0) * 1000
-        return _probe_row("eastmoney_sector", "東財板塊列表", "a_share", False, elapsed, str(e)[:300])
+        return _probe_row(
+            "eastmoney_sector", "東財板塊列表", "a_share", False, elapsed, str(e)[:300]
+        )
 
 
 def probe_yahoo_a_share() -> dict:
@@ -174,7 +222,9 @@ def probe_yahoo_a_share() -> dict:
         )
     except Exception as e:
         elapsed = (time.perf_counter() - t0) * 1000
-        return _probe_row("yahoo_a_share", "Yahoo A股行情", "a_share", False, elapsed, str(e)[:300])
+        return _probe_row(
+            "yahoo_a_share", "Yahoo A股行情", "a_share", False, elapsed, str(e)[:300]
+        )
 
 
 def probe_binance_ping() -> dict:
@@ -219,23 +269,33 @@ def probe_bse_home() -> dict:
 
 
 def probe_chinamoney_home() -> dict:
-    return _site_probe("chinamoney_home", "中國貨幣網", "bond_fx", "https://www.chinamoney.com.cn/")
+    return _site_probe(
+        "chinamoney_home", "中國貨幣網", "bond_fx", "https://www.chinamoney.com.cn/"
+    )
 
 
 def probe_chinabond_home() -> dict:
-    return _site_probe("chinabond_home", "中國債券信息網", "bond_fx", "https://www.chinabond.com.cn/")
+    return _site_probe(
+        "chinabond_home", "中國債券信息網", "bond_fx", "https://www.chinabond.com.cn/"
+    )
 
 
 def probe_chinawealth_home() -> dict:
-    return _site_probe("chinawealth_home", "中國理財網", "wealth", "https://www.chinawealth.com.cn/")
+    return _site_probe(
+        "chinawealth_home", "中國理財網", "wealth", "https://www.chinawealth.com.cn/"
+    )
 
 
 def probe_amac_home() -> dict:
-    return _site_probe("amac_home", "基金業協會 AMAC", "fund", "https://www.amac.org.cn/")
+    return _site_probe(
+        "amac_home", "基金業協會 AMAC", "fund", "https://www.amac.org.cn/"
+    )
 
 
 def probe_iachina_home() -> dict:
-    return _site_probe("iachina_home", "保險行業協會", "insurance", "https://www.iachina.cn/")
+    return _site_probe(
+        "iachina_home", "保險行業協會", "insurance", "https://www.iachina.cn/"
+    )
 
 
 def probe_sge_home() -> dict:
@@ -243,7 +303,9 @@ def probe_sge_home() -> dict:
 
 
 def probe_shfe_home() -> dict:
-    return _site_probe("shfe_home", "上期所 SHFE", "futures", "https://www.shfe.com.cn/")
+    return _site_probe(
+        "shfe_home", "上期所 SHFE", "futures", "https://www.shfe.com.cn/"
+    )
 
 
 def probe_ib_tws() -> dict:
@@ -274,7 +336,9 @@ def probe_ib_tws() -> dict:
         )
     except Exception as e:
         elapsed = (time.perf_counter() - t0) * 1000
-        return _probe_row("ib_tws", "Interactive Brokers", "system", False, elapsed, str(e)[:300])
+        return _probe_row(
+            "ib_tws", "Interactive Brokers", "system", False, elapsed, str(e)[:300]
+        )
 
 
 _PROBE_FUNCS: dict[str, Callable[[], dict]] = {
@@ -346,7 +410,9 @@ def run_all_probes(*, probe_ids: list[str] | None = None, max_workers: int = 6) 
         "checked_at": _now_iso(),
         "duration_ms": round(elapsed_ms, 1),
         "summary": {"total": total, "ok": ok, "fail": fail},
-        "probes": sorted(rows, key=lambda r: (str(r.get("category")), str(r.get("id")))),
+        "probes": sorted(
+            rows, key=lambda r: (str(r.get("category")), str(r.get("id")))
+        ),
         "registry": get_registry_only().get("registry"),
         "catalog": PROBE_CATALOG,
     }
@@ -356,4 +422,3 @@ def run_all_probes(*, probe_ids: list[str] | None = None, max_workers: int = 6) 
 
 def get_last_probe_result() -> Optional[dict]:
     return _last_result
-

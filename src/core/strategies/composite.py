@@ -7,8 +7,9 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("composite", "多策略組合投票策略")
 class CompositeStrategy(OrderManagedStrategy):
     """多策略組合信號 — 綜合 dual_ma、macd、rsi、bollinger 四個子策略的買賣信號"""
+
     params = (
-        ("min_agreement", 3),    # 至少 N 個子策略同意才執行
+        ("min_agreement", 3),  # 至少 N 個子策略同意才執行
         # 子策略參數
         ("ma_fast", 5),
         ("ma_slow", 20),
@@ -44,7 +45,6 @@ class CompositeStrategy(OrderManagedStrategy):
         self.boll = bt.indicators.BollingerBands(
             period=self.p.boll_period, devfactor=self.p.boll_dev
         )
-
 
     def _compute_sub_signals(self):
         """計算四個子策略的信號：返回 (buy_count, sell_count)"""
@@ -95,4 +95,3 @@ class CompositeStrategy(OrderManagedStrategy):
             # 賣出：至少 min_agreement 個子策略同意賣出
             if sell_count >= self.p.min_agreement:
                 self.order = self.sell()
-

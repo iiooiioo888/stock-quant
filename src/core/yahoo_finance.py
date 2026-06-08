@@ -4,6 +4,7 @@ Yahoo Finance 數據接口（免費，無需 API Key）
 A 股代碼映射：600519 → 600519.SS，000001 → 000001.SZ
 滬深300：000300.SS
 """
+
 from __future__ import annotations
 
 import time
@@ -20,14 +21,16 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 _yahoo_session = requests.Session()
-_yahoo_session.headers.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
-})
+_yahoo_session.headers.update(
+    {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+)
 
 
 def a_share_to_yahoo(code: str) -> str:
@@ -118,16 +121,18 @@ def yahoo_chart(
                 h = highs[i] if i < len(highs) else c
                 low_px = lows[i] if i < len(lows) else c
                 v = volumes[i] if i < len(volumes) else 0
-                records.append({
-                    "date": datetime.fromtimestamp(t).strftime("%Y-%m-%d"),
-                    "open": round(float(o or c), 4),
-                    "high": round(float(h or c), 4),
-                    "low": round(float(low_px or c), 4),
-                    "close": round(float(c), 4),
-                    "volume": int(v or 0),
-                    "amount": 0,
-                    "turnover": 0,
-                })
+                records.append(
+                    {
+                        "date": datetime.fromtimestamp(t).strftime("%Y-%m-%d"),
+                        "open": round(float(o or c), 4),
+                        "high": round(float(h or c), 4),
+                        "low": round(float(low_px or c), 4),
+                        "close": round(float(c), 4),
+                        "volume": int(v or 0),
+                        "amount": 0,
+                        "turnover": 0,
+                    }
+                )
 
             if not records:
                 return pd.DataFrame()
@@ -184,7 +189,9 @@ def yahoo_quote(symbol: str) -> dict:
                 "price": round(float(price), 4),
                 "change_pct": round(float(change_pct), 2),
                 "change": round(float(change), 4),
-                "high": round(float(max(highs)), 4) if highs else round(float(price), 4),
+                "high": (
+                    round(float(max(highs)), 4) if highs else round(float(price), 4)
+                ),
                 "low": round(float(min(lows)), 4) if lows else round(float(price), 4),
                 "open": round(float(opens[-1]), 4) if opens else round(float(price), 4),
                 "volume": int(volumes[-1]) if volumes else 0,

@@ -7,9 +7,10 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("volume_price", "量價齊升策略")
 class VolumePriceStrategy(OrderManagedStrategy):
     """量價策略 — 放量上漲買入，縮量下跌賣出"""
+
     params = (
-        ("price_ma", 20),       # 價格均線週期
-        ("volume_ma", 20),      # 成交量均線週期
+        ("price_ma", 20),  # 價格均線週期
+        ("volume_ma", 20),  # 成交量均線週期
         ("volume_ratio", 2.0),  # 成交量放大倍數閾值
     )
 
@@ -43,4 +44,3 @@ class VolumePriceStrategy(OrderManagedStrategy):
             # 賣出：價格跌破均線 或 成交量萎縮（縮量下跌）
             if price < price_ma or vol_ratio < 0.5:
                 self.order = self.sell()
-

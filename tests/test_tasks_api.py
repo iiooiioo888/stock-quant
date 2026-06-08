@@ -1,6 +1,7 @@
 """
 任務 API 測試 — 列表、詳情、刪除
 """
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 def auth_headers(client):
     """註冊並登錄，返回 Authorization header"""
     import uuid
+
     pw = "test_tasks_api_pw_2026"
     username = f"tasktester_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})
@@ -19,22 +21,24 @@ def auth_headers(client):
     return {"Authorization": f"Bearer {token}"}
 
 
-ASYNC_TASK_TYPES = frozenset({
-    "backtest",
-    "backtest_advanced",
-    "backtest_multi",
-    "optimize",
-    "portfolio",
-    "walkforward",
-    "auto_optimize",
-    "target_search",
-    "stock_universe_sync",
-    "stock_universe_intro",
-    "data_download",
-    "data_download_all",
-    "data_incremental",
-    "scheduled_job",
-})
+ASYNC_TASK_TYPES = frozenset(
+    {
+        "backtest",
+        "backtest_advanced",
+        "backtest_multi",
+        "optimize",
+        "portfolio",
+        "walkforward",
+        "auto_optimize",
+        "target_search",
+        "stock_universe_sync",
+        "stock_universe_intro",
+        "data_download",
+        "data_download_all",
+        "data_incremental",
+        "scheduled_job",
+    }
+)
 
 
 class TestTasksAPI:
@@ -77,9 +81,16 @@ class TestTasksAPI:
         assert "current" in data or "next" in data or "recent" in data
 
     def test_create_and_delete_task(self, client, auth_headers):
-        from src.core.task_manager import create_task, delete_task, get_task, update_task
+        from src.core.task_manager import (
+            create_task,
+            delete_task,
+            get_task,
+            update_task,
+        )
 
-        task = create_task("backtest", {"code": "000001", "strategy": "dual_ma"}, title="pytest task")
+        task = create_task(
+            "backtest", {"code": "000001", "strategy": "dual_ma"}, title="pytest task"
+        )
         task_id = task["task_id"]
 
         resp = client.get(f"/api/tasks/{task_id}", headers=auth_headers)
@@ -105,7 +116,9 @@ class TestTasksAPI:
         resp = client.delete(f"/api/tasks/{task_id}", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_retry_failed_task_dispatches_worker(self, client, auth_headers, monkeypatch):
+    def test_retry_failed_task_dispatches_worker(
+        self, client, auth_headers, monkeypatch
+    ):
         import time
         from src.core.task_manager import create_task, get_task, update_task
 

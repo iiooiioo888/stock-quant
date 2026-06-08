@@ -3,6 +3,7 @@
 
 追蹤：快取延遲清理、K 線寫入、行情拉取來源、財報命中路徑。
 """
+
 from __future__ import annotations
 
 import time

@@ -7,6 +7,7 @@
   - 多線程狀態一致性
   - 緩存 + 任務 交互
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -40,6 +41,7 @@ def _reset():
 
 
 # ── SQLite WAL 並發讀寫 ────────────────────────────────────────
+
 
 class TestDatabaseConcurrency:
     """數據庫並發安全性。"""
@@ -91,10 +93,9 @@ class TestDatabaseConcurrency:
             except Exception as e:
                 errors.append(e)
 
-        threads = (
-            [threading.Thread(target=_write, args=(i,)) for i in range(20)]
-            + [threading.Thread(target=_read) for _ in range(20)]
-        )
+        threads = [threading.Thread(target=_write, args=(i,)) for i in range(20)] + [
+            threading.Thread(target=_read) for _ in range(20)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -156,6 +157,7 @@ class TestDatabaseConcurrency:
 
 
 # ── 任務管線端到端 ──────────────────────────────────────────────
+
 
 class TestTaskPipeline:
     """任務管線完整流程。"""
@@ -228,6 +230,7 @@ class TestTaskPipeline:
 
 
 # ── 併發任務操作 ────────────────────────────────────────────────
+
 
 class TestConcurrentTaskOps:
     """併發任務操作一致性。"""
@@ -309,12 +312,14 @@ class TestConcurrentTaskOps:
 
 # ── 緩存 + 任務 交互 ────────────────────────────────────────────
 
+
 class TestCacheTaskInteraction:
     """緩存和任務管理器交互。"""
 
     def test_cache_task_results(self):
         """將任務結果緩存。"""
         from src.core.cache import LRUCache
+
         cache = LRUCache(max_size=100)
 
         task = tm.create_task("cacheable", {}, title="可緩存任務")
@@ -327,6 +332,7 @@ class TestCacheTaskInteraction:
     def test_cache_eviction_during_tasks(self):
         """任務執行中緩存淘汰。"""
         from src.core.cache import LRUCache
+
         cache = LRUCache(max_size=5)
 
         tasks = []
@@ -344,15 +350,27 @@ class TestCacheTaskInteraction:
 
 # ── Pipeline Step 提交 ──────────────────────────────────────────
 
+
 class TestPipelineStepSubmission:
     """管道步驟提交端到端。"""
 
     def test_pipeline_full_flow(self):
         """完整管道：創建 → 提交步驟 → 等待完成。"""
-        p = tm.create_pipeline([
-            {"task_type": "download", "params": {"code": "000001"}, "title": "下載"},
-            {"task_type": "backtest", "params": {"code": "000001"}, "title": "回測"},
-        ], title="端到端管道")
+        p = tm.create_pipeline(
+            [
+                {
+                    "task_type": "download",
+                    "params": {"code": "000001"},
+                    "title": "下載",
+                },
+                {
+                    "task_type": "backtest",
+                    "params": {"code": "000001"},
+                    "title": "回測",
+                },
+            ],
+            title="端到端管道",
+        )
         pid = p["pipeline_id"]
         pipe = tm.get_pipeline(pid)
         assert pipe is not None
@@ -375,9 +393,12 @@ class TestPipelineStepSubmission:
 
         def _create(i):
             try:
-                p = tm.create_pipeline([
-                    {"task_type": "test", "params": {"i": i}, "title": f"步驟{i}"},
-                ], title=f"管道 {i}")
+                p = tm.create_pipeline(
+                    [
+                        {"task_type": "test", "params": {"i": i}, "title": f"步驟{i}"},
+                    ],
+                    title=f"管道 {i}",
+                )
                 with lock:
                     pids.append(p["pipeline_id"])
             except Exception as e:
@@ -394,12 +415,14 @@ class TestPipelineStepSubmission:
 
 # ── DB Migration 冪等 ───────────────────────────────────────────
 
+
 class TestDBMigrationIdempotent:
     """遷移冪等性。"""
 
     def test_run_migrations_twice(self):
         """重複運行遷移不報錯。"""
         from src.core.database import run_migrations
+
         v1 = run_migrations()
         v2 = run_migrations()
         assert v2 >= v1
@@ -407,12 +430,14 @@ class TestDBMigrationIdempotent:
     def test_schema_version_consistent(self):
         """版本號一致。"""
         from src.core.database import get_schema_version, CURRENT_SCHEMA_VERSION
+
         version = get_schema_version()
         assert version >= 0
         assert isinstance(version, int)
 
 
 # ── 大規模併發回測提交 ──────────────────────────────────────────
+
 
 class TestMassiveConcurrentBacktests:
     """大規模併發 API 回測提交。"""
@@ -467,12 +492,14 @@ class TestMassiveConcurrentBacktests:
 
 # ── 任務提交+完成+緩存端到端 ────────────────────────────────────
 
+
 class TestEndToEndTaskCache:
     """任務→完成→緩存 完整鏈路。"""
 
     def test_submit_complete_cache_read(self):
         """提交任務 → 完成 → 結果寫緩存 → 讀緩存。"""
         from src.core.cache import LRUCache
+
         cache = LRUCache(max_size=100)
 
         r = tm.create_task("backtest", {"code": "000999"}, title="E2E 測試")

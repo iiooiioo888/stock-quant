@@ -6,6 +6,7 @@ MCP Tool 協議定義 — stock-quant 全項目 MCP 擴展契約。
 - handler 調用 src.core 業務層（與 REST 共用），禁止重複實現邏輯
 - 返回 JSON 字符串供 LLM 消費（見 utils.json_result）
 """
+
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -13,6 +14,7 @@ from typing import Any, Callable
 @dataclass
 class ToolSpec:
     """單個 MCP Tool 元數據。"""
+
     name: str
     description: str
     input_schema: dict

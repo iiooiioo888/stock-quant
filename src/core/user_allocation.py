@@ -4,6 +4,7 @@
 每筆持倉：
   code, quantity, currency?, cost?, name?, weight_pct?（僅展示用，結算以 quantity×現價）
 """
+
 from __future__ import annotations
 
 import json
@@ -200,14 +201,18 @@ def enrich_positions(
         qty = float(p.get("quantity") or 0)
         if qty <= 0:
             continue
-        price = float(p.get("last_price") or 0) or _latest_price_for_code(p.get("code", ""))
+        price = float(p.get("last_price") or 0) or _latest_price_for_code(
+            p.get("code", "")
+        )
         cost = float(p.get("cost") or 0)
         mv = qty * price if price > 0 else (qty * cost if cost > 0 else 0.0)
-        rows.append({
-            **p,
-            "last_price": round(price, 4) if price > 0 else 0.0,
-            "market_value": round(mv, 2),
-        })
+        rows.append(
+            {
+                **p,
+                "last_price": round(price, 4) if price > 0 else 0.0,
+                "market_value": round(mv, 2),
+            }
+        )
 
     total_mv = sum(float(r.get("market_value") or 0) for r in rows)
     total_qty = sum(float(r.get("quantity") or 0) for r in rows)
@@ -216,7 +221,11 @@ def enrich_positions(
         if mode == "quantity":
             w = (float(r["quantity"]) / total_qty * 100.0) if total_qty > 0 else 0.0
         else:
-            w = (float(r.get("market_value") or 0) / total_mv * 100.0) if total_mv > 0 else 0.0
+            w = (
+                (float(r.get("market_value") or 0) / total_mv * 100.0)
+                if total_mv > 0
+                else 0.0
+            )
         r["weight_pct"] = round(w, 2)
 
     meta = {
@@ -227,7 +236,9 @@ def enrich_positions(
     return rows, meta
 
 
-def allocation_payload(user_id: int, *, weight_mode: str = "market_value") -> dict[str, Any]:
+def allocation_payload(
+    user_id: int, *, weight_mode: str = "market_value"
+) -> dict[str, Any]:
     positions = list_positions(user_id)
     enriched, meta = enrich_positions(positions, weight_mode)
     return {

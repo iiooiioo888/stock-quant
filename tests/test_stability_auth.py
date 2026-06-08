@@ -6,6 +6,7 @@
   - 密碼驗證錯誤路徑
   - 極端 payload
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -15,8 +16,8 @@ from fastapi.testclient import TestClient
 from src.api.app import app
 from src.config import settings
 
-
 # ── 併發登入 ────────────────────────────────────────────────────
+
 
 class TestConcurrentAuth:
     """併發認證安全性。"""
@@ -31,7 +32,9 @@ class TestConcurrentAuth:
         results = []
 
         def _login():
-            resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+            resp = client.post(
+                "/api/auth/login", json={"username": "admin", "password": "admin"}
+            )
             results.append(resp.status_code)
             return resp.status_code
 
@@ -53,7 +56,9 @@ class TestConcurrentAuth:
         results = []
 
         def _login():
-            resp = client.post("/api/auth/login", json={"username": "admin", "password": "wrong"})
+            resp = client.post(
+                "/api/auth/login", json={"username": "admin", "password": "wrong"}
+            )
             results.append(resp.status_code)
             return resp.status_code
 
@@ -72,15 +77,20 @@ class TestConcurrentAuth:
     def test_login_then_use_token(self):
         """登入 → 使用 token → 驗證。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "admin"}
+        )
         assert resp.status_code == 200
         token = resp.json()["token"]
 
-        resp2 = client.get("/api/backtest/history", headers={"Authorization": f"Bearer {token}"})
+        resp2 = client.get(
+            "/api/backtest/history", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp2.status_code == 200
 
 
 # ── 極端 Payload ────────────────────────────────────────────────
+
 
 class TestEdgeCases:
     """認證邊界條件。"""
@@ -104,54 +114,71 @@ class TestEdgeCases:
     def test_extra_fields_ignored(self):
         """額外字段被忽略。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={
-            "username": "admin",
-            "password": "admin",
-            "extra": "field",
-            "hacker": True,
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "username": "admin",
+                "password": "admin",
+                "extra": "field",
+                "hacker": True,
+            },
+        )
         assert resp.status_code == 200
 
     def test_very_long_password(self):
         """超長密碼不崩潰。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={
-            "username": "admin",
-            "password": "x" * 10000,
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "username": "admin",
+                "password": "x" * 10000,
+            },
+        )
         assert resp.status_code == 401
 
     def test_unicode_username(self):
         """Unicode 用戶名。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={
-            "username": "管理員",
-            "password": "test",
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "username": "管理員",
+                "password": "test",
+            },
+        )
         assert resp.status_code == 401
 
     def test_register_and_login(self):
         """註冊新用戶 → 登入。"""
         client = TestClient(app)
         import uuid
+
         uname = f"test_{uuid.uuid4().hex[:8]}"
         # 註冊
-        resp = client.post("/api/auth/register", json={
-            "username": uname,
-            "password": "testpass123",
-        })
+        resp = client.post(
+            "/api/auth/register",
+            json={
+                "username": uname,
+                "password": "testpass123",
+            },
+        )
         assert resp.status_code in (200, 201, 400)  # 400 if already exists
         # 登入
-        resp2 = client.post("/api/auth/login", json={
-            "username": uname,
-            "password": "testpass123",
-        })
+        resp2 = client.post(
+            "/api/auth/login",
+            json={
+                "username": uname,
+                "password": "testpass123",
+            },
+        )
         if resp.status_code == 200:
             assert resp2.status_code == 200
             assert "token" in resp2.json()
 
 
 # ── /api/auth/me ────────────────────────────────────────────────
+
 
 class TestAuthMe:
     """當前用戶信息端點。"""
@@ -163,7 +190,9 @@ class TestAuthMe:
     def test_me_with_valid_token(self):
         """有效 token 獲取用戶信息。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "admin"}
+        )
         if resp.status_code != 200:
             pytest.skip("登入被限流")
         token = resp.json()["token"]
@@ -181,11 +210,14 @@ class TestAuthMe:
     def test_me_with_invalid_token(self):
         """無效 token 返回 401。"""
         client = TestClient(app)
-        resp = client.get("/api/auth/me", headers={"Authorization": "Bearer invalid_token_xyz"})
+        resp = client.get(
+            "/api/auth/me", headers={"Authorization": "Bearer invalid_token_xyz"}
+        )
         assert resp.status_code in (401, 403)
 
 
 # ── 重複註冊 ────────────────────────────────────────────────────
+
 
 class TestDuplicateRegister:
     """重複用戶名註冊。"""
@@ -198,14 +230,20 @@ class TestDuplicateRegister:
         """相同用戶名註冊兩次。"""
         client = TestClient(app)
         import uuid
+
         uname = f"dup_{uuid.uuid4().hex[:8]}"
-        resp1 = client.post("/api/auth/register", json={"username": uname, "password": "pass123"})
-        resp2 = client.post("/api/auth/register", json={"username": uname, "password": "pass456"})
+        resp1 = client.post(
+            "/api/auth/register", json={"username": uname, "password": "pass123"}
+        )
+        resp2 = client.post(
+            "/api/auth/register", json={"username": uname, "password": "pass456"}
+        )
         # 第二次應返回 400 或 409
         assert resp2.status_code in (400, 409, 200)  # 200 if idempotent
 
 
 # ── 保護端點 Token 認證 ────────────────────────────────────────
+
 
 class TestProtectedEndpoints:
     """受保護端點的認證流程。"""
@@ -217,44 +255,61 @@ class TestProtectedEndpoints:
     def test_backtest_history_with_token(self):
         """帶 token 訪問歷史記錄。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "admin"}
+        )
         if resp.status_code != 200:
             pytest.skip("登入被限流")
         token = resp.json()["token"]
-        resp2 = client.get("/api/backtest/history", headers={"Authorization": f"Bearer {token}"})
+        resp2 = client.get(
+            "/api/backtest/history", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp2.status_code == 200
 
     def test_cancel_with_token(self):
         """帶 token 取消任務。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "admin"}
+        )
         if resp.status_code != 200:
             pytest.skip("登入被限流")
         token = resp.json()["token"]
         # 先創建任務
-        resp2 = client.post("/api/backtest?code=000001&strategy=dual_ma",
-                            headers={"Authorization": f"Bearer {token}"})
+        resp2 = client.post(
+            "/api/backtest?code=000001&strategy=dual_ma",
+            headers={"Authorization": f"Bearer {token}"},
+        )
         if resp2.status_code == 200:
             tid = resp2.json()["task_id"]
-            resp3 = client.post(f"/api/tasks/{tid}/cancel",
-                                headers={"Authorization": f"Bearer {token}"})
+            resp3 = client.post(
+                f"/api/tasks/{tid}/cancel", headers={"Authorization": f"Bearer {token}"}
+            )
             assert resp3.status_code in (200, 400)
 
     def test_register_then_access(self):
         """新註冊用戶訪問端點。"""
         client = TestClient(app)
         import uuid
+
         uname = f"newuser_{uuid.uuid4().hex[:8]}"
-        client.post("/api/auth/register", json={"username": uname, "password": "pass123"})
-        resp = client.post("/api/auth/login", json={"username": uname, "password": "pass123"})
+        client.post(
+            "/api/auth/register", json={"username": uname, "password": "pass123"}
+        )
+        resp = client.post(
+            "/api/auth/login", json={"username": uname, "password": "pass123"}
+        )
         if resp.status_code != 200:
             pytest.skip("登入被限流")
         token = resp.json()["token"]
-        resp2 = client.get("/api/backtest/history", headers={"Authorization": f"Bearer {token}"})
+        resp2 = client.get(
+            "/api/backtest/history", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp2.status_code == 200
 
 
 # ── 併發 Token 使用 ────────────────────────────────────────────
+
 
 class TestConcurrentTokenUse:
     """併發使用同一 Token。"""
@@ -266,15 +321,20 @@ class TestConcurrentTokenUse:
     def test_concurrent_requests_with_same_token(self):
         """同一 token 併發請求。"""
         import concurrent.futures
+
         client = TestClient(app)
-        resp = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "admin"}
+        )
         if resp.status_code != 200:
             pytest.skip("登入被限流")
         token = resp.json()["token"]
         results = []
 
         def _req():
-            r = client.get("/api/backtest/history", headers={"Authorization": f"Bearer {token}"})
+            r = client.get(
+                "/api/backtest/history", headers={"Authorization": f"Bearer {token}"}
+            )
             results.append(r.status_code)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:

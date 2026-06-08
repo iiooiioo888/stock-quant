@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("atr_trail", "ATR移動止損趨勢策略")
 class ATRTrailTrendStrategy(OrderManagedStrategy):
     """均線趨勢 + ATR 移動止損（操作優化）"""
+
     params = (("ma_period", 20), ("atr_period", 14), ("atr_mult", 2.5))
 
     def __init__(self):
@@ -29,4 +30,3 @@ class ATRTrailTrendStrategy(OrderManagedStrategy):
             if price < stop or price < self.ma[0]:
                 self.order = self.sell()
                 self.peak = None
-

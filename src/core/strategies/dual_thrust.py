@@ -1,4 +1,3 @@
-
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
@@ -6,6 +5,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("dual_thrust", "雙軌日內突破策略")
 class DualThrustStrategy(OrderManagedStrategy):
     """DualThrust 策略"""
+
     params = (
         ("period", 4),
         ("k_up", 0.5),
@@ -47,4 +47,3 @@ class DualThrustStrategy(OrderManagedStrategy):
 
         elif self.position and price < lower:
             self.order = self.sell()
-

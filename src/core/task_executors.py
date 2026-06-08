@@ -1,6 +1,7 @@
 """
 可序列化任務執行器 — 供 Celery Worker 與線程池共用（依 task_type + params 重放）。
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -44,6 +45,7 @@ def _register_defaults() -> None:
 
     def _backtest(p: dict, task_id: str):
         from src.core.backtest import run_backtest
+
         return run_backtest(
             p["code"],
             strategy_name=p.get("strategy", "dual_ma"),
@@ -61,6 +63,7 @@ def _register_defaults() -> None:
 
     def _backtest_advanced(p: dict, task_id: str):
         from src.core.backtest import run_backtest
+
         return run_backtest(
             p["code"],
             strategy_name=p.get("strategy", "dual_ma"),
@@ -84,6 +87,7 @@ def _register_defaults() -> None:
 
     def _backtest_multi(p: dict, task_id: str):
         from src.core.backtest import run_multi_strategy
+
         return run_multi_strategy(p["code"], plot=False, task_id=task_id)
 
     def _optimize(p: dict, task_id: str):
@@ -113,16 +117,25 @@ def _register_defaults() -> None:
             }
         if method == "optuna":
             return optuna_search(
-                code, strategy, objective=objective, n_trials=n_trials,
-                task_id=task_id, run_ctx=run_ctx,
+                code,
+                strategy,
+                objective=objective,
+                n_trials=n_trials,
+                task_id=task_id,
+                run_ctx=run_ctx,
             )
         return grid_search(
-            code, strategy, objective=objective, top_n=top_n,
-            task_id=task_id, run_ctx=run_ctx,
+            code,
+            strategy,
+            objective=objective,
+            top_n=top_n,
+            task_id=task_id,
+            run_ctx=run_ctx,
         )
 
     def _portfolio(p: dict, task_id: str):
         from src.core.portfolio import run_portfolio
+
         return run_portfolio(
             allocations=p.get("allocations") or [],
             weights=p.get("weights"),
@@ -133,6 +146,7 @@ def _register_defaults() -> None:
 
     def _walkforward(p: dict, task_id: str):
         from src.core.walkforward import walk_forward
+
         return walk_forward(
             code=p["code"],
             strategy_name=p.get("strategy", "dual_ma"),
@@ -145,6 +159,7 @@ def _register_defaults() -> None:
 
     def _auto_optimize(p: dict, task_id: str):
         from src.core.auto_optimize import auto_optimize_watchlist
+
         return auto_optimize_watchlist(
             codes=p.get("codes"),
             strategies=p.get("strategies"),
@@ -155,6 +170,7 @@ def _register_defaults() -> None:
 
     def _target_search(p: dict, task_id: str):
         from src.core.target_search import target_search
+
         return target_search(
             code=p["code"],
             strategy_name=p.get("strategy", "dual_ma"),
@@ -169,14 +185,19 @@ def _register_defaults() -> None:
 
     def _stock_universe_sync(p: dict, task_id: str):
         from src.core.stock_universe import sync_stock_universe
-        return sync_stock_universe(max_count=int(p.get("max_count", 20000)), task_id=task_id)
+
+        return sync_stock_universe(
+            max_count=int(p.get("max_count", 20000)), task_id=task_id
+        )
 
     def _stock_universe_intro(p: dict, task_id: str):
         from src.core.stock_universe import enrich_universe_intros
+
         return enrich_universe_intros(limit=int(p.get("limit", 500)), task_id=task_id)
 
     def _data_download(p: dict, task_id: str):
         from src.core.history import download_one
+
         code = p.get("code")
         if not code:
             raise ValueError("缺少 code")
@@ -185,10 +206,12 @@ def _register_defaults() -> None:
 
     def _data_download_all(p: dict, task_id: str):
         from src.core.download_tasks import run_download_all
+
         return run_download_all(task_id=task_id)
 
     def _data_download_market(p: dict, task_id: str):
         from src.core.download_tasks import run_market_download
+
         return run_market_download(
             p.get("market"),
             p.get("codes") or [],

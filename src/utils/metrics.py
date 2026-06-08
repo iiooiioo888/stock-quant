@@ -1,6 +1,7 @@
 """
 Prometheus 指標（可選依賴 prometheus_client）。
 """
+
 from __future__ import annotations
 
 import time
@@ -14,7 +15,12 @@ CACHE_MISSES = None
 API_REQUESTS = None
 
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import (
+        Counter,
+        Histogram,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
+    )
 
     REQUEST_LATENCY = Histogram(
         "sq_api_request_seconds",
@@ -24,18 +30,26 @@ try:
     )
     CACHE_HITS = Counter("sq_cache_hits_total", "緩存命中", ["layer"])
     CACHE_MISSES = Counter("sq_cache_misses_total", "緩存未命中", ["layer"])
-    API_REQUESTS = Counter("sq_api_requests_total", "API 請求數", ["method", "endpoint", "status"])
+    API_REQUESTS = Counter(
+        "sq_api_requests_total", "API 請求數", ["method", "endpoint", "status"]
+    )
     PIPELINE_CACHE_DEFER = Counter(
-        "sq_pipeline_cache_defer_total", "數據管線延遲清快取標記次數",
+        "sq_pipeline_cache_defer_total",
+        "數據管線延遲清快取標記次數",
     )
     PIPELINE_CACHE_FLUSH = Counter(
-        "sq_pipeline_cache_flush_total", "數據管線批量清快取執行次數",
+        "sq_pipeline_cache_flush_total",
+        "數據管線批量清快取執行次數",
     )
     PIPELINE_KLINE_FETCH = Counter(
-        "sq_pipeline_kline_fetch_total", "K 線拉取次數", ["source"],
+        "sq_pipeline_kline_fetch_total",
+        "K 線拉取次數",
+        ["source"],
     )
     PIPELINE_FINANCIALS = Counter(
-        "sq_pipeline_financials_total", "財報獲取路徑", ["outcome"],
+        "sq_pipeline_financials_total",
+        "財報獲取路徑",
+        ["outcome"],
     )
     _PROMETHEUS = True
 except ImportError:
@@ -50,7 +64,9 @@ def prometheus_enabled() -> bool:
     return _PROMETHEUS
 
 
-def observe_request(method: str, endpoint: str, status: int, duration_sec: float) -> None:
+def observe_request(
+    method: str, endpoint: str, status: int, duration_sec: float
+) -> None:
     if not _PROMETHEUS:
         return
     ep = _normalize_endpoint(endpoint)

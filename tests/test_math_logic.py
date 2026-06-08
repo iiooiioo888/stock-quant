@@ -1,6 +1,7 @@
 """
 金融指標單元測試 — 固定輸入，防止重構破壞數學邏輯
 """
+
 import os
 import sys
 from datetime import datetime
@@ -22,7 +23,9 @@ def test_calc_risk_metrics_fixed_fixture():
         nav.append(nav[-1] * (1 + r))
     max_dd_pct = 3.5
 
-    out = _calc_risk_metrics(daily_returns, dates, max_dd_pct, nav, periods_per_year=252)
+    out = _calc_risk_metrics(
+        daily_returns, dates, max_dd_pct, nav, periods_per_year=252
+    )
 
     dr = np.array(daily_returns)
     expected_var = float(np.percentile(dr, 5))
@@ -52,4 +55,7 @@ def test_annual_return_from_nav():
 
 def _date_range(n: int) -> list[str]:
     start = datetime(2023, 1, 2)
-    return [(start.replace(day=min(start.day + i, 28))).strftime("%Y-%m-%d") for i in range(n)]
+    return [
+        (start.replace(day=min(start.day + i, 28))).strftime("%Y-%m-%d")
+        for i in range(n)
+    ]

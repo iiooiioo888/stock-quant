@@ -1,4 +1,5 @@
 """全球資產庫 API — 目錄 + 詳情"""
+
 from urllib.parse import unquote
 
 import time
@@ -193,16 +194,18 @@ async def import_asset_prices(
         if price <= 0:
             continue
         ts = float(it.get("ts") or time.time())
-        recs.append(PriceRecord(
-            symbol=sym,
-            price=price,
-            ts=ts,
-            source=str(it.get("source") or "manual"),
-            kind=str(it.get("kind") or "valuation"),
-            currency=str(it.get("currency") or ""),
-            note=str(it.get("note") or ""),
-            updated_by=str(it.get("updated_by") or ""),
-        ))
+        recs.append(
+            PriceRecord(
+                symbol=sym,
+                price=price,
+                ts=ts,
+                source=str(it.get("source") or "manual"),
+                kind=str(it.get("kind") or "valuation"),
+                currency=str(it.get("currency") or ""),
+                note=str(it.get("note") or ""),
+                updated_by=str(it.get("updated_by") or ""),
+            )
+        )
 
     if not recs:
         raise HTTPException(400, "no valid records")
@@ -226,7 +229,8 @@ async def get_assets_catalog(user=Depends(get_current_user)):
         )
 
         stock_syms = [
-            i.symbol for i in MARKET_INSTRUMENTS
+            i.symbol
+            for i in MARKET_INSTRUMENTS
             if i.group in STOCK_GROUPS and i.asset_class == "stock"
         ]
         theme_counts = count_themes_in_catalog(stock_syms)
@@ -245,31 +249,33 @@ async def get_assets_catalog(user=Depends(get_current_user)):
             l2, l2_label = derive_l2(i)
             l3, l3_label = derive_l3(i)
             price_sources, pricing_note = map_price_sources(i)
-            rows.append({
-                "symbol": i.symbol,
-                "name": i.name,
-                "group": i.group,
-                "group_label": GROUP_LABELS.get(i.group, i.group),
-                "asset_class": i.asset_class,
-                "sub_class": i.sub_class,
-                "sector": sector,
-                "sector_label": sector_label,
-                "themes": themes if assets_pro else [],
-                "market": i.market,
-                "exchange": i.exchange,
-                "currency": i.currency,
-                "settlement": i.settlement,
-                "regulator": i.regulator,
-                "detail_supported": bool(getattr(i, "detail_supported", True)),
-                "l2": l2,
-                "l2_label": l2_label,
-                "l3": l3,
-                "l3_label": l3_label,
-                "price_sources": price_sources,
-                "pricing_note": pricing_note,
-                "tv": i.tv,
-                "topbar": i.topbar,
-            })
+            rows.append(
+                {
+                    "symbol": i.symbol,
+                    "name": i.name,
+                    "group": i.group,
+                    "group_label": GROUP_LABELS.get(i.group, i.group),
+                    "asset_class": i.asset_class,
+                    "sub_class": i.sub_class,
+                    "sector": sector,
+                    "sector_label": sector_label,
+                    "themes": themes if assets_pro else [],
+                    "market": i.market,
+                    "exchange": i.exchange,
+                    "currency": i.currency,
+                    "settlement": i.settlement,
+                    "regulator": i.regulator,
+                    "detail_supported": bool(getattr(i, "detail_supported", True)),
+                    "l2": l2,
+                    "l2_label": l2_label,
+                    "l3": l3,
+                    "l3_label": l3_label,
+                    "price_sources": price_sources,
+                    "pricing_note": pricing_note,
+                    "tv": i.tv,
+                    "topbar": i.topbar,
+                }
+            )
         packs = theme_packs_payload()
         for p in packs:
             p["catalog_count"] = theme_counts.get(p["id"], 0)
@@ -289,7 +295,9 @@ async def get_assets_catalog(user=Depends(get_current_user)):
         return out
 
     # v6: 主題包元數據全員可見；instruments.themes 仍為 Pro
-    cache_key = "api:assets:catalog:v6:pro" if assets_pro else "api:assets:catalog:v6:base"
+    cache_key = (
+        "api:assets:catalog:v6:pro" if assets_pro else "api:assets:catalog:v6:base"
+    )
     return cached_response(cache_key, ttl=300, builder=_build)
 
 

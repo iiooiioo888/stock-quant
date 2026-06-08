@@ -1,4 +1,5 @@
 """可選 Sentry 整合（SQ_SENTRY_DSN）。"""
+
 from __future__ import annotations
 
 from src.config import settings
@@ -15,7 +16,9 @@ def init_sentry() -> bool:
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         from sentry_sdk.integrations.logging import LoggingIntegration
     except ImportError:
-        logger.warning("SQ_SENTRY_DSN 已設置但未安裝 sentry-sdk（pip install sentry-sdk）")
+        logger.warning(
+            "SQ_SENTRY_DSN 已設置但未安裝 sentry-sdk（pip install sentry-sdk）"
+        )
         return False
 
     sentry_sdk.init(

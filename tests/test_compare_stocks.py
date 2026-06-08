@@ -1,4 +1,5 @@
 """多股對比 API"""
+
 import pytest
 
 
@@ -6,6 +7,7 @@ import pytest
 def auth_headers(client):
     """註冊、登錄並升級到 Pro，返回 Authorization header"""
     import uuid
+
     pw = "test_compare_stocks_pw_2026"
     username = f"comparetester_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})
@@ -37,10 +39,15 @@ class TestCompareStocks:
 
         def fake_ensure(code, start_date=None, min_bars=2):
             n = 30
-            df = pd.DataFrame({
-                "date": [f"2024-01-{i+1:02d}" for i in range(n)],
-                "close": [10.0 + i * 0.1 + (0.05 if code == "600519" else 0) for i in range(n)],
-            })
+            df = pd.DataFrame(
+                {
+                    "date": [f"2024-01-{i+1:02d}" for i in range(n)],
+                    "close": [
+                        10.0 + i * 0.1 + (0.05 if code == "600519" else 0)
+                        for i in range(n)
+                    ],
+                }
+            )
             return df, "test"
 
         def fake_benchmark(start_date=None, end_date=None):
@@ -62,7 +69,12 @@ class TestCompareStocks:
         )
         r = client.post(
             "/api/stocks/compare",
-            json={"codes": ["600519", "600036"], "days": 20, "benchmark": "600519", "index": "000300"},
+            json={
+                "codes": ["600519", "600036"],
+                "days": 20,
+                "benchmark": "600519",
+                "index": "000300",
+            },
             headers=auth_headers,
         )
         assert r.status_code == 200

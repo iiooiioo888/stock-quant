@@ -2,6 +2,7 @@
 Redis 緩存層 — 支持 Redis 和本地 LRU 回退
 提供統一的 get/set 接口，Redis 不可用時自動降級到內存 LRU 緩存
 """
+
 import json
 import time
 from collections import OrderedDict
@@ -82,6 +83,7 @@ class CacheManager:
 
         try:
             import redis
+
             self._redis_client = redis.from_url(
                 settings.redis_url,
                 decode_responses=True,
@@ -112,6 +114,7 @@ class CacheManager:
             self._hits_l1 += 1
             try:
                 from src.utils.metrics import record_cache_hit
+
                 record_cache_hit("l1")
             except Exception:
                 pass
@@ -126,6 +129,7 @@ class CacheManager:
                     self._lru.set(key, value, ttl=0)
                     try:
                         from src.utils.metrics import record_cache_hit
+
                         record_cache_hit("l2")
                     except Exception:
                         pass
@@ -137,6 +141,7 @@ class CacheManager:
         self._misses += 1
         try:
             from src.utils.metrics import record_cache_miss
+
             record_cache_miss("l1")
         except Exception:
             pass
@@ -247,7 +252,9 @@ def invalidate_by_rule(trigger: str, code: str | None = None) -> int:
             try:
                 cursor = 0
                 while True:
-                    cursor, keys = cache._redis_client.scan(cursor, match=pattern, count=200)
+                    cursor, keys = cache._redis_client.scan(
+                        cursor, match=pattern, count=200
+                    )
                     if keys:
                         cache._redis_client.delete(*keys)
                         removed += len(keys)
@@ -268,14 +275,15 @@ def rule_scope_is_code_specific(prefix: str) -> bool:
             return rule.get("scope") == "code_specific"
     return False
 
+
 PREFIX_KLINE = "sq:kline:"
 PREFIX_REALTIME = "sq:rt:"
 PREFIX_BACKTEST = "sq:bt:"
 
 # TTL 常量（秒）
-TTL_KLINE_DAY = 86400       # 日 K 數據：1 天
-TTL_REALTIME = 10            # 實時行情：10 秒
-TTL_BACKTEST = 3600          # 回測結果：1 小時
+TTL_KLINE_DAY = 86400  # 日 K 數據：1 天
+TTL_REALTIME = 10  # 實時行情：10 秒
+TTL_BACKTEST = 3600  # 回測結果：1 小時
 
 
 def get_cached_kline(code: str) -> Optional[list]:

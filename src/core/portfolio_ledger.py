@@ -1,4 +1,5 @@
 """由交易流水滾動計算物化持倉與已實現損益。"""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,11 @@ from decimal import Decimal
 
 from src.core.db import get_conn
 from src.core.portfolio_currency import infer_currency
-from src.core.portfolio_repo import MaterializedHolding, PortfolioRepo, get_portfolio_repo
+from src.core.portfolio_repo import (
+    MaterializedHolding,
+    PortfolioRepo,
+    get_portfolio_repo,
+)
 from src.utils.logger import logger
 
 _Q = Decimal("0.000001")
@@ -99,7 +104,9 @@ def recompute_holdings(user_id: int, repo: PortfolioRepo | None = None) -> Ledge
     return LedgerState(holdings=holdings, realized_pnl=realized_total)
 
 
-def import_settings_holdings_as_buys(user_id: int, repo: PortfolioRepo | None = None) -> int:
+def import_settings_holdings_as_buys(
+    user_id: int, repo: PortfolioRepo | None = None
+) -> int:
     """將 users.settings.holdings 遷移為 BUY 流水（僅在無流水時）。"""
     repo = repo or get_portfolio_repo()
     if repo.has_transactions(user_id):
@@ -107,7 +114,9 @@ def import_settings_holdings_as_buys(user_id: int, repo: PortfolioRepo | None = 
 
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT settings FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT settings FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
     if not row or not row["settings"]:
         return 0
     try:

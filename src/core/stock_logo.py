@@ -1,6 +1,7 @@
 """
 股票 Logo：從遠端拉取後快取至 data/stock_logos/，API 僅讀本地檔案。
 """
+
 from __future__ import annotations
 
 import re
@@ -24,11 +25,34 @@ _bg_sem = threading.Semaphore(_MAX_BG_FETCH)
 _NEGATIVE_TTL = 3600.0
 
 # 常見代碼 → 公司網域（favicon 補強）
-_CRYPTO_BASES = frozenset({
-    "BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC",
-    "LINK", "UNI", "LTC", "BCH", "ATOM", "FIL", "APT", "ARB", "OP", "PEPE", "SHIB",
-    "USDT", "USDC", "TRX",
-})
+_CRYPTO_BASES = frozenset(
+    {
+        "BTC",
+        "ETH",
+        "BNB",
+        "SOL",
+        "XRP",
+        "DOGE",
+        "ADA",
+        "AVAX",
+        "DOT",
+        "MATIC",
+        "LINK",
+        "UNI",
+        "LTC",
+        "BCH",
+        "ATOM",
+        "FIL",
+        "APT",
+        "ARB",
+        "OP",
+        "PEPE",
+        "SHIB",
+        "USDT",
+        "USDC",
+        "TRX",
+    }
+)
 
 
 def is_crypto_code(code: str) -> bool:
@@ -186,7 +210,9 @@ def _media_type_for_path(path: Path) -> str:
     }.get(ext, "image/png")
 
 
-def _extension_for_content_type(content_type: str, url: str = "", body: bytes = b"") -> str:
+def _extension_for_content_type(
+    content_type: str, url: str = "", body: bytes = b""
+) -> str:
     ct = (content_type or "").split(";")[0].strip().lower()
     if "svg" in ct or (url and "svg" in url):
         return ".svg"
@@ -227,7 +253,9 @@ def find_cached_logo(code: str, market: str = "") -> Optional[Tuple[bytes, str]]
     return None
 
 
-def save_cached_logo(code: str, market: str, body: bytes, content_type: str, source_url: str = "") -> Path:
+def save_cached_logo(
+    code: str, market: str, body: bytes, content_type: str, source_url: str = ""
+) -> Path:
     """將 Logo 寫入 data/stock_logos/（同一代碼僅保留一個副檔名）。"""
     _ensure_logo_dir()
     stem = _cache_stem(code, market)
@@ -261,12 +289,17 @@ def _is_image_body(body: bytes, content_type: str, url: str) -> bool:
     ct = (content_type or "").lower()
     if "html" in ct or "json" in ct or "text/plain" in ct:
         return False
-    if body.lstrip()[:15].lower().startswith(b"<!doctype") or body.lstrip()[:5].lower() == b"<html":
+    if (
+        body.lstrip()[:15].lower().startswith(b"<!doctype")
+        or body.lstrip()[:5].lower() == b"<html"
+    ):
         return False
     return True
 
 
-def fetch_logo_bytes(code: str, market: str = "", timeout: float = 6.0) -> Optional[Tuple[bytes, str]]:
+def fetch_logo_bytes(
+    code: str, market: str = "", timeout: float = 6.0
+) -> Optional[Tuple[bytes, str]]:
     """從遠端候選 URL 拉取 Logo（僅在本地無快取時使用）。"""
     base_headers = {
         "User-Agent": (
@@ -287,7 +320,11 @@ def fetch_logo_bytes(code: str, market: str = "", timeout: float = 6.0) -> Optio
             ct = (r.headers.get("Content-Type") or "image/png").split(";")[0].strip()
             if not _is_image_body(body, ct, url):
                 continue
-            if "svg" in url or body.lstrip()[:5] == b"<?xml" or body.lstrip()[:4] == b"<svg":
+            if (
+                "svg" in url
+                or body.lstrip()[:5] == b"<?xml"
+                or body.lstrip()[:4] == b"<svg"
+            ):
                 ct = "image/svg+xml"
             return body, ct
         except requests.RequestException:
@@ -304,7 +341,9 @@ def _is_negative_cached(key: str) -> bool:
     return bool(ts and time.time() - ts < _NEGATIVE_TTL)
 
 
-def _download_and_cache(code: str, market: str = "", name: str = "", timeout: float = 6.0) -> bool:
+def _download_and_cache(
+    code: str, market: str = "", name: str = "", timeout: float = 6.0
+) -> bool:
     """下載並寫入快取；成功返回 True。"""
     ifn = fetch_iconfont_logo_bytes(code, market, name=name, timeout=timeout)
     if ifn:

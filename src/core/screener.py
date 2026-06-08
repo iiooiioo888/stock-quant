@@ -1,6 +1,7 @@
 """
 股票篩選器 — 基於 AKShare 數據的條件篩選
 """
+
 import akshare as ak
 
 from src.core.db import load_daily_kline
@@ -10,10 +11,10 @@ from src.utils.logger import logger
 def get_stock_list(market: str = "all") -> list[dict]:
     """
     獲取 A 股股票列表（來自 AKShare）。
-    
+
     Args:
         market: "all", "sh" (上海), "sz" (深圳)
-    
+
     Returns:
         [{"code": "000001", "name": "平安銀行", "market": "sz"}, ...]
     """
@@ -65,6 +66,7 @@ def screen_stocks(
 
     if codes is None:
         from src.core.db import load_all_codes
+
         codes = load_all_codes()
 
     results = []
@@ -114,7 +116,7 @@ def _check_stock(code: str, filters: dict) -> dict | None:
         ratio = cfg.get("ratio", 2.0)
         if len(df) >= days + 1:
             recent_vol = float(df.iloc[-1]["volume"])
-            avg_vol = df["volume"].iloc[-(days + 1):-1].mean()
+            avg_vol = df["volume"].iloc[-(days + 1) : -1].mean()
             if avg_vol > 0:
                 vol_ratio = recent_vol / avg_vol
                 data_info["volume_ratio"] = round(vol_ratio, 2)
@@ -131,6 +133,7 @@ def _check_stock(code: str, filters: dict) -> dict | None:
     if "ma_bullish" in filters and filters["ma_bullish"]:
         if len(df) >= 60:
             from src.core.indicators.fast_indicators import compute_sma
+
             closes = df["close"].astype(float).to_numpy()
             ma5 = float(compute_sma(closes, 5)[-1])
             ma10 = float(compute_sma(closes, 10)[-1])
@@ -154,13 +157,16 @@ def _check_stock(code: str, filters: dict) -> dict | None:
         period = cfg.get("period", 20)
         if len(df) >= period:
             from src.core.indicators.fast_indicators import compute_sma
+
             closes = df["close"].astype(float).to_numpy()
             ma = float(compute_sma(closes, period)[-1])
             current_price = float(df.iloc[-1]["close"])
             data_info[f"ma{period}"] = round(float(ma), 2)
             data_info["current_price"] = round(current_price, 2)
             if current_price > ma:
-                passed_filters.append(f"above_ma{period}: {current_price:.2f} > {ma:.2f}")
+                passed_filters.append(
+                    f"above_ma{period}: {current_price:.2f} > {ma:.2f}"
+                )
             else:
                 return None
         else:
@@ -193,6 +199,7 @@ def _check_stock(code: str, filters: dict) -> dict | None:
     name = code
     try:
         from src.config import settings
+
         rule = settings.alert_rules.get(code, {})
         name = rule.get("name", code)
     except Exception:

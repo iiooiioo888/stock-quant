@@ -1,3 +1,11 @@
+```
+# Environment and secrets
+.env
+.env.local
+.env.*
+data/.admin_password
+data/.jwt_secret
+
 # Dependencies
 .venv/
 venv/
@@ -5,67 +13,43 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Build artifacts
+# Build and distribution artifacts
 build/
 dist/
 *.egg
 *.egg-info/
 *.so
-*.dylib
-*.dll
-*.exe
+.libs/
 
 # Testing
 .coverage
+coverage/
 htmlcov/
+.nox/
+.tox/
 .pytest_cache/
 .hypothesis/
 
 # Logs
-logs/
 *.log
 
-# Environment variables
-.env
-.env.local
-.env.*
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Cursor SDK helper (scripts/cursor-agent)
-scripts/cursor-agent/node_modules/
-
-# IDE
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-
-# Database journals (generic)
-*.db-journal
-
-# ── 本地數據與秘密（禁止入庫）──
-data/.jwt_secret
-data/.admin_password
-data/stock.db
-data/stock.db-shm
-data/stock.db-wal
-data/runtime_admin_controls.json
-
-# 其他本地 SQLite（策略市集種子庫除外）
-data/*.db
-data/*.db-shm
-data/*.db-wal
-!data/strategy_market.db
-
-# Qwen / 本地 AI 產物
-.qwen/
+```

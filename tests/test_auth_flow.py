@@ -1,4 +1,5 @@
 """認證全流程"""
+
 import pytest
 
 
@@ -10,7 +11,10 @@ def test_register_login_and_protected_write(client):
         "/api/auth/register",
         json={"username": username, "password": password},
     )
-    if reg.status_code == 400 and ("已存在" in reg.json().get("detail", "") or "已存在" in reg.json().get("msg", "")):
+    if reg.status_code == 400 and (
+        "已存在" in reg.json().get("detail", "")
+        or "已存在" in reg.json().get("msg", "")
+    ):
         login = client.post(
             "/api/auth/login",
             json={"username": username, "password": password},
@@ -35,6 +39,7 @@ def test_register_login_and_protected_write(client):
     # 在 debug/demo 非公開部署模式下，回測 POST 端點豁免認證（允許匿名提交）。
     # 僅在非 demo/debug 模式下才期望 401。
     from src.config import settings
+
     if not settings.demo_mode and not settings.debug:
         denied = client.post("/api/backtest?code=000001&strategy=dual_ma")
         assert denied.status_code == 401

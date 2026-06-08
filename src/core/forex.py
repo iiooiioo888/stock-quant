@@ -2,6 +2,7 @@
 外匯數據模塊 — 使用 frankfurter.app（免費，無需 API Key）
 支持：USD/CNY, EUR/USD, GBP/USD 等主要貨幣對
 """
+
 import time
 from datetime import datetime
 
@@ -34,7 +35,26 @@ FOREX_PAIRS = {
 }
 
 # 支持的基礎貨幣（frankfurter 支持的）
-_BASE_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "CNY", "HKD", "SGD", "NZD", "SEK", "NOK", "DKK", "ZAR", "INR", "BRL", "KRW"}
+_BASE_CURRENCIES = {
+    "USD",
+    "EUR",
+    "GBP",
+    "JPY",
+    "CHF",
+    "AUD",
+    "CAD",
+    "CNY",
+    "HKD",
+    "SGD",
+    "NZD",
+    "SEK",
+    "NOK",
+    "DKK",
+    "ZAR",
+    "INR",
+    "BRL",
+    "KRW",
+}
 
 
 def _split_pair(pair: str) -> tuple[str, str]:
@@ -114,15 +134,17 @@ def download_forex_kline(
                 if rate <= 0:
                     continue
                 # frankfurter 只給收盤價，我們用它構造 OHLCV
-                records.append({
-                    "date": date_str,
-                    "open": rate,
-                    "high": rate,
-                    "low": rate,
-                    "close": rate,
-                    "volume": 0,
-                    "amount": 0,
-                })
+                records.append(
+                    {
+                        "date": date_str,
+                        "open": rate,
+                        "high": rate,
+                        "low": rate,
+                        "close": rate,
+                        "volume": 0,
+                        "amount": 0,
+                    }
+                )
 
             if not records:
                 return pd.DataFrame()
@@ -155,7 +177,9 @@ def _estimate_forex_ohlc(df: pd.DataFrame) -> pd.DataFrame:
 
     closes = df["close"].values
     # 用前後日收盤價的平均絕對偏差估算日內幅度
-    daily_range = pd.Series(closes).diff().abs().rolling(5, min_periods=1).mean().fillna(0.001)
+    daily_range = (
+        pd.Series(closes).diff().abs().rolling(5, min_periods=1).mean().fillna(0.001)
+    )
 
     for i in range(len(df)):
         c = closes[i]
@@ -183,7 +207,10 @@ def _sina_forex_quote(pair: str) -> dict:
     sina_pair = f"fx_s{base.lower()}{quote.lower()}"
     try:
         url = f"https://hq.sinajs.cn/list={sina_pair}"
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"}
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://finance.sina.com.cn",
+        }
         resp = requests.get(url, headers=headers, timeout=8)
         resp.encoding = "gbk"
         text = resp.text.strip()

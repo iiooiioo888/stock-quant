@@ -1,4 +1,5 @@
 """TradingView / IB / 目錄測試"""
+
 import pandas as pd
 import pytest
 
@@ -66,15 +67,22 @@ class TestIbData:
     def test_build_index_prefers_tv_when_configured(self, monkeypatch):
         from src.core import market_fetch as mf
 
-        df = pd.DataFrame({
-            "date": ["2026-01-01", "2026-01-02"],
-            "open": [100.0, 101.0],
-            "high": [102.0, 103.0],
-            "low": [99.0, 100.0],
-            "close": [101.0, 102.0],
-            "volume": [1000, 1100],
-        })
-        quote = {"price": 102.5, "change_pct": 1.2, "change": 1.2, "source": "tradingview"}
+        df = pd.DataFrame(
+            {
+                "date": ["2026-01-01", "2026-01-02"],
+                "open": [100.0, 101.0],
+                "high": [102.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [101.0, 102.0],
+                "volume": [1000, 1100],
+            }
+        )
+        quote = {
+            "price": 102.5,
+            "change_pct": 1.2,
+            "change": 1.2,
+            "source": "tradingview",
+        }
 
         monkeypatch.setattr(
             mf,

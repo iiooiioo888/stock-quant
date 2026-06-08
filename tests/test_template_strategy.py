@@ -1,6 +1,7 @@
 """
 策略模板單元測試 — 驗證參數範圍與信號邏輯
 """
+
 import pandas as pd
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ class TestTemplateStrategyParams:
 
     def test_template_default_params(self):
         from strategies.template_strategy import STRATEGY_META
+
         meta = STRATEGY_META["template"]
         p = meta["default_params"]
         assert p["fast"] == 5
@@ -19,6 +21,7 @@ class TestTemplateStrategyParams:
 
     def test_rsi_default_params(self):
         from strategies.template_strategy import STRATEGY_META
+
         meta = STRATEGY_META["rsi_oversold"]
         p = meta["default_params"]
         assert p["period"] == 14
@@ -28,6 +31,7 @@ class TestTemplateStrategyParams:
 
     def test_bollinger_default_params(self):
         from strategies.template_strategy import STRATEGY_META
+
         meta = STRATEGY_META["bollinger"]
         p = meta["default_params"]
         assert p["period"] == 20
@@ -40,33 +44,55 @@ class TestStrategyMeta:
 
     def test_all_meta_have_required_fields(self):
         from strategies.template_strategy import STRATEGY_META
-        required = {"class", "label", "category", "description", "default_params", "param_ranges"}
+
+        required = {
+            "class",
+            "label",
+            "category",
+            "description",
+            "default_params",
+            "param_ranges",
+        }
         for name, meta in STRATEGY_META.items():
             missing = required - set(meta.keys())
             assert not missing, f"策略 {name} 缺少字段: {missing}"
 
     def test_meta_categories_valid(self):
         from strategies.template_strategy import STRATEGY_META
-        valid_cats = {"trend", "oscillator", "mean_reversion", "volatility", "volume", "composite"}
+
+        valid_cats = {
+            "trend",
+            "oscillator",
+            "mean_reversion",
+            "volatility",
+            "volume",
+            "composite",
+        }
         for name, meta in STRATEGY_META.items():
-            assert meta["category"] in valid_cats, f"策略 {name} 無效類別: {meta['category']}"
+            assert (
+                meta["category"] in valid_cats
+            ), f"策略 {name} 無效類別: {meta['category']}"
 
     def test_param_ranges_tuple_structure(self):
         from strategies.template_strategy import STRATEGY_META
+
         for name, meta in STRATEGY_META.items():
             for param, rng in meta["param_ranges"].items():
-                assert len(rng) == 3, f"策略 {name} 參數 {param} 範圍應為 (min, max, step)"
+                assert (
+                    len(rng) == 3
+                ), f"策略 {name} 參數 {param} 範圍應為 (min, max, step)"
                 assert rng[0] < rng[1], f"策略 {name} 參數 {param} min 應 < max"
 
     def test_default_params_in_ranges(self):
         from strategies.template_strategy import STRATEGY_META
+
         for name, meta in STRATEGY_META.items():
             for param, default in meta["default_params"].items():
                 if param in meta["param_ranges"]:
                     lo, hi, _ = meta["param_ranges"][param]
-                    assert lo <= default <= hi, (
-                        f"策略 {name} 默認 {param}={default} 不在範圍 [{lo}, {hi}]"
-                    )
+                    assert (
+                        lo <= default <= hi
+                    ), f"策略 {name} 默認 {param}={default} 不在範圍 [{lo}, {hi}]"
 
 
 class TestStrategySignalLogic:
@@ -76,14 +102,17 @@ class TestStrategySignalLogic:
     def _make_df(prices: list[float]) -> pd.DataFrame:
         """構建 OHLCV DataFrame，避免 zero division"""
         n = len(prices)
-        return pd.DataFrame({
-            "open": prices,
-            "high": [c * 1.015 for c in prices],
-            "low": [c * 0.985 for c in prices],
-            "close": prices,
-            "volume": [10000] * n,
-            "openinterest": [0] * n,
-        }, index=pd.date_range("2024-01-01", periods=n))
+        return pd.DataFrame(
+            {
+                "open": prices,
+                "high": [c * 1.015 for c in prices],
+                "low": [c * 0.985 for c in prices],
+                "close": prices,
+                "volume": [10000] * n,
+                "openinterest": [0] * n,
+            },
+            index=pd.date_range("2024-01-01", periods=n),
+        )
 
     def test_template_bullish_crossover(self):
         """快線上穿慢線 → 買入信號"""

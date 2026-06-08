@@ -6,6 +6,7 @@
 - 模型訓練 + 預測 + 信號生成
 - 與回測引擎整合
 """
+
 from __future__ import annotations
 
 import pickle
@@ -26,22 +27,30 @@ _MODEL_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 
 DEFAULT_FEATURES = [
-    "return_1d", "return_5d", "return_10d", "return_20d",
-    "ma_ratio_5_20", "ma_ratio_5_60",
-    "rsi_14", "macd_hist", "bb_pct_b",
-    "vol_ratio_5", "vol_ratio_20",
-    "atr_pct_14", "close_ma20_ratio",
+    "return_1d",
+    "return_5d",
+    "return_10d",
+    "return_20d",
+    "ma_ratio_5_20",
+    "ma_ratio_5_60",
+    "rsi_14",
+    "macd_hist",
+    "bb_pct_b",
+    "vol_ratio_5",
+    "vol_ratio_20",
+    "atr_pct_14",
+    "close_ma20_ratio",
 ]
 
 
 def build_feature_matrix(df: pd.DataFrame, features: list[str] = None) -> pd.DataFrame:
     """
     從 OHLCV DataFrame 構建特徵矩陣。
-    
+
     Args:
         df: DataFrame with columns [date, open, high, low, close, volume]
         features: 特徵名稱列表（默認 DEFAULT_FEATURES）
-    
+
     Returns:
         DataFrame with feature columns + date
     """
@@ -52,7 +61,11 @@ def build_feature_matrix(df: pd.DataFrame, features: list[str] = None) -> pd.Dat
     close = df["close"].astype(float)
     high = df["high"].astype(float) if "high" in df.columns else close
     low = df["low"].astype(float) if "low" in df.columns else close
-    volume = df["volume"].astype(float) if "volume" in df.columns else pd.Series(0, index=df.index)
+    volume = (
+        df["volume"].astype(float)
+        if "volume" in df.columns
+        else pd.Series(0, index=df.index)
+    )
 
     # 收益率
     if "return_1d" in features:
@@ -107,11 +120,14 @@ def build_feature_matrix(df: pd.DataFrame, features: list[str] = None) -> pd.Dat
 
     # ATR%
     if "atr_pct_14" in features:
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low - close.shift(1)).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift(1)).abs(),
+                (low - close.shift(1)).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = tr.rolling(14).mean()
         f["atr_pct_14"] = atr / close
 
@@ -126,16 +142,17 @@ def build_feature_matrix(df: pd.DataFrame, features: list[str] = None) -> pd.Dat
     return f
 
 
-def prepare_train_data(df: pd.DataFrame, features: list[str] = None,
-                        label_threshold: float = 0.0) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def prepare_train_data(
+    df: pd.DataFrame, features: list[str] = None, label_threshold: float = 0.0
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """
     準備訓練數據（去除 NaN，二分類標籤）。
-    
+
     Args:
         df: 特徵矩陣（build_feature_matrix 輸出）
         features: 使用的特徵列
         label_threshold: 分類閾值（>threshold=1, <=threshold=0）
-    
+
     Returns:
         (X, y, feature_names)
     """
@@ -158,17 +175,23 @@ def prepare_train_data(df: pd.DataFrame, features: list[str] = None,
 # 模型訓練與預測
 # ============================================================
 
-def train_model(X: np.ndarray, y: np.ndarray, feature_names: list[str],
-                 model_type: str = "random_forest", **kwargs) -> Any:
+
+def train_model(
+    X: np.ndarray,
+    y: np.ndarray,
+    feature_names: list[str],
+    model_type: str = "random_forest",
+    **kwargs,
+) -> Any:
     """
     訓練分類模型。
-    
+
     Args:
         X: 特徵矩陣
         y: 標籤
         feature_names: 特徵名稱
         model_type: random_forest | gradient_boosting | xgboost | logistic
-    
+
     Returns:
         訓練好的模型
     """
@@ -177,14 +200,17 @@ def train_model(X: np.ndarray, y: np.ndarray, feature_names: list[str],
 
     if model_type == "random_forest":
         from sklearn.ensemble import RandomForestClassifier
+
         model = RandomForestClassifier(
             n_estimators=kwargs.get("n_estimators", 100),
             max_depth=kwargs.get("max_depth", 8),
             min_samples_leaf=kwargs.get("min_samples_leaf", 20),
-            random_state=42, n_jobs=-1,
+            random_state=42,
+            n_jobs=-1,
         )
     elif model_type == "gradient_boosting":
         from sklearn.ensemble import GradientBoostingClassifier
+
         model = GradientBoostingClassifier(
             n_estimators=kwargs.get("n_estimators", 100),
             max_depth=kwargs.get("max_depth", 5),
@@ -194,16 +220,19 @@ def train_model(X: np.ndarray, y: np.ndarray, feature_names: list[str],
     elif model_type == "xgboost":
         try:
             from xgboost import XGBClassifier
+
             model = XGBClassifier(
                 n_estimators=kwargs.get("n_estimators", 100),
                 max_depth=kwargs.get("max_depth", 6),
                 learning_rate=kwargs.get("learning_rate", 0.1),
-                random_state=42, n_jobs=-1,
+                random_state=42,
+                n_jobs=-1,
                 eval_metric="logloss",
             )
         except ImportError:
             logger.warning("XGBoost 未安裝，回退到 GradientBoosting")
             from sklearn.ensemble import GradientBoostingClassifier
+
             model = GradientBoostingClassifier(
                 n_estimators=kwargs.get("n_estimators", 100),
                 max_depth=kwargs.get("max_depth", 5),
@@ -211,6 +240,7 @@ def train_model(X: np.ndarray, y: np.ndarray, feature_names: list[str],
             )
     elif model_type == "logistic":
         from sklearn.linear_model import LogisticRegression
+
         model = LogisticRegression(max_iter=1000, random_state=42)
     else:
         raise ValueError(f"不支持的模型類型: {model_type}")
@@ -244,12 +274,15 @@ def get_feature_importance(model, feature_names: list[str]) -> list[dict]:
             return []
 
     pairs = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
-    return [{"feature": name, "importance": round(float(imp), 4)} for name, imp in pairs]
+    return [
+        {"feature": name, "importance": round(float(imp), 4)} for name, imp in pairs
+    ]
 
 
 # ============================================================
 # 模型保存/加載
 # ============================================================
+
 
 def save_model(model, name: str, metadata: dict = None) -> str:
     """保存模型到磁盤。"""
@@ -280,11 +313,15 @@ def list_saved_models() -> list[dict]:
     out = []
     for p in sorted(_MODEL_DIR.glob("*.pkl")):
         stat = p.stat()
-        out.append({
-            "name": p.stem,
-            "size_kb": round(stat.st_size / 1024, 1),
-            "modified": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)),
-        })
+        out.append(
+            {
+                "name": p.stem,
+                "size_kb": round(stat.st_size / 1024, 1),
+                "modified": time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)
+                ),
+            }
+        )
     return out
 
 
@@ -292,17 +329,19 @@ def list_saved_models() -> list[dict]:
 # 信號生成（與回測整合）
 # ============================================================
 
-def generate_signals(df: pd.DataFrame, model, features: list[str] = None,
-                      prob_threshold: float = 0.6) -> pd.DataFrame:
+
+def generate_signals(
+    df: pd.DataFrame, model, features: list[str] = None, prob_threshold: float = 0.6
+) -> pd.DataFrame:
     """
     使用模型生成交易信號。
-    
+
     Args:
         df: OHLCV DataFrame
         model: 訓練好的模型
         features: 特徵名稱
         prob_threshold: 概率閾值（>threshold 買入）
-    
+
     Returns:
         DataFrame with columns [date, signal, probability]
         signal: 1=買入, -1=賣出, 0=持有
@@ -318,13 +357,16 @@ def generate_signals(df: pd.DataFrame, model, features: list[str] = None,
     probs = model.predict_proba(X)[:, 1]  # 類別 1 的概率
 
     signals = np.zeros(len(probs))
-    signals[probs > prob_threshold] = 1   # 買入
+    signals[probs > prob_threshold] = 1  # 買入
     signals[probs < (1 - prob_threshold)] = -1  # 賣出
 
-    result = pd.DataFrame({
-        "signal": signals.astype(int),
-        "probability": np.round(probs, 4),
-    }, index=data.index)
+    result = pd.DataFrame(
+        {
+            "signal": signals.astype(int),
+            "probability": np.round(probs, 4),
+        },
+        index=data.index,
+    )
 
     if "date" in feat_df.columns:
         result["date"] = feat_df.loc[data.index, "date"].values
@@ -336,12 +378,18 @@ def generate_signals(df: pd.DataFrame, model, features: list[str] = None,
 # 便捷端到端流程
 # ============================================================
 
-def train_and_backtest(df: pd.DataFrame, model_type: str = "random_forest",
-                        train_ratio: float = 0.7, features: list[str] = None,
-                        prob_threshold: float = 0.6, **model_kwargs) -> dict:
+
+def train_and_backtest(
+    df: pd.DataFrame,
+    model_type: str = "random_forest",
+    train_ratio: float = 0.7,
+    features: list[str] = None,
+    prob_threshold: float = 0.6,
+    **model_kwargs,
+) -> dict:
     """
     端到端：特徵工程 → 訓練 → 回測。
-    
+
     Args:
         df: OHLCV DataFrame
         model_type: 模型類型
@@ -349,7 +397,7 @@ def train_and_backtest(df: pd.DataFrame, model_type: str = "random_forest",
         features: 特徵列表
         prob_threshold: 信號閾值
         **model_kwargs: 模型參數
-    
+
     Returns:
         {"model": model, "train_metrics": dict, "test_metrics": dict,
          "feature_importance": list, "signals": DataFrame, "model_path": str}
@@ -366,7 +414,9 @@ def train_and_backtest(df: pd.DataFrame, model_type: str = "random_forest",
     y_train, y_test = y[:split], y[split:]
 
     # 訓練
-    model = train_model(X_train, y_train, feat_names, model_type=model_type, **model_kwargs)
+    model = train_model(
+        X_train, y_train, feat_names, model_type=model_type, **model_kwargs
+    )
 
     # 評估
     train_metrics = evaluate_model(model, X_train, y_train)
@@ -380,13 +430,17 @@ def train_and_backtest(df: pd.DataFrame, model_type: str = "random_forest",
 
     # 保存模型
     model_name = f"ml_{model_type}_{int(time.time())}"
-    model_path = save_model(model, model_name, {
-        "model_type": model_type,
-        "features": feat_names,
-        "train_metrics": train_metrics,
-        "test_metrics": test_metrics,
-        "prob_threshold": prob_threshold,
-    })
+    model_path = save_model(
+        model,
+        model_name,
+        {
+            "model_type": model_type,
+            "features": feat_names,
+            "train_metrics": train_metrics,
+            "test_metrics": test_metrics,
+            "prob_threshold": prob_threshold,
+        },
+    )
 
     return {
         "model": model,

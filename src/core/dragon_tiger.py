@@ -1,6 +1,7 @@
 """
 龍虎榜數據模塊 — 獲取龍虎榜明細及歷史
 """
+
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -52,13 +53,14 @@ def init_dragon_tiger_table():
 # 龍虎榜數據
 # ============================================================
 
+
 def get_dragon_tiger(date: str = None) -> list[dict]:
     """
     獲取指定日期的龍虎榜數據
-    
+
     Args:
         date: 日期字符串 "YYYYMMDD"，默認為今天
-    
+
     Returns:
         龍虎榜明細列表
     """
@@ -85,9 +87,15 @@ def get_dragon_tiger(date: str = None) -> list[dict]:
                 "close": float(_get_col(row, ["收盘价", "收盘"], 0) or 0),
                 "change_pct": float(_get_col(row, ["涨跌幅"], 0) or 0),
                 "reason": str(_get_col(row, ["上榜原因", "解读"], "")),
-                "buy_amount": float(_get_col(row, ["买入总额", "龙虎榜买入额"], 0) or 0),
-                "sell_amount": float(_get_col(row, ["卖出总额", "龙虎榜卖出额"], 0) or 0),
-                "net_amount": float(_get_col(row, ["净买入额", "龙虎榜净买额"], 0) or 0),
+                "buy_amount": float(
+                    _get_col(row, ["买入总额", "龙虎榜买入额"], 0) or 0
+                ),
+                "sell_amount": float(
+                    _get_col(row, ["卖出总额", "龙虎榜卖出额"], 0) or 0
+                ),
+                "net_amount": float(
+                    _get_col(row, ["净买入额", "龙虎榜净买额"], 0) or 0
+                ),
                 "turnover_rate": float(_get_col(row, ["换手率"], 0) or 0),
                 "amount": float(_get_col(row, ["成交额"], 0) or 0),
                 "circulating_mv": float(_get_col(row, ["流通市值"], 0) or 0),
@@ -190,7 +198,9 @@ def _enrich_market_and_sector(records: list[dict]) -> list[dict]:
         sector = universe.get("industry") or sector_map.get(code) or "未分類"
 
         record["market"] = market
-        record["market_name"] = _market_name(market) if market != "unknown" else inferred_name
+        record["market_name"] = (
+            _market_name(market) if market != "unknown" else inferred_name
+        )
         record["sector"] = sector
 
     return records
@@ -199,11 +209,11 @@ def _enrich_market_and_sector(records: list[dict]) -> list[dict]:
 def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
     """
     獲取某只股票的龍虎榜歷史
-    
+
     Args:
         code: 股票代碼
         days: 最近 N 天
-    
+
     Returns:
         龍虎榜歷史記錄
     """
@@ -247,9 +257,15 @@ def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
                 "close": float(_get_col(row, ["收盘价", "收盘"], 0) or 0),
                 "change_pct": float(_get_col(row, ["涨跌幅"], 0) or 0),
                 "reason": str(_get_col(row, ["上榜原因", "解读"], "")),
-                "buy_amount": float(_get_col(row, ["买入总额", "龙虎榜买入额"], 0) or 0),
-                "sell_amount": float(_get_col(row, ["卖出总额", "龙虎榜卖出额"], 0) or 0),
-                "net_amount": float(_get_col(row, ["净买入额", "龙虎榜净买额"], 0) or 0),
+                "buy_amount": float(
+                    _get_col(row, ["买入总额", "龙虎榜买入额"], 0) or 0
+                ),
+                "sell_amount": float(
+                    _get_col(row, ["卖出总额", "龙虎榜卖出额"], 0) or 0
+                ),
+                "net_amount": float(
+                    _get_col(row, ["净买入额", "龙虎榜净买额"], 0) or 0
+                ),
                 "turnover_rate": float(_get_col(row, ["换手率"], 0) or 0),
                 "amount": float(_get_col(row, ["成交额"], 0) or 0),
                 "circulating_mv": float(_get_col(row, ["流通市值"], 0) or 0),
@@ -269,6 +285,7 @@ def get_dragon_tiger_history(code: str, days: int = 30) -> list[dict]:
 # 數據庫操作
 # ============================================================
 
+
 def _save_dragon_tiger(records: list[dict]):
     """保存龍虎榜數據到數據庫"""
     if not records:
@@ -276,21 +293,23 @@ def _save_dragon_tiger(records: list[dict]):
 
     db_records = []
     for r in records:
-        db_records.append((
-            r.get("code", ""),
-            r.get("name", ""),
-            r.get("date", ""),
-            r.get("close"),
-            r.get("change_pct"),
-            r.get("reason", ""),
-            r.get("buy_amount"),
-            r.get("sell_amount"),
-            r.get("net_amount"),
-            r.get("turnover_rate"),
-            r.get("amount"),
-            r.get("circulating_mv"),
-            None,  # raw_json
-        ))
+        db_records.append(
+            (
+                r.get("code", ""),
+                r.get("name", ""),
+                r.get("date", ""),
+                r.get("close"),
+                r.get("change_pct"),
+                r.get("reason", ""),
+                r.get("buy_amount"),
+                r.get("sell_amount"),
+                r.get("net_amount"),
+                r.get("turnover_rate"),
+                r.get("amount"),
+                r.get("circulating_mv"),
+                None,  # raw_json
+            )
+        )
 
     with get_conn() as conn:
         conn.executemany(
@@ -299,7 +318,7 @@ def _save_dragon_tiger(records: list[dict]):
                 buy_amount, sell_amount, net_amount,
                 turnover_rate, amount, circulating_mv, raw_json)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            db_records
+            db_records,
         )
     logger.debug(f"保存龍虎榜: {len(db_records)} 條")
 
@@ -313,6 +332,6 @@ def _load_dragon_tiger_from_db(code: str, days: int) -> list[dict]:
             """SELECT * FROM dragon_tiger
                WHERE code = ? AND date >= ?
                ORDER BY date DESC""",
-            (code, cutoff)
+            (code, cutoff),
         ).fetchall()
     return [dict(r) for r in rows]
