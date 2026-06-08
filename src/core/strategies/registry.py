@@ -1,4 +1,5 @@
 """策略註冊表 — 統一 key / 顯示名 / Backtrader 策略類。"""
+
 from __future__ import annotations
 
 from typing import Type

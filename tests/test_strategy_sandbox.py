@@ -1,4 +1,5 @@
 """策略上傳沙箱 — 安全校驗單元測試"""
+
 import os
 import sys
 
@@ -11,7 +12,7 @@ from src.core.strategy_sandbox import (
     validate_strategy_source,
 )
 
-_SAFE_TEMPLATE = '''
+_SAFE_TEMPLATE = """
 from src.core.strategy_base import UserStrategy
 
 class DemoStrategy(UserStrategy):
@@ -20,7 +21,7 @@ class DemoStrategy(UserStrategy):
         return False
     def sell_signal(self, df, index):
         return False
-'''
+"""
 
 
 def test_sanitize_filename_rejects_traversal():

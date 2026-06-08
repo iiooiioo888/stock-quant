@@ -1,4 +1,5 @@
 """健康檢查 API 路由"""
+
 import time
 import shutil
 
@@ -11,6 +12,7 @@ from src.core.data_sources import health_check as data_sources_health_check
 from src.utils.logger import logger
 
 router = APIRouter(tags=["health"])
+
 
 @router.get("/api/health")
 async def health_check():
@@ -94,10 +96,14 @@ async def health_detailed():
         sop_payload = build_health_sop_payload(snapshot=snap)
         result["pipeline_metrics"] = sop_payload.get("pipeline_metrics")
         result["index_audit"] = snap.get("index_audit")
-        if isinstance(result["index_audit"], dict) and not result["index_audit"].get("ok"):
+        if isinstance(result["index_audit"], dict) and not result["index_audit"].get(
+            "ok"
+        ):
             result["status"] = "degraded"
         result["sop"] = sop_payload.get("sop")
-        if (result.get("sop") or {}).get("verdict") == "critical" and result["status"] == "ok":
+        if (result.get("sop") or {}).get("verdict") == "critical" and result[
+            "status"
+        ] == "ok":
             result["status"] = "degraded"
         ds = snap.get("data_sources")
         if isinstance(ds, dict) and ds.get("degraded_categories"):
@@ -110,6 +116,7 @@ async def health_detailed():
     # ---- Redis 狀態 ----
     try:
         from src.core.cache import get_cache
+
         cache = get_cache()
         cache_stats = cache.stats()
         result["redis"] = {
@@ -138,23 +145,30 @@ async def health_detailed():
     # ---- 內存使用 ----
     try:
         import resource
+
         usage = resource.getrusage(resource.RUSAGE_SELF)
         # maxrss 單位：Linux 是 KB，macOS 是 bytes
         import sys
-        maxrss_kb = usage.ru_maxrss if sys.platform == "linux" else usage.ru_maxrss / 1024
+
+        maxrss_kb = (
+            usage.ru_maxrss if sys.platform == "linux" else usage.ru_maxrss / 1024
+        )
         result["memory"] = {
             "max_rss_mb": round(maxrss_kb / 1024, 2),
         }
         # 嘗試 psutil 獲取更詳細信息
         try:
             import psutil
+
             proc = psutil.Process()
             mem_info = proc.memory_info()
             result["memory"]["rss_mb"] = round(mem_info.rss / (1024**2), 2)
             result["memory"]["vms_mb"] = round(mem_info.vms / (1024**2), 2)
             sys_mem = psutil.virtual_memory()
             result["memory"]["system_total_gb"] = round(sys_mem.total / (1024**3), 2)
-            result["memory"]["system_available_gb"] = round(sys_mem.available / (1024**3), 2)
+            result["memory"]["system_available_gb"] = round(
+                sys_mem.available / (1024**3), 2
+            )
             result["memory"]["system_usage_pct"] = sys_mem.percent
         except ImportError:
             pass
@@ -168,14 +182,14 @@ async def health_detailed():
 async def data_sources_health():
     """
     數據源健康檢查端點（Phase 1 穩定性優化）
-    
+
     返回所有已註冊數據源的狀態，包括：
     - 可用性（是否熔斷/超限）
     - 失敗次數
     - 今日調用次數
     - 動態評分（用於智能排隊）
     - IB/TWS 連接狀態（如適用）
-    
+
     用途：
     - 監控數據源穩定性
     - 觸發告警（當某類別所有源均不可用）
@@ -185,16 +199,17 @@ async def data_sources_health():
         health = data_sources_health_check()
         overall_status = "ok"
         degraded_categories = []
-        
+
         for category, info in health.items():
             if info.get("status") == "degraded":
                 degraded_categories.append(category)
                 overall_status = "degraded"
-        
+
         # 熔斷器狀態（與數據源健康並列顯示）
         circuit_breakers = {}
         try:
             from src.core.circuit_breaker import get_all_breakers
+
             circuit_breakers = get_all_breakers()
         except Exception:
             pass

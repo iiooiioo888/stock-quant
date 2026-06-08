@@ -9,6 +9,7 @@
 5. Whale Activity Index（鯨魚活動指數）
 6. Crypto Dominance Index（市佔率指數）
 """
+
 from __future__ import annotations
 
 import time
@@ -23,11 +24,12 @@ from src.utils.logger import logger
 # 1. 恐懼貪婪指數 (Fear & Greed Index)
 # ============================================================
 
+
 def get_fear_greed_index() -> dict:
     """
     獲取加密貨幣恐懼貪婪指數（0-100）。
     數據來源：alternative.me API
-    
+
     0-25: 極度恐懼
     25-45: 恐懼
     45-55: 中性
@@ -46,7 +48,9 @@ def get_fear_greed_index() -> dict:
         current = data[0]
         history = [
             {
-                "date": datetime.fromtimestamp(int(d["timestamp"])).strftime("%Y-%m-%d"),
+                "date": datetime.fromtimestamp(int(d["timestamp"])).strftime(
+                    "%Y-%m-%d"
+                ),
                 "value": int(d["value"]),
                 "label": d["value_classification"],
             }
@@ -59,7 +63,11 @@ def get_fear_greed_index() -> dict:
         # 趨勢判斷
         if len(history) >= 3:
             recent = [h["value"] for h in history[:3]]
-            trend = "上升" if recent[0] > recent[-1] else "下降" if recent[0] < recent[-1] else "平穩"
+            trend = (
+                "上升"
+                if recent[0] > recent[-1]
+                else "下降" if recent[0] < recent[-1] else "平穩"
+            )
         else:
             trend = "未知"
 
@@ -82,10 +90,11 @@ def get_fear_greed_index() -> dict:
 # 2. 山寨幣季指數 (Altcoin Season Index)
 # ============================================================
 
+
 def get_altcoin_season_index(symbols: list[str] = None) -> dict:
     """
     山寨幣季指數 — 比較山寨幣 vs BTC 的表現。
-    
+
     計算邏輯：
     - 取最近 30 天各幣種漲跌幅
     - 統計跑贏 BTC 的山寨幣比例
@@ -95,9 +104,21 @@ def get_altcoin_season_index(symbols: list[str] = None) -> dict:
     from src.core.db import get_conn
 
     symbols = symbols or [
-        "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT",
-        "DOGEUSDT", "DOTUSDT", "AVAXUSDT", "LINKUSDT", "UNIUSDT",
-        "LTCUSDT", "ATOMUSDT", "NEARUSDT", "SHIBUSDT", "TRXUSDT",
+        "ETHUSDT",
+        "BNBUSDT",
+        "SOLUSDT",
+        "XRPUSDT",
+        "ADAUSDT",
+        "DOGEUSDT",
+        "DOTUSDT",
+        "AVAXUSDT",
+        "LINKUSDT",
+        "UNIUSDT",
+        "LTCUSDT",
+        "ATOMUSDT",
+        "NEARUSDT",
+        "SHIBUSDT",
+        "TRXUSDT",
     ]
 
     cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -107,7 +128,7 @@ def get_altcoin_season_index(symbols: list[str] = None) -> dict:
             # BTC 30 天漲跌幅
             btc_row = conn.execute(
                 "SELECT MIN(close), MAX(close) FROM daily_kline WHERE code='BTCUSDT' AND date >= ?",
-                (cutoff,)
+                (cutoff,),
             ).fetchone()
             if not btc_row or not btc_row[0]:
                 return {"error": "BTC 數據不足"}
@@ -121,10 +142,10 @@ def get_altcoin_season_index(symbols: list[str] = None) -> dict:
             for sym in symbols:
                 row = conn.execute(
                     "SELECT MIN(close), MAX(close) FROM daily_kline WHERE code=? AND date >= ?",
-                    (sym, cutoff)
+                    (sym, cutoff),
                 ).fetchone()
                 if row and row[0] and row[0] > 0:
-                    change = ((row[1] - row[0]) / row[0] * 100)
+                    change = (row[1] - row[0]) / row[0] * 100
                     altcoins.append({"symbol": sym, "change_30d": round(change, 2)})
                     if change > btc_change:
                         outperform += 1
@@ -172,10 +193,11 @@ def get_altcoin_season_index(symbols: list[str] = None) -> dict:
 # 3. DeFi 健康指數
 # ============================================================
 
+
 def get_defi_health_index() -> dict:
     """
     DeFi 健康指數 — 基於 DeFi 代幣的綜合表現。
-    
+
     組成：
     - LINK (預言機) 25%
     - UNI (DEX) 25%
@@ -204,15 +226,17 @@ def get_defi_health_index() -> dict:
             # 歸一化到 0-100（-10% → 0, 0% → 50, +10% → 100）
             score = max(0, min(100, 50 + change * 5))
 
-            components.append({
-                "symbol": sym,
-                "name": info["name"],
-                "sector": info["sector"],
-                "price": data["price"],
-                "change_pct": change,
-                "score": round(score, 1),
-                "weight": info["weight"],
-            })
+            components.append(
+                {
+                    "symbol": sym,
+                    "name": info["name"],
+                    "sector": info["sector"],
+                    "price": data["price"],
+                    "change_pct": change,
+                    "score": round(score, 1),
+                    "weight": info["weight"],
+                }
+            )
             weighted_score += score * info["weight"]
 
         if not components:
@@ -244,10 +268,11 @@ def get_defi_health_index() -> dict:
 # 4. 市場動量指數
 # ============================================================
 
+
 def get_market_momentum_index(symbols: list[str] = None) -> dict:
     """
     市場動量指數 — 基於多幣種的 RSI + 成交量變化。
-    
+
     組成：
     - 平均 RSI (50%)
     - 成交量變化率 (30%)
@@ -320,6 +345,7 @@ def get_market_momentum_index(symbols: list[str] = None) -> dict:
 # 5. 市佔率指數 (Dominance Index)
 # ============================================================
 
+
 def get_dominance_index() -> dict:
     """
     加密貨幣市佔率指數 — BTC/ETH/山寨幣的市佔率。
@@ -371,10 +397,11 @@ def get_dominance_index() -> dict:
 # 6. 鯉魚活動指數 (基於大額交易)
 # ============================================================
 
+
 def get_whale_activity_index(symbols: list[str] = None) -> dict:
     """
     鯉魚活動指數 — 基於成交量異常放大判斷大戶活動。
-    
+
     邏輯：
     - 成交量 > 2x 24h 平均 → 鯉魚活躍
     - 成交量 > 3x → 鯉魚極度活躍
@@ -415,14 +442,16 @@ def get_whale_activity_index(symbols: list[str] = None) -> dict:
             elif score > 40:
                 signal = "🟡 偏高"
 
-            whale_signals.append({
-                "symbol": sym,
-                "price": price,
-                "change_pct": change,
-                "volume_usd": round(volume, 0),
-                "activity_score": round(score, 1),
-                "signal": signal,
-            })
+            whale_signals.append(
+                {
+                    "symbol": sym,
+                    "price": price,
+                    "change_pct": change,
+                    "volume_usd": round(volume, 0),
+                    "activity_score": round(score, 1),
+                    "signal": signal,
+                }
+            )
 
         avg_score = total_score / len(whale_signals) if whale_signals else 0
 
@@ -451,6 +480,7 @@ def get_whale_activity_index(symbols: list[str] = None) -> dict:
 # ============================================================
 # 統一入口：獲取所有自定義指數
 # ============================================================
+
 
 def get_all_custom_indices() -> dict:
     """獲取所有自定義分析指數。"""
@@ -498,4 +528,6 @@ if __name__ == "__main__":
         if "error" in data:
             print(f"❌ {name}: {data['error']}")
         else:
-            print(f"✅ {name}: {data.get('value', 'N/A')} - {data.get('label', data.get('signal', data.get('health', '')))}")
+            print(
+                f"✅ {name}: {data.get('value', 'N/A')} - {data.get('label', data.get('signal', data.get('health', '')))}"
+            )

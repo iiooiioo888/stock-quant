@@ -1,4 +1,5 @@
 """策略庫點讚 — 用戶點讚與全站計數。"""
+
 from __future__ import annotations
 
 import re
@@ -23,11 +24,9 @@ def get_like_counts() -> dict[str, int]:
         with get_conn() as conn:
             if not _table_exists(conn):
                 return {}
-            rows = conn.execute(
-                """SELECT strategy_key, COUNT(*) AS cnt
+            rows = conn.execute("""SELECT strategy_key, COUNT(*) AS cnt
                    FROM strategy_likes
-                   GROUP BY strategy_key"""
-            ).fetchall()
+                   GROUP BY strategy_key""").fetchall()
         return {str(r[0]): int(r[1]) for r in rows}
     except Exception as e:
         logger.debug(f"讀取策略點讚計數跳過: {e}")

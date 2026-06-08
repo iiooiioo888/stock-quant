@@ -1,4 +1,5 @@
 """下載並發任務"""
+
 import time
 from unittest.mock import patch
 
@@ -20,6 +21,7 @@ def test_parallel_download_faster_than_serial(monkeypatch):
         raising=False,
     )
     from src.config import settings
+
     settings.download_max_workers = 4
     settings.download_throttle_sec = 0
 

@@ -1,10 +1,12 @@
 """演示模式：讀開放、寫入需登錄"""
+
 import pytest
 
 
 @pytest.fixture
 def auth_headers(client):
     import uuid
+
     pw = "write_prot_pw_2026"
     username = f"writeprot_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})

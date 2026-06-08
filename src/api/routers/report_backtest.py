@@ -1,4 +1,5 @@
 """report_backtest 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -30,12 +31,15 @@ async def backtest_trade_analysis(body: dict):
     try:
         bt_result = run_backtest(code, strategy_name=strategy, params=params)
         analysis = trade_analysis(bt_result.get("trade_details", []))
-        return {"success": True, "code": code, "strategy": strategy, "trade_analysis": analysis}
+        return {
+            "success": True,
+            "code": code,
+            "strategy": strategy,
+            "trade_analysis": analysis,
+        }
     except Exception as e:
         logger.error(f"交易分析失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/backtest/monte-carlo")
@@ -54,13 +58,13 @@ async def backtest_monte_carlo(body: dict):
 
     try:
         bt_result = run_backtest(code, strategy_name=strategy, params=params)
-        mc = monte_carlo_simulation(bt_result.get("daily_returns", []), n_simulations=n_simulations, days=days)
+        mc = monte_carlo_simulation(
+            bt_result.get("daily_returns", []), n_simulations=n_simulations, days=days
+        )
         return {"success": True, "code": code, "strategy": strategy, "monte_carlo": mc}
     except Exception as e:
         logger.error(f"蒙特卡羅模擬失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/backtest/rolling-metrics")
@@ -78,13 +82,20 @@ async def backtest_rolling_metrics(body: dict):
 
     try:
         bt_result = run_backtest(code, strategy_name=strategy, params=params)
-        rm = rolling_metrics(bt_result.get("daily_returns", []), bt_result.get("dates", []), window=window)
-        return {"success": True, "code": code, "strategy": strategy, "rolling_metrics": rm}
+        rm = rolling_metrics(
+            bt_result.get("daily_returns", []),
+            bt_result.get("dates", []),
+            window=window,
+        )
+        return {
+            "success": True,
+            "code": code,
+            "strategy": strategy,
+            "rolling_metrics": rm,
+        }
     except Exception as e:
         logger.error(f"滾動指標失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/report/full")
@@ -107,8 +118,6 @@ async def report_full(body: dict):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.post("/api/report/comparison")
 async def report_comparison(body: dict):
     """多股對比報告 — 同一策略在多隻股票上的表現對比"""
@@ -126,8 +135,6 @@ async def report_comparison(body: dict):
     except Exception as e:
         logger.error(f"對比報告失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/report/strategy")
@@ -150,6 +157,3 @@ async def report_strategy(body: dict):
 
 
 # ====== 風控管道 API ======
-
-
-

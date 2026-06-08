@@ -8,6 +8,7 @@ API 壓力測試 — 併發請求、速率限制邊界、大 payload、下載節
   - 大 payload 處理
   - 回測任務併發提交
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -36,6 +37,7 @@ def _reset():
 
 
 # ── 高併發 GET ─────────────────────────────────────────────────
+
 
 class TestConcurrentGET:
     """併發 GET 請求穩定性。"""
@@ -110,6 +112,7 @@ class TestConcurrentGET:
 
 # ── 高併發 POST ─────────────────────────────────────────────────
 
+
 class TestConcurrentPOST:
     """併發 POST 請求（回測任務提交）。"""
 
@@ -154,6 +157,7 @@ class TestConcurrentPOST:
 
 # ── 大 Payload ──────────────────────────────────────────────────
 
+
 class TestLargePayload:
     """大 payload 處理。"""
 
@@ -171,7 +175,9 @@ class TestLargePayload:
     def test_invalid_date_format(self):
         """無效日期格式。"""
         client = TestClient(app)
-        resp = client.post("/api/backtest?code=000001&strategy=dual_ma&start_date=not-a-date")
+        resp = client.post(
+            "/api/backtest?code=000001&strategy=dual_ma&start_date=not-a-date"
+        )
         assert resp.status_code in (200, 400, 422, 500)
 
     def test_negative_cash(self):
@@ -183,12 +189,14 @@ class TestLargePayload:
 
 # ── download_manager 速率限制 ────────────────────────────────────
 
+
 class TestDownloadRateLimit:
     """下載管理器速率限制測試。"""
 
     def test_rate_limiter_boundary(self):
         """速率限制器在頻率內外的行為。"""
         from src.core.rate_limiter import _MemoryRateLimiter
+
         rl = _MemoryRateLimiter()
         limit = 5
 
@@ -204,6 +212,7 @@ class TestDownloadRateLimit:
     def test_rate_limiter_separate_keys(self):
         """不同 IP 的限制獨立。"""
         from src.core.rate_limiter import _MemoryRateLimiter
+
         rl = _MemoryRateLimiter()
         limit = 2
 
@@ -244,6 +253,7 @@ class TestDownloadRateLimit:
 
 # ── 回測任務完整生命週期 ────────────────────────────────────────
 
+
 class TestBacktestLifecycle:
     """回測任務從提交到完成的完整流程。"""
 
@@ -261,6 +271,7 @@ class TestBacktestLifecycle:
 
         # 輪詢最多 10 秒直到終態
         import time
+
         status = None
         for _ in range(20):
             resp2 = client.get(f"/api/tasks/{task_id}")
@@ -287,6 +298,7 @@ class TestBacktestLifecycle:
 
 
 # ── 健康檢查端點 ────────────────────────────────────────────────
+
 
 class TestHealthEndpoints:
     """健康檢查端點壓力。"""
@@ -328,6 +340,7 @@ class TestHealthEndpoints:
 
 
 # ── 任務端點壓力 ────────────────────────────────────────────────
+
 
 class TestTaskEndpoints:
     """任務管理端點壓力。"""
@@ -374,6 +387,7 @@ class TestTaskEndpoints:
 
 # ── 響應時間 ────────────────────────────────────────────────────
 
+
 class TestResponseTime:
     """響應時間斷言。"""
 
@@ -384,6 +398,7 @@ class TestResponseTime:
     def test_health_response_time(self):
         """健康檢查 < 2 秒。"""
         import time
+
         client = TestClient(app)
         start = time.time()
         client.get("/api/health")
@@ -393,6 +408,7 @@ class TestResponseTime:
     def test_strategy_params_response_time(self):
         """策略參數 < 5 秒。"""
         import time
+
         client = TestClient(app)
         start = time.time()
         client.get("/api/strategies/params")
@@ -402,6 +418,7 @@ class TestResponseTime:
     def test_history_response_time(self):
         """歷史查詢 < 5 秒。"""
         import time
+
         client = TestClient(app)
         start = time.time()
         client.get("/api/backtest/history")
@@ -410,6 +427,7 @@ class TestResponseTime:
 
 
 # ── GZip 壓縮 ──────────────────────────────────────────────────
+
 
 class TestGZipMiddleware:
     """GZip 中間件。"""
@@ -432,6 +450,7 @@ class TestGZipMiddleware:
 
 
 # ── 異常端點組合 ────────────────────────────────────────────────
+
 
 class TestEndpointEdgeCases:
     """端點邊界條件。"""
@@ -461,6 +480,7 @@ class TestEndpointEdgeCases:
     def test_empty_body_post(self):
         """空 body POST。"""
         client = TestClient(app)
-        resp = client.post("/api/auth/login", content="",
-                           headers={"Content-Type": "application/json"})
+        resp = client.post(
+            "/api/auth/login", content="", headers={"Content-Type": "application/json"}
+        )
         assert resp.status_code in (400, 422)

@@ -15,6 +15,7 @@
 - POST /api/crypto/ws/unsubscribe    — 取消訂閱
 - POST /api/crypto/alerts/config     — 更新告警配置
 """
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -34,6 +35,7 @@ def _handle_disabled(exc: CryptoDisabledError):
 
 # ── 請求模型 ──────────────────────────────────────────────────
 
+
 class SubscribeRequest(BaseModel):
     symbols: list[str]
 
@@ -49,6 +51,7 @@ class AlertConfigRequest(BaseModel):
 
 # ── 原有端點（向後兼容） ──────────────────────────────────────
 
+
 @router.get("/api/crypto/symbols")
 async def api_crypto_symbols():
     """支持的加密交易對。"""
@@ -60,7 +63,9 @@ async def api_crypto_symbols():
 
 
 @router.get("/api/crypto/realtime")
-async def api_crypto_realtime(symbols: str = Query(None, description="逗號分隔，留空用 watchlist")):
+async def api_crypto_realtime(
+    symbols: str = Query(None, description="逗號分隔，留空用 watchlist")
+):
     """批量實時行情（WS 快照優先，REST 降級）。"""
     try:
         sym_list = symbols.split(",") if symbols else None
@@ -87,6 +92,7 @@ async def api_crypto_kline(
 
 # ── 新增端點：技術指標 ────────────────────────────────────────
 
+
 @router.get("/api/crypto/indicators")
 async def api_crypto_indicators(
     symbol: str = "BTCUSDT",
@@ -94,7 +100,7 @@ async def api_crypto_indicators(
 ):
     """
     計算完整技術指標。
-    
+
     包含：RSI、MACD、EMA(9/21/55/200)、Bollinger Bands、ATR、
     Supertrend、Ichimoku、Stochastic RSI、Williams %R、CCI、
     MFI、OBV、VWAP、Keltner Channel、波動率百分位。
@@ -109,13 +115,14 @@ async def api_crypto_indicators(
 
 # ── 新增端點：微結構分析 ──────────────────────────────────────
 
+
 @router.get("/api/crypto/microstructure")
 async def api_crypto_microstructure(
     symbol: str = "BTCUSDT",
 ):
     """
     市場微結構分析（需 WS 數據）。
-    
+
     包含：買賣壓力比、大單偵測、淨流入/流出、成交密度、
     盤口 Spread、深度不平衡、支撐/阻力偵測、實現波動率。
     """
@@ -128,6 +135,7 @@ async def api_crypto_microstructure(
 
 
 # ── 新增端點：告警 ────────────────────────────────────────────
+
 
 @router.get("/api/crypto/alerts")
 async def api_crypto_alerts():
@@ -179,6 +187,7 @@ async def api_crypto_alert_config(req: AlertConfigRequest):
 
 # ── 新增端點：WebSocket 管理 ──────────────────────────────────
 
+
 @router.get("/api/crypto/ws/status")
 async def api_crypto_ws_status():
     """WebSocket 連接狀態。"""
@@ -211,14 +220,17 @@ async def api_crypto_ws_unsubscribe(req: SubscribeRequest):
     except Exception as e:
         raise HTTPException(500, str(e))
 
+
 # ============================================================
 # 自定義分析指數端點
 # ============================================================
+
 
 @router.get("/api/crypto/indices")
 async def crypto_custom_indices():
     """獲取所有自定義分析指數"""
     from src.core.crypto.custom_indices import get_all_custom_indices
+
     return get_all_custom_indices()
 
 
@@ -226,6 +238,7 @@ async def crypto_custom_indices():
 async def crypto_custom_index(index_name: str):
     """按名稱獲取單個自定義指數"""
     from src.core.crypto.custom_indices import get_index_by_name
+
     result = get_index_by_name(index_name)
     if "error" in result:
         raise HTTPException(404, result["error"])

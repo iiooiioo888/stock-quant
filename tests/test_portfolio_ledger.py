@@ -1,4 +1,5 @@
 """交易驅動持倉滾動與計算引擎。"""
+
 from decimal import Decimal
 
 import pytest
@@ -43,8 +44,12 @@ def test_ledger_buy_sell_roll(isolated_db):
             (uid, "ledger_test", "x", "2026-01-01 00:00:00"),
         )
     repo = get_portfolio_repo()
-    repo.insert_transaction(uid, symbol="AAPL", tx_type="BUY", quantity=10, price=100, currency="USD")
-    repo.insert_transaction(uid, symbol="AAPL", tx_type="SELL", quantity=4, price=120, currency="USD")
+    repo.insert_transaction(
+        uid, symbol="AAPL", tx_type="BUY", quantity=10, price=100, currency="USD"
+    )
+    repo.insert_transaction(
+        uid, symbol="AAPL", tx_type="SELL", quantity=4, price=120, currency="USD"
+    )
 
     with sqlite3.connect(isolated_db) as raw:
         rows = raw.execute(

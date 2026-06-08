@@ -18,13 +18,29 @@ def _check_constraints(params: dict) -> bool:
     """檢查參數邏輯約束"""
     if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
         return False
-    if "ma_fast" in params and "ma_slow" in params and params["ma_fast"] >= params["ma_slow"]:
+    if (
+        "ma_fast" in params
+        and "ma_slow" in params
+        and params["ma_fast"] >= params["ma_slow"]
+    ):
         return False
-    if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+    if (
+        "entry_period" in params
+        and "exit_period" in params
+        and params["entry_period"] <= params["exit_period"]
+    ):
         return False
-    if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+    if (
+        "overbought" in params
+        and "oversold" in params
+        and params["overbought"] <= params["oversold"]
+    ):
         return False
-    if "rsi_overbought" in params and "rsi_oversold" in params and params["rsi_overbought"] <= params["rsi_oversold"]:
+    if (
+        "rsi_overbought" in params
+        and "rsi_oversold" in params
+        and params["rsi_overbought"] <= params["rsi_oversold"]
+    ):
         return False
     if "min_agreement" in params and params["min_agreement"] > 4:
         return False
@@ -96,7 +112,11 @@ def target_search(
         if not param_ranges:
             raise ValueError(f"策略 {strategy_name} 無連續搜索範圍，請改用 grid")
 
-        sampler = optuna.samplers.TPESampler() if method == "optuna" else optuna.samplers.RandomSampler()
+        sampler = (
+            optuna.samplers.TPESampler()
+            if method == "optuna"
+            else optuna.samplers.RandomSampler()
+        )
         study = optuna.create_study(direction=objective, sampler=sampler)
 
         def stop_callback(study: optuna.study.Study, trial: optuna.trial.FrozenTrial):
@@ -110,7 +130,9 @@ def target_search(
             if trial.value is not None and is_target_met(trial.value):
                 found_result = trial.user_attrs.get("result")
                 if found_result:
-                    logger.info(f"達成目標：{target_metric}={trial.value} params={found_result.get('params')}")
+                    logger.info(
+                        f"達成目標：{target_metric}={trial.value} params={found_result.get('params')}"
+                    )
                 study.stop()
 
         def _objective(trial: optuna.trial.Trial):
@@ -143,19 +165,29 @@ def target_search(
                     done = len(all_results)
                     update_task(task_id, progress=min(95, int(done / max_iter * 100)))
                     if done % 5 == 0:
-                        update_task_meta(task_id, message=f"已試 {done}/{max_iter} 組，最新 {target_metric}={r.get(target_metric)}")
+                        update_task_meta(
+                            task_id,
+                            message=f"已試 {done}/{max_iter} 組，最新 {target_metric}={r.get(target_metric)}",
+                        )
 
                 return float(score)
             except Exception:
                 return _sentinel_score(objective)
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        study.optimize(_objective, n_trials=max_iter, callbacks=[stop_callback], show_progress_bar=False)
+        study.optimize(
+            _objective,
+            n_trials=max_iter,
+            callbacks=[stop_callback],
+            show_progress_bar=False,
+        )
 
     # Grid (網格)
     else:
         if not param_grid:
-            raise ValueError(f"策略 {strategy_name} 無網格搜索空間，請改用 optuna/random")
+            raise ValueError(
+                f"策略 {strategy_name} 無網格搜索空間，請改用 optuna/random"
+            )
 
         keys = list(param_grid.keys())
         combos = list(itertools.product(*param_grid.values()))
@@ -176,9 +208,15 @@ def target_search(
                 r = _run_single(code, strategy_name, params)
                 all_results.append(r)
                 if task_id:
-                    update_task(task_id, progress=min(95, int(i / max(1, min(total, max_iter)) * 100)))
+                    update_task(
+                        task_id,
+                        progress=min(95, int(i / max(1, min(total, max_iter)) * 100)),
+                    )
                     if i % 10 == 0:
-                        update_task_meta(task_id, message=f"網格進度 {i}/{min(total, max_iter)}，最新 {target_metric}={r.get(target_metric)}")
+                        update_task_meta(
+                            task_id,
+                            message=f"網格進度 {i}/{min(total, max_iter)}，最新 {target_metric}={r.get(target_metric)}",
+                        )
 
                 if is_target_met(r.get(target_metric)):
                     found_result = r
@@ -215,7 +253,10 @@ def target_search(
         "iterations": len(all_results),
         "elapsed_seconds": round(time.time() - start_time, 2),
         "found_params": found_result.get("params") if found_result else None,
-        "found_metrics": {k: v for k, v in found_result.items() if k != "params"} if found_result else None,
+        "found_metrics": (
+            {k: v for k, v in found_result.items() if k != "params"}
+            if found_result
+            else None
+        ),
         "best_overall": best_overall,
     }
-

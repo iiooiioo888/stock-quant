@@ -1,4 +1,5 @@
 """向量化技術指標（Numba 可選加速）。"""
+
 from src.core.indicators.fast_indicators import (
     compute_atr,
     compute_macd,

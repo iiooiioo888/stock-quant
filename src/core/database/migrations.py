@@ -1,6 +1,7 @@
 """
 版本化資料庫遷移 — 在現有 stock.db 上安全升級，不丟數據
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -16,16 +17,23 @@ MigrationFn = Callable[[sqlite3.Connection], None]
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     if is_postgres():
-        cur = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name = %s",(name,))
+        cur = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = %s", (name,)
+        )
         return cur.fetchone() is not None
     else:
-        row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
         return row is not None
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     if is_postgres():
-        cur = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s", (table, column))
+        cur = conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+            (table, column),
+        )
         return cur.fetchone() is not None
     else:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -40,21 +48,31 @@ def _migration_001_baseline(conn: sqlite3.Connection) -> None:
 
 def _migration_002_legacy_columns(conn: sqlite3.Connection) -> None:
     """兼容舊庫欄位 + 建立全部索引（須在欄位補齊後）。"""
-    if _table_exists(conn, "daily_kline") and not _column_exists(conn, "daily_kline", "market"):
+    if _table_exists(conn, "daily_kline") and not _column_exists(
+        conn, "daily_kline", "market"
+    ):
         conn.execute("ALTER TABLE daily_kline ADD COLUMN market TEXT DEFAULT 'a_share'")
 
-    if _table_exists(conn, "task_log") and not _column_exists(conn, "task_log", "params_json"):
+    if _table_exists(conn, "task_log") and not _column_exists(
+        conn, "task_log", "params_json"
+    ):
         conn.execute("ALTER TABLE task_log ADD COLUMN params_json TEXT")
 
     if _table_exists(conn, "fundamentals"):
-        for col, typ in (("ps_ttm", "REAL"), ("revenue_yoy", "REAL"), ("profit_yoy", "REAL")):
+        for col, typ in (
+            ("ps_ttm", "REAL"),
+            ("revenue_yoy", "REAL"),
+            ("profit_yoy", "REAL"),
+        ):
             if not _column_exists(conn, "fundamentals", col):
                 try:
                     conn.execute(f"ALTER TABLE fundamentals ADD COLUMN {col} {typ}")
                 except sqlite3.OperationalError:
                     pass
 
-    if _table_exists(conn, "stock_universe") and not _column_exists(conn, "stock_universe", "intro"):
+    if _table_exists(conn, "stock_universe") and not _column_exists(
+        conn, "stock_universe", "intro"
+    ):
         try:
             conn.execute("ALTER TABLE stock_universe ADD COLUMN intro TEXT")
         except sqlite3.OperationalError:
@@ -111,23 +129,22 @@ def _migration_004_task_log_meta(conn: sqlite3.Connection) -> None:
 
 def _migration_006_multi_currency(conn: sqlite3.Connection) -> None:
     """多幣種結算：用戶偏好幣種 + 日匯率表。"""
-    if _table_exists(conn, "users") and not _column_exists(conn, "users", "preferred_currency"):
+    if _table_exists(conn, "users") and not _column_exists(
+        conn, "users", "preferred_currency"
+    ):
         try:
             conn.execute(
                 "ALTER TABLE users ADD COLUMN preferred_currency TEXT DEFAULT 'MOP'"
             )
-            conn.execute(
-                """
+            conn.execute("""
                 UPDATE users SET preferred_currency = 'MOP'
                 WHERE preferred_currency IS NULL OR preferred_currency = ''
-                """
-            )
+                """)
         except sqlite3.OperationalError as e:
             logger.debug(f"preferred_currency 欄位: {e}")
 
     if not _table_exists(conn, "fx_rates_daily"):
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS fx_rates_daily (
                 base TEXT NOT NULL DEFAULT 'USD',
                 target TEXT NOT NULL,
@@ -135,8 +152,7 @@ def _migration_006_multi_currency(conn: sqlite3.Connection) -> None:
                 date TEXT NOT NULL,
                 PRIMARY KEY (base, target, date)
             )
-            """
-        )
+            """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_fx_date ON fx_rates_daily(date DESC)"
         )
@@ -222,15 +238,16 @@ def _get_applied_versions(conn: sqlite3.Connection) -> set[int]:
 
 def _record_migration(conn: sqlite3.Connection, version: int, name: str) -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        """
-        if is_postgres():
-            conn.execute("INSERT INTO schema_migrations (version, name, applied_at) VALUES (%s, %s, %s) ON CONFLICT (version) DO NOTHING", (version, name, now))
-        else:
-            conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", (version, name, now))
-        """,
-        (version, name, now),
-    )
+    if is_postgres():
+        conn.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (%s, %s, %s) ON CONFLICT (version) DO NOTHING",
+            (version, name, now),
+        )
+    else:
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+            (version, name, now),
+        )
 
 
 def run_migrations(target_version: int | None = None) -> int:
@@ -245,16 +262,14 @@ def run_migrations(target_version: int | None = None) -> int:
 
     with get_conn() as conn:
         # 確保遷移表存在
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 version INTEGER NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 applied_at TEXT NOT NULL
             )
-            """
-        )
+            """)
 
         applied = _get_applied_versions(conn)
 

@@ -1,4 +1,5 @@
 """CLI：運維健檢（對齊 docs/runbooks SOP）。"""
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,10 @@ def cmd_ops(args: argparse.Namespace) -> None:
 def _ops_probe(args: argparse.Namespace) -> None:
     from src.core.ops_probe_http import main as probe_main
 
-    argv: list[str] = ["--url", getattr(args, "url", "http://127.0.0.1:8000/api/health/sop")]
+    argv: list[str] = [
+        "--url",
+        getattr(args, "url", "http://127.0.0.1:8000/api/health/sop"),
+    ]
     argv.extend(["--timeout", str(getattr(args, "timeout", 10.0))])
     if getattr(args, "json", False):
         argv.append("--json")
@@ -38,5 +42,7 @@ def _ops_check(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         print(json.dumps(evaluation, ensure_ascii=False, indent=2))
     else:
-        print(format_ops_report(evaluation, verbose=bool(getattr(args, "verbose", False))))
+        print(
+            format_ops_report(evaluation, verbose=bool(getattr(args, "verbose", False)))
+        )
     raise SystemExit(evaluation["exit_code"])

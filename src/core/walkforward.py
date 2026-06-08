@@ -13,7 +13,9 @@ from src.core.optimize import PARAM_RANGES
 from src.utils.logger import logger
 
 
-def _run_backtest_on_df(df: pd.DataFrame, strategy_name: str, params: dict, cash: float = 100000) -> dict:
+def _run_backtest_on_df(
+    df: pd.DataFrame, strategy_name: str, params: dict, cash: float = 100000
+) -> dict:
     """直接在 DataFrame 上跑回測（不經過 DB）"""
     strategy_cls = STRATEGIES[strategy_name]
     cerebro = bt.Cerebro()
@@ -22,7 +24,9 @@ def _run_backtest_on_df(df: pd.DataFrame, strategy_name: str, params: dict, cash
     # 直接用 DataFrame 構建 data feed
     bt_df = df[["open", "high", "low", "close", "volume"]].copy()
     bt_df.columns = ["Open", "High", "Low", "Close", "Volume"]
-    bt_df.index = pd.to_datetime(bt_df.index if bt_df.index.name == "date" else df["date"])
+    bt_df.index = pd.to_datetime(
+        bt_df.index if bt_df.index.name == "date" else df["date"]
+    )
     data_feed = bt.feeds.PandasData(dataname=bt_df)
     cerebro.adddata(data_feed)
 
@@ -57,8 +61,13 @@ def _run_backtest_on_df(df: pd.DataFrame, strategy_name: str, params: dict, cash
     }
 
 
-def _optuna_on_df(df: pd.DataFrame, strategy_name: str, param_ranges: dict,
-                   objective: str, n_trials: int) -> dict:
+def _optuna_on_df(
+    df: pd.DataFrame,
+    strategy_name: str,
+    param_ranges: dict,
+    objective: str,
+    n_trials: int,
+) -> dict:
     """在 DataFrame 上做 Optuna 優化（不經過 DB）"""
     import optuna
 
@@ -73,9 +82,17 @@ def _optuna_on_df(df: pd.DataFrame, strategy_name: str, param_ranges: dict,
         # 約束
         if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
             return float("-inf")
-        if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+        if (
+            "entry_period" in params
+            and "exit_period" in params
+            and params["entry_period"] <= params["exit_period"]
+        ):
             return float("-inf")
-        if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+        if (
+            "overbought" in params
+            and "oversold" in params
+            and params["overbought"] <= params["oversold"]
+        ):
             return float("-inf")
 
         try:
@@ -87,7 +104,11 @@ def _optuna_on_df(df: pd.DataFrame, strategy_name: str, param_ranges: dict,
             elif objective == "return":
                 return r["total_return_pct"]
             elif objective == "calmar":
-                return r["total_return_pct"] / r["max_drawdown_pct"] if r["max_drawdown_pct"] > 0 else r["total_return_pct"]
+                return (
+                    r["total_return_pct"] / r["max_drawdown_pct"]
+                    if r["max_drawdown_pct"] > 0
+                    else r["total_return_pct"]
+                )
             return r["sharpe_ratio"]
         except Exception:
             return float("-inf")
@@ -138,21 +159,31 @@ def walk_forward(
     total_days = len(df)
 
     if total_days < train_days + test_days:
-        raise ValueError(f"數據不足: 需要 {train_days + test_days} 天，只有 {total_days} 天")
+        raise ValueError(
+            f"數據不足: 需要 {train_days + test_days} 天，只有 {total_days} 天"
+        )
 
     # 生成滾動窗口
     windows = []
     start_idx = 0
     dates = df.index.tolist()
     while start_idx + train_days + test_days <= total_days:
-        windows.append({
-            "train_start": str(dates[start_idx].date()),
-            "train_end": str(dates[start_idx + train_days - 1].date()),
-            "test_start": str(dates[start_idx + train_days].date()),
-            "test_end": str(dates[min(start_idx + train_days + test_days - 1, total_days - 1)].date()),
-            "train_slice": slice(start_idx, start_idx + train_days),
-            "test_slice": slice(start_idx + train_days, start_idx + train_days + test_days),
-        })
+        windows.append(
+            {
+                "train_start": str(dates[start_idx].date()),
+                "train_end": str(dates[start_idx + train_days - 1].date()),
+                "test_start": str(dates[start_idx + train_days].date()),
+                "test_end": str(
+                    dates[
+                        min(start_idx + train_days + test_days - 1, total_days - 1)
+                    ].date()
+                ),
+                "train_slice": slice(start_idx, start_idx + train_days),
+                "test_slice": slice(
+                    start_idx + train_days, start_idx + train_days + test_days
+                ),
+            }
+        )
         start_idx += step_days
 
     if not windows:
@@ -163,29 +194,35 @@ def walk_forward(
     window_results = []
 
     for wi, w in enumerate(windows):
-        logger.info(f"  窗口 {wi+1}/{len(windows)}: train={w['train_start']}~{w['train_end']}, test={w['test_start']}~{w['test_end']}")
+        logger.info(
+            f"  窗口 {wi+1}/{len(windows)}: train={w['train_start']}~{w['train_end']}, test={w['test_start']}~{w['test_end']}"
+        )
 
         train_df = df.iloc[w["train_slice"]].copy()
         test_df = df.iloc[w["test_slice"]].copy()
 
         # 在訓練集上做 Optuna（直接用 DataFrame，不寫 DB）
-        best_params = _optuna_on_df(train_df, strategy_name, param_ranges, objective, n_trials)
+        best_params = _optuna_on_df(
+            train_df, strategy_name, param_ranges, objective, n_trials
+        )
 
         # 在測試集上評估
         test_result = _run_backtest_on_df(test_df, strategy_name, best_params)
 
-        window_results.append({
-            "window": wi + 1,
-            "train_period": f"{w['train_start']} ~ {w['train_end']}",
-            "test_period": f"{w['test_start']} ~ {w['test_end']}",
-            "best_params": best_params,
-            "train_score": None,
-            "test_return_pct": test_result["total_return_pct"],
-            "test_sharpe": test_result["sharpe_ratio"],
-            "test_max_dd_pct": test_result["max_drawdown_pct"],
-            "test_trades": test_result["total_trades"],
-            "test_win_rate": test_result["win_rate_pct"],
-        })
+        window_results.append(
+            {
+                "window": wi + 1,
+                "train_period": f"{w['train_start']} ~ {w['train_end']}",
+                "test_period": f"{w['test_start']} ~ {w['test_end']}",
+                "best_params": best_params,
+                "train_score": None,
+                "test_return_pct": test_result["total_return_pct"],
+                "test_sharpe": test_result["sharpe_ratio"],
+                "test_max_dd_pct": test_result["max_drawdown_pct"],
+                "test_trades": test_result["total_trades"],
+                "test_win_rate": test_result["win_rate_pct"],
+            }
+        )
 
     # 聚合結果
     test_returns = [w["test_return_pct"] for w in window_results]

@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("macd_rsi", "MACD+RSI過濾策略")
 class MacdRsiFilterStrategy(OrderManagedStrategy):
     """MACD 金叉 + RSI 過濾（避免追高）"""
+
     params = (
         ("macd_fast", 12),
         ("macd_slow", 26),
@@ -30,8 +31,11 @@ class MacdRsiFilterStrategy(OrderManagedStrategy):
         if self.order:
             return
         rsi = self.rsi[0]
-        if self.macd_cross > 0 and self.p.rsi_min < rsi < self.p.rsi_max and not self.position:
+        if (
+            self.macd_cross > 0
+            and self.p.rsi_min < rsi < self.p.rsi_max
+            and not self.position
+        ):
             self.order = self.buy()
         elif (self.macd_cross < 0 or rsi >= self.p.rsi_max) and self.position:
             self.order = self.sell()
-

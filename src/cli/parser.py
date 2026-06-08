@@ -8,13 +8,13 @@ def build_parser():
         prog="stock-quant",
         description="📈 stock-quant — A股量化回測 + 實時盯盤預警系統",
         epilog="示例:\n"
-               "  python main.py serve --port 8080\n"
-               "  python main.py download 000001 600519\n"
-               "  python main.py backtest 600519 macd\n"
-               "  python main.py optimize 600519 --method optuna\n"
-               "  python main.py portfolio --alloc \"dual_ma:000001,macd:600519\"\n"
-               "  python main.py config show -v\n"
-               "  python main.py strategy list",
+        "  python main.py serve --port 8080\n"
+        "  python main.py download 000001 600519\n"
+        "  python main.py backtest 600519 macd\n"
+        "  python main.py optimize 600519 --method optuna\n"
+        '  python main.py portfolio --alloc "dual_ma:000001,macd:600519"\n'
+        "  python main.py config show -v\n"
+        "  python main.py strategy list",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command")
@@ -41,8 +41,12 @@ def build_parser():
         help="quick | standard（默認）| full",
     )
     p_seed.add_argument("--force", action="store_true", help="強制重新下載日 K")
-    p_seed.add_argument("--no-download", action="store_true", help="僅寫目錄，不下載 K 線")
-    p_seed.add_argument("--sync-universe", action="store_true", help="從行情源同步股票庫")
+    p_seed.add_argument(
+        "--no-download", action="store_true", help="僅寫目錄，不下載 K 線"
+    )
+    p_seed.add_argument(
+        "--sync-universe", action="store_true", help="從行情源同步股票庫"
+    )
     p_seed.add_argument("--with-backtest", action="store_true", help="生成示範回測")
 
     # backtest
@@ -50,22 +54,31 @@ def build_parser():
         "backtest",
         help="策略回測",
         epilog="可用策略: dual_ma, macd, bollinger, kdj, rsi, grid, turtle, dual_thrust, "
-               "momentum, mean_reversion, volume_price, breakout, composite, vwap, "
-               "envelope, parabolic_sar, obv, bollinger_squeeze, adx_trend",
+        "momentum, mean_reversion, volume_price, breakout, composite, vwap, "
+        "envelope, parabolic_sar, obv, bollinger_squeeze, adx_trend",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_bt.add_argument("code", help="股票代碼")
     p_bt.add_argument("strategy", nargs="?", default="dual_ma")
-    p_bt.add_argument("--slippage", type=float, default=0.0, help="滑點百分比（默認 0.0，如 0.1 表示 0.1%%）")
+    p_bt.add_argument(
+        "--slippage",
+        type=float,
+        default=0.0,
+        help="滑點百分比（默認 0.0，如 0.1 表示 0.1%%）",
+    )
     p_bt.add_argument("--no-t1", action="store_true", help="禁用 T+1 限制（默認啟用）")
-    p_bt.add_argument("--no-limit", action="store_true", help="禁用漲跌停限制（默認啟用）")
+    p_bt.add_argument(
+        "--no-limit", action="store_true", help="禁用漲跌停限制（默認啟用）"
+    )
 
     # optimize
     p_opt = subparsers.add_parser("optimize", help="參數優化")
     p_opt.add_argument("code", help="股票代碼")
     p_opt.add_argument("strategy", nargs="?", default="all")
     p_opt.add_argument("--method", choices=["grid", "optuna"], default="grid")
-    p_opt.add_argument("--objective", choices=["sharpe", "return", "calmar"], default="sharpe")
+    p_opt.add_argument(
+        "--objective", choices=["sharpe", "return", "calmar"], default="sharpe"
+    )
     p_opt.add_argument("--trials", type=int, default=100)
 
     # portfolio
@@ -82,13 +95,17 @@ def build_parser():
     p_wf.add_argument("--train-days", type=int, default=750)
     p_wf.add_argument("--test-days", type=int, default=250)
     p_wf.add_argument("--step-days", type=int, default=250)
-    p_wf.add_argument("--objective", choices=["sharpe", "return", "calmar"], default="sharpe")
+    p_wf.add_argument(
+        "--objective", choices=["sharpe", "return", "calmar"], default="sharpe"
+    )
     p_wf.add_argument("--trials", type=int, default=50)
 
     # auto-optimize
     p_ao = subparsers.add_parser("auto-optimize", help="自動參數優化")
     p_ao.add_argument("--method", choices=["grid", "optuna"], default="optuna")
-    p_ao.add_argument("--objective", choices=["sharpe", "return", "calmar"], default="sharpe")
+    p_ao.add_argument(
+        "--objective", choices=["sharpe", "return", "calmar"], default="sharpe"
+    )
     p_ao.add_argument("--trials", type=int, default=50)
 
     # heatmap
@@ -98,7 +115,11 @@ def build_parser():
     p_hm.add_argument("param_x", help="X 軸參數")
     p_hm.add_argument("param_y", help="Y 軸參數")
     p_hm.add_argument("--grid-size", type=int, default=10, help="網格大小")
-    p_hm.add_argument("--objective", choices=["sharpe", "return", "calmar", "win_rate"], default="sharpe")
+    p_hm.add_argument(
+        "--objective",
+        choices=["sharpe", "return", "calmar", "win_rate"],
+        default="sharpe",
+    )
 
     # screen
     p_scr = subparsers.add_parser("screen", help="股票篩選")
@@ -136,7 +157,11 @@ def build_parser():
 
     # mvo
     p_mvo = subparsers.add_parser("mvo", help="均值-方差優化 (Markowitz)")
-    p_mvo.add_argument("--objective", choices=["max_sharpe", "min_variance", "max_return"], default="max_sharpe")
+    p_mvo.add_argument(
+        "--objective",
+        choices=["max_sharpe", "min_variance", "max_return"],
+        default="max_sharpe",
+    )
     p_mvo.add_argument("--simulations", type=int, default=5000, help="蒙特卡羅模擬次數")
     add_alloc_arg(p_mvo)
 
@@ -156,7 +181,12 @@ def build_parser():
 
     # regime-switch
     p_rs = subparsers.add_parser("regime-switch", help="市場狀態切換組合")
-    p_rs.add_argument("--method", choices=["volatility", "trend"], default="volatility", help="狀態判定方法")
+    p_rs.add_argument(
+        "--method",
+        choices=["volatility", "trend"],
+        default="volatility",
+        help="狀態判定方法",
+    )
     p_rs.add_argument("--lookback", type=int, default=60, help="狀態判定窗口天數")
     add_alloc_arg(p_rs)
 
@@ -167,7 +197,9 @@ def build_parser():
 
     # momentum-of-momentum
     p_mm = subparsers.add_parser("momentum-of-momentum", help="動量的動量組合回測")
-    p_mm.add_argument("--lookback", type=int, default=60, help="動量計算回看天數（默認 60）")
+    p_mm.add_argument(
+        "--lookback", type=int, default=60, help="動量計算回看天數（默認 60）"
+    )
     add_alloc_arg(p_mm)
 
     # adaptive-regime
@@ -184,23 +216,33 @@ def build_parser():
 
     # cvar
     p_cvar = subparsers.add_parser("cvar", help="CVaR 優化組合")
-    p_cvar.add_argument("--alpha", type=float, default=0.05, help="VaR 顯著性水平（默認 0.05）")
+    p_cvar.add_argument(
+        "--alpha", type=float, default=0.05, help="VaR 顯著性水平（默認 0.05）"
+    )
     add_alloc_arg(p_cvar)
 
     # multi-timeframe
     p_mtf = subparsers.add_parser("multi-timeframe", help="多時間框架信號確認")
-    p_mtf.add_argument("--windows", default="5,20,60", help="時間窗口（逗號分隔，默認 5,20,60）")
+    p_mtf.add_argument(
+        "--windows", default="5,20,60", help="時間窗口（逗號分隔，默認 5,20,60）"
+    )
     add_alloc_arg(p_mtf)
 
     # dynamic-rebalance
     p_dr = subparsers.add_parser("dynamic-rebalance", help="動態再平衡觸發")
-    p_dr.add_argument("--threshold", type=float, default=5.0, help="權重偏移觸發閾值 %%（默認 5.0）")
-    p_dr.add_argument("--vol-window", type=int, default=20, help="波動率計算窗口（默認 20）")
+    p_dr.add_argument(
+        "--threshold", type=float, default=5.0, help="權重偏移觸發閾值 %%（默認 5.0）"
+    )
+    p_dr.add_argument(
+        "--vol-window", type=int, default=20, help="波動率計算窗口（默認 20）"
+    )
     add_alloc_arg(p_dr)
 
     # sector-limit
     p_sl = subparsers.add_parser("sector-limit", help="板塊敞口限制")
-    p_sl.add_argument("--max-pct", type=float, default=40.0, help="單板塊最大佔比 %%（默認 40.0）")
+    p_sl.add_argument(
+        "--max-pct", type=float, default=40.0, help="單板塊最大佔比 %%（默認 40.0）"
+    )
     add_alloc_arg(p_sl)
 
     # config
@@ -225,7 +267,11 @@ def build_parser():
     # strategy leaderboard
     p_strat_lb = strat_sub.add_parser("leaderboard", help="策略排行榜")
     p_strat_lb.add_argument("--codes", nargs="*", help="股票代碼（默認 watchlist）")
-    p_strat_lb.add_argument("--sort-by", choices=["sharpe", "return", "drawdown", "win_rate"], default="sharpe")
+    p_strat_lb.add_argument(
+        "--sort-by",
+        choices=["sharpe", "return", "drawdown", "win_rate"],
+        default="sharpe",
+    )
     p_strat_lb.add_argument("--limit", type=int, default=20, help="顯示條數")
 
     # report（增強報告）
@@ -265,13 +311,21 @@ def build_parser():
     p_exp.add_argument("--id", type=int, help="回測結果 ID")
     p_exp.add_argument("--code", help="股票代碼")
     p_exp.add_argument("--strategy", help="策略名稱")
-    p_exp.add_argument("--format", choices=["csv", "json"], default="csv", help="導出格式")
+    p_exp.add_argument(
+        "--format", choices=["csv", "json"], default="csv", help="導出格式"
+    )
     p_exp.add_argument("--output", "-o", help="輸出文件路徑")
 
     # signals
     p_sig = subparsers.add_parser("signals", help="實時交易信號")
-    p_sig.add_argument("action", choices=["compute", "history", "strength", "ranking", "heatmap", "backtest"], help="操作類型")
-    p_sig.add_argument("codes", nargs="*", help="股票代碼 (compute 模式) 或目標代碼 (history/strength)")
+    p_sig.add_argument(
+        "action",
+        choices=["compute", "history", "strength", "ranking", "heatmap", "backtest"],
+        help="操作類型",
+    )
+    p_sig.add_argument(
+        "codes", nargs="*", help="股票代碼 (compute 模式) 或目標代碼 (history/strength)"
+    )
     p_sig.add_argument("--code", help="股票代碼 (history/strength)")
     p_sig.add_argument("--days", type=int, default=30, help="歷史天數 (history 模式)")
     p_sig.add_argument("--strategy", help="策略名稱過濾")
@@ -285,15 +339,30 @@ def build_parser():
     p_risk_ps.add_argument("--capital", type=float, default=100000, help="總資金")
     p_risk_ps.add_argument("--atr", type=float, default=0, help="ATR 值")
     p_risk_ps.add_argument("--code", help="股票代碼（自動計算 ATR）")
-    p_risk_ps.add_argument("--method", choices=["atr", "fixed", "kelly", "volatility", "drawdown"], default="atr", help="計算方法")
-    p_risk_ps.add_argument("--fraction", type=float, default=0.1, help="固定比例（fixed 方法）")
-    p_risk_ps.add_argument("--win-rate", type=float, default=0.5, help="勝率（kelly 方法）")
-    p_risk_ps.add_argument("--max-risk", type=float, default=0.02, help="每筆最大風險比例")
+    p_risk_ps.add_argument(
+        "--method",
+        choices=["atr", "fixed", "kelly", "volatility", "drawdown"],
+        default="atr",
+        help="計算方法",
+    )
+    p_risk_ps.add_argument(
+        "--fraction", type=float, default=0.1, help="固定比例（fixed 方法）"
+    )
+    p_risk_ps.add_argument(
+        "--win-rate", type=float, default=0.5, help="勝率（kelly 方法）"
+    )
+    p_risk_ps.add_argument(
+        "--max-risk", type=float, default=0.02, help="每筆最大風險比例"
+    )
 
     # risk budget-check
     p_risk_bc = risk_sub.add_parser("budget-check", help="風險預算檢查")
-    p_risk_bc.add_argument("--max-portfolio-risk", type=float, default=0.15, help="組合最大風險")
-    p_risk_bc.add_argument("--max-single-risk", type=float, default=0.05, help="單持倉最大風險")
+    p_risk_bc.add_argument(
+        "--max-portfolio-risk", type=float, default=0.15, help="組合最大風險"
+    )
+    p_risk_bc.add_argument(
+        "--max-single-risk", type=float, default=0.05, help="單持倉最大風險"
+    )
 
     # risk drawdown
     p_risk_dd = risk_sub.add_parser("drawdown", help="回撤保護分析")
@@ -321,7 +390,9 @@ def build_parser():
     p_user_create = user_sub.add_parser("create", help="創建用戶")
     p_user_create.add_argument("username", help="用戶名")
     p_user_create.add_argument("password", help="密碼")
-    p_user_create.add_argument("--role", choices=["admin", "user"], default="user", help="角色（默認 user）")
+    p_user_create.add_argument(
+        "--role", choices=["admin", "user"], default="user", help="角色（默認 user）"
+    )
 
     # user list
     user_sub.add_parser("list", help="列出所有用戶")
@@ -329,7 +400,9 @@ def build_parser():
     # user reset-password
     p_user_reset = user_sub.add_parser("reset-password", help="重置用戶密碼")
     p_user_reset.add_argument("username", help="用戶名")
-    p_user_reset.add_argument("new_password", nargs="?", default=None, help="新密碼（不提供則交互輸入）")
+    p_user_reset.add_argument(
+        "new_password", nargs="?", default=None, help="新密碼（不提供則交互輸入）"
+    )
 
     # stock-universe（股票庫）
     p_univ = subparsers.add_parser("stock-universe", help="股票庫（按市值前 N）")
@@ -343,14 +416,18 @@ def build_parser():
     )
     univ_sub.add_parser("stats", help="查看股票庫統計")
     p_univ_list = univ_sub.add_parser("list", help="列出股票庫")
-    p_univ_list.add_argument("--market", default="all", help="a_share/hk_stock/us_stock/all")
+    p_univ_list.add_argument(
+        "--market", default="all", help="a_share/hk_stock/us_stock/all"
+    )
     p_univ_list.add_argument("--limit", type=int, default=20)
     p_univ_list.add_argument("--keyword", default=None)
 
     # ops（運維健檢，對齊 docs/runbooks）
     p_ops = subparsers.add_parser("ops", help="運維健檢（無需 Cursor API key）")
     ops_sub = p_ops.add_subparsers(dest="ops_action")
-    p_ops_check = ops_sub.add_parser("check", help="本機 SOP 健檢（DB/管線/索引/數據源）")
+    p_ops_check = ops_sub.add_parser(
+        "check", help="本機 SOP 健檢（DB/管線/索引/數據源）"
+    )
     p_ops_check.add_argument("--json", action="store_true", help="輸出 JSON")
     p_ops_check.add_argument("--verbose", action="store_true", help="附完整快照")
     p_ops_check.add_argument(
@@ -358,13 +435,17 @@ def build_parser():
         action="store_true",
         help="CI 模式：僅 critical 時非零退出碼",
     )
-    p_ops_probe = ops_sub.add_parser("probe", help="HTTP 探活 /api/health/sop（服務已啟動）")
+    p_ops_probe = ops_sub.add_parser(
+        "probe", help="HTTP 探活 /api/health/sop（服務已啟動）"
+    )
     p_ops_probe.add_argument(
         "--url",
         default="http://127.0.0.1:8000/api/health/sop",
         help="SOP 端點 URL",
     )
-    p_ops_probe.add_argument("--timeout", type=float, default=10.0, help="HTTP 逾時（秒）")
+    p_ops_probe.add_argument(
+        "--timeout", type=float, default=10.0, help="HTTP 逾時（秒）"
+    )
     p_ops_probe.add_argument("--json", action="store_true", help="輸出 JSON")
     p_ops_probe.add_argument(
         "--ci",

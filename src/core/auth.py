@@ -1,6 +1,7 @@
 """
 認證模塊 — JWT Token + bcrypt 密碼處理
 """
+
 import json
 import os
 import secrets
@@ -21,7 +22,10 @@ from src.utils.logger import logger
 JWT_SECRET: str = os.environ.get("SQ_JWT_SECRET", "")
 if not JWT_SECRET:
     from pathlib import Path
-    _secret_file = Path(__file__).resolve().parent.parent.parent / "data" / ".jwt_secret"
+
+    _secret_file = (
+        Path(__file__).resolve().parent.parent.parent / "data" / ".jwt_secret"
+    )
     if _secret_file.exists():
         JWT_SECRET = _secret_file.read_text().strip()
     else:
@@ -40,6 +44,7 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 def _validate_jwt_secret_for_production():
     """生產環境啟動時檢查 JWT 密鑰配置。"""
     from src.config import settings
+
     if settings.demo_mode or settings.debug:
         return
     if not os.environ.get("SQ_JWT_SECRET"):
@@ -48,6 +53,7 @@ def _validate_jwt_secret_for_production():
             " 生產環境必須顯式配置 JWT 密鑰，否則重啟後所有 token 失效。"
             " 請在 .env 中設置 SQ_JWT_SECRET=<隨機字串>（至少 32 字元）"
         )
+
 
 # HTTP Bearer 提取器（可選模式：無 token 時不報錯）
 security = HTTPBearer(auto_error=False)
@@ -98,7 +104,7 @@ def classify_token(token: str) -> str:
 def verify_token(token: str) -> Optional[dict]:
     """
     解碼並驗證 JWT Token
-    
+
     返回 payload 字典或 None（無效/過期時）
     """
     try:
@@ -126,7 +132,9 @@ def get_user_by_username(username: str) -> Optional[User]:
     """根據用戶名查詢用戶"""
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
     if not row:
         return None
     return User.from_row(dict(row))
@@ -136,12 +144,13 @@ def get_user_by_username(username: str) -> Optional[User]:
 # FastAPI 依賴注入
 # ============================================================
 
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[User]:
     """
     FastAPI 依賴：從 Authorization header 提取當前用戶
-    
+
     - 有有效 token → 返回 User 對象
     - 無 token 或 token 無效 → 返回 None（向後兼容）
     """
@@ -162,7 +171,7 @@ async def require_auth(
 ) -> User:
     """
     FastAPI 依賴：要求必須登錄
-    
+
     - 有有效 token → 返回 User 對象
     - 無 token 或 token 無效 → 拋出 401
     """
@@ -186,7 +195,7 @@ async def require_admin(
 ) -> User:
     """
     FastAPI 依賴：要求管理員權限
-    
+
     - role='admin' → 通過
     - 其他角色 → 拋出 403
     """
@@ -198,6 +207,7 @@ async def require_admin(
 # ============================================================
 # 默認管理員賬號初始化
 # ============================================================
+
 
 def ensure_default_admin():
     """確保默認管理員賬號存在，並維持預設 admin/admin 可登入。"""
@@ -229,6 +239,7 @@ def ensure_default_admin():
 
     # 僅首次創建時寫入密碼文件
     from pathlib import Path
+
     pw_file = Path(__file__).resolve().parent.parent.parent / "data" / ".admin_password"
     pw_file.parent.mkdir(parents=True, exist_ok=True)
     pw_file.write_text(f"{DEFAULT_ADMIN_USERNAME}:{default_pw}\n")
@@ -236,22 +247,26 @@ def ensure_default_admin():
         os.chmod(pw_file, 0o600)
     except Exception:
         pass
-    logger.warning(f"已創建默認管理員賬號 {DEFAULT_ADMIN_USERNAME}，密碼已寫入: {pw_file}")
-    logger.warning("默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。")
+    logger.warning(
+        f"已創建默認管理員賬號 {DEFAULT_ADMIN_USERNAME}，密碼已寫入: {pw_file}"
+    )
+    logger.warning(
+        "默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。"
+    )
 
 
 def create_user(username: str, password: str, role: str = "user") -> User:
     """
     創建新用戶
-    
+
     Args:
         username: 用戶名
         password: 明文密碼
         role: 角色 ('admin' | 'user')
-    
+
     Returns:
         創建的 User 對象
-    
+
     Raises:
         ValueError: 用戶名已存在
     """
@@ -270,14 +285,23 @@ def create_user(username: str, password: str, role: str = "user") -> User:
         )
         user_id = cursor.lastrowid
 
-    return User(id=user_id, username=username, password_hash=pw_hash, role=role, created_at=now, settings={})
+    return User(
+        id=user_id,
+        username=username,
+        password_hash=pw_hash,
+        role=role,
+        created_at=now,
+        settings={},
+    )
 
 
 def list_users() -> list[dict]:
     """列出所有用戶（不含密碼哈希）"""
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT id, username, role, settings, created_at FROM users ORDER BY id").fetchall()
+        rows = conn.execute(
+            "SELECT id, username, role, settings, created_at FROM users ORDER BY id"
+        ).fetchall()
     users = []
     for row in rows:
         d = dict(row)
@@ -294,7 +318,9 @@ def update_user_role(user_id: int, new_role: str) -> bool:
     if new_role not in ("admin", "user"):
         raise ValueError(f"無效角色: {new_role}，可選: admin, user")
     with get_conn() as conn:
-        cursor = conn.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+        cursor = conn.execute(
+            "UPDATE users SET role = ? WHERE id = ?", (new_role, user_id)
+        )
     return cursor.rowcount > 0
 
 
@@ -312,5 +338,7 @@ def reset_password(user_id: int, new_password: str) -> bool:
     """重置用戶密碼"""
     pw_hash = hash_password(new_password)
     with get_conn() as conn:
-        cursor = conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pw_hash, user_id))
+        cursor = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?", (pw_hash, user_id)
+        )
     return cursor.rowcount > 0

@@ -1,4 +1,5 @@
 """任務管理 API 路由"""
+
 import asyncio
 import json
 from fastapi import APIRouter, HTTPException, Depends
@@ -49,6 +50,7 @@ async def get_task_queue_api(
 ):
     """獲取執行佇列快照（目前 / 下一個 / 剛完成）"""
     from src.core.task_manager import get_queue_snapshot
+
     return get_queue_snapshot()
 
 
@@ -58,6 +60,7 @@ async def list_task_types_api(
 ):
     """獲取異步任務類型清單（供篩選器與顯示名稱）"""
     from src.core.task_manager import get_task_types
+
     return {"types": get_task_types(async_only=True)}
 
 
@@ -65,6 +68,7 @@ async def list_task_types_api(
 async def get_task_stats_api():
     """獲取任務統計（含佇列深度、運行時長等）"""
     from src.core.task_manager import get_task_stats, get_queue_snapshot
+
     stats = get_task_stats()
     queue = get_queue_snapshot()
     return {"stats": stats, "queue": queue}
@@ -74,6 +78,7 @@ async def get_task_stats_api():
 async def get_task_api(task_id: str):
     """獲取單個任務詳情"""
     from src.core.task_manager import get_task
+
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "任務不存在")
@@ -92,6 +97,7 @@ async def tasks_sse(
     from src.api.sse import subscribe, unsubscribe, sse_format
 
     hb = max(5, min(int(heartbeat_sec or 15), 60))
+
     async def gen():
         # 讓 proxy/瀏覽器不要緩衝
         yield b": ok\n\n"
@@ -153,14 +159,20 @@ async def task_stream(task_id: str, heartbeat_sec: int = 10):
         try:
             # 如果任務已完成，直接返回最終狀態
             if existing.get("status") in ("completed", "failed", "cancelled"):
-                data = json.dumps({
-                    "type": f"task_{existing['status']}",
-                    "task_id": task_id,
-                    "status": existing["status"],
-                    "progress": existing.get("progress", 100),
-                    "result": existing.get("result"),
-                }, ensure_ascii=False, default=str)
-                yield sse_format(data, event=f"task_{existing['status']}").encode("utf-8")
+                data = json.dumps(
+                    {
+                        "type": f"task_{existing['status']}",
+                        "task_id": task_id,
+                        "status": existing["status"],
+                        "progress": existing.get("progress", 100),
+                        "result": existing.get("result"),
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                )
+                yield sse_format(data, event=f"task_{existing['status']}").encode(
+                    "utf-8"
+                )
                 return
 
             # 持續監聽，只轉發目標 task_id 的事件
@@ -185,21 +197,32 @@ async def task_stream(task_id: str, heartbeat_sec: int = 10):
                 except asyncio.TimeoutError:
                     # 心跳：順便檢查任務是否已被外部完成
                     current = get_task(task_id)
-                    if current and current.get("status") in ("completed", "failed", "cancelled"):
-                        data = json.dumps({
-                            "type": f"task_{current['status']}",
-                            "task_id": task_id,
-                            "status": current["status"],
-                            "progress": current.get("progress", 100),
-                            "result": current.get("result"),
-                        }, ensure_ascii=False, default=str)
-                        yield sse_format(data, event=f"task_{current['status']}").encode("utf-8")
+                    if current and current.get("status") in (
+                        "completed",
+                        "failed",
+                        "cancelled",
+                    ):
+                        data = json.dumps(
+                            {
+                                "type": f"task_{current['status']}",
+                                "task_id": task_id,
+                                "status": current["status"],
+                                "progress": current.get("progress", 100),
+                                "result": current.get("result"),
+                            },
+                            ensure_ascii=False,
+                            default=str,
+                        )
+                        yield sse_format(
+                            data, event=f"task_{current['status']}"
+                        ).encode("utf-8")
                         return
                     yield b": ping\n\n"
         finally:
             unsubscribe(q)
 
     from fastapi.responses import StreamingResponse
+
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
@@ -215,6 +238,7 @@ async def task_stream(task_id: str, heartbeat_sec: int = 10):
 async def cancel_task_api(task_id: str):
     """取消任務"""
     from src.core.task_manager import cancel_task
+
     success = cancel_task(task_id)
     if not success:
         raise HTTPException(400, "任務無法取消（可能已完成或不存在）")
@@ -225,6 +249,7 @@ async def cancel_task_api(task_id: str):
 async def batch_cancel_tasks_api(body: BatchIdsRequest):
     """批量取消任務"""
     from src.core.task_manager import cancel_task
+
     cancelled = []
     failed = []
     for tid in body.task_ids:
@@ -239,6 +264,7 @@ async def batch_cancel_tasks_api(body: BatchIdsRequest):
 async def batch_delete_tasks_api(body: BatchIdsRequest):
     """批量刪除任務（僅已完成/失敗/取消的任務）"""
     from src.core.task_manager import delete_task
+
     deleted = []
     failed = []
     for tid in body.task_ids:
@@ -289,6 +315,7 @@ async def retry_task_api(task_id: str):
 
     new_id = new_task["task_id"]
     from src.core.task_manager import STATUS_RETRYING, update_task
+
     update_task(new_id, status=STATUS_RETRYING, progress=0)
     retry_work = build_retry_worker(task_type, params, new_id)
     out = dispatch_async_task(new_id, retry_work)
@@ -300,6 +327,7 @@ async def retry_task_api(task_id: str):
 async def cancel_all_pending_api():
     """一鍵取消所有排隊任務"""
     from src.core.task_manager import cancel_all_pending
+
     n = cancel_all_pending()
     return {"success": True, "cancelled": n}
 
@@ -311,6 +339,7 @@ async def clear_completed_tasks_api(
 ):
     """清空已結束的歷史任務"""
     from src.core.task_manager import delete_all_completed
+
     n = delete_all_completed(
         include_failed=include_failed,
         include_cancelled=include_cancelled,
@@ -322,6 +351,7 @@ async def clear_completed_tasks_api(
 async def get_task_logs_api(task_id: str, tail: int = 200):
     """獲取任務執行日誌（最近 N 行）"""
     from src.core.task_manager import get_task, get_task_logs
+
     if not get_task(task_id):
         raise HTTPException(404, "任務不存在")
     return {"task_id": task_id, "logs": get_task_logs(task_id, tail=tail)}
@@ -347,7 +377,9 @@ async def create_pipeline_api(body: PipelineCreateRequest):
         return {"success": True, **pipe, "async": False, "from_cache": True}
 
     try:
-        work_fn = build_retry_worker(first["task_type"], first.get("params") or {}, task_id)
+        work_fn = build_retry_worker(
+            first["task_type"], first.get("params") or {}, task_id
+        )
     except RetryWorkerError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -359,6 +391,7 @@ async def create_pipeline_api(body: PipelineCreateRequest):
 async def cleanup_tasks_api(timeout_sec: int = 0):
     """清理超時任務"""
     from src.core.task_manager import cleanup_stale_tasks
+
     cleaned = cleanup_stale_tasks(timeout_sec or None)
     return {"success": True, "cleaned": cleaned}
 
@@ -367,6 +400,7 @@ async def cleanup_tasks_api(timeout_sec: int = 0):
 async def delete_task_api(task_id: str):
     """刪除已完成/失敗/取消的任務"""
     from src.core.task_manager import delete_task
+
     ok = delete_task(task_id)
     if not ok:
         raise HTTPException(status_code=404, detail="任務不存在或仍在運行中，請先取消")
@@ -377,6 +411,7 @@ async def delete_task_api(task_id: str):
 async def get_task_params_api(task_id: str):
     """獲取任務參數（輕量，不含大型 result）"""
     from src.core.task_manager import get_task_params
+
     task = get_task_params(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任務不存在")
@@ -387,6 +422,7 @@ async def get_task_params_api(task_id: str):
 async def get_task_full_api(task_id: str):
     """獲取任務完整信息（含 params 和 result）"""
     from src.core.task_manager import get_task_full
+
     task = get_task_full(task_id, include_result=True)
     if not task:
         raise HTTPException(status_code=404, detail="任務不存在")

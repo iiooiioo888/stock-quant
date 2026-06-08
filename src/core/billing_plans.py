@@ -3,6 +3,7 @@
 
 支付通道（Stripe 等）可後接；方案與權益為單一真相來源。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -115,13 +116,15 @@ PLANS: dict[str, PlanDefinition] = {
             realtime_ws_symbols=0,
             export_row_limit=0,
         ),
-        features=frozenset({
-            "backtest_basic",
-            "portfolio_basic",
-            "signal_history",
-            "strategy_browse",
-            "position_calc_basic",
-        }),
+        features=frozenset(
+            {
+                "backtest_basic",
+                "portfolio_basic",
+                "signal_history",
+                "strategy_browse",
+                "position_calc_basic",
+            }
+        ),
     ),
     "pro": PlanDefinition(
         id="pro",
@@ -146,44 +149,46 @@ PLANS: dict[str, PlanDefinition] = {
             realtime_ws_symbols=5,
             export_row_limit=1000,
         ),
-        features=frozenset({
-            # 基礎
-            "backtest_basic",
-            "backtest_advanced",
-            "compare_multimarket",
-            "portfolio_basic",
-            "portfolio_advanced",
-            "allocation_cloud",
-            "assets_pro",
-            "task_priority",
-            "data_export",
-            # AI 基礎
-            "ai_assistant",
-            "ai_report_interpret",
-            # 高級分析
-            "walkforward",
-            "monte_carlo",
-            "efficient_frontier",
-            "degradation_detect",
-            "signal_backtest",
-            "signal_heatmap",
-            "signal_ranking",
-            "full_report",
-            # 風控
-            "risk_position_calc",
-            "risk_budget_check",
-            "risk_drawdown_protect",
-            # 數據 & 策略
-            "minute_kline",
-            "data_quality_repair",
-            "custom_strategies",
-            "sandbox_backtest",
-            "strategy_leaderboard",
-            "paper_trading",
-            "signal_history",
-            "strategy_browse",
-            "position_calc_basic",
-        }),
+        features=frozenset(
+            {
+                # 基礎
+                "backtest_basic",
+                "backtest_advanced",
+                "compare_multimarket",
+                "portfolio_basic",
+                "portfolio_advanced",
+                "allocation_cloud",
+                "assets_pro",
+                "task_priority",
+                "data_export",
+                # AI 基礎
+                "ai_assistant",
+                "ai_report_interpret",
+                # 高級分析
+                "walkforward",
+                "monte_carlo",
+                "efficient_frontier",
+                "degradation_detect",
+                "signal_backtest",
+                "signal_heatmap",
+                "signal_ranking",
+                "full_report",
+                # 風控
+                "risk_position_calc",
+                "risk_budget_check",
+                "risk_drawdown_protect",
+                # 數據 & 策略
+                "minute_kline",
+                "data_quality_repair",
+                "custom_strategies",
+                "sandbox_backtest",
+                "strategy_leaderboard",
+                "paper_trading",
+                "signal_history",
+                "strategy_browse",
+                "position_calc_basic",
+            }
+        ),
         highlight=True,
     ),
     "pro_ai": PlanDefinition(
@@ -209,48 +214,50 @@ PLANS: dict[str, PlanDefinition] = {
             realtime_ws_symbols=20,
             export_row_limit=10000,
         ),
-        features=frozenset({
-            # 繼承 Pro 全部
-            "backtest_basic",
-            "backtest_advanced",
-            "compare_multimarket",
-            "portfolio_basic",
-            "portfolio_advanced",
-            "allocation_cloud",
-            "assets_pro",
-            "task_priority",
-            "data_export",
-            # AI 全部
-            "ai_assistant",
-            "ai_report_interpret",
-            "ai_strategy_recommend",
-            "ai_code_generate",
-            "ai_param_suggest",
-            "ai_market_report",
-            # 高級分析
-            "walkforward",
-            "monte_carlo",
-            "efficient_frontier",
-            "degradation_detect",
-            "signal_backtest",
-            "signal_heatmap",
-            "signal_ranking",
-            "full_report",
-            # 風控
-            "risk_position_calc",
-            "risk_budget_check",
-            "risk_drawdown_protect",
-            # 數據 & 策略
-            "minute_kline",
-            "data_quality_repair",
-            "custom_strategies",
-            "sandbox_backtest",
-            "strategy_leaderboard",
-            "paper_trading",
-            "signal_history",
-            "strategy_browse",
-            "position_calc_basic",
-        }),
+        features=frozenset(
+            {
+                # 繼承 Pro 全部
+                "backtest_basic",
+                "backtest_advanced",
+                "compare_multimarket",
+                "portfolio_basic",
+                "portfolio_advanced",
+                "allocation_cloud",
+                "assets_pro",
+                "task_priority",
+                "data_export",
+                # AI 全部
+                "ai_assistant",
+                "ai_report_interpret",
+                "ai_strategy_recommend",
+                "ai_code_generate",
+                "ai_param_suggest",
+                "ai_market_report",
+                # 高級分析
+                "walkforward",
+                "monte_carlo",
+                "efficient_frontier",
+                "degradation_detect",
+                "signal_backtest",
+                "signal_heatmap",
+                "signal_ranking",
+                "full_report",
+                # 風控
+                "risk_position_calc",
+                "risk_budget_check",
+                "risk_drawdown_protect",
+                # 數據 & 策略
+                "minute_kline",
+                "data_quality_repair",
+                "custom_strategies",
+                "sandbox_backtest",
+                "strategy_leaderboard",
+                "paper_trading",
+                "signal_history",
+                "strategy_browse",
+                "position_calc_basic",
+            }
+        ),
     ),
     "institutional": PlanDefinition(
         id="institutional",
@@ -292,35 +299,37 @@ def plans_public_payload() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for pid in PLAN_ORDER:
         p = PLANS[pid]
-        out.append({
-            "id": p.id,
-            "name": p.name,
-            "tagline": p.tagline,
-            "price_monthly": p.price_monthly,
-            "price_yearly": p.price_yearly,
-            "currency": p.currency,
-            "highlight": p.highlight,
-            "contact_sales": p.contact_sales,
-            "limits": {
-                "daily_backtests": p.limits.daily_backtests,
-                "daily_portfolio_runs": p.limits.daily_portfolio_runs,
-                "daily_optimize_runs": p.limits.daily_optimize_runs,
-                "daily_ai_queries": p.limits.daily_ai_queries,
-                "daily_walkforward": p.limits.daily_walkforward,
-                "daily_monte_carlo": p.limits.daily_monte_carlo,
-                "daily_signal_ranking": p.limits.daily_signal_ranking,
-                "daily_full_report": p.limits.daily_full_report,
-                "max_watchlist": p.limits.max_watchlist,
-                "max_custom_strategies": p.limits.max_custom_strategies,
-                "max_paper_sessions": p.limits.max_paper_sessions,
-                "max_allocation_positions": p.limits.max_allocation_positions,
-                "concurrent_tasks": p.limits.concurrent_tasks,
-                "realtime_ws_symbols": p.limits.realtime_ws_symbols,
-                "export_row_limit": p.limits.export_row_limit,
-            },
-            "features": [
-                {"id": f, "label": FEATURE_LABELS.get(f, f)}
-                for f in sorted(p.features)
-            ],
-        })
+        out.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "tagline": p.tagline,
+                "price_monthly": p.price_monthly,
+                "price_yearly": p.price_yearly,
+                "currency": p.currency,
+                "highlight": p.highlight,
+                "contact_sales": p.contact_sales,
+                "limits": {
+                    "daily_backtests": p.limits.daily_backtests,
+                    "daily_portfolio_runs": p.limits.daily_portfolio_runs,
+                    "daily_optimize_runs": p.limits.daily_optimize_runs,
+                    "daily_ai_queries": p.limits.daily_ai_queries,
+                    "daily_walkforward": p.limits.daily_walkforward,
+                    "daily_monte_carlo": p.limits.daily_monte_carlo,
+                    "daily_signal_ranking": p.limits.daily_signal_ranking,
+                    "daily_full_report": p.limits.daily_full_report,
+                    "max_watchlist": p.limits.max_watchlist,
+                    "max_custom_strategies": p.limits.max_custom_strategies,
+                    "max_paper_sessions": p.limits.max_paper_sessions,
+                    "max_allocation_positions": p.limits.max_allocation_positions,
+                    "concurrent_tasks": p.limits.concurrent_tasks,
+                    "realtime_ws_symbols": p.limits.realtime_ws_symbols,
+                    "export_row_limit": p.limits.export_row_limit,
+                },
+                "features": [
+                    {"id": f, "label": FEATURE_LABELS.get(f, f)}
+                    for f in sorted(p.features)
+                ],
+            }
+        )
     return out

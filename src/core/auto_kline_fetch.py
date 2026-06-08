@@ -5,6 +5,7 @@
   1. 多源管線 fetch_history_df（IB/TV → 本地 → Yahoo → 東財 → 全球）
   2. 仍不足時走市場專用降級鏈（A 股：新浪/網易/騰訊/HTTP 等）
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -45,7 +46,9 @@ def days_from_start_date(start_date: str | None) -> int:
         return 400
 
 
-def _try_pipeline_fetch(code: str, market: str, start_date: str | None) -> tuple[int, str]:
+def _try_pipeline_fetch(
+    code: str, market: str, start_date: str | None
+) -> tuple[int, str]:
     """market_fetch 多源管線（含寫庫）。"""
     if market not in ("a_share", "global"):
         return 0, ""

@@ -3,6 +3,7 @@
 
 對齊 docs/runbooks/README.md：正常 / 需關注 / 異常。
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -75,8 +76,7 @@ def collect_ops_snapshot() -> dict[str, Any]:
     try:
         raw_ds = ds_health_check()
         degraded = [
-            cat for cat, info in raw_ds.items()
-            if info.get("status") == "degraded"
+            cat for cat, info in raw_ds.items() if info.get("status") == "degraded"
         ]
         snapshot["data_sources"] = {
             "categories": raw_ds,
@@ -120,130 +120,153 @@ def evaluate_ops_health(
             worst = level
 
     if snap.get("collect_errors"):
-        checks.append({
-            "id": "collect",
-            "name": "快照收集",
-            "level": VERDICT_CRITICAL,
-            "ok": False,
-            "detail": "; ".join(snap["collect_errors"]),
-        })
+        checks.append(
+            {
+                "id": "collect",
+                "name": "快照收集",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": "; ".join(snap["collect_errors"]),
+            }
+        )
         _bump(VERDICT_CRITICAL)
-        recommendations.append("修復資料庫/模組載入錯誤後重跑：python main.py ops check")
+        recommendations.append(
+            "修復資料庫/模組載入錯誤後重跑：python main.py ops check"
+        )
 
     db = snap.get("database") or {}
     if db.get("error"):
-        checks.append({
-            "id": "database",
-            "name": "資料庫",
-            "level": VERDICT_CRITICAL,
-            "ok": False,
-            "detail": db["error"],
-        })
+        checks.append(
+            {
+                "id": "database",
+                "name": "資料庫",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": db["error"],
+            }
+        )
         _bump(VERDICT_CRITICAL)
         recommendations.append("檢查 data/stock.db 權限與路徑（SQ_DB_PATH）")
     else:
         stocks = int(db.get("total_stocks") or 0)
-        checks.append({
-            "id": "database",
-            "name": "資料庫",
-            "level": VERDICT_OK,
-            "ok": True,
-            "detail": (
-                f"股票 {stocks} 筆，"
-                f"庫大小 {db.get('db_size_mb', '?')} MB"
-            ),
-        })
+        checks.append(
+            {
+                "id": "database",
+                "name": "資料庫",
+                "level": VERDICT_OK,
+                "ok": True,
+                "detail": (
+                    f"股票 {stocks} 筆，" f"庫大小 {db.get('db_size_mb', '?')} MB"
+                ),
+            }
+        )
         if stocks == 0:
-            checks.append({
-                "id": "data_ready",
-                "name": "數據就緒",
-                "level": VERDICT_ATTENTION,
-                "ok": False,
-                "detail": "股票池為空，尚未下載數據",
-            })
+            checks.append(
+                {
+                    "id": "data_ready",
+                    "name": "數據就緒",
+                    "level": VERDICT_ATTENTION,
+                    "ok": False,
+                    "detail": "股票池為空，尚未下載數據",
+                }
+            )
             _bump(VERDICT_ATTENTION)
             recommendations.append("執行：python main.py download 或 seed")
 
     pipe = snap.get("pipeline_metrics") or {}
     if pipe.get("error"):
-        checks.append({
-            "id": "pipeline",
-            "name": "數據管線",
-            "level": VERDICT_CRITICAL,
-            "ok": False,
-            "detail": pipe["error"],
-        })
+        checks.append(
+            {
+                "id": "pipeline",
+                "name": "數據管線",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": pipe["error"],
+            }
+        )
         _bump(VERDICT_CRITICAL)
     else:
         pending = int((pipe.get("cache") or {}).get("pending_deferred") or 0)
         if pending > 0:
             level = VERDICT_ATTENTION if pending < 50 else VERDICT_CRITICAL
-            checks.append({
-                "id": "cache_deferred",
-                "name": "快取延遲清理",
-                "level": level,
-                "ok": False,
-                "detail": f"pending_deferred={pending}",
-            })
+            checks.append(
+                {
+                    "id": "cache_deferred",
+                    "name": "快取延遲清理",
+                    "level": level,
+                    "ok": False,
+                    "detail": f"pending_deferred={pending}",
+                }
+            )
             _bump(level)
             recommendations.append(
                 "確認批量任務已結束並 flush；見 docs/runbooks/data-pipeline.md §1"
             )
         else:
-            checks.append({
-                "id": "cache_deferred",
-                "name": "快取延遲清理",
-                "level": VERDICT_OK,
-                "ok": True,
-                "detail": "pending_deferred=0",
-            })
+            checks.append(
+                {
+                    "id": "cache_deferred",
+                    "name": "快取延遲清理",
+                    "level": VERDICT_OK,
+                    "ok": True,
+                    "detail": "pending_deferred=0",
+                }
+            )
 
     audit = snap.get("index_audit") or {}
     if audit.get("error"):
-        checks.append({
-            "id": "indexes",
-            "name": "索引健檢",
-            "level": VERDICT_CRITICAL,
-            "ok": False,
-            "detail": audit["error"],
-        })
+        checks.append(
+            {
+                "id": "indexes",
+                "name": "索引健檢",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": audit["error"],
+            }
+        )
         _bump(VERDICT_CRITICAL)
     else:
         missing = audit.get("missing") or []
         if missing:
-            checks.append({
-                "id": "indexes",
-                "name": "索引健檢",
-                "level": VERDICT_ATTENTION,
-                "ok": False,
-                "detail": f"缺失 {len(missing)} 個：{', '.join(missing[:5])}"
-                + ("…" if len(missing) > 5 else ""),
-            })
+            checks.append(
+                {
+                    "id": "indexes",
+                    "name": "索引健檢",
+                    "level": VERDICT_ATTENTION,
+                    "ok": False,
+                    "detail": f"缺失 {len(missing)} 個：{', '.join(missing[:5])}"
+                    + ("…" if len(missing) > 5 else ""),
+                }
+            )
             _bump(VERDICT_ATTENTION)
             recommendations.append(
                 "MCP sq_db_index_audit(apply_missing=true) 或重啟觸發遷移；生產先備份"
             )
         else:
-            checks.append({
-                "id": "indexes",
-                "name": "索引健檢",
-                "level": VERDICT_OK,
-                "ok": True,
-                "detail": (
-                    f"present {audit.get('present_count')}/"
-                    f"{audit.get('expected_count')}"
-                ),
-            })
+            checks.append(
+                {
+                    "id": "indexes",
+                    "name": "索引健檢",
+                    "level": VERDICT_OK,
+                    "ok": True,
+                    "detail": (
+                        f"present {audit.get('present_count')}/"
+                        f"{audit.get('expected_count')}"
+                    ),
+                }
+            )
 
     tq = snap.get("task_queue") or {}
     if tq.get("error"):
-        checks.append({
-            "id": "task_queue",
-            "name": "任務佇列",
-            "level": VERDICT_ATTENTION,
-            "ok": False,
-            "detail": tq["error"],
-        })
+        checks.append(
+            {
+                "id": "task_queue",
+                "name": "任務佇列",
+                "level": VERDICT_ATTENTION,
+                "ok": False,
+                "detail": tq["error"],
+            }
+        )
         _bump(VERDICT_ATTENTION)
     else:
         pending = int(tq.get("pending") or 0)
@@ -255,75 +278,93 @@ def evaluate_ops_health(
             f"in_flight={in_flight}"
         )
         if pending >= 100:
-            checks.append({
-                "id": "task_queue",
-                "name": "任務佇列",
-                "level": VERDICT_CRITICAL,
-                "ok": False,
-                "detail": detail,
-            })
+            checks.append(
+                {
+                    "id": "task_queue",
+                    "name": "任務佇列",
+                    "level": VERDICT_CRITICAL,
+                    "ok": False,
+                    "detail": detail,
+                }
+            )
             _bump(VERDICT_CRITICAL)
             recommendations.append("任務中心積壓過多：檢查 Worker / 取消無效 pending")
         elif pending >= 20:
-            checks.append({
-                "id": "task_queue",
-                "name": "任務佇列",
-                "level": VERDICT_ATTENTION,
-                "ok": False,
-                "detail": detail,
-            })
+            checks.append(
+                {
+                    "id": "task_queue",
+                    "name": "任務佇列",
+                    "level": VERDICT_ATTENTION,
+                    "ok": False,
+                    "detail": detail,
+                }
+            )
             _bump(VERDICT_ATTENTION)
-            recommendations.append("見 TROUBLESHOOTING § 任務佇列；必要時 POST /api/tasks/cancel-pending")
+            recommendations.append(
+                "見 TROUBLESHOOTING § 任務佇列；必要時 POST /api/tasks/cancel-pending"
+            )
         else:
-            checks.append({
-                "id": "task_queue",
-                "name": "任務佇列",
-                "level": VERDICT_OK,
-                "ok": True,
-                "detail": detail,
-            })
+            checks.append(
+                {
+                    "id": "task_queue",
+                    "name": "任務佇列",
+                    "level": VERDICT_OK,
+                    "ok": True,
+                    "detail": detail,
+                }
+            )
 
     ds = snap.get("data_sources") or {}
     if ds.get("error"):
-        checks.append({
-            "id": "data_sources",
-            "name": "數據源",
-            "level": VERDICT_CRITICAL,
-            "ok": False,
-            "detail": ds["error"],
-        })
+        checks.append(
+            {
+                "id": "data_sources",
+                "name": "數據源",
+                "level": VERDICT_CRITICAL,
+                "ok": False,
+                "detail": ds["error"],
+            }
+        )
         _bump(VERDICT_CRITICAL)
     else:
         degraded = ds.get("degraded_categories") or []
         total = int(ds.get("total_categories") or 0)
         if total > 0 and len(degraded) >= total:
-            checks.append({
-                "id": "data_sources",
-                "name": "數據源",
-                "level": VERDICT_CRITICAL,
-                "ok": False,
-                "detail": f"全部 {total} 類別熔斷",
-            })
+            checks.append(
+                {
+                    "id": "data_sources",
+                    "name": "數據源",
+                    "level": VERDICT_CRITICAL,
+                    "ok": False,
+                    "detail": f"全部 {total} 類別熔斷",
+                }
+            )
             _bump(VERDICT_CRITICAL)
             recommendations.append("見 TROUBLESHOOTING § 數據源；檢查網路與 SQ_* 開關")
         elif degraded:
-            checks.append({
-                "id": "data_sources",
-                "name": "數據源",
-                "level": VERDICT_ATTENTION,
-                "ok": False,
-                "detail": f"降級類別：{', '.join(degraded)}",
-            })
+            checks.append(
+                {
+                    "id": "data_sources",
+                    "name": "數據源",
+                    "level": VERDICT_ATTENTION,
+                    "ok": False,
+                    "detail": f"降級類別：{', '.join(degraded)}",
+                }
+            )
             _bump(VERDICT_ATTENTION)
-            recommendations.append("curl /api/data-sources/health 或 MCP sq_data_sources")
+            recommendations.append(
+                "curl /api/data-sources/health 或 MCP sq_data_sources"
+            )
         else:
-            checks.append({
-                "id": "data_sources",
-                "name": "數據源",
-                "level": VERDICT_OK,
-                "ok": True,
-                "detail": f"健康 {ds.get('healthy_categories')}/{total} 類別",
-            })
+            checks.append(
+                {
+                    "id": "data_sources",
+                    "name": "數據源",
+                    "level": VERDICT_OK,
+                    "ok": True,
+                    "detail": f"健康 {ds.get('healthy_categories')}/{total} 類別",
+                }
+            )
 
     if worst == VERDICT_OK and not recommendations:
         recommendations.append("無需立即處置")
@@ -409,5 +450,6 @@ def format_ops_report(evaluation: dict[str, Any], *, verbose: bool = False) -> s
         lines.append("")
         lines.append("【快照】")
         import json
+
         lines.append(json.dumps(snap, ensure_ascii=False, indent=2))
     return "\n".join(lines)

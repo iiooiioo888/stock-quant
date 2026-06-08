@@ -1,4 +1,5 @@
 """個人資產配置 API — 與 /api/portfolio/summary 共用 holdings 欄位。"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -48,7 +49,11 @@ async def post_position(body: dict, user=Depends(require_auth)):
     gate_allocation_cloud(user)
     existing = list_positions(user.id)
     codes = {p["code"] for p in existing}
-    code = str((body or {}).get("code") or (body or {}).get("symbol") or "").strip().upper()
+    code = (
+        str((body or {}).get("code") or (body or {}).get("symbol") or "")
+        .strip()
+        .upper()
+    )
     if code.isdigit() and len(code) <= 6:
         code = code.zfill(6)
     if code and code not in codes:

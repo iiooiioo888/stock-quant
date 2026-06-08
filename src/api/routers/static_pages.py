@@ -1,4 +1,5 @@
 """static_pages 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -31,8 +32,6 @@ async def compat_iconfont_stock_svg_mount(
     return _stock_logo_response(filename[:-4], market, name)
 
 
-
-
 @router.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     """避免瀏覽器預設請求 favicon.ico 404。"""
@@ -50,8 +49,6 @@ def _serve_static_html(filename: str, *, fallback=None) -> HTMLResponse:
     if fallback:
         return HTMLResponse(content=fallback())
     raise HTTPException(404, f"{filename} not found")
-
-
 
 
 @router.get("/manual", response_class=HTMLResponse)
@@ -75,14 +72,10 @@ pre{{white-space:pre-wrap;font-size:.9rem}}</style></head>
     )
 
 
-
-
 @router.get("/", response_class=HTMLResponse)
 async def site_home():
     """產品介紹首頁（功能介紹、三入口導航）。"""
     return _serve_static_html("home.html", fallback=_builtin_dashboard)
-
-
 
 
 @router.get("/app", response_class=HTMLResponse)
@@ -91,14 +84,10 @@ async def app_workbench():
     return _serve_static_html("app.html", fallback=_builtin_dashboard)
 
 
-
-
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_console():
     """管理員後台。"""
     return _serve_static_html("admin.html")
-
-
 
 
 @router.get("/panel", response_class=HTMLResponse)
@@ -107,11 +96,7 @@ async def panel_alias():
     return await app_workbench()
 
 
-
-
 @router.get("/legacy/", response_class=HTMLResponse)
-
-
 @router.get("/legacy", response_class=HTMLResponse)
 async def legacy_spa():
     """舊版完整 SPA（Legacy 工作台）。"""
@@ -122,6 +107,7 @@ def _builtin_dashboard() -> str:
     """內建儀表盤 HTML — fallback 版（從 dashboard_fallback.py 載入）"""
     try:
         from src.api.dashboard_fallback import _builtin_dashboard as _fb_dashboard
+
         return _fb_dashboard()
     except ImportError:
         # 極簡 fallback：只顯示基本鏈接
@@ -135,6 +121,3 @@ def _builtin_dashboard() -> str:
 <p style="margin-top:30px"><a href="/api/health" style="color:#38bdf8">健康檢查</a> ·
 <a href="/docs" style="color:#38bdf8">API 文檔</a></p>
 </body></html>"""
-
-
-

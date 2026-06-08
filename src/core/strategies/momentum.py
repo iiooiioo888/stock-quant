@@ -7,10 +7,11 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("momentum", "動量ROC策略")
 class MomentumStrategy(OrderManagedStrategy):
     """動量策略 — 基於 N 日 ROC 動量指標，正動量買入，負動量賣出"""
+
     params = (
-        ("lookback", 20),       # 動量回看期
-        ("hold_period", 5),     # 持有期
-        ("top_pct", 0.1),       # 動量排名百分比（單股用，此處保留）
+        ("lookback", 20),  # 動量回看期
+        ("hold_period", 5),  # 持有期
+        ("top_pct", 0.1),  # 動量排名百分比（單股用，此處保留）
     )
 
     def __init__(self):
@@ -38,4 +39,3 @@ class MomentumStrategy(OrderManagedStrategy):
             # 賣出條件：ROC 轉負 或 持有超過 hold_period
             if roc_val < 0 or self.hold_counter >= self.p.hold_period:
                 self.order = self.sell()
-

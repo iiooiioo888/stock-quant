@@ -6,6 +6,7 @@
 - 盤口分析：Spread、深度不平衡、支撐/阻力偵測
 - 波動率分析：實現波動率（多週期）、波動率百分位
 """
+
 from __future__ import annotations
 
 import time
@@ -52,7 +53,10 @@ class CryptoMicrostructureAnalyzer:
         n = len(trades)
         prices = np.array([t["price"] for t in trades], dtype=np.float64)
         qtys = np.array([t["qty"] for t in trades], dtype=np.float64)
-        quote_qtys = np.array([t.get("quote_qty", p * q) for t, p, q in zip(trades, prices, qtys)], dtype=np.float64)
+        quote_qtys = np.array(
+            [t.get("quote_qty", p * q) for t, p, q in zip(trades, prices, qtys)],
+            dtype=np.float64,
+        )
 
         # ── 買賣壓力 ──
         buy_mask = np.array([not t.get("is_buyer_maker", False) for t in trades])
@@ -76,13 +80,23 @@ class CryptoMicrostructureAnalyzer:
 
         large_mask = (qtys >= qty_threshold) | (quote_qtys >= usd_threshold)
         large_trades = [trades[i] for i in range(n) if large_mask[i]]
-        large_buy_vol = float(np.sum(qtys[large_mask & buy_mask])) if (large_mask & buy_mask).any() else 0.0
-        large_sell_vol = float(np.sum(qtys[large_mask & sell_mask])) if (large_mask & sell_mask).any() else 0.0
+        large_buy_vol = (
+            float(np.sum(qtys[large_mask & buy_mask]))
+            if (large_mask & buy_mask).any()
+            else 0.0
+        )
+        large_sell_vol = (
+            float(np.sum(qtys[large_mask & sell_mask]))
+            if (large_mask & sell_mask).any()
+            else 0.0
+        )
 
         # ── 淨流入/流出 ──
         net_volume = buy_vol - sell_vol
         net_quote = buy_quote - sell_quote
-        net_direction = "inflow" if net_volume > 0 else "outflow" if net_volume < 0 else "neutral"
+        net_direction = (
+            "inflow" if net_volume > 0 else "outflow" if net_volume < 0 else "neutral"
+        )
 
         # ── 成交密度（每分鐘筆數） ──
         trade_density = self._compute_trade_density(trades)
@@ -90,7 +104,11 @@ class CryptoMicrostructureAnalyzer:
         # ── 價格衝擊 ──
         vwap_buy = buy_quote / buy_vol if buy_vol > 0 else 0.0
         vwap_sell = sell_quote / sell_vol if sell_vol > 0 else 0.0
-        price_impact = abs(vwap_buy - vwap_sell) / ((vwap_buy + vwap_sell) / 2) * 100 if (vwap_buy + vwap_sell) > 0 else 0.0
+        price_impact = (
+            abs(vwap_buy - vwap_sell) / ((vwap_buy + vwap_sell) / 2) * 100
+            if (vwap_buy + vwap_sell) > 0
+            else 0.0
+        )
 
         return {
             "timestamp": time.time(),
@@ -99,8 +117,12 @@ class CryptoMicrostructureAnalyzer:
                 "buy_volume": round(buy_vol, 4),
                 "sell_volume": round(sell_vol, 4),
                 "total_volume": round(total_vol, 4),
-                "buy_ratio": round(buy_vol / total_vol * 100, 2) if total_vol > 0 else 50.0,
-                "sell_ratio": round(sell_vol / total_vol * 100, 2) if total_vol > 0 else 50.0,
+                "buy_ratio": (
+                    round(buy_vol / total_vol * 100, 2) if total_vol > 0 else 50.0
+                ),
+                "sell_ratio": (
+                    round(sell_vol / total_vol * 100, 2) if total_vol > 0 else 50.0
+                ),
                 "buy_quote": round(buy_quote, 2),
                 "sell_quote": round(sell_quote, 2),
                 "buy_count": buy_count,
@@ -110,14 +132,22 @@ class CryptoMicrostructureAnalyzer:
                 "net_volume": round(net_volume, 4),
                 "net_quote": round(net_quote, 2),
                 "direction": net_direction,
-                "strength": round(abs(net_volume) / total_vol * 100, 2) if total_vol > 0 else 0.0,
+                "strength": (
+                    round(abs(net_volume) / total_vol * 100, 2)
+                    if total_vol > 0
+                    else 0.0
+                ),
             },
             "large_orders": {
                 "count": len(large_trades),
                 "buy_volume": round(large_buy_vol, 4),
                 "sell_volume": round(large_sell_vol, 4),
                 "total_volume": round(large_buy_vol + large_sell_vol, 4),
-                "pct_of_total": round((large_buy_vol + large_sell_vol) / total_vol * 100, 2) if total_vol > 0 else 0.0,
+                "pct_of_total": (
+                    round((large_buy_vol + large_sell_vol) / total_vol * 100, 2)
+                    if total_vol > 0
+                    else 0.0
+                ),
                 "threshold_qty": round(qty_threshold, 4),
                 "threshold_usd": usd_threshold,
                 "recent": [
@@ -125,7 +155,9 @@ class CryptoMicrostructureAnalyzer:
                         "price": round(t["price"], 8),
                         "qty": round(t["qty"], 4),
                         "usd": round(t.get("quote_qty", t["price"] * t["qty"]), 2),
-                        "direction": "sell" if t.get("is_buyer_maker", False) else "buy",
+                        "direction": (
+                            "sell" if t.get("is_buyer_maker", False) else "buy"
+                        ),
                         "time": t.get("trade_time", 0),
                     }
                     for t in large_trades[-10:]  # 最近 10 筆大單
@@ -155,10 +187,18 @@ class CryptoMicrostructureAnalyzer:
         if not bids or not asks:
             return {"error": "depth data unavailable"}
 
-        bid_prices = np.array([b[0] for b in bids[:self._depth_levels]], dtype=np.float64)
-        bid_qtys = np.array([b[1] for b in bids[:self._depth_levels]], dtype=np.float64)
-        ask_prices = np.array([a[0] for a in asks[:self._depth_levels]], dtype=np.float64)
-        ask_qtys = np.array([a[1] for a in asks[:self._depth_levels]], dtype=np.float64)
+        bid_prices = np.array(
+            [b[0] for b in bids[: self._depth_levels]], dtype=np.float64
+        )
+        bid_qtys = np.array(
+            [b[1] for b in bids[: self._depth_levels]], dtype=np.float64
+        )
+        ask_prices = np.array(
+            [a[0] for a in asks[: self._depth_levels]], dtype=np.float64
+        )
+        ask_qtys = np.array(
+            [a[1] for a in asks[: self._depth_levels]], dtype=np.float64
+        )
 
         # ── Spread ──
         best_bid = float(bid_prices[0])
@@ -170,28 +210,40 @@ class CryptoMicrostructureAnalyzer:
         # ── 深度不平衡 ──
         bid_total = float(np.sum(bid_qtys))
         ask_total = float(np.sum(ask_qtys))
-        depth_imbalance = (bid_total - ask_total) / (bid_total + ask_total) if (bid_total + ask_total) > 0 else 0.0
+        depth_imbalance = (
+            (bid_total - ask_total) / (bid_total + ask_total)
+            if (bid_total + ask_total) > 0
+            else 0.0
+        )
 
         # ── 各層深度 ──
         levels = min(self._depth_levels, len(bids), len(asks))
         level_data = []
         for i in range(levels):
-            level_data.append({
-                "level": i + 1,
-                "bid_price": round(float(bid_prices[i]), 8),
-                "bid_qty": round(float(bid_qtys[i]), 4),
-                "ask_price": round(float(ask_prices[i]), 8),
-                "ask_qty": round(float(ask_qtys[i]), 4),
-                "imbalance": round(
-                    (float(bid_qtys[i]) - float(ask_qtys[i])) / (float(bid_qtys[i]) + float(ask_qtys[i]))
-                    if (float(bid_qtys[i]) + float(ask_qtys[i])) > 0 else 0.0,
-                    4
-                ),
-            })
+            level_data.append(
+                {
+                    "level": i + 1,
+                    "bid_price": round(float(bid_prices[i]), 8),
+                    "bid_qty": round(float(bid_qtys[i]), 4),
+                    "ask_price": round(float(ask_prices[i]), 8),
+                    "ask_qty": round(float(ask_qtys[i]), 4),
+                    "imbalance": round(
+                        (
+                            (float(bid_qtys[i]) - float(ask_qtys[i]))
+                            / (float(bid_qtys[i]) + float(ask_qtys[i]))
+                            if (float(bid_qtys[i]) + float(ask_qtys[i])) > 0
+                            else 0.0
+                        ),
+                        4,
+                    ),
+                }
+            )
 
         # ── 支撐/阻力偵測（大額掛單聚集） ──
         support_levels = self._detect_cluster_levels(bid_prices, bid_qtys, "support")
-        resistance_levels = self._detect_cluster_levels(ask_prices, ask_qtys, "resistance")
+        resistance_levels = self._detect_cluster_levels(
+            ask_prices, ask_qtys, "resistance"
+        )
 
         # ── 撤單壓力估算（掛單量 vs 成交密度） ──
         wall_bid = float(np.max(bid_qtys)) if len(bid_qtys) > 0 else 0.0
@@ -208,11 +260,17 @@ class CryptoMicrostructureAnalyzer:
             "ask_depth_total": round(ask_total, 4),
             "depth_imbalance": round(depth_imbalance, 4),  # +1=全買, -1=全賣, 0=平衡
             "imbalance_signal": (
-                "strong_buy" if depth_imbalance > 0.5
-                else "buy" if depth_imbalance > 0.2
-                else "strong_sell" if depth_imbalance < -0.5
-                else "sell" if depth_imbalance < -0.2
-                else "neutral"
+                "strong_buy"
+                if depth_imbalance > 0.5
+                else (
+                    "buy"
+                    if depth_imbalance > 0.2
+                    else (
+                        "strong_sell"
+                        if depth_imbalance < -0.5
+                        else "sell" if depth_imbalance < -0.2 else "neutral"
+                    )
+                )
             ),
             "bid_wall": round(wall_bid, 4),
             "ask_wall": round(wall_ask, 4),
@@ -225,7 +283,9 @@ class CryptoMicrostructureAnalyzer:
     # 波動率分析
     # ============================================================
 
-    def analyze_volatility(self, trades: list[dict], windows: list[int] = None) -> dict[str, Any]:
+    def analyze_volatility(
+        self, trades: list[dict], windows: list[int] = None
+    ) -> dict[str, Any]:
         """
         從 trade 序列計算實現波動率（多週期）。
 
@@ -270,9 +330,9 @@ class CryptoMicrostructureAnalyzer:
                 "prev_vol": round(float(prev_20) * 100, 4),
                 "ratio": round(float(vol_ratio), 4),
                 "signal": (
-                    "expanding" if vol_ratio > 1.5
-                    else "contracting" if vol_ratio < 0.67
-                    else "stable"
+                    "expanding"
+                    if vol_ratio > 1.5
+                    else "contracting" if vol_ratio < 0.67 else "stable"
                 ),
             }
 
@@ -303,7 +363,10 @@ class CryptoMicrostructureAnalyzer:
         # 緩存檢查
         now = time.time()
         cache_key = symbol.upper()
-        if cache_key in self._cache and now - self._cache_ts.get(cache_key, 0) < self._cache_ttl:
+        if (
+            cache_key in self._cache
+            and now - self._cache_ts.get(cache_key, 0) < self._cache_ttl
+        ):
             return self._cache[cache_key]
 
         result = {
@@ -341,11 +404,19 @@ class CryptoMicrostructureAnalyzer:
         # 前半 vs 後半密度趨勢
         mid = len(trades) // 2
         if mid > 0:
-            first_half_dur = (times[mid] - times[0]) / 60.0 if times[mid] > times[0] else 1.0
-            second_half_dur = (times[-1] - times[mid]) / 60.0 if times[-1] > times[mid] else 1.0
+            first_half_dur = (
+                (times[mid] - times[0]) / 60.0 if times[mid] > times[0] else 1.0
+            )
+            second_half_dur = (
+                (times[-1] - times[mid]) / 60.0 if times[-1] > times[mid] else 1.0
+            )
             first_tpm = mid / first_half_dur
             second_tpm = (len(trades) - mid) / second_half_dur
-            trend = "accelerating" if second_tpm > first_tpm * 1.2 else "decelerating" if second_tpm < first_tpm * 0.8 else "stable"
+            trend = (
+                "accelerating"
+                if second_tpm > first_tpm * 1.2
+                else "decelerating" if second_tpm < first_tpm * 0.8 else "stable"
+            )
         else:
             trend = "unknown"
 
@@ -372,12 +443,14 @@ class CryptoMicrostructureAnalyzer:
         clusters = []
         for i in range(len(qtys)):
             if float(qtys[i]) >= threshold:
-                clusters.append({
-                    "price": round(float(prices[i]), 8),
-                    "qty": round(float(qtys[i]), 4),
-                    "type": level_type,
-                    "strength": round(float(qtys[i]) / avg_qty, 2),
-                })
+                clusters.append(
+                    {
+                        "price": round(float(prices[i]), 8),
+                        "qty": round(float(qtys[i]), 4),
+                        "type": level_type,
+                        "strength": round(float(qtys[i]) / avg_qty, 2),
+                    }
+                )
 
         return sorted(clusters, key=lambda x: x["qty"], reverse=True)[:5]
 
@@ -387,12 +460,22 @@ class CryptoMicrostructureAnalyzer:
             "timestamp": time.time(),
             "trade_count": 0,
             "buy_sell_pressure": {
-                "buy_volume": 0, "sell_volume": 0, "total_volume": 0,
-                "buy_ratio": 50.0, "sell_ratio": 50.0,
-                "buy_quote": 0, "sell_quote": 0,
-                "buy_count": 0, "sell_count": 0,
+                "buy_volume": 0,
+                "sell_volume": 0,
+                "total_volume": 0,
+                "buy_ratio": 50.0,
+                "sell_ratio": 50.0,
+                "buy_quote": 0,
+                "sell_quote": 0,
+                "buy_count": 0,
+                "sell_count": 0,
             },
-            "net_flow": {"net_volume": 0, "net_quote": 0, "direction": "neutral", "strength": 0.0},
+            "net_flow": {
+                "net_volume": 0,
+                "net_quote": 0,
+                "direction": "neutral",
+                "strength": 0.0,
+            },
             "large_orders": {"count": 0, "recent": []},
             "trade_density": {"trades_per_minute": 0, "trend": "unknown"},
         }

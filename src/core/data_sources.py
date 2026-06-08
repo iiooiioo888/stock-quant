@@ -4,6 +4,7 @@
 集中管理所有數據源的配置、健康檢查、自動降級邏輯。
 每個數據源統一接口：fetch_quote(symbol) / fetch_history(symbol, start)
 """
+
 import os
 import random
 import time
@@ -39,18 +40,24 @@ _PROXY_POOL_URL = os.environ.get("SQ_PROXY_POOL_URL", "").strip()
 class DataSource:
     """數據源基類"""
 
-    def __init__(self, name: str, priority: int, rate_limit: float = 0.5,
-                 timeout: int = 10, daily_limit: int = 0):
+    def __init__(
+        self,
+        name: str,
+        priority: int,
+        rate_limit: float = 0.5,
+        timeout: int = 10,
+        daily_limit: int = 0,
+    ):
         self.name = name
-        self.priority = priority          # 越小越優先
-        self.rate_limit = rate_limit      # 每次請求最小間隔（秒）
+        self.priority = priority  # 越小越優先
+        self.rate_limit = rate_limit  # 每次請求最小間隔（秒）
         self.timeout = timeout
-        self.daily_limit = daily_limit    # 0=無限制
+        self.daily_limit = daily_limit  # 0=無限制
         self._last_request = 0.0
         self._daily_count = 0
         self._daily_reset = 0.0
         self._fail_count = 0
-        self._circuit_open_until = 0.0    # 熔斷恢復時間
+        self._circuit_open_until = 0.0  # 熔斷恢復時間
         # 可用性打分：用於「首次取得數據」時的動態排隊（越高越優先）
         # 以 priority 作為初始偏好，但允許隨成功/404/失敗動態調整。
         self._score = max(0.0, 100.0 - float(priority) * 2.0)
@@ -105,11 +112,14 @@ class DataSource:
         self._bump_score(-8.0)
         if self._fail_count >= 5:
             self._circuit_open_until = time.time() + 300
-            logger.warning(f"數據源 {self.name} 連續失敗 {self._fail_count} 次，熔斷 5 分鐘")
+            logger.warning(
+                f"數據源 {self.name} 連續失敗 {self._fail_count} 次，熔斷 5 分鐘"
+            )
 
     def throttle(self):
         """限流：確保請求間隔 + 隨機抖動（±30%），降低被封風險"""
         import random
+
         now = time.time()
         elapsed = now - self._last_request
         jitter = self.rate_limit * random.uniform(-0.3, 0.3)
@@ -150,10 +160,13 @@ def _get_session(name: str, headers: dict = None) -> requests.Session:
     """獲取或創建共享 Session（隨機 UA + 可選代理）。"""
     if name not in _session_pool:
         s = requests.Session()
-        s.headers.update(headers or {
-            "User-Agent": random.choice(_UA_POOL),
-            "Accept-Language": random.choice(_ACCEPT_LANGS),
-        })
+        s.headers.update(
+            headers
+            or {
+                "User-Agent": random.choice(_UA_POOL),
+                "Accept-Language": random.choice(_ACCEPT_LANGS),
+            }
+        )
         _apply_proxy(s)
         _session_pool[name] = s
     return _session_pool[name]
@@ -197,7 +210,9 @@ def _find_source(category: str, name: str) -> Optional[DataSource]:
     return None
 
 
-def record_outcome(category: str, source_name: str, *, ok: bool, status_code: int | None = None) -> None:
+def record_outcome(
+    category: str, source_name: str, *, ok: bool, status_code: int | None = None
+) -> None:
     """
     供非 execute_with_fallback 路徑回報結果：
     - ok=True：加分
@@ -226,16 +241,18 @@ def get_all_sources() -> dict[str, list[dict]]:
     for cat, sources in _registry.items():
         result[cat] = []
         for s in sources:
-            result[cat].append({
-                "name": s.name,
-                "priority": s.priority,
-                "available": s.available,
-                "score": getattr(s, "score", 0.0),
-                "fail_count": s._fail_count,
-                "daily_count": s._daily_count,
-                "daily_limit": s.daily_limit,
-                "rate_limit": s.rate_limit,
-            })
+            result[cat].append(
+                {
+                    "name": s.name,
+                    "priority": s.priority,
+                    "available": s.available,
+                    "score": getattr(s, "score", 0.0),
+                    "fail_count": s._fail_count,
+                    "daily_count": s._daily_count,
+                    "daily_limit": s.daily_limit,
+                    "rate_limit": s.rate_limit,
+                }
+            )
     return result
 
 
@@ -269,7 +286,10 @@ def execute_with_fallback(category: str, func_name: str, *args, **kwargs):
             source.record_soft_failure()
         except Exception as e:
             # requests 的 HTTPError：可根據 status code 做更細緻打分（404 只降分不熔斷）
-            if isinstance(e, requests.HTTPError) and getattr(e, "response", None) is not None:
+            if (
+                isinstance(e, requests.HTTPError)
+                and getattr(e, "response", None) is not None
+            ):
                 try:
                     sc = int(e.response.status_code)
                 except Exception:
@@ -375,7 +395,10 @@ register("a_share_history", DataSource("HTTP直連", priority=6, rate_limit=0.5)
 # --- A 股實時 ---
 register("a_share_realtime", DataSource("Yahoo Finance", priority=1, rate_limit=0.3))
 register("a_share_realtime", DataSource("東財盤口", priority=2, rate_limit=0.3))
-register("a_share_realtime", DataSource("東財全量", priority=3, rate_limit=0.5, daily_limit=5000))
+register(
+    "a_share_realtime",
+    DataSource("東財全量", priority=3, rate_limit=0.5, daily_limit=5000),
+)
 register("a_share_realtime", DataSource("新浪", priority=4, rate_limit=0.2))
 register("a_share_realtime", DataSource("騰訊", priority=5, rate_limit=0.2))
 
@@ -383,16 +406,26 @@ register("a_share_realtime", DataSource("騰訊", priority=5, rate_limit=0.2))
 register("global_realtime", DataSource("Yahoo Finance", priority=1, rate_limit=0.3))
 register("global_realtime", DataSource("新浪全球", priority=2, rate_limit=0.2))
 register("global_realtime", DataSource("東財全球", priority=3, rate_limit=0.3))
-register("global_realtime", DataSource("Twelve Data", priority=4, rate_limit=8.0, daily_limit=800))
+register(
+    "global_realtime",
+    DataSource("Twelve Data", priority=4, rate_limit=8.0, daily_limit=800),
+)
 
 # --- 全球歷史 ---
-register("global_history", DataSource("Interactive Brokers", priority=0, rate_limit=0.5))
+register(
+    "global_history", DataSource("Interactive Brokers", priority=0, rate_limit=0.5)
+)
 register("global_history", DataSource("Yahoo Finance", priority=1, rate_limit=0.5))
-register("global_history", DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800))
+register(
+    "global_history",
+    DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800),
+)
 register("global_history", DataSource("TradingView", priority=3, rate_limit=1.0))
 
 # --- 儀表盤專用（TradingView Scanner + IB TWS） ---
-register("dashboard_quote", DataSource("Interactive Brokers", priority=1, rate_limit=0.5))
+register(
+    "dashboard_quote", DataSource("Interactive Brokers", priority=1, rate_limit=0.5)
+)
 register("dashboard_quote", DataSource("TradingView", priority=2, rate_limit=0.8))
 register("dashboard_quote", DataSource("Yahoo Finance", priority=3, rate_limit=0.5))
 
@@ -403,15 +436,26 @@ register("forex_realtime", DataSource("東財外匯", priority=3, rate_limit=0.3
 
 # --- 外匯歷史 ---
 register("forex_history", DataSource("Frankfurter", priority=1, rate_limit=0.5))
-register("forex_history", DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800))
+register(
+    "forex_history",
+    DataSource("Twelve Data", priority=2, rate_limit=8.0, daily_limit=800),
+)
 
 # --- 加密貨幣 ---
 register("crypto_realtime", DataSource("Binance", priority=1, rate_limit=0.2))
 register("crypto_realtime", DataSource("CoinGecko", priority=2, rate_limit=1.0))
-register("crypto_realtime", DataSource("Twelve Data", priority=3, rate_limit=8.0, daily_limit=800))
+register(
+    "crypto_realtime",
+    DataSource("Twelve Data", priority=3, rate_limit=8.0, daily_limit=800),
+)
 
 register("crypto_history", DataSource("Binance", priority=1, rate_limit=0.5))
 register("crypto_history", DataSource("CoinGecko", priority=2, rate_limit=1.0))
-register("crypto_history", DataSource("Twelve Data", priority=3, rate_limit=8.0, daily_limit=800))
+register(
+    "crypto_history",
+    DataSource("Twelve Data", priority=3, rate_limit=8.0, daily_limit=800),
+)
 
-logger.info(f"📊 數據源管理器已初始化: {sum(len(v) for v in _registry.values())} 個數據源, {len(_registry)} 個類別")
+logger.info(
+    f"📊 數據源管理器已初始化: {sum(len(v) for v in _registry.values())} 個數據源, {len(_registry)} 個類別"
+)

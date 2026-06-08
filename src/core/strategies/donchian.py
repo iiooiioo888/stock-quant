@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("donchian", "唐奇安通道突破策略")
 class DonchianStrategy(OrderManagedStrategy):
     """唐奇安通道突破"""
+
     params = (("period", 20),)
 
     def __init__(self):
@@ -22,4 +23,3 @@ class DonchianStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.position and price <= self.low_n[-1]:
             self.order = self.sell()
-

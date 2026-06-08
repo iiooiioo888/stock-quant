@@ -1,6 +1,7 @@
 """
 日匯率持久化 — 供歷史趨勢按日換算。
 """
+
 from __future__ import annotations
 
 from datetime import datetime

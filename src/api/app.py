@@ -1,6 +1,7 @@
 """
 FastAPI 應用 — Web API + 靜態前端 + WebSocket 實時推送
 """
+
 import os
 import time
 import json
@@ -9,7 +10,17 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File, Depends, Request
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+    HTTPException,
+    Query,
+    UploadFile,
+    File,
+    Depends,
+    Request,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
@@ -53,23 +64,24 @@ from src.api.ws import router as ws_router, ws_realtime_push
 # 啟動時間
 
 
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """應用生命週期"""
     init_db()
     try:
         from src.core.watchlist_store import apply_runtime_on_startup
+
         apply_runtime_on_startup()
     except Exception as e:
         logger.debug(f"自選股 runtime 載入跳過: {e}")
     # 生產環境安全檢查
     from src.core.auth import _validate_jwt_secret_for_production
+
     _validate_jwt_secret_for_production()
 
     try:
         from src.integrations.sentry_setup import init_sentry
+
         init_sentry()
     except Exception as e:
         logger.debug(f"Sentry 初始化跳過: {e}")
@@ -84,6 +96,7 @@ async def lifespan(app: FastAPI):
         # 非演示模式也檢查：如果數據庫為空，自動下載基礎數據
         try:
             from src.core.db import load_all_codes
+
             codes = load_all_codes()
             if not codes:
                 logger.info("📦 數據庫為空，自動下載基礎數據...")
@@ -94,17 +107,23 @@ async def lifespan(app: FastAPI):
     # 自動發現用戶策略
     try:
         from src.core.strategy_base import list_user_strategies
+
         user_strategies = list_user_strategies()
         if user_strategies:
-            logger.info(f"📋 已加載 {len(user_strategies)} 個用戶策略: {[s['name'] for s in user_strategies]}")
+            logger.info(
+                f"📋 已加載 {len(user_strategies)} 個用戶策略: {[s['name'] for s in user_strategies]}"
+            )
         else:
-            logger.info("📋 用戶策略目錄為空（運行 `python main.py strategy create <名稱>` 創建）")
+            logger.info(
+                "📋 用戶策略目錄為空（運行 `python main.py strategy create <名稱>` 創建）"
+            )
     except Exception as e:
         logger.debug(f"用戶策略發現跳過: {e}")
 
     # 載入管理員控制開關（功能/策略/任務可見性）
     try:
         from src.core.admin_controls import apply_controls_on_startup
+
         apply_controls_on_startup()
     except Exception as e:
         logger.debug(f"管理員控制開關載入跳過: {e}")
@@ -112,14 +131,21 @@ async def lifespan(app: FastAPI):
     # 啟動定時任務調度器
     try:
         from src.core.scheduler import start_scheduler
+
         start_scheduler()
     except Exception as e:
         logger.debug(f"調度器啟動跳過: {e}")
 
     # 安全摘要
-    _ws_auth = "✅ 已啟用" if settings.effective_ws_auth_required else "⚠️ 已關閉（演示/開發模式）"
+    _ws_auth = (
+        "✅ 已啟用"
+        if settings.effective_ws_auth_required
+        else "⚠️ 已關閉（演示/開發模式）"
+    )
     _jwt_ok = "✅ 已配置" if settings.jwt_secret else "⚠️ 未配置（自動生成）"
-    logger.info(f"🔒 安全摘要: WS認證={_ws_auth} | JWT={_jwt_ok} | CORS={settings.cors_origins[:50]}")
+    logger.info(
+        f"🔒 安全摘要: WS認證={_ws_auth} | JWT={_jwt_ok} | CORS={settings.cors_origins[:50]}"
+    )
     settings.log_demo_security_warnings(logger)
 
     # 啟動 WebSocket 後台推送
@@ -127,6 +153,7 @@ async def lifespan(app: FastAPI):
     from src.api.ws import set_event_loop, sync_broadcast, ws_realtime_push
     from src.api.sse import set_event_loop as set_sse_loop, sync_publish as sse_publish
     from src.core.task_manager import register_ws_broadcaster, register_task_broadcaster
+
     set_event_loop(asyncio.get_running_loop())
     set_sse_loop(asyncio.get_running_loop())
     register_ws_broadcaster(sync_broadcast)
@@ -143,7 +170,9 @@ async def lifespan(app: FastAPI):
                 raise
             except Exception as e:
                 consecutive_failures += 1
-                logger.warning(f"WebSocket 推送任務異常（{consecutive_failures}/{max_failures}）: {e}")
+                logger.warning(
+                    f"WebSocket 推送任務異常（{consecutive_failures}/{max_failures}）: {e}"
+                )
                 await asyncio.sleep(min(5 * consecutive_failures, 30))
         logger.error(f"WebSocket 推送任務連續失敗 {max_failures} 次，已停止重啟")
 
@@ -155,6 +184,7 @@ async def lifespan(app: FastAPI):
             recover_stale_tasks_on_startup,
             start_task_watchdog,
         )
+
         load_recent_tasks_from_db()
         recover_stale_tasks_on_startup()
         start_task_watchdog()
@@ -165,6 +195,7 @@ async def lifespan(app: FastAPI):
         try:
             import asyncio
             from src.core.cache_warmup import warmup_cache_async
+
             asyncio.create_task(warmup_cache_async())
         except Exception as e:
             logger.debug(f"緩存預熱跳過: {e}")
@@ -180,11 +211,13 @@ async def lifespan(app: FastAPI):
     # 關閉調度器
     try:
         from src.core.scheduler import stop_scheduler
+
         stop_scheduler()
     except Exception:
         pass
     try:
         from src.core.task_manager import stop_task_watchdog
+
         stop_task_watchdog()
     except Exception:
         pass
@@ -223,11 +256,17 @@ app.include_router(ml_strategy_router)
 app.include_router(stress_router)
 
 # CORS
-_cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:8000"]
+_cors_origins = (
+    settings.cors_origins.split(",")
+    if settings.cors_origins
+    else ["http://localhost:8000"]
+)
 
 # 安全檢查：非 debug 模式下，CORS 包含 localhost 時警告
 if not settings.debug:
-    _localhost_origins = [o for o in _cors_origins if "localhost" in o or "127.0.0.1" in o]
+    _localhost_origins = [
+        o for o in _cors_origins if "localhost" in o or "127.0.0.1" in o
+    ]
     if _localhost_origins and len(_localhost_origins) == len(_cors_origins):
         logger.warning(
             "⚠️  CORS 僅允許 localhost！雲端部署請設置 SQ_CORS_ORIGINS 環境變量為實際域名，"
@@ -258,7 +297,10 @@ async def api_timing_middleware(request: Request, call_next):
     response.headers["X-Response-Time-Ms"] = str(ms)
     try:
         from src.utils.metrics import observe_request
-        observe_request(request.method, path, response.status_code, (time.perf_counter() - t0))
+
+        observe_request(
+            request.method, path, response.status_code, (time.perf_counter() - t0)
+        )
     except Exception:
         pass
     return response
@@ -393,6 +435,7 @@ async def admin_controls_middleware(request: Request, call_next):
         if auth.lower().startswith("bearer "):
             token = auth.split(" ", 1)[1].strip()
             from src.core.auth import verify_token, get_user_by_id
+
             payload = verify_token(token)
             if payload:
                 user = get_user_by_id(payload.get("user_id"))
@@ -401,8 +444,11 @@ async def admin_controls_middleware(request: Request, call_next):
 
     try:
         from src.core.admin_controls import is_allowed
+
         if not is_allowed(scope, action, user=user):
-            return api_error_response(request, 403, "此功能已被管理員關閉（僅管理員可用）")
+            return api_error_response(
+                request, 403, "此功能已被管理員關閉（僅管理員可用）"
+            )
     except Exception:
         # 保守策略：控制開關異常時不阻擋
         pass
@@ -446,7 +492,9 @@ async def rate_limit_middleware(request: Request, call_next):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-    is_auth = path.startswith("/api/auth/login") or path.startswith("/api/auth/register")
+    is_auth = path.startswith("/api/auth/login") or path.startswith(
+        "/api/auth/register"
+    )
     limit = _auth_rate_limit if is_auth else _rate_limit_per_minute
     namespace = "auth" if is_auth else ""
     allowed, retry_after = check_rate_limit(client_ip, limit, namespace=namespace)
@@ -465,15 +513,40 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # 不需要認證的路徑前綴（白名單）
 AUTH_WHITELIST_PREFIX = (
-    "/api/auth/login", "/api/auth/register", "/api/health", "/api/health/sop", "/api/health/detailed", "/api/status",
-    "/api/config", "/api/iconfont/config", "/api/stock-logo/", "/api/strategies/list", "/api/stocks", "/api/stocks/names", "/api/stock-universe", "/api/data-sources",
-    "/api/markets", "/api/indices", "/api/assets", "/api/dashboard", "/api/data/", "/api/tasks",
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/health",
+    "/api/health/sop",
+    "/api/health/detailed",
+    "/api/status",
+    "/api/config",
+    "/api/iconfont/config",
+    "/api/stock-logo/",
+    "/api/strategies/list",
+    "/api/stocks",
+    "/api/stocks/names",
+    "/api/stock-universe",
+    "/api/data-sources",
+    "/api/markets",
+    "/api/indices",
+    "/api/assets",
+    "/api/dashboard",
+    "/api/data/",
+    "/api/tasks",
     "/api/task-events",
     "/api/external",
-    "/api/sparkline", "/api/signals/", "/api/backtest/history", "/api/alerts", "/api/watchlist",
+    "/api/sparkline",
+    "/api/signals/",
+    "/api/backtest/history",
+    "/api/alerts",
+    "/api/watchlist",
     "/api/llm/status",
-    "/docs", "/openapi.json",
-    "/redoc", "/static", "/", "/ws",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/static",
+    "/",
+    "/ws",
 )
 # 精確匹配，避免 /api/strategies/leaderboard/update 被誤放行
 AUTH_WHITELIST_EXACT = (
@@ -510,8 +583,12 @@ def _auth_write_requires_login(path: str, method: str) -> bool:
     if path.startswith("/api/auth/login") or path.startswith("/api/auth/register"):
         return False
     # 本地 debug / 非公開演示：回測/優化/組合允許匿名提交
-    if (settings.debug or settings.demo_mode) and not settings.is_public_demo_deployment():
-        if path.startswith(("/api/backtest", "/api/optimize", "/api/auto-optimize", "/api/portfolio")):
+    if (
+        settings.debug or settings.demo_mode
+    ) and not settings.is_public_demo_deployment():
+        if path.startswith(
+            ("/api/backtest", "/api/optimize", "/api/auto-optimize", "/api/portfolio")
+        ):
             return False
     if _auth_read_allowed(path):
         return any(path.startswith(prefix) for prefix in _AUTH_WRITE_PROTECTED_PREFIX)
@@ -531,12 +608,8 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method.upper()
 
-    needs_auth = (
-        path.startswith("/api/")
-        and (
-            not _auth_read_allowed(path)
-            or _auth_write_requires_login(path, method)
-        )
+    needs_auth = path.startswith("/api/") and (
+        not _auth_read_allowed(path) or _auth_write_requires_login(path, method)
     )
 
     if needs_auth:
@@ -544,16 +617,21 @@ async def auth_middleware(request: Request, call_next):
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
             from src.core.auth import verify_token, get_user_by_id
+
             payload = verify_token(token)
             if payload:
                 user = get_user_by_id(payload.get("user_id"))
                 request.state.user = user
             else:
                 # Token 無效
-                return api_error_response(request, 401, "Token 無效或已過期，請重新登錄")
+                return api_error_response(
+                    request, 401, "Token 無效或已過期，請重新登錄"
+                )
         else:
             # 無 token
-            return api_error_response(request, 401, "未登錄，請先獲取 Token（POST /api/auth/login）")
+            return api_error_response(
+                request, 401, "未登錄，請先獲取 Token（POST /api/auth/login）"
+            )
 
     response = await call_next(request)
     return response
@@ -600,6 +678,7 @@ def _builtin_dashboard() -> str:
     """內建儀表盤 HTML — fallback 版（從 dashboard_fallback.py 載入）"""
     try:
         from src.api.dashboard_fallback import _builtin_dashboard as _fb_dashboard
+
         return _fb_dashboard()
     except ImportError:
         # 極簡 fallback：只顯示基本鏈接

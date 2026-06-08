@@ -14,6 +14,7 @@
 - 創 N 日新高/新低
 - 盤口深度異常
 """
+
 from __future__ import annotations
 
 import time
@@ -31,6 +32,7 @@ ALERT_LEVEL_CRITICAL = "critical"
 
 
 # ── 告警規則數據結構 ──────────────────────────────────────────
+
 
 class AlertRule:
     """單條告警規則。"""
@@ -73,7 +75,8 @@ class AlertRule:
             "cooldown_sec": self.cooldown_sec,
             "last_triggered": (
                 datetime.fromtimestamp(self.last_triggered).isoformat()
-                if self.last_triggered > 0 else None
+                if self.last_triggered > 0
+                else None
             ),
             "trigger_count": self.trigger_count,
         }
@@ -116,6 +119,7 @@ class AlertEvent:
 
 # ── 告警引擎 ──────────────────────────────────────────────────
 
+
 class CryptoAlertEngine:
     """
     加密貨幣告警引擎。
@@ -147,7 +151,9 @@ class CryptoAlertEngine:
 
         # 規則存儲
         self._rules: dict[str, AlertRule] = {}  # rule_id -> rule
-        self._rules_by_symbol: dict[str, list[str]] = defaultdict(list)  # symbol -> [rule_id]
+        self._rules_by_symbol: dict[str, list[str]] = defaultdict(
+            list
+        )  # symbol -> [rule_id]
 
         # 告警歷史
         self._history: list[AlertEvent] = []
@@ -218,77 +224,109 @@ class CryptoAlertEngine:
         symbol = symbol.upper()
         rules = []
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_rsi_overbought",
-            rule_type="rsi_overbought",
-            symbol=symbol,
-            params={"threshold": self._rsi_overbought},
-            level=ALERT_LEVEL_WARNING,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_rsi_overbought",
+                    rule_type="rsi_overbought",
+                    symbol=symbol,
+                    params={"threshold": self._rsi_overbought},
+                    level=ALERT_LEVEL_WARNING,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_rsi_oversold",
-            rule_type="rsi_oversold",
-            symbol=symbol,
-            params={"threshold": self._rsi_oversold},
-            level=ALERT_LEVEL_WARNING,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_rsi_oversold",
+                    rule_type="rsi_oversold",
+                    symbol=symbol,
+                    params={"threshold": self._rsi_oversold},
+                    level=ALERT_LEVEL_WARNING,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_price_surge",
-            rule_type="price_change",
-            symbol=symbol,
-            params={"change_pct": self._price_change_pct, "direction": "up"},
-            level=ALERT_LEVEL_CRITICAL,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_price_surge",
+                    rule_type="price_change",
+                    symbol=symbol,
+                    params={"change_pct": self._price_change_pct, "direction": "up"},
+                    level=ALERT_LEVEL_CRITICAL,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_price_drop",
-            rule_type="price_change",
-            symbol=symbol,
-            params={"change_pct": self._price_change_pct, "direction": "down"},
-            level=ALERT_LEVEL_CRITICAL,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_price_drop",
+                    rule_type="price_change",
+                    symbol=symbol,
+                    params={"change_pct": self._price_change_pct, "direction": "down"},
+                    level=ALERT_LEVEL_CRITICAL,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_volume_surge",
-            rule_type="volume_surge",
-            symbol=symbol,
-            params={"multiplier": self._volume_surge_mult},
-            level=ALERT_LEVEL_WARNING,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_volume_surge",
+                    rule_type="volume_surge",
+                    symbol=symbol,
+                    params={"multiplier": self._volume_surge_mult},
+                    level=ALERT_LEVEL_WARNING,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_large_order",
-            rule_type="large_order",
-            symbol=symbol,
-            params={"min_usd": self._large_order_usd},
-            level=ALERT_LEVEL_INFO,
-            cooldown_sec=max(cd // 5, 30),  # 大單冷卻期較短
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_large_order",
+                    rule_type="large_order",
+                    symbol=symbol,
+                    params={"min_usd": self._large_order_usd},
+                    level=ALERT_LEVEL_INFO,
+                    cooldown_sec=max(cd // 5, 30),  # 大單冷卻期較短
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_macd_cross",
-            rule_type="macd_cross",
-            symbol=symbol,
-            params={},
-            level=ALERT_LEVEL_WARNING,
-            cooldown_sec=cd * 2,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_macd_cross",
+                    rule_type="macd_cross",
+                    symbol=symbol,
+                    params={},
+                    level=ALERT_LEVEL_WARNING,
+                    cooldown_sec=cd * 2,
+                )
+            )
+        )
 
-        rules.append(self.add_rule(AlertRule(
-            rule_id=f"{symbol}_bb_breakout",
-            rule_type="bb_breakout",
-            symbol=symbol,
-            params={},
-            level=ALERT_LEVEL_WARNING,
-            cooldown_sec=cd,
-        )))
+        rules.append(
+            self.add_rule(
+                AlertRule(
+                    rule_id=f"{symbol}_bb_breakout",
+                    rule_type="bb_breakout",
+                    symbol=symbol,
+                    params={},
+                    level=ALERT_LEVEL_WARNING,
+                    cooldown_sec=cd,
+                )
+            )
+        )
 
         return rules
 
@@ -326,7 +364,9 @@ class CryptoAlertEngine:
             if rule.is_in_cooldown():
                 continue
 
-            event = self._evaluate_rule(rule, indicators or {}, snapshot or {}, microstructure or {})
+            event = self._evaluate_rule(
+                rule, indicators or {}, snapshot or {}, microstructure or {}
+            )
             if event:
                 rule.mark_triggered()
                 self._total_triggered += 1
@@ -336,7 +376,7 @@ class CryptoAlertEngine:
 
                 # 裁剪歷史
                 if len(self._history) > self._max_history:
-                    self._history = self._history[-self._max_history:]
+                    self._history = self._history[-self._max_history :]
 
                 # 回調
                 if self._on_alert:
@@ -365,9 +405,13 @@ class CryptoAlertEngine:
             threshold = rule.params.get("threshold", self._rsi_overbought)
             if rsi is not None and rsi > threshold:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type=rt,
+                    symbol=sym,
+                    level=rule.level,
                     message=f"🔴 {sym} RSI 超買: {rsi:.1f} > {threshold}",
-                    price=price, params={"rsi": rsi, "threshold": threshold},
+                    price=price,
+                    params={"rsi": rsi, "threshold": threshold},
                 )
 
         # ── RSI 超賣 ──
@@ -376,9 +420,13 @@ class CryptoAlertEngine:
             threshold = rule.params.get("threshold", self._rsi_oversold)
             if rsi is not None and rsi < threshold:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type=rt,
+                    symbol=sym,
+                    level=rule.level,
                     message=f"🟢 {sym} RSI 超賣: {rsi:.1f} < {threshold}",
-                    price=price, params={"rsi": rsi, "threshold": threshold},
+                    price=price,
+                    params={"rsi": rsi, "threshold": threshold},
                 )
 
         # ── 價格變動 ──
@@ -388,15 +436,23 @@ class CryptoAlertEngine:
             direction = rule.params.get("direction", "up")
             if direction == "up" and change_pct > threshold:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type=rt,
+                    symbol=sym,
+                    level=rule.level,
                     message=f"🚀 {sym} 漲幅 {change_pct:.2f}% > {threshold}%",
-                    price=price, params={"change_pct": change_pct},
+                    price=price,
+                    params={"change_pct": change_pct},
                 )
             elif direction == "down" and change_pct < -threshold:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type=rt,
+                    symbol=sym,
+                    level=rule.level,
                     message=f"💥 {sym} 跌幅 {change_pct:.2f}% < -{threshold}%",
-                    price=price, params={"change_pct": change_pct},
+                    price=price,
+                    params={"change_pct": change_pct},
                 )
 
         # ── 成交量突增 ──
@@ -408,9 +464,13 @@ class CryptoAlertEngine:
             vol = snapshot.get("volume", 0)
             if vol > 0 and tpm > 100:  # 高頻成交
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type=rt,
+                    symbol=sym,
+                    level=rule.level,
                     message=f"📊 {sym} 成交量異常: 密度 {tpm:.0f} 筆/分鐘",
-                    price=price, params={"trades_per_minute": tpm, "volume": vol},
+                    price=price,
+                    params={"trades_per_minute": tpm, "volume": vol},
                 )
 
         # ── 大單 ──
@@ -422,12 +482,16 @@ class CryptoAlertEngine:
                 latest = recent[-1]
                 if latest.get("usd", 0) >= min_usd:
                     return AlertEvent(
-                        rule_id=rule.rule_id, rule_type=rt, symbol=sym, level=rule.level,
+                        rule_id=rule.rule_id,
+                        rule_type=rt,
+                        symbol=sym,
+                        level=rule.level,
                         message=(
                             f"🐋 {sym} 大單: {latest['direction'].upper()} "
                             f"${latest['usd']:,.0f} @ {latest['price']}"
                         ),
-                        price=price, params=latest,
+                        price=price,
+                        params=latest,
                     )
 
         # ── MACD 交叉 ──
@@ -437,17 +501,23 @@ class CryptoAlertEngine:
             if hist is not None and prev_hist is not None:
                 if prev_hist < 0 and hist > 0:
                     return AlertEvent(
-                        rule_id=rule.rule_id, rule_type="macd_golden_cross",
-                        symbol=sym, level=rule.level,
+                        rule_id=rule.rule_id,
+                        rule_type="macd_golden_cross",
+                        symbol=sym,
+                        level=rule.level,
                         message=f"📈 {sym} MACD 金叉: Histogram {hist:.4f}",
-                        price=price, params={"histogram": hist},
+                        price=price,
+                        params={"histogram": hist},
                     )
                 elif prev_hist > 0 and hist < 0:
                     return AlertEvent(
-                        rule_id=rule.rule_id, rule_type="macd_death_cross",
-                        symbol=sym, level=rule.level,
+                        rule_id=rule.rule_id,
+                        rule_type="macd_death_cross",
+                        symbol=sym,
+                        level=rule.level,
                         message=f"📉 {sym} MACD 死叉: Histogram {hist:.4f}",
-                        price=price, params={"histogram": hist},
+                        price=price,
+                        params={"histogram": hist},
                     )
 
         # ── 布林帶突破 ──
@@ -456,17 +526,23 @@ class CryptoAlertEngine:
             bb_lower = indicators.get("bb_lower")
             if bb_upper is not None and price > bb_upper:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type="bb_upper_break",
-                    symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type="bb_upper_break",
+                    symbol=sym,
+                    level=rule.level,
                     message=f"⚡ {sym} 突破布林上軌: {price:.2f} > {bb_upper:.2f}",
-                    price=price, params={"bb_upper": bb_upper},
+                    price=price,
+                    params={"bb_upper": bb_upper},
                 )
             elif bb_lower is not None and price < bb_lower:
                 return AlertEvent(
-                    rule_id=rule.rule_id, rule_type="bb_lower_break",
-                    symbol=sym, level=rule.level,
+                    rule_id=rule.rule_id,
+                    rule_type="bb_lower_break",
+                    symbol=sym,
+                    level=rule.level,
                     message=f"⚡ {sym} 跌破布林下軌: {price:.2f} < {bb_lower:.2f}",
-                    price=price, params={"bb_lower": bb_lower},
+                    price=price,
+                    params={"bb_lower": bb_lower},
                 )
 
         return None

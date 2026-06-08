@@ -6,6 +6,7 @@
   python scripts/seed_common_data.py --profile standard
   python main.py seed --profile standard
 """
+
 from __future__ import annotations
 
 import random
@@ -29,20 +30,48 @@ INDEX_CODES: tuple[str, ...] = (
 
 # 常見藍籌 / 權重
 CORE_BLUE_CHIPS: tuple[str, ...] = (
-    "600519", "601318", "600036", "000858", "000333",
-    "002594", "300750", "601166", "600900", "601012",
-    "600276", "000725", "002415", "601888", "603259",
-    "688981", "600030", "601398", "601857", "601288",
-    "000001", "000002", "600028", "601088", "601899",
+    "600519",
+    "601318",
+    "600036",
+    "000858",
+    "000333",
+    "002594",
+    "300750",
+    "601166",
+    "600900",
+    "601012",
+    "600276",
+    "000725",
+    "002415",
+    "601888",
+    "603259",
+    "688981",
+    "600030",
+    "601398",
+    "601857",
+    "601288",
+    "000001",
+    "000002",
+    "600028",
+    "601088",
+    "601899",
 )
 
 # 常見 ETF
 ETF_CODES: tuple[str, ...] = (
-    "510300", "510500", "512880", "512480", "512660",
+    "510300",
+    "510500",
+    "512880",
+    "512480",
+    "512660",
 )
 
 DEMO_STRATEGIES: tuple[str, ...] = (
-    "dual_ma", "macd", "bollinger", "rsi", "momentum",
+    "dual_ma",
+    "macd",
+    "bollinger",
+    "rsi",
+    "momentum",
 )
 
 
@@ -70,7 +99,9 @@ def codes_for_profile(profile: str) -> list[str]:
 
         return _dedupe_codes(list(STOCK_NAMES.keys()) + list(INDEX_CODES))
     # standard（默認）
-    return _dedupe_codes(base + list(INDEX_CODES) + list(CORE_BLUE_CHIPS) + list(ETF_CODES))
+    return _dedupe_codes(
+        base + list(INDEX_CODES) + list(CORE_BLUE_CHIPS) + list(ETF_CODES)
+    )
 
 
 def _kline_already_seeded(codes: list[str], min_codes: int = 2) -> bool:
@@ -91,28 +122,30 @@ def seed_universe_catalog() -> int:
     updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     records = []
     for rank, (code, name) in enumerate(STOCK_NAMES.items(), start=1):
-        records.append((
-            code,
-            "a_share",
-            name,
-            "CN",
-            None,  # industry
-            None,  # list_date
-            None,  # price
-            None,  # change_pct
-            None,  # total_mv
-            None,  # circulating_mv
-            None,  # pe_ttm
-            None,  # pb
-            None,  # volume
-            None,  # amount
-            None,  # turnover
-            rank,
-            updated_at,
-            "catalog_seed",
-            None,  # intro
-            None,  # extra_json
-        ))
+        records.append(
+            (
+                code,
+                "a_share",
+                name,
+                "CN",
+                None,  # industry
+                None,  # list_date
+                None,  # price
+                None,  # change_pct
+                None,  # total_mv
+                None,  # circulating_mv
+                None,  # pe_ttm
+                None,  # pb
+                None,  # volume
+                None,  # amount
+                None,  # turnover
+                rank,
+                updated_at,
+                "catalog_seed",
+                None,  # intro
+                None,  # extra_json
+            )
+        )
 
     with get_conn() as conn:
         before = conn.execute("SELECT COUNT(*) FROM stock_universe").fetchone()[0]
@@ -147,18 +180,20 @@ def _seed_realtime_from_kline(codes: list[str]) -> int:
         close = float(last["close"])
         prev_close = float(prev.get("close", close) or close)
         chg = (close - prev_close) / prev_close * 100 if prev_close else 0.0
-        rows.append({
-            "code": code,
-            "name": STOCK_NAMES.get(code, code),
-            "price": close,
-            "change_pct": round(chg, 4),
-            "volume": float(last.get("volume", 0) or 0),
-            "amount": float(last.get("amount", 0) or 0),
-            "high": float(last.get("high", close) or close),
-            "low": float(last.get("low", close) or close),
-            "open": float(last.get("open", close) or close),
-            "prev_close": prev_close,
-        })
+        rows.append(
+            {
+                "code": code,
+                "name": STOCK_NAMES.get(code, code),
+                "price": close,
+                "change_pct": round(chg, 4),
+                "volume": float(last.get("volume", 0) or 0),
+                "amount": float(last.get("amount", 0) or 0),
+                "high": float(last.get("high", close) or close),
+                "low": float(last.get("low", close) or close),
+                "open": float(last.get("open", close) or close),
+                "prev_close": prev_close,
+            }
+        )
 
     if not rows:
         return 0
@@ -192,7 +227,9 @@ def _download_codes(codes: list[str], start_date: str | None = None) -> dict:
         else:
             failed.append(code)
         if i < len(codes):
-            time.sleep(max(0.3, settings.download_throttle_sec) * random.uniform(0.7, 1.3))
+            time.sleep(
+                max(0.3, settings.download_throttle_sec) * random.uniform(0.7, 1.3)
+            )
 
     return {"total_records": total, "ok": ok, "failed": failed}
 
@@ -306,7 +343,11 @@ def seed_common_data(
         try:
             from src.core.stock_universe import sync_stock_universe
 
-            cap = universe_max if profile == "standard" else settings.stock_universe_max_count
+            cap = (
+                universe_max
+                if profile == "standard"
+                else settings.stock_universe_max_count
+            )
             result["universe_sync"] = sync_stock_universe(max_count=cap)
         except Exception as e:
             logger.warning(f"股票庫全量同步失敗: {e}")
@@ -318,7 +359,9 @@ def seed_common_data(
     if fundamentals:
         limit = 5 if profile == "quick" else (15 if profile == "standard" else 30)
         fund_codes = list(settings.watchlist) + list(CORE_BLUE_CHIPS[:10])
-        result["fundamentals"] = _seed_fundamentals(_dedupe_codes(fund_codes), limit=limit)
+        result["fundamentals"] = _seed_fundamentals(
+            _dedupe_codes(fund_codes), limit=limit
+        )
 
     if backtest_samples:
         bt_codes = list(settings.watchlist)

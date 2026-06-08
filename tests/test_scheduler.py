@@ -1,12 +1,14 @@
 """
 定時任務調度器測試
 """
+
 import pytest
 
 
 class TestSchedulerRegistry:
     def test_catalog_has_jobs(self):
         from src.core.scheduler import get_catalog, JOB_CATALOG
+
         catalog = get_catalog()
         assert len(catalog) == len(JOB_CATALOG)
         assert any(c["id"] == "incremental_update" for c in catalog)
@@ -46,6 +48,7 @@ class TestSchedulerRegistry:
 
     def test_run_job_unknown_raises(self):
         from src.core.scheduler import run_job_now
+
         with pytest.raises(ValueError, match="未知任務"):
             run_job_now("not_a_real_job")
 
@@ -54,12 +57,20 @@ class TestSchedulerRegistry:
 
         a = create_task(
             "scheduled_job",
-            {"source": "scheduler", "scheduler_job_id": "x", "scheduler_run_id": "run-a"},
+            {
+                "source": "scheduler",
+                "scheduler_job_id": "x",
+                "scheduler_run_id": "run-a",
+            },
             title="定時·測試A",
         )
         b = create_task(
             "scheduled_job",
-            {"source": "scheduler", "scheduler_job_id": "x", "scheduler_run_id": "run-b"},
+            {
+                "source": "scheduler",
+                "scheduler_job_id": "x",
+                "scheduler_run_id": "run-b",
+            },
             title="定時·測試B",
         )
         assert a["task_id"] != b["task_id"]

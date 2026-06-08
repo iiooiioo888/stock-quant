@@ -10,6 +10,7 @@
 環境變量：
   SQ_UI_BASE_URL — 預設 http://127.0.0.1:8000
 """
+
 from __future__ import annotations
 
 import os
@@ -135,7 +136,9 @@ class TestUISiteEntrypoints:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto(BASE_URL + "/admin", wait_until="domcontentloaded", timeout=30_000)
+            page.goto(
+                BASE_URL + "/admin", wait_until="domcontentloaded", timeout=30_000
+            )
             assert page.locator("#admin-gate").count() == 1
             browser.close()
 

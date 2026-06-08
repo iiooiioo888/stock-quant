@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("bollinger", "布林帶突破策略")
 class BollingerStrategy(OrderManagedStrategy):
     """布林帶策略"""
+
     params = (
         ("period", 20),
         ("devfactor", 2.0),
@@ -25,4 +26,3 @@ class BollingerStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.position and self.data.close > self.boll.lines.top:
             self.order = self.sell()
-

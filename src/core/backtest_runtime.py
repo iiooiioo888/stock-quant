@@ -1,6 +1,7 @@
 """
 Backtrader 回測執行期工具 — 記憶體釋放、滑點模型
 """
+
 from __future__ import annotations
 
 import gc
@@ -55,7 +56,7 @@ def compute_volume_impact_slippage_pct(
     if participation <= participation_cap:
         return base
     ratio = participation / participation_cap
-    return base * (ratio ** impact_exponent)
+    return base * (ratio**impact_exponent)
 
 
 def trim_ohlcv_dataframe(df):

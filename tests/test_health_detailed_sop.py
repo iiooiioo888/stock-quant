@@ -1,4 +1,5 @@
 """GET /api/health/detailed 含 SOP 與管線欄位。"""
+
 from fastapi.testclient import TestClient
 
 from src.api.app import app

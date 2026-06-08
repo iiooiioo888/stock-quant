@@ -1,6 +1,7 @@
 """
 OpenAI 兼容 Chat Completions 客戶端（同步 + 流式）。
 """
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,9 @@ from typing import Any, Generator, Optional
 
 import requests
 
-from src.integrations.llm.config_resolver import LlmRuntimeConfig  # noqa: F401 — re-export for tests
+from src.integrations.llm.config_resolver import (
+    LlmRuntimeConfig,
+)  # noqa: F401 — re-export for tests
 from src.utils.logger import logger
 
 
@@ -43,7 +46,9 @@ def chat_completions(
 
     if not stream:
         try:
-            resp = requests.post(url, headers=headers, json=body, timeout=cfg.timeout_sec)
+            resp = requests.post(
+                url, headers=headers, json=body, timeout=cfg.timeout_sec
+            )
         except requests.RequestException as e:
             logger.warning(f"LLM 請求失敗: {e}")
             raise RuntimeError(f"LLM 連線失敗: {e}") from e
@@ -64,7 +69,9 @@ def _parse_error(resp: requests.Response) -> str:
     return f"LLM API 錯誤 ({resp.status_code}): {detail}"
 
 
-def _stream_sse(url: str, headers: dict, body: dict, timeout: int) -> Generator[str, None, None]:
+def _stream_sse(
+    url: str, headers: dict, body: dict, timeout: int
+) -> Generator[str, None, None]:
     """Yield content delta strings from OpenAI-compatible SSE."""
     try:
         resp = requests.post(

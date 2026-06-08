@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("rsi", "RSI相對強弱策略")
 class RSIStrategy(OrderManagedStrategy):
     """RSI 策略"""
+
     params = (
         ("period", 14),
         ("overbought", 70),
@@ -26,6 +27,7 @@ class RSIStrategy(OrderManagedStrategy):
 
         if rsi_prev < self.p.oversold and rsi >= self.p.oversold and not self.position:
             self.order = self.buy()
-        elif rsi_prev > self.p.overbought and rsi <= self.p.overbought and self.position:
+        elif (
+            rsi_prev > self.p.overbought and rsi <= self.p.overbought and self.position
+        ):
             self.order = self.sell()
-

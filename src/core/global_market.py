@@ -2,6 +2,7 @@
 全球股票 & 指數數據模塊 — Yahoo Finance（免費，無需 API Key）
 支持：美股、港股、日股、歐股、全球指數、ETF、商品期貨
 """
+
 import time
 from datetime import datetime
 
@@ -25,10 +26,12 @@ _FAILED_COOLDOWN = 3600  # 失敗後冷卻 1 小時再重試
 
 # 通用 Session（用於非 Yahoo 數據源）
 _http_session = requests.Session()
-_http_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "*/*",
-})
+_http_session.headers.update(
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "*/*",
+    }
+)
 
 
 # ============================================================
@@ -277,6 +280,7 @@ def _to_em_secid(symbol: str) -> str:
 # ============================================================
 _TWELVE_BASE = "https://api.twelvedata.com"
 
+
 def _twelve_quote(symbol: str) -> dict:
     """
     Twelve Data 實時行情（免費層 800 次/天，8 次/分鐘）。
@@ -314,6 +318,7 @@ def _twelve_quote(symbol: str) -> dict:
         logger.debug(f"Twelve Data {symbol} 失敗: {e}")
 
     return {}
+
 
 # ====== 美股熱門 ======
 US_STOCKS = {
@@ -716,15 +721,17 @@ def _twelve_time_series(symbol: str, start_date: str = None) -> pd.DataFrame:
             c = float(v.get("close", 0) or 0)
             if c <= 0:
                 continue
-            records.append({
-                "date": v.get("datetime", ""),
-                "open": round(float(v.get("open", 0) or 0), 4),
-                "high": round(float(v.get("high", 0) or 0), 4),
-                "low": round(float(v.get("low", 0) or 0), 4),
-                "close": round(c, 4),
-                "volume": int(float(v.get("volume", 0) or 0)),
-                "amount": 0,
-            })
+            records.append(
+                {
+                    "date": v.get("datetime", ""),
+                    "open": round(float(v.get("open", 0) or 0), 4),
+                    "high": round(float(v.get("high", 0) or 0), 4),
+                    "low": round(float(v.get("low", 0) or 0), 4),
+                    "close": round(c, 4),
+                    "volume": int(float(v.get("volume", 0) or 0)),
+                    "amount": 0,
+                }
+            )
 
         if not records:
             return pd.DataFrame()
@@ -751,7 +758,9 @@ def download_global_symbol(symbol: str, start_date: str = None) -> pd.DataFrame:
     if symbol in _failed_symbols:
         elapsed = now - _failed_symbols[symbol]
         if elapsed < _FAILED_COOLDOWN:
-            logger.debug(f"{symbol}: 跳過（{_FAILED_COOLDOWN - elapsed:.0f}s 前失敗，冷卻中）")
+            logger.debug(
+                f"{symbol}: 跳過（{_FAILED_COOLDOWN - elapsed:.0f}s 前失敗，冷卻中）"
+            )
             return pd.DataFrame()
         else:
             # 冷卻期過，允許重試

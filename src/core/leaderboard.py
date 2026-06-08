@@ -6,6 +6,7 @@
   - get_leaderboard(): 讀取排行榜，支持按不同指標排序
   - strategy_leaderboard 表存儲歷史排名
 """
+
 import json
 from datetime import datetime
 
@@ -56,7 +57,10 @@ def update_leaderboard(codes: list[str] = None) -> list[dict]:
     """
     from src.config import settings
     from src.core.backtest import STRATEGIES, run_backtest
-    from src.core.strategy_base import list_user_strategies, quick_backtest_user_strategy
+    from src.core.strategy_base import (
+        list_user_strategies,
+        quick_backtest_user_strategy,
+    )
 
     init_leaderboard_table()
 
@@ -71,21 +75,26 @@ def update_leaderboard(codes: list[str] = None) -> list[dict]:
         for code in codes:
             try:
                 r = run_backtest(code, strategy_name=strategy_name, benchmark=False)
-                results.append({
-                    "strategy_name": strategy_name,
-                    "source": "builtin",
-                    "code": code,
-                    "total_return_pct": r.get("total_return_pct", 0),
-                    "sharpe_ratio": r.get("sharpe_ratio", 0),
-                    "sortino_ratio": r.get("sortino_ratio", 0),
-                    "calmar_ratio": r.get("calmar_ratio", 0),
-                    "max_drawdown_pct": r.get("max_drawdown_pct", 0),
-                    "win_rate_pct": r.get("win_rate_pct", 0),
-                    "total_trades": r.get("total_trades", 0),
-                    "annual_return_pct": r.get("annual_return_pct", 0),
-                    "var_95": r.get("var_95", 0),
-                    "params": json.dumps(settings.strategy_params.get(strategy_name, {}), ensure_ascii=False),
-                })
+                results.append(
+                    {
+                        "strategy_name": strategy_name,
+                        "source": "builtin",
+                        "code": code,
+                        "total_return_pct": r.get("total_return_pct", 0),
+                        "sharpe_ratio": r.get("sharpe_ratio", 0),
+                        "sortino_ratio": r.get("sortino_ratio", 0),
+                        "calmar_ratio": r.get("calmar_ratio", 0),
+                        "max_drawdown_pct": r.get("max_drawdown_pct", 0),
+                        "win_rate_pct": r.get("win_rate_pct", 0),
+                        "total_trades": r.get("total_trades", 0),
+                        "annual_return_pct": r.get("annual_return_pct", 0),
+                        "var_95": r.get("var_95", 0),
+                        "params": json.dumps(
+                            settings.strategy_params.get(strategy_name, {}),
+                            ensure_ascii=False,
+                        ),
+                    }
+                )
             except Exception as e:
                 logger.debug(f"排行榜回測跳過: {strategy_name}/{code} — {e}")
 
@@ -97,21 +106,25 @@ def update_leaderboard(codes: list[str] = None) -> list[dict]:
             try:
                 instance = cls()
                 r = quick_backtest_user_strategy(instance, code)
-                results.append({
-                    "strategy_name": s_info["name"],
-                    "source": "user",
-                    "code": code,
-                    "total_return_pct": r.get("total_return_pct", 0),
-                    "sharpe_ratio": r.get("sharpe_ratio", 0),
-                    "sortino_ratio": 0,
-                    "calmar_ratio": 0,
-                    "max_drawdown_pct": r.get("max_drawdown_pct", 0),
-                    "win_rate_pct": r.get("win_rate_pct", 0),
-                    "total_trades": r.get("total_trades", 0),
-                    "annual_return_pct": 0,
-                    "var_95": 0,
-                    "params": json.dumps(s_info.get("params", {}), ensure_ascii=False),
-                })
+                results.append(
+                    {
+                        "strategy_name": s_info["name"],
+                        "source": "user",
+                        "code": code,
+                        "total_return_pct": r.get("total_return_pct", 0),
+                        "sharpe_ratio": r.get("sharpe_ratio", 0),
+                        "sortino_ratio": 0,
+                        "calmar_ratio": 0,
+                        "max_drawdown_pct": r.get("max_drawdown_pct", 0),
+                        "win_rate_pct": r.get("win_rate_pct", 0),
+                        "total_trades": r.get("total_trades", 0),
+                        "annual_return_pct": 0,
+                        "var_95": 0,
+                        "params": json.dumps(
+                            s_info.get("params", {}), ensure_ascii=False
+                        ),
+                    }
+                )
             except Exception as e:
                 logger.debug(f"用戶策略排行榜回測跳過: {s_info['name']}/{code} — {e}")
 
@@ -131,13 +144,21 @@ def update_leaderboard(codes: list[str] = None) -> list[dict]:
                     total_trades, annual_return_pct, var_95, rank, params, evaluated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    r["strategy_name"], r["source"], r["code"],
-                    r["total_return_pct"], r["sharpe_ratio"],
-                    r.get("sortino_ratio", 0), r.get("calmar_ratio", 0),
-                    r["max_drawdown_pct"], r["win_rate_pct"],
-                    r["total_trades"], r.get("annual_return_pct", 0),
-                    r.get("var_95", 0), r["rank"],
-                    r.get("params", "{}"), now,
+                    r["strategy_name"],
+                    r["source"],
+                    r["code"],
+                    r["total_return_pct"],
+                    r["sharpe_ratio"],
+                    r.get("sortino_ratio", 0),
+                    r.get("calmar_ratio", 0),
+                    r["max_drawdown_pct"],
+                    r["win_rate_pct"],
+                    r["total_trades"],
+                    r.get("annual_return_pct", 0),
+                    r.get("var_95", 0),
+                    r["rank"],
+                    r.get("params", "{}"),
+                    now,
                 ),
             )
         conn.commit()
@@ -157,7 +178,9 @@ def _sql_scalar(conn, sql: str, params: tuple = ()) -> object | None:
         conn.row_factory = prev
 
 
-def get_leaderboard(sort_by: str = "sharpe", limit: int = 50, latest_only: bool = True) -> list[dict]:
+def get_leaderboard(
+    sort_by: str = "sharpe", limit: int = 50, latest_only: bool = True
+) -> list[dict]:
     """
     獲取策略排行榜。
 
@@ -188,7 +211,9 @@ def get_leaderboard(sort_by: str = "sharpe", limit: int = 50, latest_only: bool 
         conn.row_factory = _dict_row_factory
         try:
             if latest_only:
-                max_ts = _sql_scalar(conn, "SELECT MAX(evaluated_at) FROM strategy_leaderboard")
+                max_ts = _sql_scalar(
+                    conn, "SELECT MAX(evaluated_at) FROM strategy_leaderboard"
+                )
                 if not max_ts:
                     return []
                 rows = conn.execute(

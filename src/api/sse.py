@@ -74,4 +74,3 @@ def sse_format(data_text: str, *, event: str | None = None) -> str:
         out.append(f"data: {line}")
     out.append("")
     return "\n".join(out)
-

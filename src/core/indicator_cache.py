@@ -1,6 +1,7 @@
 """
 預計算指標緩存 — 疊加 result_cache + 數據版本，K 線更新後自動失效。
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Optional
@@ -22,7 +23,11 @@ def get_or_compute(
     builder: Callable[[], Any],
     ttl: int = 86400,
 ) -> Any:
-    from src.core.result_cache import get_cached_compute, is_cache_enabled, set_cached_compute
+    from src.core.result_cache import (
+        get_cached_compute,
+        is_cache_enabled,
+        set_cached_compute,
+    )
 
     if not is_cache_enabled():
         return builder()

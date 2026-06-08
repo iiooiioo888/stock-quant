@@ -3,6 +3,7 @@
 使用 AKShare 接口獲取板塊列表、成分股、板塊漲跌排行
 新增：快照存儲、板塊輪動、趨勢分析、資金流向、全景數據
 """
+
 import time
 from datetime import datetime
 
@@ -162,6 +163,7 @@ def init_sector_table():
 # 行業板塊（原有）
 # ============================================================
 
+
 def _load_sectors_from_snapshot(sector_type: str = "industry") -> list[dict]:
     """AKShare 不可用時，從本地快照讀取最近一次板塊數據"""
     init_sector_table()
@@ -184,21 +186,23 @@ def _load_sectors_from_snapshot(sector_type: str = "industry") -> list[dict]:
 
     result = []
     for r in rows:
-        result.append({
-            "name": r[0],
-            "code": "",
-            "change_pct": float(r[1] or 0),
-            "turnover": 0,
-            "amount": float(r[2] or 0),
-            "stock_count": int((r[3] or 0) + (r[4] or 0)),
-            "rise_count": int(r[3] or 0),
-            "fall_count": int(r[4] or 0),
-            "leader": str(r[5] or ""),
-            "leader_change_pct": float(r[6] or 0),
-            "type": sector_type,
-            "from_snapshot": True,
-            "snapshot_date": snap_date,
-        })
+        result.append(
+            {
+                "name": r[0],
+                "code": "",
+                "change_pct": float(r[1] or 0),
+                "turnover": 0,
+                "amount": float(r[2] or 0),
+                "stock_count": int((r[3] or 0) + (r[4] or 0)),
+                "rise_count": int(r[3] or 0),
+                "fall_count": int(r[4] or 0),
+                "leader": str(r[5] or ""),
+                "leader_change_pct": float(r[6] or 0),
+                "type": sector_type,
+                "from_snapshot": True,
+                "snapshot_date": snap_date,
+            }
+        )
     return result
 
 
@@ -222,24 +226,28 @@ def _parse_em_sector_diff(diff: list, sector_type: str) -> list[dict]:
             continue
         change_raw = item.get("f3")
         change_pct = float(change_raw) / 100.0 if change_raw is not None else 0.0
-        result.append({
-            "name": name,
-            "code": str(item.get("f12") or ""),
-            "change_pct": change_pct,
-            "turnover": float(item.get("f8") or 0),
-            "amount": float(item.get("f20") or 0),
-            "stock_count": int((item.get("f104") or 0) + (item.get("f105") or 0)),
-            "rise_count": int(item.get("f104") or 0),
-            "fall_count": int(item.get("f105") or 0),
-            "leader": str(item.get("f128") or item.get("f140") or ""),
-            "leader_change_pct": float(item.get("f136") or 0) / 100.0,
-            "type": sector_type,
-            "source": "eastmoney_http",
-        })
+        result.append(
+            {
+                "name": name,
+                "code": str(item.get("f12") or ""),
+                "change_pct": change_pct,
+                "turnover": float(item.get("f8") or 0),
+                "amount": float(item.get("f20") or 0),
+                "stock_count": int((item.get("f104") or 0) + (item.get("f105") or 0)),
+                "rise_count": int(item.get("f104") or 0),
+                "fall_count": int(item.get("f105") or 0),
+                "leader": str(item.get("f128") or item.get("f140") or ""),
+                "leader_change_pct": float(item.get("f136") or 0) / 100.0,
+                "type": sector_type,
+                "source": "eastmoney_http",
+            }
+        )
     return result
 
 
-def _fetch_sector_list_em_http(sector_type: str = "industry") -> tuple[list[dict], bool]:
+def _fetch_sector_list_em_http(
+    sector_type: str = "industry",
+) -> tuple[list[dict], bool]:
     """
     東財 push2 直連（多節點 + 節點內重試）。
     Returns:
@@ -284,7 +292,9 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> tuple[list[dict
                 result = _parse_em_sector_diff(diff, sector_type)
                 if result:
                     _rate_sleep()
-                    logger.info(f"東財 HTTP({host}) 獲取{sector_type}板塊: {len(result)} 條")
+                    logger.info(
+                        f"東財 HTTP({host}) 獲取{sector_type}板塊: {len(result)} 條"
+                    )
                     return result, False
             except Exception as e:
                 last_err = e
@@ -296,7 +306,11 @@ def _fetch_sector_list_em_http(sector_type: str = "industry") -> tuple[list[dict
                 )
 
     if last_err:
-        hint = "將嘗試快照/本地緩存" if _sector_list_stale.get(sector_type) else "請稍後重試或收盤後保存板塊快照"
+        hint = (
+            "將嘗試快照/本地緩存"
+            if _sector_list_stale.get(sector_type)
+            else "請稍後重試或收盤後保存板塊快照"
+        )
         _log_sector_fail(
             sector_type,
             f"東財 HTTP 獲取{sector_type}板塊失敗（多節點已重試）: {last_err}；{hint}",
@@ -341,21 +355,23 @@ def _load_sectors_from_local_kline(sector_type: str = "industry") -> list[dict]:
         avg = sum(changes) / len(changes)
         rise = sum(1 for c in changes if c > 0)
         fall = sum(1 for c in changes if c <= 0)
-        result.append({
-            "name": sector_name,
-            "code": "",
-            "change_pct": round(avg, 2),
-            "turnover": 0,
-            "amount": 0,
-            "stock_count": len(changes),
-            "rise_count": rise,
-            "fall_count": fall,
-            "leader": leader_code,
-            "leader_change_pct": round(leader_chg, 2),
-            "type": sector_type,
-            "from_local_kline": True,
-            "source": "local_kline",
-        })
+        result.append(
+            {
+                "name": sector_name,
+                "code": "",
+                "change_pct": round(avg, 2),
+                "turnover": 0,
+                "amount": 0,
+                "stock_count": len(changes),
+                "rise_count": rise,
+                "fall_count": fall,
+                "leader": leader_code,
+                "leader_change_pct": round(leader_chg, 2),
+                "type": sector_type,
+                "from_local_kline": True,
+                "source": "local_kline",
+            }
+        )
 
     result.sort(key=lambda x: x.get("change_pct", 0), reverse=True)
     if result:
@@ -378,42 +394,48 @@ def _fetch_sector_list_live(sector_type: str, retries: int = 2) -> list[dict]:
 
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    "name": str(row.get("板块名称", row.get("板块名称", ""))),
-                    "code": str(row.get("板块代码", row.get("板块代码", ""))),
-                    "change_pct": float(row.get("涨跌幅", 0) or 0),
-                    "turnover": float(row.get("换手率", 0) or 0),
-                    "amount": float(row.get("总成交额", 0) or 0),
-                    "stock_count": int(row.get("上涨家数", 0) or 0),
-                    "rise_count": int(row.get("上涨家数", 0) or 0),
-                    "fall_count": int(row.get("下跌家数", 0) or 0),
-                    "leader": str(row.get("领涨股票", "")),
-                    "leader_change_pct": float(row.get("领涨股票-涨跌幅", 0) or 0),
-                    "type": sector_type,
-                    "source": "akshare",
-                })
+                result.append(
+                    {
+                        "name": str(row.get("板块名称", row.get("板块名称", ""))),
+                        "code": str(row.get("板块代码", row.get("板块代码", ""))),
+                        "change_pct": float(row.get("涨跌幅", 0) or 0),
+                        "turnover": float(row.get("换手率", 0) or 0),
+                        "amount": float(row.get("总成交额", 0) or 0),
+                        "stock_count": int(row.get("上涨家数", 0) or 0),
+                        "rise_count": int(row.get("上涨家数", 0) or 0),
+                        "fall_count": int(row.get("下跌家数", 0) or 0),
+                        "leader": str(row.get("领涨股票", "")),
+                        "leader_change_pct": float(row.get("领涨股票-涨跌幅", 0) or 0),
+                        "type": sector_type,
+                        "source": "akshare",
+                    }
+                )
 
             _rate_sleep()
             return result
         except Exception as e:
             last_err = e
-            logger.debug(f"AKShare 獲取{sector_type}板塊失敗 ({attempt + 1}/{retries}): {e}")
+            logger.debug(
+                f"AKShare 獲取{sector_type}板塊失敗 ({attempt + 1}/{retries}): {e}"
+            )
             if _is_connection_error(e):
                 break
             time.sleep(0.8 + attempt * 0.5)
 
     if last_err:
-        _log_sector_fail(sector_type, f"AKShare 獲取{sector_type}板塊列表失敗: {last_err}")
+        _log_sector_fail(
+            sector_type, f"AKShare 獲取{sector_type}板塊列表失敗: {last_err}"
+        )
     return []
 
 
 def get_sector_list(sector_type: str = "industry") -> list[dict]:
     """
     獲取所有板塊列表
-    
+
     Args:
         sector_type: 'industry' 行業板塊, 'concept' 概念板塊
-    
+
     Returns:
         [{"name": "銀行", "code": "BK0475", ...}, ...]
     """
@@ -475,11 +497,11 @@ def get_sector_list(sector_type: str = "industry") -> list[dict]:
 def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[dict]:
     """
     獲取指定板塊的成分股
-    
+
     Args:
         sector_name: 板塊名稱，如 "銀行"
         sector_type: 'industry' 或 'concept'
-    
+
     Returns:
         [{"code": "000001", "name": "平安銀行", ...}, ...]
     """
@@ -495,15 +517,17 @@ def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[d
 
         result = []
         for _, row in df.iterrows():
-            result.append({
-                "code": str(row.get("代码", "")),
-                "name": str(row.get("名称", "")),
-                "price": float(row.get("最新价", 0) or 0),
-                "change_pct": float(row.get("涨跌幅", 0) or 0),
-                "volume": float(row.get("成交量", 0) or 0),
-                "amount": float(row.get("成交额", 0) or 0),
-                "turnover": float(row.get("换手率", 0) or 0),
-            })
+            result.append(
+                {
+                    "code": str(row.get("代码", "")),
+                    "name": str(row.get("名称", "")),
+                    "price": float(row.get("最新价", 0) or 0),
+                    "change_pct": float(row.get("涨跌幅", 0) or 0),
+                    "volume": float(row.get("成交量", 0) or 0),
+                    "amount": float(row.get("成交额", 0) or 0),
+                    "turnover": float(row.get("换手率", 0) or 0),
+                }
+            )
 
         # 存入數據庫
         _save_sector_stocks(sector_name, sector_type, result)
@@ -520,13 +544,15 @@ def _save_sector_stocks(sector_name: str, sector_type: str, stocks: list[dict]):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     records = []
     for s in stocks:
-        records.append((
-            sector_name,
-            sector_type,
-            s.get("code", ""),
-            s.get("name", ""),
-            now,
-        ))
+        records.append(
+            (
+                sector_name,
+                sector_type,
+                s.get("code", ""),
+                s.get("name", ""),
+                now,
+            )
+        )
 
     if not records:
         return
@@ -536,19 +562,21 @@ def _save_sector_stocks(sector_name: str, sector_type: str, stocks: list[dict]):
             """INSERT OR REPLACE INTO sector_data
                (sector_name, sector_type, code, stock_name, update_date)
                VALUES (?, ?, ?, ?, ?)""",
-            records
+            records,
         )
     logger.debug(f"保存板塊 {sector_name} 成分股: {len(records)} 只")
 
 
-def get_sector_performance(sector_type: str = "industry", top_n: int = 20) -> list[dict]:
+def get_sector_performance(
+    sector_type: str = "industry", top_n: int = 20
+) -> list[dict]:
     """
     獲取板塊漲跌排行
-    
+
     Args:
         sector_type: 'industry' 或 'concept'
         top_n: 返回前 N 個板塊
-    
+
     Returns:
         按漲跌幅排序的板塊列表
     """
@@ -566,7 +594,7 @@ def get_cached_sector_stocks(sector_name: str) -> list[str]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT DISTINCT code FROM sector_data WHERE sector_name = ?",
-            (sector_name,)
+            (sector_name,),
         ).fetchall()
     return [r[0] for r in rows]
 
@@ -575,14 +603,15 @@ def get_cached_sector_stocks(sector_name: str) -> list[str]:
 # 板塊快照 — 每日存儲板塊漲跌數據
 # ============================================================
 
+
 def save_sector_snapshot(sector_type: str = "industry") -> int:
     """
     保存當日板塊快照到 sector_snapshot 表。
     同一天同一板塊只存一條（REPLACE）。
-    
+
     Args:
         sector_type: 'industry' 或 'concept'
-    
+
     Returns:
         保存的記錄數
     """
@@ -594,17 +623,19 @@ def save_sector_snapshot(sector_type: str = "industry") -> int:
     today = datetime.now().strftime("%Y-%m-%d")
     records = []
     for s in sectors:
-        records.append((
-            s.get("name", ""),
-            sector_type,
-            s.get("change_pct", 0),
-            s.get("amount", 0),
-            s.get("rise_count", 0),
-            s.get("fall_count", 0),
-            s.get("leader", ""),
-            s.get("leader_change_pct", 0),
-            today,
-        ))
+        records.append(
+            (
+                s.get("name", ""),
+                sector_type,
+                s.get("change_pct", 0),
+                s.get("amount", 0),
+                s.get("rise_count", 0),
+                s.get("fall_count", 0),
+                s.get("leader", ""),
+                s.get("leader_change_pct", 0),
+                today,
+            )
+        )
 
     with get_conn() as conn:
         conn.executemany(
@@ -624,6 +655,7 @@ def save_sector_snapshot(sector_type: str = "industry") -> int:
 # 板塊輪動分析
 # ============================================================
 
+
 def get_sector_rotation(days: int = 10) -> list[dict]:
     """
     板塊輪動分析：比較今天和 N 天前的排名變化。
@@ -633,7 +665,7 @@ def get_sector_rotation(days: int = 10) -> list[dict]:
         # 獲取最近有數據的不同日期（降序）
         rows = conn.execute(
             "SELECT DISTINCT snapshot_date FROM sector_snapshot ORDER BY snapshot_date DESC LIMIT ?",
-            (days + 1,)
+            (days + 1,),
         ).fetchall()
 
     dates = [r[0] for r in rows]
@@ -667,14 +699,16 @@ def get_sector_rotation(days: int = 10) -> list[dict]:
             prev_rank = prev_ranks[name][0]
             rank_change = prev_rank - cur_rank  # 正數=排名上升
             avg_change = round((cur_change + prev_ranks[name][1]) / 2, 2)
-            result.append({
-                "name": name,
-                "rank_change": rank_change,
-                "current_rank": cur_rank,
-                "prev_rank": prev_rank,
-                "avg_change_pct": avg_change,
-                "amount": cur_amount,
-            })
+            result.append(
+                {
+                    "name": name,
+                    "rank_change": rank_change,
+                    "current_rank": cur_rank,
+                    "prev_rank": prev_rank,
+                    "avg_change_pct": avg_change,
+                    "amount": cur_amount,
+                }
+            )
 
     # 按排名變化排序
     result.sort(key=lambda x: x["rank_change"], reverse=True)
@@ -684,6 +718,7 @@ def get_sector_rotation(days: int = 10) -> list[dict]:
 # ============================================================
 # 板塊歷史趨勢
 # ============================================================
+
 
 def get_sector_trend(sector_name: str, days: int = 20) -> list[dict]:
     """
@@ -714,11 +749,13 @@ def get_sector_trend(sector_name: str, days: int = 20) -> list[dict]:
                 (date,),
             ).fetchall()
         rank_map = {s[0]: i + 1 for i, s in enumerate(all_sectors)}
-        result.append({
-            "date": date,
-            "change_pct": round(change_pct, 2) if change_pct else 0,
-            "rank": rank_map.get(sector_name, 0),
-        })
+        result.append(
+            {
+                "date": date,
+                "change_pct": round(change_pct, 2) if change_pct else 0,
+                "rank": rank_map.get(sector_name, 0),
+            }
+        )
 
     return result
 
@@ -726,6 +763,7 @@ def get_sector_trend(sector_name: str, days: int = 20) -> list[dict]:
 # ============================================================
 # 板塊資金流向
 # ============================================================
+
 
 def get_sector_capital_flow_rank(top_n: int = 20) -> list[dict]:
     """板塊主力淨流入排名（今日）"""
@@ -756,33 +794,39 @@ def get_sector_change_flow_matrix(
             continue
         seen.add(name)
         f = flow_map.get(name, {})
-        merged.append({
-            "name": name,
-            "change_pct": float(p.get("change_pct", 0) or 0),
-            "main_net": float(f.get("main_net", 0) or 0),
-            "main_net_pct": float(f.get("main_net_pct", 0) or 0),
-            "amount": float(p.get("amount", 0) or 0),
-            "source": p.get("source") or f.get("source") or "",
-        })
+        merged.append(
+            {
+                "name": name,
+                "change_pct": float(p.get("change_pct", 0) or 0),
+                "main_net": float(f.get("main_net", 0) or 0),
+                "main_net_pct": float(f.get("main_net_pct", 0) or 0),
+                "amount": float(p.get("amount", 0) or 0),
+                "source": p.get("source") or f.get("source") or "",
+            }
+        )
 
     for f in flows:
         name = f.get("name")
         if not name or name in seen:
             continue
         seen.add(name)
-        merged.append({
-            "name": name,
-            "change_pct": float(f.get("change_pct", 0) or 0),
-            "main_net": float(f.get("main_net", 0) or 0),
-            "main_net_pct": float(f.get("main_net_pct", 0) or 0),
-            "amount": 0,
-            "source": "capital_flow",
-        })
+        merged.append(
+            {
+                "name": name,
+                "change_pct": float(f.get("change_pct", 0) or 0),
+                "main_net": float(f.get("main_net", 0) or 0),
+                "main_net_pct": float(f.get("main_net_pct", 0) or 0),
+                "amount": 0,
+                "source": "capital_flow",
+            }
+        )
 
     return merged
 
 
-def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industry") -> list[dict]:
+def get_sector_capital_flow(
+    sector_name: str = None, sector_type: str = "industry"
+) -> list[dict]:
     """
     板塊資金流向排名（多源降級）。
     優先：東財 HTTP 直連 → AKShare → 板塊行情列表（無資金欄位時僅漲跌）
@@ -811,7 +855,9 @@ def get_sector_capital_flow(sector_name: str = None, sector_type: str = "industr
         sectors = get_sector_list(sector_type)
         if sectors:
             degraded = True
-            logger.info(f"板塊資金接口不可用，使用{sector_type}板塊行情列表（無主力淨額）")
+            logger.info(
+                f"板塊資金接口不可用，使用{sector_type}板塊行情列表（無主力淨額）"
+            )
             result = [
                 {
                     "name": s.get("name", ""),
@@ -854,7 +900,10 @@ def sector_flow_is_degraded(items: list[dict]) -> bool:
     return any(
         i.get("degraded")
         or i.get("source") == "sector_list_fallback"
-        or (float(i.get("main_net") or 0) == 0 and float(i.get("main_net_pct") or 0) == 0)
+        or (
+            float(i.get("main_net") or 0) == 0
+            and float(i.get("main_net_pct") or 0) == 0
+        )
         for i in items[: min(5, len(items))]
     )
 
@@ -862,6 +911,7 @@ def sector_flow_is_degraded(items: list[dict]) -> bool:
 # ============================================================
 # 板塊全景數據（熱力圖）
 # ============================================================
+
 
 def get_sector_heatmap_data(sector_type: str = "industry") -> list[dict]:
     """
@@ -878,16 +928,20 @@ def get_sector_heatmap_data(sector_type: str = "industry") -> list[dict]:
         if amount <= 0:
             change = abs(float(s.get("change_pct", 0) or 0))
             count = int(s.get("rise_count", 0) or 0) + int(s.get("fall_count", 0) or 0)
-            amount = change + 0.5 if change > 0 else (float(count) if count > 0 else 1.0)
-        result.append({
-            "name": s.get("name", ""),
-            "change_pct": s.get("change_pct", 0),
-            "amount": amount,
-            "stock_count": s.get("rise_count", 0) + s.get("fall_count", 0),
-            "rise_count": s.get("rise_count", 0),
-            "fall_count": s.get("fall_count", 0),
-            "leader": s.get("leader", ""),
-            "leader_change_pct": s.get("leader_change_pct", 0),
-        })
+            amount = (
+                change + 0.5 if change > 0 else (float(count) if count > 0 else 1.0)
+            )
+        result.append(
+            {
+                "name": s.get("name", ""),
+                "change_pct": s.get("change_pct", 0),
+                "amount": amount,
+                "stock_count": s.get("rise_count", 0) + s.get("fall_count", 0),
+                "rise_count": s.get("rise_count", 0),
+                "fall_count": s.get("fall_count", 0),
+                "leader": s.get("leader", ""),
+                "leader_change_pct": s.get("leader_change_pct", 0),
+            }
+        )
 
     return result

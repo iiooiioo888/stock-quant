@@ -3,6 +3,7 @@ TradingView 行情數據 — Scanner 報價 + TVC History K 線
 
 非官方接口，需 Referer；失敗時由 market_fetch 降級至 Yahoo 等。
 """
+
 from __future__ import annotations
 
 import time
@@ -58,8 +59,13 @@ def fetch_tv_quote(tv_symbol: str, scanner: str = "america") -> dict:
     payload = {
         "symbols": {"tickers": [tv_symbol], "query": {"types": []}},
         "columns": [
-            "close", "change", "change_abs", "volume",
-            "description", "currency", "market",
+            "close",
+            "change",
+            "change_abs",
+            "volume",
+            "description",
+            "currency",
+            "market",
         ],
     }
     try:
@@ -138,14 +144,16 @@ def fetch_tv_history(tv_symbol: str, days: int = 90) -> pd.DataFrame:
         for i, t in enumerate(ts):
             try:
                 dt = datetime.utcfromtimestamp(int(t)).strftime("%Y-%m-%d")
-                rows.append({
-                    "date": dt,
-                    "open": float(opens[i]),
-                    "high": float(highs[i]),
-                    "low": float(lows[i]),
-                    "close": float(closes[i]),
-                    "volume": float(volumes[i]) if i < len(volumes) else 0,
-                })
+                rows.append(
+                    {
+                        "date": dt,
+                        "open": float(opens[i]),
+                        "high": float(highs[i]),
+                        "low": float(lows[i]),
+                        "close": float(closes[i]),
+                        "volume": float(volumes[i]) if i < len(volumes) else 0,
+                    }
+                )
             except (IndexError, TypeError, ValueError):
                 continue
 

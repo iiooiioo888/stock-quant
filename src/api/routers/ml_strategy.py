@@ -1,6 +1,7 @@
 """
 ML 策略 API — 模型訓練、信號生成、模型管理
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,7 +37,9 @@ async def ml_train(body: dict, user: User = Depends(require_auth)):
     train_ratio = body.get("train_ratio", 0.7)
     features = body.get("features")
     prob_threshold = body.get("prob_threshold", 0.6)
-    model_kwargs = {k: body[k] for k in ("n_estimators", "max_depth", "learning_rate") if k in body}
+    model_kwargs = {
+        k: body[k] for k in ("n_estimators", "max_depth", "learning_rate") if k in body
+    }
 
     try:
         df = load_daily_kline(code)
@@ -49,8 +52,12 @@ async def ml_train(body: dict, user: User = Depends(require_auth)):
                 raise HTTPException(400, f"數據缺少 {col} 列")
 
         result = train_and_backtest(
-            df, model_type=model_type, train_ratio=train_ratio,
-            features=features, prob_threshold=prob_threshold, **model_kwargs,
+            df,
+            model_type=model_type,
+            train_ratio=train_ratio,
+            features=features,
+            prob_threshold=prob_threshold,
+            **model_kwargs,
         )
 
         # 移除不可序列化的 model 對象
@@ -78,6 +85,7 @@ async def ml_train(body: dict, user: User = Depends(require_auth)):
 async def ml_list_models(user: User = Depends(require_auth)):
     """列出已保存的 ML 模型。"""
     from src.core.ml_strategy import list_saved_models
+
     return {"success": True, "models": list_saved_models()}
 
 
@@ -85,4 +93,5 @@ async def ml_list_models(user: User = Depends(require_auth)):
 async def ml_list_features():
     """列出默認特徵列表。"""
     from src.core.ml_strategy import DEFAULT_FEATURES
+
     return {"success": True, "features": DEFAULT_FEATURES}

@@ -3,6 +3,7 @@
 
 優先使用 Redis（跨實例共享），不可用時降級到進程內存。
 """
+
 import json
 import time
 from typing import Any, Callable, Optional
@@ -13,16 +14,16 @@ _DEFAULT_TTL = 5
 _CACHE_PREFIX = "ac:"
 
 # 分類 TTL 常量（秒）— 根據數據時效性分級
-TTL_REALTIME = 5          # 實時行情、盯盤
-TTL_REALTIME_QUOTE = 10   # 個股報價
-TTL_CAPITAL_FLOW = 120    # 資金流向（實時性要求高，原 300s → 120s）
+TTL_REALTIME = 5  # 實時行情、盯盤
+TTL_REALTIME_QUOTE = 10  # 個股報價
+TTL_CAPITAL_FLOW = 120  # 資金流向（實時性要求高，原 300s → 120s）
 TTL_SECTOR_HEATMAP = 120  # 板塊熱力圖
-TTL_DASHBOARD = 30        # 儀表盤數據
-TTL_CONFIG = 60           # 配置信息
-TTL_FUNDAMENTALS = 3600   # 基本面（日內穩定）
-TTL_BACKTEST_RESULT = 3600    # 回測結果
-TTL_OPTIMIZE_RESULT = 7200    # 優化結果
-TTL_STRATEGY_LIST = 300       # 策略列表
+TTL_DASHBOARD = 30  # 儀表盤數據
+TTL_CONFIG = 60  # 配置信息
+TTL_FUNDAMENTALS = 3600  # 基本面（日內穩定）
+TTL_BACKTEST_RESULT = 3600  # 回測結果
+TTL_OPTIMIZE_RESULT = 7200  # 優化結果
+TTL_STRATEGY_LIST = 300  # 策略列表
 TTL_STATIC_REFERENCE = 86400  # 靜態參考數據（指數成分等）
 
 # ---------------------------------------------------------------------------
@@ -45,9 +46,11 @@ def _get_redis():
     _redis_initialized = True
     try:
         from src.config import settings
+
         if not getattr(settings, "redis_enabled", False):
             return None
         import redis as redis_lib
+
         url = getattr(settings, "redis_url", "redis://localhost:6379/0")
         pwd = getattr(settings, "redis_password", "")
         _redis_client = redis_lib.from_url(
@@ -70,6 +73,7 @@ def _get_redis():
 # ---------------------------------------------------------------------------
 # 公開接口
 # ---------------------------------------------------------------------------
+
 
 def get_cached(key: str) -> Optional[Any]:
     """讀取緩存；Redis 優先，降級到內存。"""
@@ -139,7 +143,9 @@ def invalidate_prefix(prefix: str) -> None:
 
     total = redis_count + len(mem_keys)
     if total:
-        logger.debug(f"API 緩存失效: {prefix}* (Redis={redis_count}, 內存={len(mem_keys)})")
+        logger.debug(
+            f"API 緩存失效: {prefix}* (Redis={redis_count}, 內存={len(mem_keys)})"
+        )
 
 
 def clear_all() -> None:

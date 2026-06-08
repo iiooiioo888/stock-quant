@@ -3,6 +3,7 @@
 
 與 Backtrader 策略解耦，驗證 src.core.indicators.fast_indicators 純函數。
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -33,10 +34,12 @@ def test_rsi14_golden_uptrend_near_overbought():
 def test_dual_ma_golden_cross_detection():
     """雙均線金叉：快線由 ≤ 慢線 變為 > 慢線（與 dual_ma 策略邏輯對齊）。"""
     # 先跌後漲，確保存在至少一次金叉
-    close = np.concatenate([
-        np.linspace(110.0, 95.0, 25),
-        np.linspace(95.0, 120.0, 35),
-    ]).astype(np.float64)
+    close = np.concatenate(
+        [
+            np.linspace(110.0, 95.0, 25),
+            np.linspace(95.0, 120.0, 35),
+        ]
+    ).astype(np.float64)
     fast = compute_sma(close, 5)
     slow = compute_sma(close, 20)
     crosses = 0

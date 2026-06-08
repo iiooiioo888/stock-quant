@@ -6,6 +6,7 @@
 - 歷史極端行情重放（2015 股災、2020 疫情等）
 - VaR/CVaR 壓力測試報告
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,7 +15,9 @@ import numpy as np
 import pandas as pd
 
 
-def _generate_extreme_returns(mean: float, std: float, n: int, min_return: float) -> list[float]:
+def _generate_extreme_returns(
+    mean: float, std: float, n: int, min_return: float
+) -> list[float]:
     """生成極端行情收益率序列。"""
     np.random.seed(42)
     returns = np.random.normal(mean, std, n)
@@ -63,8 +66,13 @@ EXTREME_SCENARIOS = {
 def list_scenarios() -> list[dict]:
     """列出所有歷史極端行情場景。"""
     return [
-        {"id": sid, "name": s["name"], "description": s["description"],
-         "duration_days": s["duration_days"], "max_drawdown_pct": s["max_drawdown_pct"]}
+        {
+            "id": sid,
+            "name": s["name"],
+            "description": s["description"],
+            "duration_days": s["duration_days"],
+            "max_drawdown_pct": s["max_drawdown_pct"],
+        }
         for sid, s in EXTREME_SCENARIOS.items()
     ]
 
@@ -72,6 +80,7 @@ def list_scenarios() -> list[dict]:
 # ============================================================
 # 蒙特卡洛模擬（多資產）
 # ============================================================
+
 
 def monte_carlo_multi_asset(
     returns_matrix: np.ndarray,
@@ -82,14 +91,14 @@ def monte_carlo_multi_asset(
 ) -> dict[str, Any]:
     """
     多資產蒙特卡洛模擬（考慮相關性）。
-    
+
     Args:
         returns_matrix: (T, N) 收益率矩陣，T=歷史天數，N=資產數
         weights: (N,) 資產權重
         n_simulations: 模擬次數
         days: 模擬天數
         initial_value: 初始價值
-    
+
     Returns:
         {"paths": np.ndarray, "final_values": np.ndarray, "var_95": float,
          "cvar_95": float, "mean_return": float, "max_drawdown_mean": float,
@@ -157,6 +166,7 @@ def monte_carlo_multi_asset(
 # 歷史極端行情重放
 # ============================================================
 
+
 def replay_extreme_scenario(
     portfolio_returns: list[float],
     scenario_id: str,
@@ -164,17 +174,19 @@ def replay_extreme_scenario(
 ) -> dict[str, Any]:
     """
     將策略收益序列重放到歷史極端行情場景。
-    
+
     Args:
         portfolio_returns: 策略的歷史日收益率序列
         scenario_id: 場景 ID
         initial_value: 初始價值
-    
+
     Returns:
         壓力測試結果
     """
     if scenario_id not in EXTREME_SCENARIOS:
-        raise ValueError(f"未知場景: {scenario_id}，可用: {list(EXTREME_SCENARIOS.keys())}")
+        raise ValueError(
+            f"未知場景: {scenario_id}，可用: {list(EXTREME_SCENARIOS.keys())}"
+        )
 
     scenario = EXTREME_SCENARIOS[scenario_id]
     extreme_returns = scenario["daily_returns"]
@@ -187,7 +199,9 @@ def replay_extreme_scenario(
     pr = np.array(portfolio_returns[:n])
     er = np.array(extreme_returns[:n])
 
-    beta = float(np.corrcoef(pr, er)[0, 1]) if np.std(pr) > 0 and np.std(er) > 0 else 1.0
+    beta = (
+        float(np.corrcoef(pr, er)[0, 1]) if np.std(pr) > 0 and np.std(er) > 0 else 1.0
+    )
 
     # 用 beta 調整極端場景對策略的影響
     adjusted_returns = [r * beta for r in extreme_returns]
@@ -199,7 +213,7 @@ def replay_extreme_scenario(
     values = [initial_value]
 
     for r in adjusted_returns:
-        cumulative *= (1 + r)
+        cumulative *= 1 + r
         values.append(cumulative)
         if cumulative > peak:
             peak = cumulative
@@ -240,6 +254,7 @@ def replay_all_scenarios(
 # VaR / CVaR 壓力測試
 # ============================================================
 
+
 def var_stress_test(
     returns: list[float],
     confidence_levels: list[float] = None,
@@ -247,12 +262,12 @@ def var_stress_test(
 ) -> dict[str, Any]:
     """
     VaR/CVaR 壓力測試。
-    
+
     Args:
         returns: 日收益率序列
         confidence_levels: 置信水平列表（默認 [0.95, 0.99]）
         holding_periods: 持有期天數（默認 [1, 5, 10, 20]）
-    
+
     Returns:
         VaR/CVaR 矩陣
     """
@@ -274,7 +289,9 @@ def var_stress_test(
             # 持有期收益 = 日收益 * sqrt(持有期)（簡化假設）
             scale = np.sqrt(hp)
             var_val = float(np.percentile(arr, (1 - cl) * 100)) * scale
-            cvar_val = float(np.mean(arr[arr <= np.percentile(arr, (1 - cl) * 100)])) * scale
+            cvar_val = (
+                float(np.mean(arr[arr <= np.percentile(arr, (1 - cl) * 100)])) * scale
+            )
 
             level_results[f"{hp}d"] = {
                 "var": round(var_val, 6),

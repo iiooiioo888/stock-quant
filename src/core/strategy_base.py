@@ -4,6 +4,7 @@
 用戶只需繼承 UserStrategy 並實現 buy_signal / sell_signal 即可。
 系統自動發現、加載、沙箱執行，並可無縫接入 Backtrader 回測。
 """
+
 import importlib.util
 import os
 import re
@@ -30,6 +31,7 @@ def _check_strategy_safety(filepath: str) -> bool:
 # ============================================================
 # 策略基類
 # ============================================================
+
 
 class UserStrategy:
     """
@@ -122,14 +124,16 @@ class UserStrategy:
                     closes.append(data.close[i])
                     volumes.append(data.volume[i])
 
-                self_._df_cache = pd.DataFrame({
-                    "date": dates,
-                    "open": opens,
-                    "high": highs,
-                    "low": lows,
-                    "close": closes,
-                    "volume": volumes,
-                })
+                self_._df_cache = pd.DataFrame(
+                    {
+                        "date": dates,
+                        "open": opens,
+                        "high": highs,
+                        "low": lows,
+                        "close": closes,
+                        "volume": volumes,
+                    }
+                )
                 return self_._df_cache
 
             def next(self_):
@@ -145,7 +149,10 @@ class UserStrategy:
 
                 try:
                     # 調用用戶的買入信號
-                    if user_strategy_instance.buy_signal(df, idx) and not self_.position:
+                    if (
+                        user_strategy_instance.buy_signal(df, idx)
+                        and not self_.position
+                    ):
                         self_.order = self_.buy()
                     # 調用用戶的賣出信號
                     elif user_strategy_instance.sell_signal(df, idx) and self_.position:
@@ -154,7 +161,12 @@ class UserStrategy:
                     logger.debug(f"用戶策略信號異常: {e}")
 
             def notify_order(self_, order):
-                if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
+                if order.status in [
+                    order.Completed,
+                    order.Canceled,
+                    order.Margin,
+                    order.Rejected,
+                ]:
                     self_.order = None
 
         # 設置策略名稱
@@ -166,6 +178,7 @@ class UserStrategy:
 # ============================================================
 # 策略加載器
 # ============================================================
+
 
 def load_user_strategy(filepath: str, source: str | None = None) -> list[type]:
     """
@@ -216,7 +229,9 @@ def load_user_strategy(filepath: str, source: str | None = None) -> list[type]:
     if not strategies:
         logger.warning(f"策略文件中未找到 UserStrategy 子類: {filepath}")
     else:
-        logger.info(f"從 {filepath} 加載了 {len(strategies)} 個策略: {[s.name for s in strategies]}")
+        logger.info(
+            f"從 {filepath} 加載了 {len(strategies)} 個策略: {[s.name for s in strategies]}"
+        )
 
     return strategies
 
@@ -249,13 +264,15 @@ def list_user_strategies(directory: str = None) -> list[dict]:
         filepath = os.path.join(directory, fname)
         strategy_classes = load_user_strategy(filepath)
         for cls in strategy_classes:
-            results.append({
-                "name": getattr(cls, "name", cls.__name__),
-                "description": getattr(cls, "description", ""),
-                "class": cls,
-                "filepath": filepath,
-                "params": getattr(cls, "params", {}),
-            })
+            results.append(
+                {
+                    "name": getattr(cls, "name", cls.__name__),
+                    "description": getattr(cls, "description", ""),
+                    "class": cls,
+                    "filepath": filepath,
+                    "params": getattr(cls, "params", {}),
+                }
+            )
 
     return results
 
@@ -297,6 +314,7 @@ def get_all_strategies() -> dict:
 # ============================================================
 # 策略模板生成器
 # ============================================================
+
 
 def create_strategy_template(name: str, filepath: str = None) -> str:
     """
@@ -389,6 +407,7 @@ class {class_name}Strategy(UserStrategy):
 # 用戶策略快速回測（不經過 Backtrader，純 pandas 計算）
 # ============================================================
 
+
 def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> dict:
     """
     使用純 pandas 對用戶策略進行快速回測。
@@ -434,13 +453,17 @@ def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> 
                 cost = shares * price * (1 + commission)
                 cash -= cost
                 position = shares
-                trades.append({"date": date_str, "type": "buy", "price": price, "shares": shares})
+                trades.append(
+                    {"date": date_str, "type": "buy", "price": price, "shares": shares}
+                )
 
         # 賣出
         elif sell and position > 0:
             revenue = position * price * (1 - commission)
             cash += revenue
-            trades.append({"date": date_str, "type": "sell", "price": price, "shares": position})
+            trades.append(
+                {"date": date_str, "type": "sell", "price": price, "shares": position}
+            )
             position = 0
 
         # 記錄淨值
@@ -453,7 +476,14 @@ def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> 
         last_price = df["close"].iloc[-1]
         revenue = position * last_price * (1 - commission)
         cash += revenue
-        trades.append({"date": str(df["date"].iloc[-1]), "type": "sell", "price": last_price, "shares": position})
+        trades.append(
+            {
+                "date": str(df["date"].iloc[-1]),
+                "type": "sell",
+                "price": last_price,
+                "shares": position,
+            }
+        )
         position = 0
         nav[-1] = cash
 
@@ -462,11 +492,17 @@ def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> 
 
     # 計算日收益率
     nav_arr = np.array(nav)
-    daily_returns = np.diff(nav_arr) / nav_arr[:-1] if len(nav_arr) > 1 else np.array([])
+    daily_returns = (
+        np.diff(nav_arr) / nav_arr[:-1] if len(nav_arr) > 1 else np.array([])
+    )
 
     # 夏普比率
     if len(daily_returns) > 1:
-        sharpe = (np.mean(daily_returns) - 0.03 / 252) / np.std(daily_returns) * np.sqrt(252) if np.std(daily_returns) > 0 else 0
+        sharpe = (
+            (np.mean(daily_returns) - 0.03 / 252) / np.std(daily_returns) * np.sqrt(252)
+            if np.std(daily_returns) > 0
+            else 0
+        )
     else:
         sharpe = 0
 
@@ -504,8 +540,14 @@ def quick_backtest_user_strategy(strategy_instance: UserStrategy, code: str) -> 
                 "sell_date": sell_trades[j]["date"],
                 "sell_price": sell_trades[j]["price"],
                 "size": buy_trades[j]["shares"],
-                "pnl": round((sell_trades[j]["price"] - buy_trades[j]["price"]) * buy_trades[j]["shares"], 2),
-                "return_pct": round((sell_trades[j]["price"] / buy_trades[j]["price"] - 1) * 100, 2),
+                "pnl": round(
+                    (sell_trades[j]["price"] - buy_trades[j]["price"])
+                    * buy_trades[j]["shares"],
+                    2,
+                ),
+                "return_pct": round(
+                    (sell_trades[j]["price"] / buy_trades[j]["price"] - 1) * 100, 2
+                ),
             }
             for j in range(pairs)
         ],

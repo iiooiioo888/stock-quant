@@ -6,6 +6,7 @@
   - 本地為空或不足 → 自動選源拉取（auto_kline_fetch）並 save_daily_kline，再從庫讀取
   - 增量更新請用 history.download_incremental 或定時任務，不在此模塊自動全量重拉
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -71,6 +72,7 @@ def ensure_daily_kline(
     count, fetch_src = download_one_auto(code, start_date=start, market=mkt)
     if count > 0:
         from src.core.db import clear_data_cache
+
         clear_data_cache(quiet=True, reason=f"ensure_daily_kline:{code}")
 
     df = load_daily_kline(code, start_date=start_date, end_date=end_date)
@@ -114,5 +116,6 @@ def persist_kline_df(symbol: str, df: pd.DataFrame) -> int:
         except Exception:
             pass
         from src.core.data_pipeline import defer_data_cache_clear
+
         defer_data_cache_clear()
     return n

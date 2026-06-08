@@ -1,4 +1,5 @@
 """CLI commands: users"""
+
 from datetime import datetime
 
 import numpy as np
@@ -32,8 +33,6 @@ def cmd_user_create(args):
         print(f"❌ 創建失敗: {e}")
 
 
-
-
 def cmd_user_list(args):
     """列出所有用戶"""
     from src.core.auth import list_users
@@ -53,9 +52,9 @@ def cmd_user_list(args):
 
     for u in users:
         role_icon = "👑" if u["role"] == "admin" else "👤"
-        print(f"{u['id']:>4} {u['username']:<16} {role_icon}{u['role']:<7} {u.get('created_at', ''):<20}")
-
-
+        print(
+            f"{u['id']:>4} {u['username']:<16} {role_icon}{u['role']:<7} {u.get('created_at', ''):<20}"
+        )
 
 
 def cmd_user_reset_password(args):
@@ -72,6 +71,7 @@ def cmd_user_reset_password(args):
     new_password = args.new_password
     if not new_password:
         import getpass
+
         new_password = getpass.getpass("請輸入新密碼: ")
         if not new_password:
             print("❌ 密碼不能為空")
@@ -84,5 +84,3 @@ def cmd_user_reset_password(args):
         print(f"   請盡快修改密碼！")
     else:
         print(f"❌ 重置失敗")
-
-

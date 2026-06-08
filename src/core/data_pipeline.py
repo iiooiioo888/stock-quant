@@ -6,6 +6,7 @@
   - 寫入 SQLite 後不逐條清空全站 LRU，改為 defer + 批量 flush
   - 財報：DB 命中且未過期 → 直接返回；否則 akshare 拉取並回寫 fundamentals 表
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime

@@ -1,6 +1,7 @@
 """
 對外接口檢查 API — 探活目錄、註冊表快照、全量探測。
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import require_auth

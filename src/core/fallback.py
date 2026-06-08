@@ -1,6 +1,7 @@
 """
 數據源自動降級 — 本地庫 → 自動選源拉取 → 過期緩存兜底。
 """
+
 from __future__ import annotations
 
 from typing import Optional, Tuple
@@ -48,7 +49,10 @@ class FallbackManager:
         except Exception as e:
             logger.debug(f"過期緩存兜底跳過 {code}: {e}")
 
-        return load_daily_kline(code, start_date=start_date, end_date=end_date), src or "empty"
+        return (
+            load_daily_kline(code, start_date=start_date, end_date=end_date),
+            src or "empty",
+        )
 
 
 _manager: Optional[FallbackManager] = None
@@ -69,6 +73,7 @@ def get_daily_kline_with_fallback(
 ) -> Tuple[pd.DataFrame, str]:
     """同步入口（供非 async 模塊調用）。"""
     import asyncio
+
     mgr = get_fallback_manager()
     try:
         asyncio.get_running_loop()
@@ -77,6 +82,7 @@ def get_daily_kline_with_fallback(
             mgr.get_daily_kline_with_fallback(code, start_date, end_date, min_bars)
         )
     import concurrent.futures
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(
             asyncio.run,

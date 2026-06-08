@@ -1,4 +1,5 @@
 """CLI commands: reports"""
+
 from datetime import datetime
 
 import numpy as np
@@ -23,6 +24,7 @@ def cmd_report(args):
 
     if action == "full":
         from src.core.report_enhanced import generate_full_report
+
         print(f"📊 生成全面報告: {args.code}/{args.strategy}")
         report = generate_full_report(args.code, args.strategy)
 
@@ -69,7 +71,9 @@ def cmd_report(args):
         if wm:
             print(f"  最差月份:   {wm['month']} (¥{wm['pnl']:+.2f})")
 
-        print(f"\n🎲 蒙特卡羅模擬 ({mc.get('n_simulations', 0)} 次, {mc.get('days', 0)} 天):")
+        print(
+            f"\n🎲 蒙特卡羅模擬 ({mc.get('n_simulations', 0)} 次, {mc.get('days', 0)} 天):"
+        )
         pct = mc.get("percentiles", {})
         print(f"  盈利概率:   {mc.get('prob_profit', 0):.1%}")
         print(f"  >20%回撤概率: {mc.get('prob_large_drawdown', 0):.1%}")
@@ -78,9 +82,13 @@ def cmd_report(args):
         print(f"  95th百分位: {pct.get('p95', 0):.4f}")
 
         if rm_summary:
-            print(f"\n📉 滾動指標 ({report.get('rolling_metrics', {}).get('window', 60)}日):")
+            print(
+                f"\n📉 滾動指標 ({report.get('rolling_metrics', {}).get('window', 60)}日):"
+            )
             print(f"  夏普均值:   {rm_summary.get('sharpe_mean', 0):.4f}")
-            print(f"  夏普範圍:   [{rm_summary.get('sharpe_min', 0):.4f}, {rm_summary.get('sharpe_max', 0):.4f}]")
+            print(
+                f"  夏普範圍:   [{rm_summary.get('sharpe_min', 0):.4f}, {rm_summary.get('sharpe_max', 0):.4f}]"
+            )
             print(f"  波動率均值: {rm_summary.get('volatility_mean', 0):.4f}")
 
         if bc.get("benchmark_available"):
@@ -93,6 +101,7 @@ def cmd_report(args):
 
     elif action == "comparison":
         from src.core.report_enhanced import generate_comparison_report
+
         codes = args.codes
         strategy = args.strategy
         print(f"📊 多股對比報告: {', '.join(codes)} / {strategy}")
@@ -104,17 +113,21 @@ def cmd_report(args):
 
         ranking = report.get("ranking", [])
         if ranking:
-            print(f"\n{'排名':>4} {'代碼':<10} {'收益':>10} {'夏普':>8} {'Sortino':>8} {'回撤':>10} {'勝率':>8} {'交易':>6} {'盈虧比':>8}")
+            print(
+                f"\n{'排名':>4} {'代碼':<10} {'收益':>10} {'夏普':>8} {'Sortino':>8} {'回撤':>10} {'勝率':>8} {'交易':>6} {'盈虧比':>8}"
+            )
             print("-" * 80)
             for r in ranking:
-                print(f"{r.get('rank', 0):>4} {r['code']:<10} "
-                      f"{r.get('total_return_pct', 0):>+9.2f}% "
-                      f"{r.get('sharpe_ratio', 0):>8.2f} "
-                      f"{r.get('sortino_ratio', 0):>8.2f} "
-                      f"{r.get('max_drawdown_pct', 0):>9.2f}% "
-                      f"{r.get('win_rate_pct', 0):>7.1f}% "
-                      f"{r.get('total_trades', 0):>6} "
-                      f"{r.get('profit_factor', 0):>8.2f}")
+                print(
+                    f"{r.get('rank', 0):>4} {r['code']:<10} "
+                    f"{r.get('total_return_pct', 0):>+9.2f}% "
+                    f"{r.get('sharpe_ratio', 0):>8.2f} "
+                    f"{r.get('sortino_ratio', 0):>8.2f} "
+                    f"{r.get('max_drawdown_pct', 0):>9.2f}% "
+                    f"{r.get('win_rate_pct', 0):>7.1f}% "
+                    f"{r.get('total_trades', 0):>6} "
+                    f"{r.get('profit_factor', 0):>8.2f}"
+                )
 
         best = report.get("best")
         worst = report.get("worst")
@@ -126,6 +139,7 @@ def cmd_report(args):
 
     elif action == "strategy":
         from src.core.report_enhanced import generate_strategy_report
+
         strategy = args.strategy_name
         codes = args.codes if hasattr(args, "codes") and args.codes else None
         print(f"📊 策略分析報告: {strategy}")
@@ -142,9 +156,15 @@ def cmd_report(args):
         avg = report.get("avg_metrics", {})
         if avg:
             print(f"\n平均指標 ({report.get('success_stocks', 0)} 只股票):")
-            print(f"  收益率:     {avg.get('avg_total_return_pct', 0):+.2f}% (±{avg.get('std_total_return_pct', 0):.2f}%)")
-            print(f"  夏普:       {avg.get('avg_sharpe_ratio', 0):.4f} (±{avg.get('std_sharpe_ratio', 0):.4f})")
-            print(f"  回撤:       {avg.get('avg_max_drawdown_pct', 0):.2f}% (±{avg.get('std_max_drawdown_pct', 0):.2f}%)")
+            print(
+                f"  收益率:     {avg.get('avg_total_return_pct', 0):+.2f}% (±{avg.get('std_total_return_pct', 0):.2f}%)"
+            )
+            print(
+                f"  夏普:       {avg.get('avg_sharpe_ratio', 0):.4f} (±{avg.get('std_sharpe_ratio', 0):.4f})"
+            )
+            print(
+                f"  回撤:       {avg.get('avg_max_drawdown_pct', 0):.2f}% (±{avg.get('std_max_drawdown_pct', 0):.2f}%)"
+            )
             print(f"  勝率:       {avg.get('avg_win_rate_pct', 0):.1f}%")
             print(f"  盈虧比:     {avg.get('avg_profit_factor', 0):.2f}")
 
@@ -153,23 +173,31 @@ def cmd_report(args):
         best = report.get("best_stock")
         worst = report.get("worst_stock")
         if best:
-            print(f"🏆 最佳股票: {best['code']} (夏普 {best.get('sharpe_ratio', 0):.2f}, 收益 {best.get('total_return_pct', 0):+.2f}%)")
+            print(
+                f"🏆 最佳股票: {best['code']} (夏普 {best.get('sharpe_ratio', 0):.2f}, 收益 {best.get('total_return_pct', 0):+.2f}%)"
+            )
         if worst:
-            print(f"📉 最差股票: {worst['code']} (夏普 {worst.get('sharpe_ratio', 0):.2f}, 收益 {worst.get('total_return_pct', 0):+.2f}%)")
+            print(
+                f"📉 最差股票: {worst['code']} (夏普 {worst.get('sharpe_ratio', 0):.2f}, 收益 {worst.get('total_return_pct', 0):+.2f}%)"
+            )
 
         suggestions = report.get("param_suggestions", [])
         if suggestions:
             print(f"\n💡 參數建議:")
             for s in suggestions:
-                icon = "🔴" if s.get("level") == "high" else "🟡" if s.get("level") == "medium" else "ℹ️"
+                icon = (
+                    "🔴"
+                    if s.get("level") == "high"
+                    else "🟡" if s.get("level") == "medium" else "ℹ️"
+                )
                 print(f"  {icon} {s.get('message', '')}")
     else:
         print("用法:")
         print("  python main.py report full <code> <strategy>")
-        print("  python main.py report comparison <code1> <code2> ... --strategy <strategy>")
+        print(
+            "  python main.py report comparison <code1> <code2> ... --strategy <strategy>"
+        )
         print("  python main.py report strategy <strategy_name>")
-
-
 
 
 def cmd_monte_carlo(args):
@@ -178,10 +206,16 @@ def cmd_monte_carlo(args):
 
     ensure_db()
 
-    print(f"🎲 蒙特卡羅模擬: {args.code}/{args.strategy} ({args.simulations}次, {args.days}天)")
+    print(
+        f"🎲 蒙特卡羅模擬: {args.code}/{args.strategy} ({args.simulations}次, {args.days}天)"
+    )
 
     bt_result = run_backtest(args.code, strategy_name=args.strategy)
-    mc = monte_carlo_simulation(bt_result.get("daily_returns", []), n_simulations=args.simulations, days=args.days)
+    mc = monte_carlo_simulation(
+        bt_result.get("daily_returns", []),
+        n_simulations=args.simulations,
+        days=args.days,
+    )
 
     pct = mc.get("percentiles", {})
     ci = mc.get("confidence_intervals", {})
@@ -210,8 +244,6 @@ def cmd_monte_carlo(args):
     print(f"  50%:      [{ci_50[0]:.4f}, {ci_50[1]:.4f}]")
 
 
-
-
 def cmd_rolling_metrics(args):
     """滾動指標"""
     from src.core.backtest import run_backtest, rolling_metrics
@@ -221,7 +253,11 @@ def cmd_rolling_metrics(args):
     print(f"📉 滾動指標: {args.code} (窗口={args.window}天)")
 
     bt_result = run_backtest(args.code, strategy_name="dual_ma")
-    rm = rolling_metrics(bt_result.get("daily_returns", []), bt_result.get("dates", []), window=args.window)
+    rm = rolling_metrics(
+        bt_result.get("daily_returns", []),
+        bt_result.get("dates", []),
+        window=args.window,
+    )
 
     summary = rm.get("summary", {})
 
@@ -253,8 +289,6 @@ def cmd_rolling_metrics(args):
     print(f"\n數據點: {data_points}")
 
 
-
-
 def cmd_export(args):
     """導出數據"""
 
@@ -262,12 +296,14 @@ def cmd_export(args):
 
     if args.type == "backtest":
         from src.core.export import export_backtest_csv, export_backtest_json
+
         if args.format == "json":
             content = export_backtest_json(args.id)
         else:
             content = export_backtest_csv(args.id)
     elif args.type == "trades":
         from src.core.export import export_trades_csv, export_trades_json
+
         if not args.code or not args.strategy:
             print("導出交易明細需要指定 --code 和 --strategy")
             return
@@ -285,5 +321,3 @@ def cmd_export(args):
         print(f"已導出到: {args.output}")
     else:
         print(content)
-
-

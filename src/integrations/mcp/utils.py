@@ -4,6 +4,7 @@ MCP 共用工具 — JSON 序列化與統一錯誤/成功封裝（全項目 tool
 成功：{ "ok": true, ...payload }
 失敗：{ "ok": false, "error": "...", "error_code": "...", "tool": "..." }
 """
+
 from __future__ import annotations
 
 import json
@@ -47,7 +48,9 @@ def error_result(
     return json.dumps(body, ensure_ascii=False, indent=2)
 
 
-def safe_handler(tool_name: str, handler: Callable[[dict], str]) -> Callable[[dict], str]:
+def safe_handler(
+    tool_name: str, handler: Callable[[dict], str]
+) -> Callable[[dict], str]:
     """包裝 tool handler：捕獲未處理異常並返回統一錯誤 JSON。"""
 
     def wrapped(args: dict | None) -> str:

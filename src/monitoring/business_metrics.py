@@ -7,6 +7,7 @@
 3. 數據源相關：健康度、降級次數、延遲
 4. 用戶相關：活躍用戶、任務提交量
 """
+
 from __future__ import annotations
 
 import time
@@ -52,7 +53,9 @@ def record_duration(metric: str, seconds: float) -> None:
         _histograms[metric] = _histograms[metric][-1000:]
 
 
-def record_backtest_result(success: bool, duration_sec: float = 0, error_type: str = "") -> None:
+def record_backtest_result(
+    success: bool, duration_sec: float = 0, error_type: str = ""
+) -> None:
     """記錄回測結果。"""
     if success:
         inc(METRIC_BACKTEST_SUCCESS)
@@ -80,6 +83,7 @@ def record_data_source_event(ok: bool, degraded: bool = False) -> None:
 # ============================================================
 # 指標查詢
 # ============================================================
+
 
 def get_backtest_metrics() -> dict[str, Any]:
     """回測相關指標。"""
@@ -160,6 +164,7 @@ def reset_metrics() -> None:
 # ============================================================
 # Prometheus 格式導出（可選）
 # ============================================================
+
 
 def export_prometheus() -> str:
     """導出 Prometheus 文本格式指標。"""

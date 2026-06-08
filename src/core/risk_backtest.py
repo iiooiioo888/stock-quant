@@ -1,6 +1,7 @@
 """
 回測 / 參數優化共用風控上下文 — 止損止盈、倉位上限、回撤熔斷評分懲罰。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
@@ -87,7 +88,11 @@ def attach_risk_to_cerebro(
             comm = settings.backtest_commission
         cerebro.broker.setcommission(commission=comm)
 
-    if sizer and cfg.max_position_pct is not None and 0 < float(cfg.max_position_pct) < 1:
+    if (
+        sizer
+        and cfg.max_position_pct is not None
+        and 0 < float(cfg.max_position_pct) < 1
+    ):
         pct = float(cfg.max_position_pct)
 
         class _CapSizer(bt.Sizer):

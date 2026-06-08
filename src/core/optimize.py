@@ -1,6 +1,7 @@
 """
 參數優化模塊 — 網格搜索 + Optuna 貝葉斯優化（支持並行）
 """
+
 import itertools
 import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -18,36 +19,108 @@ PARAM_GRIDS = {
     "dual_ma": {"fast": [3, 5, 8, 10], "slow": [15, 20, 30, 40, 60]},
     "macd": {"fast": [8, 10, 12], "slow": [20, 26, 30], "signal": [7, 9, 11]},
     "bollinger": {"period": [10, 15, 20, 25, 30], "devfactor": [1.5, 2.0, 2.5, 3.0]},
-    "kdj": {"period": [7, 9, 14, 19], "period_dfast": [3, 5], "period_dslow": [3, 5],
-            "overbought": [70, 75, 80, 85], "oversold": [15, 20, 25, 30]},
-    "rsi": {"period": [6, 10, 14, 20], "overbought": [65, 70, 75, 80], "oversold": [20, 25, 30, 35]},
+    "kdj": {
+        "period": [7, 9, 14, 19],
+        "period_dfast": [3, 5],
+        "period_dslow": [3, 5],
+        "overbought": [70, 75, 80, 85],
+        "oversold": [15, 20, 25, 30],
+    },
+    "rsi": {
+        "period": [6, 10, 14, 20],
+        "overbought": [65, 70, 75, 80],
+        "oversold": [20, 25, 30, 35],
+    },
     "grid": {"grid_pct": [1.0, 2.0, 3.0, 5.0], "position_pct": [0.05, 0.1, 0.15, 0.2]},
-    "turtle": {"entry_period": [10, 15, 20, 30, 40], "exit_period": [5, 10, 15, 20],
-               "atr_period": [10, 14, 20], "risk_pct": [0.5, 1.0, 1.5, 2.0]},
-    "dual_thrust": {"period": [3, 4, 5, 7], "k_up": [0.3, 0.5, 0.7], "k_down": [0.3, 0.5, 0.7]},
+    "turtle": {
+        "entry_period": [10, 15, 20, 30, 40],
+        "exit_period": [5, 10, 15, 20],
+        "atr_period": [10, 14, 20],
+        "risk_pct": [0.5, 1.0, 1.5, 2.0],
+    },
+    "dual_thrust": {
+        "period": [3, 4, 5, 7],
+        "k_up": [0.3, 0.5, 0.7],
+        "k_down": [0.3, 0.5, 0.7],
+    },
     "momentum": {"lookback": [5, 10, 20, 30, 60], "hold_period": [3, 5, 10, 15]},
-    "mean_reversion": {"period": [10, 15, 20, 30, 40], "entry_zscore": [-3.0, -2.5, -2.0, -1.5], "exit_zscore": [-0.5, 0.0, 0.5]},
-    "volume_price": {"price_ma": [5, 10, 15, 20, 30], "volume_ma": [5, 10, 15, 20, 30], "volume_ratio": [1.5, 2.0, 2.5, 3.0]},
-    "breakout": {"period": [20, 30, 40, 55, 70], "atr_period": [10, 14, 20], "atr_multiplier": [1.5, 2.0, 2.5, 3.0]},
-    "composite": {"min_agreement": [2, 3, 4], "ma_fast": [3, 5, 8], "ma_slow": [15, 20, 30],
-                  "rsi_period": [10, 14, 20], "rsi_overbought": [65, 70, 80], "rsi_oversold": [20, 25, 35],
-                  "boll_period": [15, 20, 25], "boll_dev": [1.5, 2.0, 2.5]},
+    "mean_reversion": {
+        "period": [10, 15, 20, 30, 40],
+        "entry_zscore": [-3.0, -2.5, -2.0, -1.5],
+        "exit_zscore": [-0.5, 0.0, 0.5],
+    },
+    "volume_price": {
+        "price_ma": [5, 10, 15, 20, 30],
+        "volume_ma": [5, 10, 15, 20, 30],
+        "volume_ratio": [1.5, 2.0, 2.5, 3.0],
+    },
+    "breakout": {
+        "period": [20, 30, 40, 55, 70],
+        "atr_period": [10, 14, 20],
+        "atr_multiplier": [1.5, 2.0, 2.5, 3.0],
+    },
+    "composite": {
+        "min_agreement": [2, 3, 4],
+        "ma_fast": [3, 5, 8],
+        "ma_slow": [15, 20, 30],
+        "rsi_period": [10, 14, 20],
+        "rsi_overbought": [65, 70, 80],
+        "rsi_oversold": [20, 25, 35],
+        "boll_period": [15, 20, 25],
+        "boll_dev": [1.5, 2.0, 2.5],
+    },
     "vwap": {"period": [10, 15, 20, 30], "deviation_pct": [0.5, 1.0, 1.5, 2.0]},
     "envelope": {"period": [10, 15, 20, 30, 40], "deviation_pct": [3, 5, 7, 10]},
-    "parabolic_sar": {"af_start": [0.01, 0.02, 0.03], "af_step": [0.01, 0.02, 0.03], "af_max": [0.10, 0.15, 0.20, 0.25]},
+    "parabolic_sar": {
+        "af_start": [0.01, 0.02, 0.03],
+        "af_step": [0.01, 0.02, 0.03],
+        "af_max": [0.10, 0.15, 0.20, 0.25],
+    },
     "obv": {"obv_ma_period": [10, 15, 20, 30], "price_ma_period": [10, 15, 20, 30]},
-    "bollinger_squeeze": {"period": [15, 20, 25, 30], "devfactor": [1.5, 2.0, 2.5],
-                          "squeeze_threshold": [0.02, 0.03, 0.04, 0.05], "squeeze_lookback": [3, 5, 8]},
-    "adx_trend": {"adx_period": [10, 14, 20, 28], "adx_threshold": [20, 25, 30, 35], "di_period": [10, 14, 20]},
+    "bollinger_squeeze": {
+        "period": [15, 20, 25, 30],
+        "devfactor": [1.5, 2.0, 2.5],
+        "squeeze_threshold": [0.02, 0.03, 0.04, 0.05],
+        "squeeze_lookback": [3, 5, 8],
+    },
+    "adx_trend": {
+        "adx_period": [10, 14, 20, 28],
+        "adx_threshold": [20, 25, 30, 35],
+        "di_period": [10, 14, 20],
+    },
     "ema_cross": {"fast": [8, 10, 12, 15], "slow": [20, 26, 30, 40]},
     "donchian": {"period": [10, 15, 20, 30, 40]},
-    "williams_r": {"period": [10, 14, 20], "overbought": [-15, -20, -25], "oversold": [-75, -80, -85]},
-    "cci": {"period": [14, 20, 28], "overbought": [80, 100, 120], "oversold": [-120, -100, -80]},
+    "williams_r": {
+        "period": [10, 14, 20],
+        "overbought": [-15, -20, -25],
+        "oversold": [-75, -80, -85],
+    },
+    "cci": {
+        "period": [14, 20, 28],
+        "overbought": [80, 100, 120],
+        "oversold": [-120, -100, -80],
+    },
     "supertrend": {"period": [7, 10, 14], "multiplier": [2.0, 2.5, 3.0, 3.5]},
-    "atr_trail": {"ma_period": [10, 20, 30], "atr_period": [10, 14, 20], "atr_mult": [2.0, 2.5, 3.0]},
-    "ema_volume": {"fast": [8, 12], "slow": [20, 26], "vol_ma": [15, 20, 30], "vol_ratio": [1.1, 1.2, 1.5]},
+    "atr_trail": {
+        "ma_period": [10, 20, 30],
+        "atr_period": [10, 14, 20],
+        "atr_mult": [2.0, 2.5, 3.0],
+    },
+    "ema_volume": {
+        "fast": [8, 12],
+        "slow": [20, 26],
+        "vol_ma": [15, 20, 30],
+        "vol_ratio": [1.1, 1.2, 1.5],
+    },
     "triple_ma": {"fast": [5, 8, 10], "mid": [15, 20, 30], "slow": [50, 60, 90]},
-    "macd_rsi": {"macd_fast": [10, 12], "macd_slow": [24, 26], "macd_signal": [7, 9], "rsi_period": [10, 14], "rsi_max": [65, 68, 72], "rsi_min": [30, 35, 40]},
+    "macd_rsi": {
+        "macd_fast": [10, 12],
+        "macd_slow": [24, 26],
+        "macd_signal": [7, 9],
+        "rsi_period": [10, 14],
+        "rsi_max": [65, 68, 72],
+        "rsi_min": [30, 35, 40],
+    },
     "pullback_ma": {"fast": [8, 10, 12], "slow": [40, 50, 60], "trend": [90, 120, 150]},
 }
 
@@ -55,35 +128,88 @@ PARAM_RANGES = {
     "dual_ma": {"fast": (3, 15), "slow": (15, 80)},
     "macd": {"fast": (5, 15), "slow": (18, 35), "signal": (5, 15)},
     "bollinger": {"period": (8, 40), "devfactor": (1.0, 3.5)},
-    "kdj": {"period": (5, 25), "period_dfast": (2, 7), "period_dslow": (2, 7),
-            "overbought": (65, 90), "oversold": (10, 35)},
+    "kdj": {
+        "period": (5, 25),
+        "period_dfast": (2, 7),
+        "period_dslow": (2, 7),
+        "overbought": (65, 90),
+        "oversold": (10, 35),
+    },
     "rsi": {"period": (5, 25), "overbought": (60, 85), "oversold": (15, 40)},
     "grid": {"grid_pct": (0.5, 8.0), "position_pct": (0.03, 0.3)},
-    "turtle": {"entry_period": (8, 50), "exit_period": (4, 25), "atr_period": (8, 30), "risk_pct": (0.3, 3.0)},
+    "turtle": {
+        "entry_period": (8, 50),
+        "exit_period": (4, 25),
+        "atr_period": (8, 30),
+        "risk_pct": (0.3, 3.0),
+    },
     "dual_thrust": {"period": (2, 10), "k_up": (0.2, 1.0), "k_down": (0.2, 1.0)},
     "momentum": {"lookback": (3, 80), "hold_period": (2, 20)},
-    "mean_reversion": {"period": (8, 50), "entry_zscore": (-3.5, -1.0), "exit_zscore": (-1.0, 1.0)},
-    "volume_price": {"price_ma": (3, 40), "volume_ma": (3, 40), "volume_ratio": (1.2, 4.0)},
-    "breakout": {"period": (10, 90), "atr_period": (8, 30), "atr_multiplier": (1.0, 4.0)},
-    "composite": {"min_agreement": (2, 4), "ma_fast": (3, 12), "ma_slow": (15, 40),
-                  "rsi_period": (8, 25), "rsi_overbought": (60, 85), "rsi_oversold": (15, 40),
-                  "boll_period": (10, 30), "boll_dev": (1.0, 3.0)},
+    "mean_reversion": {
+        "period": (8, 50),
+        "entry_zscore": (-3.5, -1.0),
+        "exit_zscore": (-1.0, 1.0),
+    },
+    "volume_price": {
+        "price_ma": (3, 40),
+        "volume_ma": (3, 40),
+        "volume_ratio": (1.2, 4.0),
+    },
+    "breakout": {
+        "period": (10, 90),
+        "atr_period": (8, 30),
+        "atr_multiplier": (1.0, 4.0),
+    },
+    "composite": {
+        "min_agreement": (2, 4),
+        "ma_fast": (3, 12),
+        "ma_slow": (15, 40),
+        "rsi_period": (8, 25),
+        "rsi_overbought": (60, 85),
+        "rsi_oversold": (15, 40),
+        "boll_period": (10, 30),
+        "boll_dev": (1.0, 3.0),
+    },
     "vwap": {"period": (5, 40), "deviation_pct": (0.3, 3.0)},
     "envelope": {"period": (5, 50), "deviation_pct": (2, 15)},
-    "parabolic_sar": {"af_start": (0.005, 0.05), "af_step": (0.005, 0.05), "af_max": (0.05, 0.35)},
+    "parabolic_sar": {
+        "af_start": (0.005, 0.05),
+        "af_step": (0.005, 0.05),
+        "af_max": (0.05, 0.35),
+    },
     "obv": {"obv_ma_period": (5, 40), "price_ma_period": (5, 40)},
-    "bollinger_squeeze": {"period": (10, 40), "devfactor": (1.0, 3.5),
-                          "squeeze_threshold": (0.01, 0.08), "squeeze_lookback": (2, 10)},
-    "adx_trend": {"adx_period": (8, 35), "adx_threshold": (15, 40), "di_period": (8, 35)},
+    "bollinger_squeeze": {
+        "period": (10, 40),
+        "devfactor": (1.0, 3.5),
+        "squeeze_threshold": (0.01, 0.08),
+        "squeeze_lookback": (2, 10),
+    },
+    "adx_trend": {
+        "adx_period": (8, 35),
+        "adx_threshold": (15, 40),
+        "di_period": (8, 35),
+    },
     "ema_cross": {"fast": (5, 20), "slow": (15, 60)},
     "donchian": {"period": (8, 60)},
     "williams_r": {"period": (8, 28), "overbought": (-30, -10), "oversold": (-90, -70)},
     "cci": {"period": (10, 40), "overbought": (60, 150), "oversold": (-150, -60)},
     "supertrend": {"period": (5, 20), "multiplier": (1.5, 4.5)},
     "atr_trail": {"ma_period": (8, 40), "atr_period": (8, 28), "atr_mult": (1.5, 4.0)},
-    "ema_volume": {"fast": (5, 20), "slow": (15, 50), "vol_ma": (10, 40), "vol_ratio": (1.0, 2.0)},
+    "ema_volume": {
+        "fast": (5, 20),
+        "slow": (15, 50),
+        "vol_ma": (10, 40),
+        "vol_ratio": (1.0, 2.0),
+    },
     "triple_ma": {"fast": (3, 15), "mid": (10, 35), "slow": (40, 120)},
-    "macd_rsi": {"macd_fast": (8, 16), "macd_slow": (20, 35), "macd_signal": (5, 12), "rsi_period": (8, 21), "rsi_max": (60, 75), "rsi_min": (25, 45)},
+    "macd_rsi": {
+        "macd_fast": (8, 16),
+        "macd_slow": (20, 35),
+        "macd_signal": (5, 12),
+        "rsi_period": (8, 21),
+        "rsi_max": (60, 75),
+        "rsi_min": (25, 45),
+    },
     "pullback_ma": {"fast": (5, 20), "slow": (30, 80), "trend": (60, 200)},
 }
 
@@ -200,7 +326,9 @@ def _resolve_grid_backend() -> str:
         return "futures"
 
 
-def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_ratio: float = 0.2) -> list[dict]:
+def _add_oos_validation(
+    results: list[dict], code: str, strategy_name: str, oos_ratio: float = 0.2
+) -> list[dict]:
     """
     對優化結果的 top N 做樣本外（Out-of-Sample）驗證。
 
@@ -209,7 +337,6 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
     """
     if not results:
         return results
-
 
     df = load_daily_kline(code)
     if df.empty or len(df) < 100:
@@ -228,10 +355,11 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
         params = r.get("params", {})
         try:
             from src.core.backtest import STRATEGIES
+
             strategy_cls = STRATEGIES[strategy_name]
             cerebro = bt.Cerebro()
             # 過濾掉策略不支持的參數（避免 TypeError: unexpected keyword argument）
-            if hasattr(strategy_cls, 'params'):
+            if hasattr(strategy_cls, "params"):
                 valid_keys = {name for name, _ in strategy_cls.params._getpairs()}
                 params = {k: v for k, v in params.items() if k in valid_keys}
             cerebro.addstrategy(strategy_cls, **params)
@@ -243,7 +371,9 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
 
             cerebro.broker.setcash(100000)
             cerebro.broker.setcommission(commission=0.001)
-            cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", riskfreerate=0.03)
+            cerebro.addanalyzer(
+                bt.analyzers.SharpeRatio, _name="sharpe", riskfreerate=0.03
+            )
             cerebro.addanalyzer(bt.analyzers.Returns, _name="returns")
 
             from src.core.backtest_runtime import dispose_cerebro
@@ -275,6 +405,7 @@ def _add_oos_validation(results: list[dict], code: str, strategy_name: str, oos_
 
 def _resolve_grid_workers(task_id: str = None) -> int:
     from src.core.compute_budget import get_process_workers
+
     return get_process_workers(per_job_cap=8, task_id=task_id, min_workers=1)
 
 
@@ -283,6 +414,7 @@ def _resolve_optuna_jobs(task_id: str = None) -> int:
     if j and j > 0:
         return j
     from src.core.compute_budget import get_process_workers
+
     return get_process_workers(per_job_cap=4, task_id=task_id, min_workers=1)
 
 
@@ -302,10 +434,15 @@ def grid_search(
 
     if getattr(settings, "task_parallel_grid", True):
         return grid_search_parallel(
-            code, strategy_name, objective=objective,
-            param_grid=param_grid, top_n=top_n,
-            max_workers=_resolve_grid_workers(task_id), verbose=verbose,
-            task_id=task_id, run_ctx=run_ctx,
+            code,
+            strategy_name,
+            objective=objective,
+            param_grid=param_grid,
+            top_n=top_n,
+            max_workers=_resolve_grid_workers(task_id),
+            verbose=verbose,
+            task_id=task_id,
+            run_ctx=run_ctx,
         )
 
     if param_grid is None:
@@ -323,11 +460,19 @@ def grid_search(
             continue
         if "ma_fast" in p and "ma_slow" in p and p["ma_fast"] >= p["ma_slow"]:
             continue
-        if "entry_period" in p and "exit_period" in p and p["entry_period"] <= p["exit_period"]:
+        if (
+            "entry_period" in p
+            and "exit_period" in p
+            and p["entry_period"] <= p["exit_period"]
+        ):
             continue
         if "overbought" in p and "oversold" in p and p["overbought"] <= p["oversold"]:
             continue
-        if "rsi_overbought" in p and "rsi_oversold" in p and p["rsi_overbought"] <= p["rsi_oversold"]:
+        if (
+            "rsi_overbought" in p
+            and "rsi_oversold" in p
+            and p["rsi_overbought"] <= p["rsi_oversold"]
+        ):
             continue
         if "min_agreement" in p and p["min_agreement"] > 4:
             continue
@@ -340,6 +485,7 @@ def grid_search(
     for i, params in enumerate(valid_combos, 1):
         if task_id:
             from src.core.task_manager import is_task_cancelled, update_task
+
             if is_task_cancelled(task_id):
                 raise RuntimeError("任務已取消")
             update_task(task_id, progress=min(95, int(i / total * 100)))
@@ -361,13 +507,17 @@ def grid_search(
         # 強制要求 OOS 收益為正，否則視為過擬合而剔除
         filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
         if len(filtered_results) < top_n and len(filtered_results) > 0:
-            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            logger.info(
+                f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）"
+            )
             # 補充不足的名額（從剩餘中取最佳）
             remaining = [r for r in top_results if r not in filtered_results]
             needed = top_n - len(filtered_results)
             top_results = filtered_results + remaining[:needed]
         elif len(filtered_results) == 0:
-            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
+            logger.warning(
+                f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）"
+            )
     except Exception as e:
         logger.debug(f"OOS 驗證跳過: {e}")
 
@@ -401,7 +551,9 @@ def optuna_search(
         optuna.logging.INFO if verbose else optuna.logging.WARNING
     )
 
-    logger.info(f"Optuna 優化 {code}/{strategy_name}: {n_trials} 次試驗, 目標={objective}")
+    logger.info(
+        f"Optuna 優化 {code}/{strategy_name}: {n_trials} 次試驗, 目標={objective}"
+    )
 
     all_results = []
     results_lock = threading.Lock()
@@ -416,13 +568,29 @@ def optuna_search(
 
         if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
             return float("-inf")
-        if "ma_fast" in params and "ma_slow" in params and params["ma_fast"] >= params["ma_slow"]:
+        if (
+            "ma_fast" in params
+            and "ma_slow" in params
+            and params["ma_fast"] >= params["ma_slow"]
+        ):
             return float("-inf")
-        if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+        if (
+            "entry_period" in params
+            and "exit_period" in params
+            and params["entry_period"] <= params["exit_period"]
+        ):
             return float("-inf")
-        if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+        if (
+            "overbought" in params
+            and "oversold" in params
+            and params["overbought"] <= params["oversold"]
+        ):
             return float("-inf")
-        if "rsi_overbought" in params and "rsi_oversold" in params and params["rsi_overbought"] <= params["rsi_oversold"]:
+        if (
+            "rsi_overbought" in params
+            and "rsi_oversold" in params
+            and params["rsi_overbought"] <= params["rsi_oversold"]
+        ):
             return float("-inf")
         if "min_agreement" in params and params["min_agreement"] > 4:
             return float("-inf")
@@ -438,9 +606,12 @@ def optuna_search(
 
     n_jobs = _resolve_optuna_jobs(task_id)
     study = optuna.create_study(direction="maximize")
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=verbose, n_jobs=n_jobs)
+    study.optimize(
+        _objective, n_trials=n_trials, show_progress_bar=verbose, n_jobs=n_jobs
+    )
     if task_id:
         from src.core.task_manager import update_task
+
         update_task(task_id, progress=90)
 
     seen = set()
@@ -460,13 +631,17 @@ def optuna_search(
         # 強制要求 OOS 收益為正，否則視為過擬合而剔除
         filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
         if len(filtered_results) < 10 and len(filtered_results) > 0:
-            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            logger.info(
+                f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）"
+            )
             # 補充不足的名額（從剩餘中取最佳）
             remaining = [r for r in top_results if r not in filtered_results]
             needed = 10 - len(filtered_results)
             top_results = filtered_results + remaining[:needed]
         elif len(filtered_results) == 0:
-            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
+            logger.warning(
+                f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）"
+            )
     except Exception as e:
         logger.debug(f"OOS 驗證跳過：{e}")
 
@@ -486,7 +661,10 @@ def optimize_all(
     """對所有策略做參數優化（默認串行策略 + 每策略進程池，可選策略級並行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    from src.core.compute_budget import get_thread_workers, should_parallelize_optimize_all
+    from src.core.compute_budget import (
+        get_thread_workers,
+        should_parallelize_optimize_all,
+    )
 
     names = list(STRATEGIES.keys())
     total = len(names)
@@ -507,22 +685,34 @@ def optimize_all(
     def _opt_one(name: str):
         if task_id:
             from src.core.task_manager import is_task_cancelled
+
             if is_task_cancelled(task_id):
                 raise RuntimeError("任務已取消")
         if method == "optuna":
             return name, optuna_search(
-                code, name, objective=objective, n_trials=n_trials,
-                verbose=verbose, task_id=task_id, run_ctx=run_ctx,
+                code,
+                name,
+                objective=objective,
+                n_trials=n_trials,
+                verbose=verbose,
+                task_id=task_id,
+                run_ctx=run_ctx,
             )
         return name, grid_search(
-            code, name, objective=objective, top_n=top_n,
-            verbose=verbose, task_id=task_id, run_ctx=run_ctx,
+            code,
+            name,
+            objective=objective,
+            top_n=top_n,
+            verbose=verbose,
+            task_id=task_id,
+            run_ctx=run_ctx,
         )
 
     if workers <= 1:
         for i, name in enumerate(names, 1):
             if task_id:
                 from src.core.task_manager import is_task_cancelled, update_task
+
                 if is_task_cancelled(task_id):
                     raise RuntimeError("任務已取消")
                 update_task(task_id, progress=min(95, int(i / total * 100)))
@@ -541,6 +731,7 @@ def optimize_all(
             done += 1
             if task_id:
                 from src.core.task_manager import is_task_cancelled, update_task
+
                 if is_task_cancelled(task_id):
                     raise RuntimeError("任務已取消")
                 update_task(task_id, progress=min(95, int(done / total * 100)))
@@ -557,6 +748,7 @@ def optimize_all(
 # ============================================================
 # 並行網格搜索（ProcessPoolExecutor）
 # ============================================================
+
 
 def _run_single_worker(args):
     """Worker 函數，用於並行網格搜索"""
@@ -604,6 +796,7 @@ def _grid_parallel_joblib(
         logger.info(f"  Joblib 網格完成: {len(results)}/{total} 組有效結果")
     if task_id:
         from src.core.task_manager import update_task
+
         update_task(task_id, progress=95)
     return results
 
@@ -638,11 +831,19 @@ def grid_search_parallel(
             continue
         if "ma_fast" in p and "ma_slow" in p and p["ma_fast"] >= p["ma_slow"]:
             continue
-        if "entry_period" in p and "exit_period" in p and p["entry_period"] <= p["exit_period"]:
+        if (
+            "entry_period" in p
+            and "exit_period" in p
+            and p["entry_period"] <= p["exit_period"]
+        ):
             continue
         if "overbought" in p and "oversold" in p and p["overbought"] <= p["oversold"]:
             continue
-        if "rsi_overbought" in p and "rsi_oversold" in p and p["rsi_overbought"] <= p["rsi_oversold"]:
+        if (
+            "rsi_overbought" in p
+            and "rsi_oversold" in p
+            and p["rsi_overbought"] <= p["rsi_oversold"]
+        ):
             continue
         if "min_agreement" in p and p["min_agreement"] > 4:
             continue
@@ -661,7 +862,13 @@ def grid_search_parallel(
     if backend == "joblib" and sys.platform != "win32":
         logger.info(f"  並行後端: joblib (loky), workers={max_workers}")
         results = _grid_parallel_joblib(
-            tasks, max_workers, objective, run_ctx, verbose, task_id, total,
+            tasks,
+            max_workers,
+            objective,
+            run_ctx,
+            verbose,
+            task_id,
+            total,
         )
     else:
         results = []
@@ -672,14 +879,12 @@ def grid_search_parallel(
         logger.info(f"  並行後端: {pool_kind} pool, workers={max_workers}")
 
         with executor_cls(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(_run_single_worker, t): t
-                for t in tasks
-            }
+            futures = {executor.submit(_run_single_worker, t): t for t in tasks}
             for future in as_completed(futures):
                 done += 1
                 if task_id:
                     from src.core.task_manager import is_task_cancelled, update_task
+
                     if is_task_cancelled(task_id):
                         executor.shutdown(wait=False, cancel_futures=True)
                         raise RuntimeError("任務已取消")
@@ -708,13 +913,17 @@ def grid_search_parallel(
         # 強制要求 OOS 收益為正，否則視為過擬合而剔除
         filtered_results = [r for r in top_results if r.get("is_oos_positive") is True]
         if len(filtered_results) < top_n and len(filtered_results) > 0:
-            logger.info(f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）")
+            logger.info(
+                f"OOS 驗證篩選：{len(top_results)} → {len(filtered_results)} 組（剔除過擬合策略）"
+            )
             # 補充不足的名額（從剩餘中取最佳）
             remaining = [r for r in top_results if r not in filtered_results]
             needed = top_n - len(filtered_results)
             top_results = filtered_results + remaining[:needed]
         elif len(filtered_results) == 0:
-            logger.warning(f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）")
+            logger.warning(
+                f"OOS 驗證失敗：所有 {len(top_results)} 組策略均未通過樣本外測試，返回原始結果（需人工審核）"
+            )
     except Exception as e:
         logger.debug(f"OOS 驗證跳過：{e}")
     return top_results

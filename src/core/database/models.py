@@ -2,6 +2,7 @@
 
 自動從 schema.py DDL 推導；SQLite 和 PostgreSQL 均適用。
 """
+
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -17,6 +18,7 @@ from src.core.database.orm_base import Base
 
 # ── 用戶系統 ──────────────────────────────────────────────
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -26,9 +28,15 @@ class User(Base):
     settings = Column(Text, default="{}")
     created_at = Column(Text, nullable=False)
 
-    watchlists = relationship("UserWatchlist", back_populates="user", cascade="all, delete-orphan")
-    alert_rules = relationship("UserAlertRule", back_populates="user", cascade="all, delete-orphan")
-    likes = relationship("StrategyLike", back_populates="user", cascade="all, delete-orphan")
+    watchlists = relationship(
+        "UserWatchlist", back_populates="user", cascade="all, delete-orphan"
+    )
+    alert_rules = relationship(
+        "UserAlertRule", back_populates="user", cascade="all, delete-orphan"
+    )
+    likes = relationship(
+        "StrategyLike", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class StrategyLike(Base):
@@ -65,6 +73,7 @@ class UserAlertRule(Base):
 
 
 # ── 核心行情 ──────────────────────────────────────────────
+
 
 class DailyKline(Base):
     __tablename__ = "daily_kline"
@@ -109,6 +118,7 @@ class MinuteKline(Base):
 
 
 # ── 信號 / 回測 / 預警 ────────────────────────────────────
+
 
 class AlertLog(Base):
     __tablename__ = "alert_log"
@@ -174,6 +184,7 @@ class StrategyLeaderboard(Base):
 
 
 # ── 擴展市場數據 ──────────────────────────────────────────
+
 
 class SectorData(Base):
     __tablename__ = "sector_data"
@@ -279,6 +290,7 @@ class StockUniverse(Base):
 
 # ── 模擬交易 ──────────────────────────────────────────────
 
+
 class PaperTrade(Base):
     __tablename__ = "paper_trades"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -339,6 +351,7 @@ class PaperNavHistory(Base):
 
 # ── 任務隊列 ──────────────────────────────────────────────
 
+
 class TaskLog(Base):
     __tablename__ = "task_log"
     task_id = Column(Text, primary_key=True)
@@ -354,6 +367,7 @@ class TaskLog(Base):
 
 
 # ── 用戶資產庫 ─────────────────────────────────────────────
+
 
 class PortfolioTransaction(Base):
     __tablename__ = "portfolio_transactions"
@@ -393,6 +407,7 @@ class PortfolioSnapshot(Base):
 
 # ── 匯率 ──────────────────────────────────────────────────
 
+
 class FxRateDaily(Base):
     __tablename__ = "fx_rates_daily"
     base = Column(Text, nullable=False, default="USD", primary_key=True)
@@ -402,6 +417,7 @@ class FxRateDaily(Base):
 
 
 # ── 遷移元數據 ────────────────────────────────────────────
+
 
 class SchemaMigration(Base):
     __tablename__ = "schema_migrations"

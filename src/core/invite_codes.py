@@ -1,6 +1,7 @@
 """
 邀請碼管理 — 生成、驗證、使用追蹤。
 """
+
 from __future__ import annotations
 
 import secrets
@@ -26,7 +27,9 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def generate_code(created_by: int, max_uses: int = 1, expires_at: Optional[str] = None) -> str:
+def generate_code(
+    created_by: int, max_uses: int = 1, expires_at: Optional[str] = None
+) -> str:
     """生成邀請碼，返回 code 字符串。"""
     code = secrets.token_urlsafe(8).upper()  # ~11 chars
     with get_conn() as conn:
@@ -51,7 +54,9 @@ def validate_code(code: str) -> tuple[bool, str]:
     with get_conn() as conn:
         _ensure_table(conn)
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM invite_codes WHERE code = ?", (code,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM invite_codes WHERE code = ?", (code,)
+        ).fetchone()
 
     if not row:
         return False, "邀請碼不存在"

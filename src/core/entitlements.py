@@ -1,6 +1,7 @@
 """
 用戶訂閱權益 — 方案解析、功能開關、每日配額。
 """
+
 from __future__ import annotations
 
 import json
@@ -29,6 +30,7 @@ def _get_user_quota_lock(user_id: int) -> threading.Lock:
             lock = threading.Lock()
             _quota_locks[user_id] = lock
         return lock
+
 
 DEFAULT_BILLING = {
     "plan_id": "free",
@@ -121,7 +123,9 @@ def billing_summary(user: User | None) -> dict[str, Any]:
 def _load_user_settings(user_id: int) -> dict:
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT settings FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT settings FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
     if not row or not row["settings"]:
         return {}
     try:
@@ -300,10 +304,11 @@ def gate_optimize_submit(user: User) -> None:
 
 def gate_compare_submit(user: User | None, codes: list) -> None:
     """多股對比：2 隻以上或非 A 股代碼需 compare_multimarket（登錄）。"""
-    normalized = [str(c or "").strip().upper() for c in (codes or []) if str(c or "").strip()]
+    normalized = [
+        str(c or "").strip().upper() for c in (codes or []) if str(c or "").strip()
+    ]
     needs_pro = len(normalized) >= 2 or any(
-        "." in c or c.isalpha() or (c.isdigit() and len(c) != 6)
-        for c in normalized
+        "." in c or c.isalpha() or (c.isdigit() and len(c) != 6) for c in normalized
     )
     if not needs_pro:
         return
@@ -418,7 +423,9 @@ def gate_correlation_monitor(user: User) -> None:
     if not user:
         raise HTTPException(status_code=401, detail="相關性監控需登錄")
     if not user_has_feature(user, "correlation_monitor"):
-        _feature_locked("correlation_monitor", "策略相關性監控需 Institutional 方案", user)
+        _feature_locked(
+            "correlation_monitor", "策略相關性監控需 Institutional 方案", user
+        )
 
 
 def gate_data_export(user: User) -> None:
@@ -455,6 +462,7 @@ def gate_concurrent_tasks(user: User) -> None:
     # 優先使用 Redis 跨進程計數（多 worker 部署下準確）
     try:
         from src.core import task_store
+
         if task_store.is_available():
             n = task_store.count_active_by_user(user.id)
             if n >= cap:
@@ -549,13 +557,37 @@ def check_quota(user: User, metric: str) -> None:
     limits = plan.limits
     checks = {
         "backtest": (usage["backtests_today"], limits.daily_backtests, "回測"),
-        "portfolio": (usage["portfolio_runs_today"], limits.daily_portfolio_runs, "組合回測"),
-        "optimize": (usage["optimize_runs_today"], limits.daily_optimize_runs, "參數優化"),
+        "portfolio": (
+            usage["portfolio_runs_today"],
+            limits.daily_portfolio_runs,
+            "組合回測",
+        ),
+        "optimize": (
+            usage["optimize_runs_today"],
+            limits.daily_optimize_runs,
+            "參數優化",
+        ),
         "ai_query": (usage["ai_queries_today"], limits.daily_ai_queries, "AI 問答"),
-        "walkforward": (usage["walkforward_today"], limits.daily_walkforward, "Walk-Forward"),
-        "monte_carlo": (usage["monte_carlo_today"], limits.daily_monte_carlo, "蒙特卡羅"),
-        "signal_ranking": (usage["signal_ranking_today"], limits.daily_signal_ranking, "信號排名"),
-        "full_report": (usage["full_report_today"], limits.daily_full_report, "全面報告"),
+        "walkforward": (
+            usage["walkforward_today"],
+            limits.daily_walkforward,
+            "Walk-Forward",
+        ),
+        "monte_carlo": (
+            usage["monte_carlo_today"],
+            limits.daily_monte_carlo,
+            "蒙特卡羅",
+        ),
+        "signal_ranking": (
+            usage["signal_ranking_today"],
+            limits.daily_signal_ranking,
+            "信號排名",
+        ),
+        "full_report": (
+            usage["full_report_today"],
+            limits.daily_full_report,
+            "全面報告",
+        ),
     }
     key = metric if metric in checks else "backtest"
     used, cap, label = checks[key]
@@ -587,8 +619,19 @@ def require_feature(feature: str):
         if not user_has_feature(user, feature):
             pid = effective_plan_id(user)
             # 根據 feature 判斷需要哪個方案
-            pro_ai_features = {"ai_strategy_recommend", "ai_code_generate", "ai_param_suggest", "ai_market_report"}
-            inst_features = {"risk_pipeline", "correlation_monitor", "signal_arbitration", "rest_api_access", "team_seats"}
+            pro_ai_features = {
+                "ai_strategy_recommend",
+                "ai_code_generate",
+                "ai_param_suggest",
+                "ai_market_report",
+            }
+            inst_features = {
+                "risk_pipeline",
+                "correlation_monitor",
+                "signal_arbitration",
+                "rest_api_access",
+                "team_seats",
+            }
             if feature in inst_features:
                 need = "institutional"
             elif feature in pro_ai_features:
@@ -610,13 +653,17 @@ def require_feature(feature: str):
     return _dep
 
 
-def set_user_plan(user_id: int, plan_id: str, *, status: str = "active", expires_at: str | None = None) -> None:
+def set_user_plan(
+    user_id: int, plan_id: str, *, status: str = "active", expires_at: str | None = None
+) -> None:
     plan_id = (plan_id or "free").lower()
     if plan_id not in _VALID_PLAN_IDS:
         raise ValueError("無效方案")
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT settings FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT settings FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
         if not row:
             raise ValueError("用戶不存在")
         try:

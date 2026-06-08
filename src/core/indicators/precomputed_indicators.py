@@ -17,6 +17,7 @@
 - 版本控制：基於 K 線數據版本自動失效
 - 多進程加速：支援並行計算
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,6 +45,7 @@ from src.utils.logger import logger
 @dataclass
 class IndicatorConfig:
     """指標配置"""
+
     name: str
     params: Dict[str, Any]
     output_columns: List[str]
@@ -53,6 +55,7 @@ class IndicatorConfig:
 @dataclass
 class PrecomputeResult:
     """預計算結果"""
+
     code: str
     indicator: str
     params_hash: str
@@ -72,30 +75,38 @@ DEFAULT_INDICATORS: List[IndicatorConfig] = [
     IndicatorConfig("sma", {"period": 60}, ["sma_60"]),
     IndicatorConfig("sma", {"period": 120}, ["sma_120"]),
     IndicatorConfig("sma", {"period": 250}, ["sma_250"]),
-
     # EMA 指數移動平均
     IndicatorConfig("ema", {"period": 12}, ["ema_12"]),
     IndicatorConfig("ema", {"period": 26}, ["ema_26"]),
     IndicatorConfig("ema", {"period": 50}, ["ema_50"]),
-
     # MACD
-    IndicatorConfig("macd", {"fast": 12, "slow": 26, "signal": 9}, ["macd_line", "macd_signal", "macd_hist"]),
-    IndicatorConfig("macd", {"fast": 6, "slow": 13, "signal": 5}, ["macd_line_f6", "macd_signal_f6", "macd_hist_f6"]),
-
+    IndicatorConfig(
+        "macd",
+        {"fast": 12, "slow": 26, "signal": 9},
+        ["macd_line", "macd_signal", "macd_hist"],
+    ),
+    IndicatorConfig(
+        "macd",
+        {"fast": 6, "slow": 13, "signal": 5},
+        ["macd_line_f6", "macd_signal_f6", "macd_hist_f6"],
+    ),
     # RSI
     IndicatorConfig("rsi", {"period": 6}, ["rsi_6"]),
     IndicatorConfig("rsi", {"period": 12}, ["rsi_12"]),
     IndicatorConfig("rsi", {"period": 14}, ["rsi_14"]),
     IndicatorConfig("rsi", {"period": 24}, ["rsi_24"]),
-
     # ATR
     IndicatorConfig("atr", {"period": 14}, ["atr_14"]),
     IndicatorConfig("atr", {"period": 20}, ["atr_20"]),
-
     # 布林帶
-    IndicatorConfig("bollinger", {"period": 20, "std": 2.0}, ["bb_upper", "bb_mid", "bb_lower"]),
-    IndicatorConfig("bollinger", {"period": 26, "std": 2.0}, ["bb_upper_26", "bb_mid_26", "bb_lower_26"]),
-
+    IndicatorConfig(
+        "bollinger", {"period": 20, "std": 2.0}, ["bb_upper", "bb_mid", "bb_lower"]
+    ),
+    IndicatorConfig(
+        "bollinger",
+        {"period": 26, "std": 2.0},
+        ["bb_upper_26", "bb_mid_26", "bb_lower_26"],
+    ),
     # 成交量均線
     IndicatorConfig("vma", {"period": 5}, ["vma_5"]),
     IndicatorConfig("vma", {"period": 10}, ["vma_10"]),
@@ -113,6 +124,7 @@ def _get_data_version(code: str) -> str:
     """獲取 K 線數據版本號"""
     try:
         from src.core.db import get_latest_date
+
         latest = get_latest_date(code)
         if latest:
             return f"{code}:{latest}"
@@ -122,6 +134,7 @@ def _get_data_version(code: str) -> str:
     # fallback 到文件修改時間
     try:
         from src.config import settings
+
         db_path = settings.db_path
         if os.path.exists(db_path):
             mtime = os.path.getmtime(db_path)
@@ -140,6 +153,7 @@ def _compute_sma(close: np.ndarray, period: int) -> np.ndarray:
 def _compute_ema(close: np.ndarray, period: int) -> np.ndarray:
     """計算 EMA"""
     from src.core.indicators.fast_indicators import _ema_core
+
     return _ema_core(close.astype(np.float64), period)
 
 
@@ -159,7 +173,7 @@ def _compute_bollinger(
     lower = np.full(n, np.nan, dtype=np.float64)
 
     for i in range(period - 1, n):
-        window = close[i - period + 1:i + 1]
+        window = close[i - period + 1 : i + 1]
         if not np.isnan(mid[i]):
             std_val = np.std(window)
             upper[i] = mid[i] + std * std_val
@@ -183,8 +197,8 @@ def _compute_kdj(
     j = np.full(n_len, np.nan, dtype=np.float64)
 
     for i in range(n - 1, n_len):
-        highest = np.max(high[i - n + 1:i + 1])
-        lowest = np.min(low[i - n + 1:i + 1])
+        highest = np.max(high[i - n + 1 : i + 1])
+        lowest = np.min(low[i - n + 1 : i + 1])
 
         if highest == lowest:
             rsv = 50.0
@@ -229,6 +243,7 @@ def compute_indicator_for_code(
     try:
         # 載入 K 線數據
         from src.core.db import load_daily_kline
+
         df = load_daily_kline(code)
 
         if df.empty or len(df) < 10:
@@ -375,7 +390,9 @@ def _save_indicator_to_db(
         cursor.execute(create_sql)
 
         # 建立索引
-        cursor.execute(f'CREATE INDEX IF NOT EXISTS "idx_{table_name}_date" ON "{table_name}"(date)')
+        cursor.execute(
+            f'CREATE INDEX IF NOT EXISTS "idx_{table_name}_date" ON "{table_name}"(date)'
+        )
 
         # 清空舊數據
         cursor.execute(f'DELETE FROM "{table_name}"')
@@ -486,7 +503,9 @@ def get_cached_indicator(
     conn = sqlite3.connect(db_path)
 
     try:
-        table_name = f"indicator_{code}_{indicator_name}_{_params_hash(params or config.params)}"
+        table_name = (
+            f"indicator_{code}_{indicator_name}_{_params_hash(params or config.params)}"
+        )
 
         # 檢查表是否存在
         check_sql = """
@@ -521,12 +540,12 @@ def warmup_indicators(
 ) -> Dict[str, Any]:
     """
     預熱指標緩存
-    
+
     Args:
         codes: 股票代碼清單，None 表示所有股票
         subset_indicators: 要預熱的指標子集，None 表示全部
         max_workers: 最大並行 worker 數
-    
+
     Returns:
         預熱結果統計
     """
@@ -535,6 +554,7 @@ def warmup_indicators(
         # 嘗試從 stock_universe 獲取，如果失敗則使用空清單
         try:
             from src.core.stock_universe import fetch_all_market_basics
+
             all_data = fetch_all_market_basics()
             codes = [item.get("code") for item in all_data if item.get("code")]
             logger.info(f"從 stock_universe 獲取 {len(codes)} 支股票")
@@ -567,7 +587,13 @@ def warmup_indicators(
         "skipped": skipped,
         "elapsed_seconds": round(elapsed, 2),
         "codes_processed": len(set(r.code for r in results)),
-        "indicators_computed": len(set(f"{r.indicator}:{r.params_hash}" for r in results if r.status == "success")),
+        "indicators_computed": len(
+            set(
+                f"{r.indicator}:{r.params_hash}"
+                for r in results
+                if r.status == "success"
+            )
+        ),
     }
 
 
@@ -586,7 +612,10 @@ if __name__ == "__main__":
     codes = args.codes if args.codes else None
     if args.all:
         from src.core.stock_universe import get_all_codes
+
         codes = get_all_codes()
 
-    result = warmup_indicators(codes=codes, subset_indicators=args.indicators, max_workers=args.workers)
+    result = warmup_indicators(
+        codes=codes, subset_indicators=args.indicators, max_workers=args.workers
+    )
     print(json.dumps(result, indent=2, ensure_ascii=False))

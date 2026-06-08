@@ -9,6 +9,7 @@
   - CacheManager 降級路徑
   - 極端 key/value
 """
+
 from __future__ import annotations
 
 import threading
@@ -17,8 +18,8 @@ import pytest
 
 from src.core.cache import LRUCache, CacheManager
 
-
 # ── LRUCache 基本操作 ──────────────────────────────────────────
+
 
 class TestLRUCacheBasic:
     """LRU 緩存基本功能。"""
@@ -79,6 +80,7 @@ class TestLRUCacheBasic:
 
 # ── TTL 過期 ────────────────────────────────────────────────────
 
+
 class TestLRUCacheTTL:
     """TTL 過期機制。"""
 
@@ -105,6 +107,7 @@ class TestLRUCacheTTL:
 
 
 # ── 容量淘汰 ────────────────────────────────────────────────────
+
 
 class TestLRUCacheEviction:
     """容量限制與 LRU 淘汰。"""
@@ -148,6 +151,7 @@ class TestLRUCacheEviction:
 
 # ── 並發讀寫 ────────────────────────────────────────────────────
 
+
 class TestLRUCacheConcurrency:
     """多線程並發讀寫安全。"""
 
@@ -190,9 +194,7 @@ class TestLRUCacheConcurrency:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=_read) for _ in range(4)
-        ] + [
+        threads = [threading.Thread(target=_read) for _ in range(4)] + [
             threading.Thread(target=_write) for _ in range(4)
         ]
         for t in threads:
@@ -233,6 +235,7 @@ class TestLRUCacheConcurrency:
 
 
 # ── CacheManager ────────────────────────────────────────────────
+
 
 class TestCacheManager:
     """CacheManager 統一接口（Redis 不可用時降級到 LRU）。"""
@@ -281,11 +284,13 @@ class TestCacheManager:
 
 # ── 業務緩存封裝函數 ────────────────────────────────────────────
 
+
 class TestBusinessCacheFunctions:
     """K 線、實時行情、回測結果緩存。"""
 
     def test_kline_cache(self):
         from src.core.cache import get_cached_kline, set_cached_kline
+
         data = [{"date": "2024-01-01", "close": 10.0}]
         set_cached_kline("000001", data)
         result = get_cached_kline("000001")
@@ -293,10 +298,12 @@ class TestBusinessCacheFunctions:
 
     def test_kline_cache_miss(self):
         from src.core.cache import get_cached_kline
+
         assert get_cached_kline("nonexistent_code_xyz") is None
 
     def test_realtime_cache(self):
         from src.core.cache import get_cached_realtime, set_cached_realtime
+
         data = {"price": 10.5, "change": 0.5}
         set_cached_realtime("600519", data)
         result = get_cached_realtime("600519")
@@ -304,10 +311,12 @@ class TestBusinessCacheFunctions:
 
     def test_realtime_cache_miss(self):
         from src.core.cache import get_cached_realtime
+
         assert get_cached_realtime("nonexistent") is None
 
     def test_backtest_cache(self):
         from src.core.cache import get_cached_backtest, set_cached_backtest
+
         data = {"total_return_pct": 15.3, "sharpe": 1.2}
         set_cached_backtest("test_key_123", data)
         result = get_cached_backtest("test_key_123")
@@ -315,10 +324,12 @@ class TestBusinessCacheFunctions:
 
     def test_backtest_cache_miss(self):
         from src.core.cache import get_cached_backtest
+
         assert get_cached_backtest("nonexistent_key") is None
 
     def test_kline_different_codes_isolated(self):
         from src.core.cache import get_cached_kline, set_cached_kline
+
         set_cached_kline("000001", [{"close": 10}])
         set_cached_kline("000002", [{"close": 20}])
         assert get_cached_kline("000001")[0]["close"] == 10
@@ -326,6 +337,7 @@ class TestBusinessCacheFunctions:
 
 
 # ── 大規模 Key 壓力 ─────────────────────────────────────────────
+
 
 class TestMassiveKeys:
     """大規模 Key 操作。"""
@@ -356,6 +368,7 @@ class TestMassiveKeys:
 
 
 # ── TTL 併發過期 ────────────────────────────────────────────────
+
 
 class TestTTLConcurrent:
     """TTL 併發場景。"""

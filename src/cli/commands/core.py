@@ -1,4 +1,5 @@
 """CLI commands: core"""
+
 from datetime import datetime
 
 import numpy as np
@@ -39,6 +40,7 @@ def cmd_config(args):
         # 檢查策略參數是否完整
         try:
             from src.core.backtest import STRATEGIES
+
             for name in STRATEGIES:
                 if name not in settings.strategy_params:
                     warnings.append(f"策略 '{name}' 缺少默認參數配置")
@@ -58,6 +60,7 @@ def cmd_config(args):
         if settings.redis_enabled:
             try:
                 import redis
+
                 r = redis.from_url(settings.redis_url)
                 r.ping()
                 print("  ✅ Redis 連接正常")
@@ -79,13 +82,12 @@ def cmd_config(args):
         print(f"\n  錯誤: {len(errors)} | 警告: {len(warnings)}")
 
 
-
-
 def cmd_serve(args):
     """啟動 Web 服務"""
     import uvicorn
 
     from src.config import settings
+
     uvicorn.run(
         "src.api.app:app",
         host=args.host or settings.web_host,
@@ -94,8 +96,6 @@ def cmd_serve(args):
         reload=args.reload,
         log_level="info",
     )
-
-
 
 
 def cmd_download(args):
@@ -113,8 +113,6 @@ def cmd_download(args):
         print(f"  新數據: {result['total_records']} 條")
     else:
         download_all(codes)
-
-
 
 
 def cmd_seed(args):
@@ -149,8 +147,6 @@ def cmd_seed(args):
         print(f"示範回測：{result['backtests']} 條")
 
 
-
-
 def cmd_monitor(args):
     """實時盯盤"""
     import time
@@ -163,13 +159,17 @@ def cmd_monitor(args):
     engine = AlertEngine()
     codes = settings.watchlist
 
-    print(f"盯盤啟動: {', '.join(codes)} | 間隔 {settings.poll_interval_sec}s | Ctrl+C 停止")
+    print(
+        f"盯盤啟動: {', '.join(codes)} | 間隔 {settings.poll_interval_sec}s | Ctrl+C 停止"
+    )
 
     try:
         while True:
             now = datetime.now()
             if not is_a_share_trading_now(now):
-                print(f"\r⏳ {now.strftime('%H:%M:%S')} 非交易時段...", end="", flush=True)
+                print(
+                    f"\r⏳ {now.strftime('%H:%M:%S')} 非交易時段...", end="", flush=True
+                )
                 time.sleep(30)
                 continue
 
@@ -179,17 +179,17 @@ def cmd_monitor(args):
                     engine.process(df)
                     print(f"\n── {now.strftime('%H:%M:%S')} ──")
                     for _, row in df.iterrows():
-                        chg = row.get('change_pct', 0)
+                        chg = row.get("change_pct", 0)
                         icon = "🔴" if chg > 0 else "🟢" if chg < 0 else "  "
-                        print(f"  {row['code']} {row['price']:>8.2f} {icon}{chg:>+.2f}%")
+                        print(
+                            f"  {row['code']} {row['price']:>8.2f} {icon}{chg:>+.2f}%"
+                        )
             except Exception as e:
                 print(f"\n⚠ {e}")
 
             time.sleep(settings.poll_interval_sec)
     except KeyboardInterrupt:
         print(f"\n盯盤結束，觸發 {engine.total_alerts} 條預警")
-
-
 
 
 def cmd_scheduler(args):
@@ -231,7 +231,9 @@ def cmd_scheduler(args):
 
     elif action == "run":
         if not args.job_id:
-            print("❌ 請指定任務 ID，例如: python main.py scheduler run incremental_update")
+            print(
+                "❌ 請指定任務 ID，例如: python main.py scheduler run incremental_update"
+            )
             return
         print(f"⏳ 執行任務: {args.job_id} ...")
         run_job_now(args.job_id)
@@ -256,8 +258,6 @@ def cmd_scheduler(args):
 
     else:
         print("用法: python main.py scheduler {list|setup|run|enable|disable} [job_id]")
-
-
 
 
 def cmd_stock_universe(args):
@@ -298,5 +298,3 @@ def cmd_stock_universe(args):
             )
     else:
         print("用法: python main.py stock-universe {sync|stats|list}")
-
-

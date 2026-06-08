@@ -11,6 +11,7 @@
     get_all_breakers()  # dict[str, dict]
     is_open("eastmoney")  # bool
 """
+
 from __future__ import annotations
 
 import time
@@ -25,9 +26,14 @@ class CircuitBreaker:
     """單個數據源的熔斷狀態。"""
 
     __slots__ = (
-        "name", "failure_threshold", "recovery_timeout",
-        "_consecutive_failures", "_opened_at", "_total_failures",
-        "_total_successes", "_last_failure_at",
+        "name",
+        "failure_threshold",
+        "recovery_timeout",
+        "_consecutive_failures",
+        "_opened_at",
+        "_total_failures",
+        "_total_successes",
+        "_last_failure_at",
     )
 
     def __init__(
@@ -128,8 +134,10 @@ def circuit_breaker(
             except Exception:
                 cb.record_failure()
                 raise
+
         wrapper._circuit_breaker = cb  # type: ignore[attr-defined]
         return wrapper
+
     return decorator
 
 

@@ -1,4 +1,5 @@
 """資產庫持久層 — 交易流水與物化持倉。"""
+
 from __future__ import annotations
 
 import json
@@ -11,9 +12,7 @@ from typing import Any, Optional
 
 from src.core.db import get_conn
 
-TX_TYPES = frozenset(
-    {"BUY", "SELL", "DIV", "SPLIT", "CASH_IN", "CASH_OUT", "DELIST"}
-)
+TX_TYPES = frozenset({"BUY", "SELL", "DIV", "SPLIT", "CASH_IN", "CASH_OUT", "DELIST"})
 
 
 @dataclass
@@ -93,7 +92,9 @@ class PortfolioRepo:
             )
         return tx_id
 
-    def batch_get_holdings(self, user_id: int, symbols: list[str] | None = None) -> dict[str, MaterializedHolding]:
+    def batch_get_holdings(
+        self, user_id: int, symbols: list[str] | None = None
+    ) -> dict[str, MaterializedHolding]:
         with get_conn() as conn:
             conn.row_factory = sqlite3.Row
             if symbols:
@@ -126,7 +127,9 @@ class PortfolioRepo:
             )
         return out
 
-    def upsert_holdings(self, user_id: int, holdings: list[MaterializedHolding]) -> None:
+    def upsert_holdings(
+        self, user_id: int, holdings: list[MaterializedHolding]
+    ) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with get_conn() as conn:
             conn.execute("DELETE FROM portfolio_holdings WHERE user_id = ?", (user_id,))

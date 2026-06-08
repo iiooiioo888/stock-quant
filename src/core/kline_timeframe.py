@@ -3,6 +3,7 @@
 
 對外 API 使用 1d / 1h / 1m；內部分鐘庫週期為 60m / 1m。
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -140,6 +141,8 @@ def ensure_kline_for_backtest(
             f"分鐘線通常僅保留近期交易日，請稍後重試或換用日線。"
         )
     if len(df) < min_bars:
-        logger.warning(f"{code} {period} 僅 {len(df)} 條，低於建議 {min_bars} 條，回測結果可能不穩定")
+        logger.warning(
+            f"{code} {period} 僅 {len(df)} 條，低於建議 {min_bars} 條，回測結果可能不穩定"
+        )
 
     return _df_to_ohlcv(df), src, tf

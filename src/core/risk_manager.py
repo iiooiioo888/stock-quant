@@ -4,6 +4,7 @@
 提供 PositionSizer（倉位管理）、RiskBudget（風險預算）、
 DrawdownProtector（回撤保護）三個核心類，以及 drawdown_circuit_breaker 函數。
 """
+
 import math
 
 import numpy as np
@@ -14,6 +15,7 @@ from src.utils.logger import logger
 # ============================================================
 # PositionSizer — 倉位管理器
 # ============================================================
+
 
 class PositionSizer:
     """倉位管理器 — 根據風險計算每筆交易的倉位大小"""
@@ -179,6 +181,7 @@ class PositionSizer:
 # RiskBudget — 風險預算管理
 # ============================================================
 
+
 class RiskBudget:
     """風險預算管理 — 監控組合和單個持倉的風險暴露"""
 
@@ -232,7 +235,9 @@ class RiskBudget:
         if exceeds_limit:
             # 計算需要減倉多少才能達到風險上限
             target_risk_contribution = self.max_single_risk * 0.9  # 留 10% 緩衝
-            target_pct = target_risk_contribution / position_vol if position_vol > 0 else 0
+            target_pct = (
+                target_risk_contribution / position_vol if position_vol > 0 else 0
+            )
             target_value = total_value * target_pct
             reduction = position_value - target_value
             result["suggested_reduction"] = round(max(0, reduction), 2)
@@ -277,15 +282,19 @@ class RiskBudget:
             risk_contrib = pct * vol
             total_risk += risk_contrib
 
-            position_details.append({
-                "code": code,
-                "value": round(value, 2),
-                "weight_pct": round(pct * 100, 2),
-                "vol": round(vol, 4),
-                "risk_contribution": round(risk_contrib, 4),
-            })
+            position_details.append(
+                {
+                    "code": code,
+                    "value": round(value, 2),
+                    "weight_pct": round(pct * 100, 2),
+                    "vol": round(vol, 4),
+                    "risk_contribution": round(risk_contrib, 4),
+                }
+            )
 
-        budget_used_pct = total_risk / self.max_portfolio_risk if self.max_portfolio_risk > 0 else 0
+        budget_used_pct = (
+            total_risk / self.max_portfolio_risk if self.max_portfolio_risk > 0 else 0
+        )
 
         if budget_used_pct > 1.0:
             status = "超限"
@@ -335,13 +344,15 @@ class RiskBudget:
             current_risk = current_weight * vol
 
             if vol <= 0:
-                suggestions.append({
-                    "code": code,
-                    "action": "保持",
-                    "current_risk": 0,
-                    "target_risk": 0,
-                    "adjustment": 0,
-                })
+                suggestions.append(
+                    {
+                        "code": code,
+                        "action": "保持",
+                        "current_risk": 0,
+                        "target_risk": 0,
+                        "adjustment": 0,
+                    }
+                )
                 continue
 
             # 目標權重 = 目標風險 / 波動率
@@ -356,13 +367,15 @@ class RiskBudget:
             else:
                 action = "保持"
 
-            suggestions.append({
-                "code": code,
-                "action": action,
-                "current_risk": round(current_risk, 4),
-                "target_risk": round(target_risk_per_position, 4),
-                "adjustment": round(adjustment, 2),
-            })
+            suggestions.append(
+                {
+                    "code": code,
+                    "action": action,
+                    "current_risk": round(current_risk, 4),
+                    "target_risk": round(target_risk_per_position, 4),
+                    "adjustment": round(adjustment, 2),
+                }
+            )
 
         return suggestions
 
@@ -370,6 +383,7 @@ class RiskBudget:
 # ============================================================
 # DrawdownProtector — 回撤保護器
 # ============================================================
+
 
 class DrawdownProtector:
     """回撤保護器 — 監控淨值回撤並自動調整倉位"""
@@ -463,7 +477,9 @@ class DrawdownProtector:
             return 0.0
         else:
             # 線性插值: 從 warning 到 max，因子從 1.0 到 0.5
-            ratio = (current_dd - self.warning_pct) / (self.max_drawdown_pct - self.warning_pct)
+            ratio = (current_dd - self.warning_pct) / (
+                self.max_drawdown_pct - self.warning_pct
+            )
             return 1.0 - ratio * 0.5
 
 
@@ -471,9 +487,8 @@ class DrawdownProtector:
 # drawdown_circuit_breaker — 回撤熔斷分析
 # ============================================================
 
-def drawdown_circuit_breaker(
-    nav: list, dates: list, max_dd: float = 20.0
-) -> dict:
+
+def drawdown_circuit_breaker(nav: list, dates: list, max_dd: float = 20.0) -> dict:
     """
     分析回測結果，識別回撤熔斷觸發點。
 
@@ -520,34 +535,38 @@ def drawdown_circuit_breaker(
             in_breaker = True
             breaker_start_idx = i
             # 找到此次回撤的峰值
-            peak_idx = np.argmax(nav_arr[:i + 1])
+            peak_idx = np.argmax(nav_arr[: i + 1])
 
         elif drawdowns[i] < max_dd and in_breaker:
             # 恢復（回撤降到 max_dd 以下）
             in_breaker = False
             recovery_days = i - breaker_start_idx
 
-            circuit_breakers.append({
+            circuit_breakers.append(
+                {
+                    "date": dates[breaker_start_idx],
+                    "drawdown_pct": round(float(drawdowns[breaker_start_idx]), 2),
+                    "peak_date": dates[peak_idx],
+                    "peak_value": round(float(nav_arr[peak_idx]), 2),
+                    "current_value": round(float(nav_arr[breaker_start_idx]), 2),
+                    "recovery_date": dates[i],
+                    "recovery_days": recovery_days,
+                }
+            )
+
+    # 如果到最後還在熔斷狀態
+    if in_breaker and breaker_start_idx is not None:
+        circuit_breakers.append(
+            {
                 "date": dates[breaker_start_idx],
                 "drawdown_pct": round(float(drawdowns[breaker_start_idx]), 2),
                 "peak_date": dates[peak_idx],
                 "peak_value": round(float(nav_arr[peak_idx]), 2),
                 "current_value": round(float(nav_arr[breaker_start_idx]), 2),
-                "recovery_date": dates[i],
-                "recovery_days": recovery_days,
-            })
-
-    # 如果到最後還在熔斷狀態
-    if in_breaker and breaker_start_idx is not None:
-        circuit_breakers.append({
-            "date": dates[breaker_start_idx],
-            "drawdown_pct": round(float(drawdowns[breaker_start_idx]), 2),
-            "peak_date": dates[peak_idx],
-            "peak_value": round(float(nav_arr[peak_idx]), 2),
-            "current_value": round(float(nav_arr[breaker_start_idx]), 2),
-            "recovery_date": None,
-            "recovery_days": None,
-        })
+                "recovery_date": None,
+                "recovery_days": None,
+            }
+        )
 
     # 整體最大回撤
     max_dd_idx = int(np.argmax(drawdowns))
@@ -566,6 +585,7 @@ def drawdown_circuit_breaker(
 # 輔助函數 — 計算 ATR
 # ============================================================
 
+
 def calculate_atr(code: str, period: int = 14) -> float:
     """
     計算指定股票的 ATR（平均真實波幅）。
@@ -579,6 +599,7 @@ def calculate_atr(code: str, period: int = 14) -> float:
     """
     try:
         from src.core.indicator_cache import cached_latest_atr
+
         return cached_latest_atr(code, period=period)
     except Exception as e:
         logger.debug(f"計算 ATR 失敗 {code}: {e}")

@@ -2,6 +2,7 @@
 回測引擎 — 基於 Backtrader，支持多種內置策略
 包含：滑點模擬、漲跌停限制、T+1 限制、權益曲線分析
 """
+
 from datetime import datetime
 
 import backtrader as bt
@@ -16,6 +17,7 @@ from src.utils.logger import logger
 # A 股精確佣金模型
 # ============================================================
 
+
 class AStockCommission(bt.CommInfoBase):
     """
     A 股交易成本模型：
@@ -23,11 +25,12 @@ class AStockCommission(bt.CommInfoBase):
       - 印花稅：僅賣出收取，2023 年後 0.05%
       - 過戶費：雙邊收取，0.001%
     """
+
     params = (
-        ("commission", 0.00025),     # 佣金費率（雙邊）
-        ("min_commission", 5.0),     # 最低佣金（元）
-        ("stamp_tax", 0.0005),       # 印花稅費率（僅賣出）
-        ("transfer_fee", 0.00001),   # 過戶費費率（雙邊）
+        ("commission", 0.00025),  # 佣金費率（雙邊）
+        ("min_commission", 5.0),  # 最低佣金（元）
+        ("stamp_tax", 0.0005),  # 印花稅費率（僅賣出）
+        ("transfer_fee", 0.00001),  # 過戶費費率（雙邊）
         ("stocklike", True),
         ("commtype", bt.CommInfoBase.COMM_PERC),
     )
@@ -53,6 +56,7 @@ class AStockCommission(bt.CommInfoBase):
 # A股漲跌停限制分析器
 # ============================================================
 
+
 class LimitFilter(bt.Analyzer):
     """
     漲跌停過濾分析器。
@@ -64,9 +68,9 @@ class LimitFilter(bt.Analyzer):
     """
 
     def __init__(self):
-        self.blocked_buys = 0      # 被阻止的買入次數
-        self.blocked_sells = 0     # 被阻止的賣出次數
-        self._limit_pct = None     # 漲跌停幅度（根據代碼前綴動態判斷）
+        self.blocked_buys = 0  # 被阻止的買入次數
+        self.blocked_sells = 0  # 被阻止的賣出次數
+        self._limit_pct = None  # 漲跌停幅度（根據代碼前綴動態判斷）
 
     def _get_limit_pct(self, code: str) -> float:
         """根據股票代碼前綴獲取漲跌停幅度"""
@@ -86,10 +90,10 @@ class LimitFilter(bt.Analyzer):
     def start(self):
         """初始化時從策略的數據源獲取代碼"""
         # 嘗試從 cerebro 或 data 中獲取股票代碼
-        self._code = getattr(self.strategy, '_stock_code', '')
+        self._code = getattr(self.strategy, "_stock_code", "")
         if not self._code:
             # 從 data name 推斷
-            data_name = self.datas[0]._name if self.datas else ''
+            data_name = self.datas[0]._name if self.datas else ""
             self._code = data_name
 
     def _is_limit_up(self) -> bool:
@@ -145,6 +149,7 @@ class LimitFilter(bt.Analyzer):
 # T+1 限制分析器
 # ============================================================
 
+
 class T1Filter(bt.Analyzer):
     """
     T+1 限制分析器。
@@ -153,26 +158,26 @@ class T1Filter(bt.Analyzer):
     """
 
     def __init__(self):
-        self._buy_dates = {}       # {data_name: 買入日期}
-        self.blocked_sells = 0     # 被阻止的賣出次數
+        self._buy_dates = {}  # {data_name: 買入日期}
+        self.blocked_sells = 0  # 被阻止的賣出次數
 
     def notify_trade(self, trade):
         """通過 trade 回調追蹤持倉買入日期"""
-        data_name = trade.data._name or 'default'
+        data_name = trade.data._name or "default"
         if trade.isopen:
             dt = self.datas[0].num2date(trade.dtopen)
-            dt_date = dt.date() if hasattr(dt, 'date') else dt
+            dt_date = dt.date() if hasattr(dt, "date") else dt
             self._buy_dates[data_name] = dt_date
 
     def _check_sell_allowed(self, data) -> bool:
         """檢查是否允許賣出（T+1 限制）"""
-        data_name = data._name or 'default'
+        data_name = data._name or "default"
         buy_date = self._buy_dates.get(data_name)
         if buy_date is None:
             return True  # 無記錄則允許賣出
 
         current_dt = self.datas[0].num2date(self.datas[0].datetime[0])
-        current_date = current_dt.date() if hasattr(current_dt, 'date') else current_dt
+        current_date = current_dt.date() if hasattr(current_dt, "date") else current_dt
 
         # 賣出日期必須晚於買入日期
         if current_date <= buy_date:
@@ -184,8 +189,8 @@ class T1Filter(bt.Analyzer):
         # 記錄已完成的買入/賣出
         if order.status == order.Completed:
             dt = self.datas[0].num2date(order.executed.dt)
-            dt_date = dt.date() if hasattr(dt, 'date') else dt
-            data_name = order.data._name or 'default'
+            dt_date = dt.date() if hasattr(dt, "date") else dt
+            data_name = order.data._name or "default"
 
             if order.isbuy():
                 self._buy_dates[data_name] = dt_date
@@ -210,6 +215,7 @@ class T1Filter(bt.Analyzer):
 # ============================================================
 # 權益曲線分析
 # ============================================================
+
 
 def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
     """
@@ -250,26 +256,34 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
                 uw_start = i
         else:
             if in_underwater:
-                underwater_periods.append({
-                    "start_idx": uw_start,
-                    "end_idx": i,
-                    "start_date": str(dates[uw_start]) if uw_start < len(dates) else "",
-                    "end_date": str(dates[i]) if i < len(dates) else "",
-                    "duration_days": i - uw_start,
-                    "max_drawdown_pct": round(float(np.max(drawdown[uw_start:i])) * 100, 4),
-                })
+                underwater_periods.append(
+                    {
+                        "start_idx": uw_start,
+                        "end_idx": i,
+                        "start_date": (
+                            str(dates[uw_start]) if uw_start < len(dates) else ""
+                        ),
+                        "end_date": str(dates[i]) if i < len(dates) else "",
+                        "duration_days": i - uw_start,
+                        "max_drawdown_pct": round(
+                            float(np.max(drawdown[uw_start:i])) * 100, 4
+                        ),
+                    }
+                )
                 in_underwater = False
 
     # 如果結束時仍在水下
     if in_underwater:
-        underwater_periods.append({
-            "start_idx": uw_start,
-            "end_idx": len(nav_arr) - 1,
-            "start_date": str(dates[uw_start]) if uw_start < len(dates) else "",
-            "end_date": str(dates[-1]) if len(dates) > 0 else "",
-            "duration_days": len(nav_arr) - 1 - uw_start,
-            "max_drawdown_pct": round(float(np.max(drawdown[uw_start:])) * 100, 4),
-        })
+        underwater_periods.append(
+            {
+                "start_idx": uw_start,
+                "end_idx": len(nav_arr) - 1,
+                "start_date": str(dates[uw_start]) if uw_start < len(dates) else "",
+                "end_date": str(dates[-1]) if len(dates) > 0 else "",
+                "duration_days": len(nav_arr) - 1 - uw_start,
+                "max_drawdown_pct": round(float(np.max(drawdown[uw_start:])) * 100, 4),
+            }
+        )
 
     # === 回撤恢復期 ===
     recovery_periods = []
@@ -294,13 +308,19 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
                 dd_trough_idx = i
             if nav_arr[i] >= peak_val:
                 # 恢復到前高
-                recovery_periods.append({
-                    "drawdown_pct": round(dd_trough_val * 100, 4),
-                    "trough_date": str(dates[dd_trough_idx]) if dd_trough_idx < len(dates) else "",
-                    "recovery_date": str(dates[i]) if i < len(dates) else "",
-                    "recovery_days": i - dd_trough_idx,
-                    "total_days": i - dd_start_idx,
-                })
+                recovery_periods.append(
+                    {
+                        "drawdown_pct": round(dd_trough_val * 100, 4),
+                        "trough_date": (
+                            str(dates[dd_trough_idx])
+                            if dd_trough_idx < len(dates)
+                            else ""
+                        ),
+                        "recovery_date": str(dates[i]) if i < len(dates) else "",
+                        "recovery_days": i - dd_trough_idx,
+                        "total_days": i - dd_start_idx,
+                    }
+                )
                 dd_start_idx = None
 
     # === 滾動一年收益率 ===
@@ -309,10 +329,12 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
     if len(nav_arr) > window:
         for i in range(window, len(nav_arr)):
             ret_1y = (nav_arr[i] / nav_arr[i - window] - 1) * 100
-            rolling_1y_returns.append({
-                "date": str(dates[i]) if i < len(dates) else "",
-                "return_pct": round(float(ret_1y), 4),
-            })
+            rolling_1y_returns.append(
+                {
+                    "date": str(dates[i]) if i < len(dates) else "",
+                    "return_pct": round(float(ret_1y), 4),
+                }
+            )
 
     # === 回撤持續時間分佈 ===
     dd_durations = []
@@ -346,7 +368,7 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
                 "10-20天": int(np.sum((dd_arr > 10) & (dd_arr <= 20))),
                 "20-50天": int(np.sum((dd_arr > 20) & (dd_arr <= 50))),
                 "50天以上": int(np.sum(dd_arr > 50)),
-            }
+            },
         }
 
     # 水下時間統計
@@ -358,10 +380,14 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
     return {
         "underwater_periods": underwater_periods[:10],  # 最多返回 10 個
         "recovery_periods": recovery_periods[:10],
-        "rolling_1y_returns": rolling_1y_returns[-250:] if rolling_1y_returns else [],  # 最近一年
+        "rolling_1y_returns": (
+            rolling_1y_returns[-250:] if rolling_1y_returns else []
+        ),  # 最近一年
         "drawdown_durations": drawdown_duration_dist,
         "max_underwater_days": max(underwater_days) if underwater_days else 0,
-        "avg_underwater_days": round(float(np.mean(underwater_days)), 1) if underwater_days else 0,
+        "avg_underwater_days": (
+            round(float(np.mean(underwater_days)), 1) if underwater_days else 0
+        ),
         "underwater_pct": round(underwater_pct, 2),
     }
 
@@ -369,6 +395,7 @@ def analyze_equity_curve(nav: list, dates: list, daily_returns: list) -> dict:
 # ============================================================
 # 交易深度分析
 # ============================================================
+
 
 def trade_analysis(trade_details: list) -> dict:
     """
@@ -388,7 +415,12 @@ def trade_analysis(trade_details: list) -> dict:
     """
     if not trade_details or len(trade_details) == 0:
         return {
-            "streak": {"max_win_streak": 0, "max_loss_streak": 0, "current_streak": 0, "current_type": "none"},
+            "streak": {
+                "max_win_streak": 0,
+                "max_loss_streak": 0,
+                "current_streak": 0,
+                "current_type": "none",
+            },
             "hold_period": {"avg_winner_days": 0, "avg_loser_days": 0},
             "profit_factor": 0,
             "expectancy": 0,
@@ -451,12 +483,18 @@ def trade_analysis(trade_details: list) -> dict:
     # === 盈虧比 (Profit Factor) ===
     gross_profit = sum(p for p in pnls if p > 0)
     gross_loss = abs(sum(p for p in pnls if p < 0))
-    profit_factor = round(gross_profit / gross_loss, 4) if gross_loss > 0 else float('inf')
+    profit_factor = (
+        round(gross_profit / gross_loss, 4) if gross_loss > 0 else float("inf")
+    )
 
     # === 期望收益 (Expectancy) ===
     win_rate = len([p for p in pnls if p > 0]) / len(pnls) if pnls else 0
-    avg_win = float(np.mean([p for p in pnls if p > 0])) if any(p > 0 for p in pnls) else 0
-    avg_loss = float(np.mean([p for p in pnls if p < 0])) if any(p < 0 for p in pnls) else 0
+    avg_win = (
+        float(np.mean([p for p in pnls if p > 0])) if any(p > 0 for p in pnls) else 0
+    )
+    avg_loss = (
+        float(np.mean([p for p in pnls if p < 0])) if any(p < 0 for p in pnls) else 0
+    )
     expectancy = round(win_rate * avg_win + (1 - win_rate) * avg_loss, 4)
 
     # === 收益分佈直方圖 ===
@@ -477,6 +515,7 @@ def trade_analysis(trade_details: list) -> dict:
 
     # === 最佳/最差月份 ===
     from collections import defaultdict
+
     monthly_pnl = defaultdict(float)
     for i, d in enumerate(sell_dates):
         if d and i < len(pnls):
@@ -514,7 +553,9 @@ def trade_analysis(trade_details: list) -> dict:
         "hold_period": {
             "avg_winner_days": avg_winner_days,
             "avg_loser_days": avg_loser_days,
-            "winner_loser_ratio": round(avg_winner_days / avg_loser_days, 2) if avg_loser_days > 0 else 0,
+            "winner_loser_ratio": (
+                round(avg_winner_days / avg_loser_days, 2) if avg_loser_days > 0 else 0
+            ),
         },
         "profit_factor": profit_factor,
         "expectancy": expectancy,
@@ -534,7 +575,10 @@ def trade_analysis(trade_details: list) -> dict:
 # 蒙特卡羅模擬
 # ============================================================
 
-def monte_carlo_simulation(daily_returns: list, n_simulations: int = 1000, days: int = 252) -> dict:
+
+def monte_carlo_simulation(
+    daily_returns: list, n_simulations: int = 1000, days: int = 252
+) -> dict:
     """
     蒙特卡羅模擬 — 基於歷史日收益率重抽樣生成模擬權益曲線。
 
@@ -634,6 +678,7 @@ def monte_carlo_simulation(daily_returns: list, n_simulations: int = 1000, days:
 # 滾動指標
 # ============================================================
 
+
 def rolling_metrics(daily_returns: list, dates: list, window: int = 60) -> dict:
     """
     滾動性能指標計算。
@@ -672,7 +717,7 @@ def rolling_metrics(daily_returns: list, dates: list, window: int = 60) -> dict:
     out_dates = []
 
     for i in range(window, n):
-        segment = dr[i - window:i]
+        segment = dr[i - window : i]
         out_dates.append(str(dates[i]) if i < len(dates) else "")
 
         # 均值和標準差
@@ -686,7 +731,11 @@ def rolling_metrics(daily_returns: list, dates: list, window: int = 60) -> dict:
         # Sortino（下行標準差）
         downside = segment[segment < 0]
         downside_std = float(np.std(downside)) if len(downside) > 0 else 1e-9
-        sortino = (mean_r - 0.03 / 252) / downside_std * np.sqrt(252) if downside_std > 0 else 0
+        sortino = (
+            (mean_r - 0.03 / 252) / downside_std * np.sqrt(252)
+            if downside_std > 0
+            else 0
+        )
         rolling_sortino.append(round(sortino, 4))
 
         # 滾動最大回撤
@@ -735,6 +784,7 @@ def rolling_metrics(daily_returns: list, dates: list, window: int = 60) -> dict:
 # 詳細基準對比
 # ============================================================
 
+
 def benchmark_comparison_detail(bt_result: dict) -> dict:
     """
     詳細基準對比分析。
@@ -767,6 +817,7 @@ def benchmark_comparison_detail(bt_result: dict) -> dict:
     # 嘗試獲取基準收益率
     try:
         from src.core.benchmark import get_benchmark_returns
+
         start = dates[0] if dates else None
         end = dates[-1] if dates else None
         bench_data = get_benchmark_returns(start_date=start, end_date=end)
@@ -845,21 +896,31 @@ def benchmark_comparison_detail(bt_result: dict) -> dict:
     relative_strength = []
     if len(s) >= rs_window:
         for i in range(rs_window, len(s)):
-            strat_cum = float(np.prod(1 + s[i - rs_window:i]) - 1)
-            bench_cum = float(np.prod(1 + b[i - rs_window:i]) - 1)
+            strat_cum = float(np.prod(1 + s[i - rs_window : i]) - 1)
+            bench_cum = float(np.prod(1 + b[i - rs_window : i]) - 1)
             rs = strat_cum - bench_cum
-            relative_strength.append({
-                "date": aligned_dates[i],
-                "rs": round(rs * 100, 4),  # 百分比
-            })
+            relative_strength.append(
+                {
+                    "date": aligned_dates[i],
+                    "rs": round(rs * 100, 4),  # 百分比
+                }
+            )
 
     # === 牛熊市相關性 ===
     # 牛市：基準 > 0，熊市：基準 < 0
     bull_mask = b > 0
     bear_mask = b < 0
 
-    bull_corr = round(float(np.corrcoef(s[bull_mask], b[bull_mask])[0, 1]), 4) if np.sum(bull_mask) > 5 else 0
-    bear_corr = round(float(np.corrcoef(s[bear_mask], b[bear_mask])[0, 1]), 4) if np.sum(bear_mask) > 5 else 0
+    bull_corr = (
+        round(float(np.corrcoef(s[bull_mask], b[bull_mask])[0, 1]), 4)
+        if np.sum(bull_mask) > 5
+        else 0
+    )
+    bear_corr = (
+        round(float(np.corrcoef(s[bear_mask], b[bear_mask])[0, 1]), 4)
+        if np.sum(bear_mask) > 5
+        else 0
+    )
 
     # 總相關性
     total_corr = round(float(np.corrcoef(s, b)[0, 1]), 4) if len(s) > 5 else 0
@@ -868,7 +929,9 @@ def benchmark_comparison_detail(bt_result: dict) -> dict:
         "up_capture": up_capture,
         "down_capture": down_capture,
         "batting_average": batting_average,
-        "relative_strength": relative_strength[-250:] if relative_strength else [],  # 最近一年
+        "relative_strength": (
+            relative_strength[-250:] if relative_strength else []
+        ),  # 最近一年
         "bull_correlation": bull_corr,
         "bear_correlation": bear_corr,
         "total_correlation": total_corr,
@@ -888,10 +951,15 @@ def _calc_risk_metrics(
     bpy = max(int(periods_per_year), 1)
     if not daily_returns or len(daily_returns) < 2:
         return {
-            "var_95": 0, "cvar_95": 0, "sortino_ratio": 0,
-            "calmar_ratio": 0, "max_drawdown_recovery_days": 0,
-            "annual_volatility": 0, "monthly_win_rate": 0,
-            "profit_loss_ratio": 0, "annual_return_pct": 0,
+            "var_95": 0,
+            "cvar_95": 0,
+            "sortino_ratio": 0,
+            "calmar_ratio": 0,
+            "max_drawdown_recovery_days": 0,
+            "annual_volatility": 0,
+            "monthly_win_rate": 0,
+            "profit_loss_ratio": 0,
+            "annual_return_pct": 0,
         }
 
     dr = np.array(daily_returns)
@@ -909,7 +977,9 @@ def _calc_risk_metrics(
     downside = dr[dr < 0]
     downside_std = float(np.std(downside)) if len(downside) > 0 else 1e-9
     mean_ret = float(np.mean(dr))
-    sortino_ratio = (mean_ret - 0.03 / bpy) / downside_std * np.sqrt(bpy) if downside_std > 0 else 0
+    sortino_ratio = (
+        (mean_ret - 0.03 / bpy) / downside_std * np.sqrt(bpy) if downside_std > 0 else 0
+    )
 
     # Annual return
     if dates:
@@ -958,6 +1028,7 @@ def _calc_risk_metrics(
     monthly_win_rate = 0
     if dates and len(dates) > 20:
         from collections import defaultdict
+
         month_returns = defaultdict(float)
         for i, d in enumerate(dates):
             dt = d if isinstance(d, datetime) else datetime.strptime(str(d), "%Y-%m-%d")
@@ -996,6 +1067,7 @@ from src.core.strategies.base import StrategyWithSLTP
 
 for _cls in STRATEGIES.values():
     globals()[_cls.__name__] = _cls
+
 
 def _max_drawdown_pct_from_nav(nav: list) -> float:
     """依淨值序列重算最大回撤（%），避免 Backtrader 在小樣本上與總收益混淆。"""
@@ -1127,6 +1199,7 @@ def run_backtest(
 
     if task_id:
         from src.core.task_manager import is_task_cancelled, update_task
+
         if is_task_cancelled(task_id):
             raise RuntimeError("任務已取消")
         update_task(task_id, progress=10)
@@ -1161,7 +1234,9 @@ def run_backtest(
         from src.core.risk_backtest import RiskRunConfig, attach_risk_to_cerebro
 
         _rc = RiskRunConfig(max_position_pct=float(max_position_pct))
-        attach_risk_to_cerebro(cerebro, _rc, sltp=False, commission=False, slippage=False)
+        attach_risk_to_cerebro(
+            cerebro, _rc, sltp=False, commission=False, slippage=False
+        )
 
     data = prepare_data(code, timeframe=tf)
     # 將股票代碼掛載到 data 上，供 LimitFilter 使用
@@ -1172,7 +1247,7 @@ def run_backtest(
     try:
         strat_cls = cerebro.strats[0][0]
         max_period = 0
-        if hasattr(strat_cls, 'params'):
+        if hasattr(strat_cls, "params"):
             for _name, default in strat_cls.params._getpairs():
                 if isinstance(default, int) and default > max_period:
                     max_period = default
@@ -1198,13 +1273,19 @@ def run_backtest(
     effective_slip_pct = slippage_pct
     if use_volume_slip and slippage_pct > 0:
         prep_df = _get_prepared_df(code, timeframe=tf)
-        bar_vol = float(prep_df["Volume"].iloc[-1]) if not prep_df.empty and "Volume" in prep_df.columns else 0.0
+        bar_vol = (
+            float(prep_df["Volume"].iloc[-1])
+            if not prep_df.empty and "Volume" in prep_df.columns
+            else 0.0
+        )
         est_shares = float(order_size_shares or 100)
         effective_slip_pct = compute_volume_impact_slippage_pct(
             slippage_pct,
             est_shares,
             bar_vol,
-            participation_cap=getattr(settings, "volume_slippage_participation_cap", 0.05),
+            participation_cap=getattr(
+                settings, "volume_slippage_participation_cap", 0.05
+            ),
         )
     slip_pct = effective_slip_pct / 100.0 if effective_slip_pct > 0 else 0.0
     # 使用 A 股精確佣金模型（佣金最低 5 元 + 印花稅僅賣出 + 過戶費）
@@ -1238,25 +1319,33 @@ def run_backtest(
     class TradeObserver(bt.Analyzer):
         def notify_trade(self, trade):
             if trade.isclosed:
-                trade_log.append({
-                    "date": _format_bar_datetime(self.datas[0].num2date(trade.dtclose)),
-                    "type": "close",
-                    "price": round(trade.price, 2),
-                    "size": trade.size,
-                    "pnl": round(trade.pnl, 2),
-                    "pnlcomm": round(trade.pnlcomm, 2),
-                    "barlen": trade.barlen,
-                })
+                trade_log.append(
+                    {
+                        "date": _format_bar_datetime(
+                            self.datas[0].num2date(trade.dtclose)
+                        ),
+                        "type": "close",
+                        "price": round(trade.price, 2),
+                        "size": trade.size,
+                        "pnl": round(trade.pnl, 2),
+                        "pnlcomm": round(trade.pnlcomm, 2),
+                        "barlen": trade.barlen,
+                    }
+                )
             elif trade.isopen:
-                trade_log.append({
-                    "date": _format_bar_datetime(self.datas[0].num2date(trade.dtopen)),
-                    "type": "open",
-                    "price": round(trade.price, 2),
-                    "size": trade.size,
-                    "pnl": 0,
-                    "pnlcomm": 0,
-                    "barlen": 0,
-                })
+                trade_log.append(
+                    {
+                        "date": _format_bar_datetime(
+                            self.datas[0].num2date(trade.dtopen)
+                        ),
+                        "type": "open",
+                        "price": round(trade.price, 2),
+                        "size": trade.size,
+                        "pnl": 0,
+                        "pnlcomm": 0,
+                        "barlen": 0,
+                    }
+                )
 
     cerebro.addanalyzer(TradeObserver, _name="tradeobs")
 
@@ -1296,15 +1385,20 @@ def run_backtest(
 
     # 用日收益率計算夏普（更準確）
     import numpy as np
+
     if daily_returns and len(daily_returns) > 1:
         mean_ret = np.mean(daily_returns)
         std_ret = np.std(daily_returns)
-        computed_sharpe = (mean_ret - 0.03 / bpy) / std_ret * (bpy ** 0.5) if std_ret > 0 else 0
+        computed_sharpe = (
+            (mean_ret - 0.03 / bpy) / std_ret * (bpy**0.5) if std_ret > 0 else 0
+        )
     else:
         computed_sharpe = 0
 
     bt_sharpe = sharpe.get("sharperatio")
-    final_sharpe = computed_sharpe if bt_sharpe is None or abs(bt_sharpe) > 100 else bt_sharpe
+    final_sharpe = (
+        computed_sharpe if bt_sharpe is None or abs(bt_sharpe) > 100 else bt_sharpe
+    )
 
     # 整理交易明細（配對 open/close）
     paired_trades = []
@@ -1314,16 +1408,22 @@ def run_backtest(
             open_stack.append(t)
         elif t["type"] == "close" and open_stack:
             op = open_stack.pop(0)
-            paired_trades.append({
-                "buy_date": op["date"],
-                "buy_price": op["price"],
-                "sell_date": t["date"],
-                "sell_price": t["price"],
-                "size": t["size"],
-                "pnl": t["pnlcomm"],
-                "hold_days": t["barlen"],
-                "return_pct": round(t["pnlcomm"] / (op["price"] * abs(op["size"])) * 100, 2) if op["price"] and op["size"] else 0,
-            })
+            paired_trades.append(
+                {
+                    "buy_date": op["date"],
+                    "buy_price": op["price"],
+                    "sell_date": t["date"],
+                    "sell_price": t["price"],
+                    "size": t["size"],
+                    "pnl": t["pnlcomm"],
+                    "hold_days": t["barlen"],
+                    "return_pct": (
+                        round(t["pnlcomm"] / (op["price"] * abs(op["size"])) * 100, 2)
+                        if op["price"] and op["size"]
+                        else 0
+                    ),
+                }
+            )
 
     # 讀取 K 線數據（用於前端畫圖）— 從已加載的 data 轉換，避免重複讀取 DB
     kline = []
@@ -1332,36 +1432,46 @@ def run_backtest(
         if kline_df is not None and not kline_df.empty:
             for idx, row in kline_df.iterrows():
                 date_str = _format_bar_datetime(idx)
-                kline.append({
-                    "date": date_str,
-                    "open": round(float(row["Open"]), 2),
-                    "high": round(float(row["High"]), 2),
-                    "low": round(float(row["Low"]), 2),
-                    "close": round(float(row["Close"]), 2),
-                    "volume": int(row["Volume"]) if not pd.isna(row["Volume"]) else 0,
-                })
+                kline.append(
+                    {
+                        "date": date_str,
+                        "open": round(float(row["Open"]), 2),
+                        "high": round(float(row["High"]), 2),
+                        "low": round(float(row["Low"]), 2),
+                        "close": round(float(row["Close"]), 2),
+                        "volume": (
+                            int(row["Volume"]) if not pd.isna(row["Volume"]) else 0
+                        ),
+                    }
+                )
     except Exception:
         # 備用：從 DB 重新讀取
         kline_df = load_daily_kline(code)
         if not kline_df.empty:
             for _, row in kline_df.iterrows():
-                kline.append({
-                    "date": str(row["date"]),
-                    "open": round(float(row["open"]), 2),
-                    "high": round(float(row["high"]), 2),
-                    "low": round(float(row["low"]), 2),
-                    "close": round(float(row["close"]), 2),
-                    "volume": int(row["volume"]) if not pd.isna(row["volume"]) else 0,
-                })
+                kline.append(
+                    {
+                        "date": str(row["date"]),
+                        "open": round(float(row["open"]), 2),
+                        "high": round(float(row["high"]), 2),
+                        "low": round(float(row["low"]), 2),
+                        "close": round(float(row["close"]), 2),
+                        "volume": (
+                            int(row["volume"]) if not pd.isna(row["volume"]) else 0
+                        ),
+                    }
+                )
 
     # 買賣信號（用於 K 線圖標記）
     signals = []
     for t in trade_log:
-        signals.append({
-            "date": t["date"],
-            "type": "buy" if t["type"] == "open" else "sell",
-            "price": t["price"],
-        })
+        signals.append(
+            {
+                "date": t["date"],
+                "type": "buy" if t["type"] == "open" else "sell",
+                "price": t["price"],
+            }
+        )
 
     # 計算風險指標
     risk = _calc_risk_metrics(daily_returns, dates, max_dd, nav, periods_per_year=bpy)
@@ -1371,11 +1481,11 @@ def run_backtest(
 
     # 獲取漲跌停和 T+1 過濾結果
     limit_info = {}
-    if enable_limit and hasattr(strat.analyzers, 'limit_filter'):
+    if enable_limit and hasattr(strat.analyzers, "limit_filter"):
         limit_info = strat.analyzers.limit_filter.get_analysis()
 
     t1_info = {}
-    if enable_t1 and hasattr(strat.analyzers, 't1_filter'):
+    if enable_t1 and hasattr(strat.analyzers, "t1_filter"):
         t1_info = strat.analyzers.t1_filter.get_analysis()
 
     result = {
@@ -1429,10 +1539,17 @@ def run_backtest(
         "user_id": user_id,
     }
 
-    if circuit_breaker_dd is not None and float(circuit_breaker_dd) > 0 and nav and dates:
+    if (
+        circuit_breaker_dd is not None
+        and float(circuit_breaker_dd) > 0
+        and nav
+        and dates
+    ):
         from src.core.risk_manager import drawdown_circuit_breaker
 
-        cb = drawdown_circuit_breaker(nav, [str(d) for d in dates], float(circuit_breaker_dd))
+        cb = drawdown_circuit_breaker(
+            nav, [str(d) for d in dates], float(circuit_breaker_dd)
+        )
         result["risk_control"] = {
             "circuit_breaker_dd": float(circuit_breaker_dd),
             "circuit_breaker": cb,
@@ -1445,6 +1562,7 @@ def run_backtest(
     # 持久化回測結果
     try:
         from src.core.db import save_backtest_result
+
         save_backtest_result(result)
     except Exception as e:
         logger.debug(f"保存回測結果跳過: {e}")
@@ -1462,6 +1580,7 @@ def run_backtest(
     if benchmark:
         try:
             from src.core.benchmark import compare_with_benchmark
+
             result["benchmark_comparison"] = compare_with_benchmark(result)
         except Exception as e:
             logger.debug(f"基準對比跳過: {e}")
@@ -1470,12 +1589,15 @@ def run_backtest(
     return result
 
 
-def run_multi_strategy(code: str, plot: bool = False, task_id: str = None) -> list[dict]:
+def run_multi_strategy(
+    code: str, plot: bool = False, task_id: str = None
+) -> list[dict]:
     """對同一隻股票跑所有策略並對比（並行執行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from src.config import settings
     from src.core.compute_budget import get_thread_workers
+
     max_workers = get_thread_workers(
         getattr(settings, "multi_strategy_workers", 4),
         task_id=task_id,
@@ -1490,6 +1612,7 @@ def run_multi_strategy(code: str, plot: bool = False, task_id: str = None) -> li
     def _run_one(name: str):
         if task_id:
             from src.core.task_manager import is_task_cancelled
+
             if is_task_cancelled(task_id):
                 raise RuntimeError("任務已取消")
         return run_backtest(code, strategy_name=name, plot=False, task_id=task_id)
@@ -1501,6 +1624,7 @@ def run_multi_strategy(code: str, plot: bool = False, task_id: str = None) -> li
             done += 1
             if task_id:
                 from src.core.task_manager import is_task_cancelled, update_task
+
                 if is_task_cancelled(task_id):
                     executor.shutdown(wait=False, cancel_futures=True)
                     raise RuntimeError("任務已取消")

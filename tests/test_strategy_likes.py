@@ -1,4 +1,5 @@
 """策略庫點讚 API 與儲存"""
+
 import os
 import tempfile
 
@@ -28,7 +29,11 @@ def isolated_db(monkeypatch):
 def test_strategy_likes_toggle(isolated_db):
     from src.core.database import init_database
     from src.core.auth import create_user
-    from src.core.strategy_likes import toggle_like, get_like_counts, get_user_liked_keys
+    from src.core.strategy_likes import (
+        toggle_like,
+        get_like_counts,
+        get_user_liked_keys,
+    )
 
     init_database()
     user = create_user("like_tester", "password123")

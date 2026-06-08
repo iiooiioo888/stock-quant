@@ -1,4 +1,5 @@
 """多幣種資產結算 API"""
+
 from __future__ import annotations
 
 import re
@@ -57,7 +58,9 @@ async def portfolio_trend(
     user=Depends(require_auth),
 ):
     target = _parse_currency(currency)
-    return get_portfolio_settlement_service().get_trend(user.id, days=days, currency=target)
+    return get_portfolio_settlement_service().get_trend(
+        user.id, days=days, currency=target
+    )
 
 
 @router.get("/api/user/preferred-currency")
@@ -80,7 +83,9 @@ async def put_preferred_currency(body: dict, user=Depends(require_auth)):
         from src.core.db import get_conn
 
         with get_conn() as conn:
-            row = conn.execute("SELECT settings FROM users WHERE id = ?", (user.id,)).fetchone()
+            row = conn.execute(
+                "SELECT settings FROM users WHERE id = ?", (user.id,)
+            ).fetchone()
             st = {}
             if row and row[0]:
                 try:

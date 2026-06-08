@@ -1,6 +1,7 @@
 """
 HTTP 探活 GET /api/health/sop — 與 CLI ops probe / scripts/probe_health_sop_url 共用。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,8 +39,19 @@ def probe_sop_url(
     """
     try:
         data = fetch_sop(url, timeout)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError) as e:
-        return {"ok": False, "error": str(e), "url": url, "verdict": VERDICT_CRITICAL}, 2
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "url": url,
+            "verdict": VERDICT_CRITICAL,
+        }, 2
 
     sop = data.get("sop") if isinstance(data.get("sop"), dict) else {}
     verdict = str(sop.get("verdict") or VERDICT_CRITICAL)
@@ -61,9 +73,15 @@ def probe_sop_url(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Probe /api/health/sop over HTTP")
     parser.add_argument("--url", default=DEFAULT_SOP_URL, help="SOP health endpoint")
-    parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout seconds")
-    parser.add_argument("--ci", action="store_true", help="Only critical fails (exit 2)")
-    parser.add_argument("--json", action="store_true", help="Print JSON summary to stdout")
+    parser.add_argument(
+        "--timeout", type=float, default=10.0, help="HTTP timeout seconds"
+    )
+    parser.add_argument(
+        "--ci", action="store_true", help="Only critical fails (exit 2)"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print JSON summary to stdout"
+    )
     args = parser.parse_args(argv)
 
     summary, code = probe_sop_url(args.url, timeout=args.timeout, ci_mode=args.ci)

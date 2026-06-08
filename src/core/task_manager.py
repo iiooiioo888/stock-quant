@@ -7,6 +7,7 @@
 - 支持協作式取消
 - 全局槽位控制，避免線程池無限排隊
 """
+
 import hashlib
 import json
 import math
@@ -30,10 +31,14 @@ STATUS_CANCELLED = "cancelled"
 STATUS_RETRYING = "retrying"
 
 # 任務優先級（數值越小優先級越高）
-PRIORITY_HIGH = 0    # 盯盤、實時信號等關鍵任務
+PRIORITY_HIGH = 0  # 盯盤、實時信號等關鍵任務
 PRIORITY_NORMAL = 1  # 普通回測/優化
-PRIORITY_LOW = 2     # 批量下載、數據同步
-PRIORITY_LABELS = {PRIORITY_HIGH: "high", PRIORITY_NORMAL: "normal", PRIORITY_LOW: "low"}
+PRIORITY_LOW = 2  # 批量下載、數據同步
+PRIORITY_LABELS = {
+    PRIORITY_HIGH: "high",
+    PRIORITY_NORMAL: "normal",
+    PRIORITY_LOW: "low",
+}
 
 # 根據任務類型自動分配優先級
 _TASK_TYPE_PRIORITY: dict[str, int] = {
@@ -53,18 +58,39 @@ _TASK_TYPE_PRIORITY: dict[str, int] = {
     "stock_universe_intro": PRIORITY_LOW,
 }
 
-TERMINAL_STATUSES = frozenset({
-    STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED,
-})
-ACTIVE_STATUSES = frozenset({
-    STATUS_PENDING, STATUS_RUNNING, STATUS_RETRYING,
-})
+TERMINAL_STATUSES = frozenset(
+    {
+        STATUS_COMPLETED,
+        STATUS_FAILED,
+        STATUS_CANCELLED,
+    }
+)
+ACTIVE_STATUSES = frozenset(
+    {
+        STATUS_PENDING,
+        STATUS_RUNNING,
+        STATUS_RETRYING,
+    }
+)
 
 _VALID_TRANSITIONS: dict[str, frozenset[str]] = {
-    STATUS_PENDING: frozenset({STATUS_RUNNING, STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_RETRYING}),
-    STATUS_RUNNING: frozenset({
-        STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_RETRYING,
-    }),
+    STATUS_PENDING: frozenset(
+        {
+            STATUS_RUNNING,
+            STATUS_COMPLETED,
+            STATUS_FAILED,
+            STATUS_CANCELLED,
+            STATUS_RETRYING,
+        }
+    ),
+    STATUS_RUNNING: frozenset(
+        {
+            STATUS_COMPLETED,
+            STATUS_FAILED,
+            STATUS_CANCELLED,
+            STATUS_RETRYING,
+        }
+    ),
     STATUS_RETRYING: frozenset({STATUS_RUNNING, STATUS_FAILED, STATUS_CANCELLED}),
     STATUS_COMPLETED: frozenset(),
     STATUS_FAILED: frozenset(),
@@ -166,9 +192,7 @@ TASK_REGISTRY: dict[str, dict] = {
     },
 }
 
-TASK_TYPE_NAMES = {
-    k: v["label"] for k, v in TASK_REGISTRY.items()
-}
+TASK_TYPE_NAMES = {k: v["label"] for k, v in TASK_REGISTRY.items()}
 
 
 def get_task_types(*, async_only: bool = True) -> list[dict]:
@@ -177,12 +201,14 @@ def get_task_types(*, async_only: bool = True) -> list[dict]:
     for tid, meta in TASK_REGISTRY.items():
         if async_only and not meta.get("async", True):
             continue
-        out.append({
-            "id": tid,
-            "label": meta["label"],
-            "icon": meta.get("icon", ""),
-            "tab": meta.get("tab", "tasks"),
-        })
+        out.append(
+            {
+                "id": tid,
+                "label": meta["label"],
+                "icon": meta.get("icon", ""),
+                "tab": meta.get("tab", "tasks"),
+            }
+        )
     return out
 
 
@@ -193,6 +219,7 @@ def task_type_label(task_type: str) -> str:
         label = meta["label"]
         return f"{icon} {label}".strip() if icon else label
     return task_type
+
 
 _tasks: dict[str, dict] = {}
 _lock = threading.RLock()
@@ -208,8 +235,8 @@ _pipelines: dict[str, dict] = {}  # pipeline_id -> 編排狀態
 _watchdog_stop = threading.Event()
 _watchdog_thread: Optional[threading.Thread] = None
 _MAX_LOG_LINES = 500
-_MAX_COMPLETED_LOGS = 100   # 已結束任務最多保留的日誌條目數
-_MAX_PIPELINES = 50         # 管道狀態最大保留數
+_MAX_COMPLETED_LOGS = 100  # 已結束任務最多保留的日誌條目數
+_MAX_PIPELINES = 50  # 管道狀態最大保留數
 
 # ── 任務事件推送（WebSocket / SSE 等）───────────────────────────
 _broadcasters: list[Callable] = []
@@ -242,11 +269,13 @@ def append_task_log(task_id: str, line: str, *, level: str = "info") -> None:
     with _lock:
         buf = _task_logs.setdefault(task_id, deque(maxlen=_MAX_LOG_LINES))
         buf.append(entry)
-    payload = _to_json_safe({
-        "type": "task_log",
-        "task_id": task_id,
-        "log": entry,
-    })
+    payload = _to_json_safe(
+        {
+            "type": "task_log",
+            "task_id": task_id,
+            "log": entry,
+        }
+    )
     with _lock:
         fns = list(_broadcasters)
     for fn in fns:
@@ -272,15 +301,18 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
     # === Redis Pub/Sub 跨實例廣播 ===
     try:
         from src.core import task_store
+
         if task_store.is_available():
             task = _tasks.get(task_id)
             if task:
-                task_store.publish_task_event({
-                    "type": event,
-                    "task_id": task_id,
-                    "status": task.get("status"),
-                    "progress": task.get("progress", 0),
-                })
+                task_store.publish_task_event(
+                    {
+                        "type": event,
+                        "task_id": task_id,
+                        "status": task.get("status"),
+                        "progress": task.get("progress", 0),
+                    }
+                )
     except Exception:
         pass
 
@@ -291,20 +323,22 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
         task = _tasks.get(task_id)
         if not task:
             return
-        payload = _to_json_safe({
-            "type": event,
-            "task_id": task_id,
-            "task_type": task.get("task_type"),
-            "title": task.get("title"),
-            "status": task.get("status"),
-            "progress": task.get("progress", 0),
-            "error": task.get("error"),
-            "elapsed_sec": _calc_elapsed(task),
-            "eta_sec": _calc_eta(task),
-            "created_at": task.get("created_at"),
-            "completed_at": task.get("completed_at"),
-            "result_preview": _extract_result_preview(task),
-        })
+        payload = _to_json_safe(
+            {
+                "type": event,
+                "task_id": task_id,
+                "task_type": task.get("task_type"),
+                "title": task.get("title"),
+                "status": task.get("status"),
+                "progress": task.get("progress", 0),
+                "error": task.get("error"),
+                "elapsed_sec": _calc_elapsed(task),
+                "eta_sec": _calc_eta(task),
+                "created_at": task.get("created_at"),
+                "completed_at": task.get("completed_at"),
+                "result_preview": _extract_result_preview(task),
+            }
+        )
         with _lock:
             fns = list(_broadcasters)
         for fn in fns:
@@ -319,6 +353,7 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
 def _resolve_max_workers() -> int:
     try:
         from src.config import settings
+
         configured = getattr(settings, "task_max_workers", 0)
     except Exception:
         configured = 0
@@ -331,6 +366,7 @@ def _resolve_max_workers() -> int:
 def _resolve_heavy_max_concurrent() -> int:
     try:
         from src.config import settings
+
         configured = int(getattr(settings, "task_heavy_max_concurrent", 2) or 2)
     except Exception:
         configured = 2
@@ -340,6 +376,7 @@ def _resolve_heavy_max_concurrent() -> int:
 def _resolve_task_timeout() -> int:
     try:
         from src.config import settings
+
         return int(getattr(settings, "task_timeout_sec", 1800) or 1800)
     except Exception:
         return 1800
@@ -348,6 +385,7 @@ def _resolve_task_timeout() -> int:
 def _resolve_watchdog_interval() -> float:
     try:
         from src.config import settings
+
         return float(getattr(settings, "task_watchdog_interval_sec", 60.0) or 60.0)
     except Exception:
         return 60.0
@@ -487,6 +525,7 @@ def _calc_eta(task: dict) -> Optional[float]:
 def _resolve_progress_interval() -> float:
     try:
         from src.config import settings
+
         return float(getattr(settings, "task_progress_save_interval_sec", 2.0))
     except Exception:
         return 2.0
@@ -508,6 +547,7 @@ def _get_executor() -> ThreadPoolExecutor:
 def _read_cancel_requested_from_db(task_id: str) -> bool:
     try:
         from src.core.db import get_conn
+
         with get_conn() as conn:
             if not _column_exists_conn(conn, "task_log", "meta_json"):
                 return False
@@ -552,7 +592,8 @@ def _count_in_flight() -> int:
     """運行中 + 已派發未結束"""
     with _lock:
         return sum(
-            1 for tid, t in _tasks.items()
+            1
+            for tid, t in _tasks.items()
             if t["status"] in (STATUS_RUNNING, STATUS_RETRYING) or tid in _dispatched
         )
 
@@ -573,6 +614,7 @@ def _task_data_version(params: dict) -> str:
     """K 線最新日期等版本號；數據更新後應與舊任務結果脫鉤。"""
     try:
         from src.core.result_cache import _code_from_params, get_data_version
+
         return get_data_version(_code_from_params(params or {}))
     except Exception:
         return "v0"
@@ -606,8 +648,10 @@ def create_task(
     with _lock:
         if force_refresh and not scheduler_trigger:
             drop_ids = [
-                tid for tid, t in _tasks.items()
-                if t["task_type"] == task_type and t["params_hash"] == params_hash
+                tid
+                for tid, t in _tasks.items()
+                if t["task_type"] == task_type
+                and t["params_hash"] == params_hash
                 and t["status"] == STATUS_COMPLETED
             ]
             for tid in drop_ids:
@@ -650,9 +694,12 @@ def create_task(
         if not scheduler_trigger:
             try:
                 from src.core.result_cache import _code_from_params, get_cached_compute
+
                 cached = None
                 if not force_refresh:
-                    cached = get_cached_compute(task_type, params, code=_code_from_params(params))
+                    cached = get_cached_compute(
+                        task_type, params, code=_code_from_params(params)
+                    )
                 if cached is not None:
                     task_id = _make_task_id(task_type, params)
                     task = {
@@ -737,6 +784,7 @@ def ensure_task_in_memory(task_id: str) -> bool:
         # 先嘗試 Redis（更快）
         try:
             from src.core import task_store
+
             if task_store.is_available():
                 cached = task_store.load_task(task_id)
                 if cached:
@@ -787,7 +835,9 @@ def _on_task_finished(task_id: str):
         if task_id in _task_logs:
             buf = _task_logs[task_id]
             if len(buf) > _MAX_COMPLETED_LOGS:
-                _task_logs[task_id] = deque(list(buf)[-_MAX_COMPLETED_LOGS:], maxlen=_MAX_LOG_LINES)
+                _task_logs[task_id] = deque(
+                    list(buf)[-_MAX_COMPLETED_LOGS:], maxlen=_MAX_LOG_LINES
+                )
     _drain_queue()
 
 
@@ -803,13 +853,16 @@ def _drain_queue():
 
     with _lock:
         pending = [
-            t for t in _tasks.values()
+            t
+            for t in _tasks.values()
             if t["status"] in (STATUS_PENDING, STATUS_RETRYING)
             and t["task_id"] not in _dispatched
             and not _cancel_flags.get(t["task_id"])
         ]
         # 按優先級排序（高優先級優先），同級按創建時間排序
-        pending.sort(key=lambda t: (t.get("priority", PRIORITY_NORMAL), t.get("created_at", "")))
+        pending.sort(
+            key=lambda t: (t.get("priority", PRIORITY_NORMAL), t.get("created_at", ""))
+        )
         in_flight = _count_in_flight()
         heavy_in_flight = count_in_flight_heavy()
 
@@ -851,7 +904,9 @@ def _start_worker(task_id: str, work_fn: Callable):
                 update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
             else:
                 append_task_log(task_id, "任務執行完成")
-                update_task(task_id, status=STATUS_COMPLETED, progress=100, result=result)
+                update_task(
+                    task_id, status=STATUS_COMPLETED, progress=100, result=result
+                )
         except Exception as e:
             capture_exception(task_id, e)
             if is_task_cancelled(task_id):
@@ -886,6 +941,7 @@ def submit_task(task_id: str, work_fn: Callable) -> None:
     if getattr(settings, "celery_enabled", False) and has_executor(task_type):
         try:
             from src.core.celery_tasks import enqueue_celery_task
+
             if enqueue_celery_task(task_id):
                 with _lock:
                     t = _tasks.get(task_id)
@@ -896,9 +952,12 @@ def submit_task(task_id: str, work_fn: Callable) -> None:
             logger.debug(f"Celery 提交失敗，回退線程池: {e}")
 
     if work_fn is None and has_executor(task_type):
+
         def _registry_work():
             from src.core.task_worker import run_registered_task
+
             return run_registered_task(task_id)
+
         with _lock:
             task = _tasks.get(task_id)
             if task:
@@ -906,7 +965,9 @@ def submit_task(task_id: str, work_fn: Callable) -> None:
     _drain_queue()
 
 
-def update_task_meta(task_id: str, message: str = None, download: dict = None, **extra) -> None:
+def update_task_meta(
+    task_id: str, message: str = None, download: dict = None, **extra
+) -> None:
     """更新任務運行中的展示信息（下載進度等）"""
     with _lock:
         task = _tasks.get(task_id)
@@ -920,8 +981,13 @@ def update_task_meta(task_id: str, message: str = None, download: dict = None, *
         meta.update(extra)
 
 
-def update_task(task_id: str, status: str = None, progress: int = None,
-                result: any = None, error: str = None) -> Optional[dict]:
+def update_task(
+    task_id: str,
+    status: str = None,
+    progress: int = None,
+    result: any = None,
+    error: str = None,
+) -> Optional[dict]:
     force_db = status is not None or result is not None or error is not None
     if progress is not None and not force_db:
         now = time.time()
@@ -931,7 +997,11 @@ def update_task(task_id: str, status: str = None, progress: int = None,
             if not task:
                 return None
             last_ts, last_prog = _progress_throttle.get(task_id, (0, -1))
-            if progress < 100 and (now - last_ts) < interval and abs(progress - last_prog) < 5:
+            if (
+                progress < 100
+                and (now - last_ts) < interval
+                and abs(progress - last_prog) < 5
+            ):
                 task["progress"] = progress
                 task["last_accessed"] = now
                 return task
@@ -1005,6 +1075,7 @@ def _fetch_recent_task_rows(limit: int = 150) -> list[dict]:
     """從 task_log 讀取最近任務（不含 result，供列表合併）。"""
     try:
         from src.core.db import get_conn
+
         with get_conn() as conn:
             rows = conn.execute(
                 """SELECT task_id, task_type, params_hash, title, status, progress, error,
@@ -1026,21 +1097,23 @@ def _fetch_recent_task_rows(limit: int = 150) -> list[dict]:
             if params.get("source") == "scheduler" or params.get("scheduler_job_id"):
                 meta["source"] = "scheduler"
                 meta["scheduler_job_id"] = params.get("scheduler_job_id")
-            out.append({
-                "task_id": row[0],
-                "task_type": row[1],
-                "params_hash": row[2],
-                "title": row[3] or "",
-                "status": row[4],
-                "progress": row[5] or 0,
-                "error": row[6],
-                "created_at": row[7] or "",
-                "completed_at": row[8],
-                "params": params,
-                "meta": meta,
-                "result": None,
-                "from_db": True,
-            })
+            out.append(
+                {
+                    "task_id": row[0],
+                    "task_type": row[1],
+                    "params_hash": row[2],
+                    "title": row[3] or "",
+                    "status": row[4],
+                    "progress": row[5] or 0,
+                    "error": row[6],
+                    "created_at": row[7] or "",
+                    "completed_at": row[8],
+                    "params": params,
+                    "meta": meta,
+                    "result": None,
+                    "from_db": True,
+                }
+            )
         return out
     except Exception as e:
         logger.debug(f"讀取 task_log 列表跳過: {e}")
@@ -1084,7 +1157,6 @@ def get_tasks(task_type: str = None, status: str = None, limit: int = 50) -> lis
     return [_task_summary(t) for t in tasks[:limit]]
 
 
-
 def get_running_tasks() -> list[dict]:
     return get_tasks(status=STATUS_RUNNING)
 
@@ -1092,7 +1164,8 @@ def get_running_tasks() -> list[dict]:
 def get_task_stats() -> dict:
     tasks = _merge_tasks_for_list(limit=_MAX_TASKS)
     in_flight = len(_dispatched) + sum(
-        1 for t in tasks
+        1
+        for t in tasks
         if t["status"] == STATUS_RUNNING and t["task_id"] not in _dispatched
     )
     return {
@@ -1121,11 +1194,19 @@ def get_queue_snapshot() -> dict:
         key=lambda t: t.get("started_at") or t.get("created_at", ""),
     )
     pending = sorted(
-        [t for t in tasks if t["status"] == STATUS_PENDING and t["task_id"] not in _dispatched],
+        [
+            t
+            for t in tasks
+            if t["status"] == STATUS_PENDING and t["task_id"] not in _dispatched
+        ],
         key=lambda t: t.get("created_at", ""),
     )
     completed = sorted(
-        [t for t in tasks if t["status"] == STATUS_COMPLETED and t.get("result") is not None],
+        [
+            t
+            for t in tasks
+            if t["status"] == STATUS_COMPLETED and t.get("result") is not None
+        ],
         key=lambda t: t.get("completed_at", ""),
         reverse=True,
     )
@@ -1203,6 +1284,7 @@ def delete_task(task_id: str) -> bool:
         _progress_throttle.pop(task_id, None)
         try:
             from src.core.db import get_conn
+
             with get_conn() as conn:
                 conn.execute("DELETE FROM task_log WHERE task_id = ?", (task_id,))
         except Exception:
@@ -1232,6 +1314,7 @@ def get_task_params(task_id: str) -> Optional[dict]:
     params = dict(full.get("params") or {})
     if not params and full.get("from_db"):
         import re
+
         title = full.get("title") or ""
         if full.get("task_type") == "portfolio":
             m = re.search(r"\((\d+)\s*隻\)", title)
@@ -1284,7 +1367,8 @@ def count_in_flight_tasks(exclude_task_id: str = None) -> int:
     """已派發或運行中的任務數（不含僅 pending）"""
     with _lock:
         return sum(
-            1 for tid, t in _tasks.items()
+            1
+            for tid, t in _tasks.items()
             if tid != exclude_task_id
             and (t["status"] == STATUS_RUNNING or tid in _dispatched)
         )
@@ -1292,9 +1376,11 @@ def count_in_flight_tasks(exclude_task_id: str = None) -> int:
 
 def count_in_flight_heavy(exclude_task_id: str = None) -> int:
     from src.core.compute_budget import HEAVY_TASK_TYPES
+
     with _lock:
         return sum(
-            1 for tid, t in _tasks.items()
+            1
+            for tid, t in _tasks.items()
             if tid != exclude_task_id
             and t["task_type"] in HEAVY_TASK_TYPES
             and (t["status"] == STATUS_RUNNING or tid in _dispatched)
@@ -1305,9 +1391,11 @@ def is_task_running(task_type: str, params: dict) -> bool:
     params_hash = _make_params_hash(params)
     with _lock:
         for t in _tasks.values():
-            if (t["task_type"] == task_type and
-                t["params_hash"] == params_hash and
-                (t["status"] in ACTIVE_STATUSES or t["task_id"] in _dispatched)):
+            if (
+                t["task_type"] == task_type
+                and t["params_hash"] == params_hash
+                and (t["status"] in ACTIVE_STATUSES or t["task_id"] in _dispatched)
+            ):
                 return True
     return False
 
@@ -1349,7 +1437,9 @@ def _task_summary(task: dict) -> dict:
     params = task.get("params") or {}
     if meta.get("source") == "scheduler" or params.get("source") == "scheduler":
         summary["source"] = "scheduler"
-        summary["scheduler_job_id"] = meta.get("scheduler_job_id") or params.get("scheduler_job_id")
+        summary["scheduler_job_id"] = meta.get("scheduler_job_id") or params.get(
+            "scheduler_job_id"
+        )
         summary["is_scheduled"] = True
     elif (task.get("title") or "").startswith("定時·"):
         summary["is_scheduled"] = True
@@ -1362,7 +1452,13 @@ def _extract_result_preview(task: dict) -> Optional[dict]:
     if not isinstance(result, dict):
         return None
     task_type = task.get("task_type", "")
-    if task_type in ("backtest", "backtest_advanced", "backtest_multi", "portfolio", "walkforward"):
+    if task_type in (
+        "backtest",
+        "backtest_advanced",
+        "backtest_multi",
+        "portfolio",
+        "walkforward",
+    ):
         return {
             "annual_return_pct": result.get("annual_return_pct"),
             "max_drawdown_pct": result.get("max_drawdown_pct"),
@@ -1385,6 +1481,7 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
     """內存淘汰後從 task_log 恢復任務元數據（不含 result）"""
     try:
         from src.core.db import get_conn
+
         with get_conn() as conn:
             has_meta = _column_exists_conn(conn, "task_log", "meta_json")
             if has_meta:
@@ -1418,21 +1515,23 @@ def _load_task_from_db(task_id: str, *, include_result: bool = False) -> Optiona
                     meta = parsed
             except Exception:
                 meta = {}
-        return _to_json_safe({
-            "task_id": row[0],
-            "task_type": row[1],
-            "params_hash": row[2],
-            "title": row[3] or "",
-            "status": row[4],
-            "progress": row[5] or 0,
-            "error": row[6],
-            "created_at": row[7] or "",
-            "completed_at": row[8],
-            "params": params,
-            "meta": meta,
-            "result": None if not include_result else None,
-            "from_db": True,
-        })
+        return _to_json_safe(
+            {
+                "task_id": row[0],
+                "task_type": row[1],
+                "params_hash": row[2],
+                "title": row[3] or "",
+                "status": row[4],
+                "progress": row[5] or 0,
+                "error": row[6],
+                "created_at": row[7] or "",
+                "completed_at": row[8],
+                "params": params,
+                "meta": meta,
+                "result": None if not include_result else None,
+                "from_db": True,
+            }
+        )
     except Exception as e:
         logger.debug(f"從 DB 載入任務失敗 {task_id}: {e}")
         return None
@@ -1442,6 +1541,7 @@ def _save_task_to_db(task: dict, force: bool = False):
     # === Redis 同步（非阻塞，失敗不影響主流程）===
     try:
         from src.core import task_store
+
         if task_store.is_available():
             task_store.save_task(task.get("task_id", ""), task)
     except Exception:
@@ -1452,6 +1552,7 @@ def _save_task_to_db(task: dict, force: bool = False):
             return
     try:
         from src.core.db import get_conn
+
         meta = dict(task.get("meta") or {})
         if force and task.get("task_id") in _task_logs:
             logs = list(_task_logs.get(task["task_id"], []))[-50:]
@@ -1461,15 +1562,31 @@ def _save_task_to_db(task: dict, force: bool = False):
         pipeline_id = meta.get("pipeline_id")
         parent_task_id = meta.get("parent_task_id")
         with get_conn() as conn:
-            params_json = json.dumps(task.get("params") or {}, ensure_ascii=False, default=str)
+            params_json = json.dumps(
+                task.get("params") or {}, ensure_ascii=False, default=str
+            )
             cols = [
-                "task_id", "task_type", "params_hash", "title", "status", "progress", "error",
-                "created_at", "completed_at", "params_json",
+                "task_id",
+                "task_type",
+                "params_hash",
+                "title",
+                "status",
+                "progress",
+                "error",
+                "created_at",
+                "completed_at",
+                "params_json",
             ]
             vals = [
-                task["task_id"], task["task_type"], task["params_hash"],
-                task.get("title", ""), task["status"], task.get("progress", 0),
-                task.get("error"), task.get("created_at"), task.get("completed_at"),
+                task["task_id"],
+                task["task_type"],
+                task["params_hash"],
+                task.get("title", ""),
+                task["status"],
+                task.get("progress", 0),
+                task.get("error"),
+                task.get("created_at"),
+                task.get("completed_at"),
                 params_json,
             ]
             if _column_exists_conn(conn, "task_log", "parent_task_id"):
@@ -1486,7 +1603,10 @@ def _save_task_to_db(task: dict, force: bool = False):
 
 def _column_exists_conn(conn, table: str, column: str) -> bool:
     if is_postgres():
-        rows = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s AND column_name = %s", (table, column)).fetchall()
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+            (table, column),
+        ).fetchall()
         return len(rows) > 0
     else:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -1497,7 +1617,8 @@ def _evict_old_tasks_inner():
     if len(_tasks) <= _MAX_TASKS:
         return
     done_tasks = [
-        (tid, t) for tid, t in _tasks.items()
+        (tid, t)
+        for tid, t in _tasks.items()
         if t["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED)
     ]
     done_tasks.sort(key=lambda x: x[1].get("completed_at", ""), reverse=False)
@@ -1509,7 +1630,8 @@ def _evict_old_tasks_inner():
     # 清理過多的管道狀態
     if len(_pipelines) > _MAX_PIPELINES:
         completed_pipes = [
-            (pid, p) for pid, p in _pipelines.items()
+            (pid, p)
+            for pid, p in _pipelines.items()
             if p.get("status") in ("completed", "failed")
         ]
         completed_pipes.sort(key=lambda x: x[1].get("completed_at", ""), reverse=False)
@@ -1596,7 +1718,9 @@ def cancel_all_pending() -> int:
     return cancelled
 
 
-def delete_all_completed(*, include_failed: bool = True, include_cancelled: bool = True) -> int:
+def delete_all_completed(
+    *, include_failed: bool = True, include_cancelled: bool = True
+) -> int:
     """清空已結束的歷史任務（在鎖內完成收集+刪除，消除 TOCTOU）。"""
     removable = {STATUS_COMPLETED}
     if include_failed:
@@ -1616,6 +1740,7 @@ def delete_all_completed(*, include_failed: bool = True, include_cancelled: bool
     if deleted_ids:
         try:
             from src.core.db import get_conn
+
             with get_conn() as conn:
                 conn.executemany(
                     "DELETE FROM task_log WHERE task_id = ?",

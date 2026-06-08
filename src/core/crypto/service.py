@@ -8,6 +8,7 @@
 - 微結構分析（CryptoMicrostructureAnalyzer）
 - 告警引擎（CryptoAlertEngine）
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -113,7 +114,9 @@ class CryptoService:
             )
 
         await self._ws_client.connect()
-        logger.info(f"[CryptoService] WS 已啟動，訂閱 {len(settings.crypto_watchlist)} 個交易對")
+        logger.info(
+            f"[CryptoService] WS 已啟動，訂閱 {len(settings.crypto_watchlist)} 個交易對"
+        )
 
     async def stop_ws(self):
         """停止 WebSocket 連接。"""
@@ -200,7 +203,12 @@ class CryptoService:
             if df.empty:
                 return {"symbol": sym, "klines": [], "message": "無數據", "total": 0}
             klines = df.to_dict(orient="records")
-            return {"symbol": sym, "klines": klines, "total": len(klines), "source": "rest"}
+            return {
+                "symbol": sym,
+                "klines": klines,
+                "total": len(klines),
+                "source": "rest",
+            }
         except Exception as e:
             logger.error(f"加密 K 線失敗 {sym}: {e}")
             raise
@@ -219,6 +227,7 @@ class CryptoService:
 
         # 獲取歷史 K 線
         from datetime import datetime, timedelta
+
         start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
         try:

@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("macd", "MACD金叉策略")
 class MACDStrategy(OrderManagedStrategy):
     """MACD 策略"""
+
     params = (
         ("fast", 12),
         ("slow", 26),
@@ -29,4 +30,3 @@ class MACDStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.crossover < 0 and self.position:
             self.order = self.sell()
-

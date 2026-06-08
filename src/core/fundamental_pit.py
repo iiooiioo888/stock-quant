@@ -4,6 +4,7 @@
 回測時應使用「發布日 / 公告日」而非「報告期」作為數據可用時間。
 若庫表僅有 report_date，應在入庫時補 published_date 或保守滯後（如報告期 + N 日）。
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -33,7 +34,9 @@ def align_fundamental_pit(
     if published_col in df.columns:
         avail = pd.to_datetime(df[published_col], errors="coerce")
     elif report_col in df.columns:
-        avail = pd.to_datetime(df[report_col], errors="coerce") + pd.Timedelta(days=fallback_lag_days)
+        avail = pd.to_datetime(df[report_col], errors="coerce") + pd.Timedelta(
+            days=fallback_lag_days
+        )
     else:
         raise ValueError(f"基本面表需含 {published_col} 或 {report_col}")
 

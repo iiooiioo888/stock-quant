@@ -7,10 +7,11 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("breakout", "N日高點突破策略")
 class BreakoutStrategy(OrderManagedStrategy):
     """突破策略 — N 日高點突破買入，ATR 移動止損賣出"""
+
     params = (
-        ("period", 60),          # N日高點突破
-        ("atr_period", 20),      # ATR 週期
-        ("atr_multiplier", 2.0), # ATR 止損倍數
+        ("period", 60),  # N日高點突破
+        ("atr_period", 20),  # ATR 週期
+        ("atr_multiplier", 2.0),  # ATR 止損倍數
     )
 
     def __init__(self):
@@ -48,4 +49,3 @@ class BreakoutStrategy(OrderManagedStrategy):
                 self.order = self.sell()
                 self.entry_price = None
                 self.trailing_stop = None
-

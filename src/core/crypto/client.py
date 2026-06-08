@@ -2,6 +2,7 @@
 加密貨幣數據模塊 — Binance 公開 API（無需 API Key）
 支持：BTC/USDT, ETH/USDT, SOL/USDT 等主流交易對
 """
+
 import time
 from datetime import datetime
 
@@ -15,7 +16,9 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 _http = requests.Session()
-_http.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+_http.headers.update(
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+)
 
 # 常用交易對（顯示名）
 CRYPTO_SYMBOLS = {
@@ -65,21 +68,43 @@ def get_crypto_symbols() -> dict:
 # CoinGecko 符號映射（Binance → CoinGecko ID）
 # ============================================================
 _COINGECKO_IDS = {
-    "BTCUSDT": "bitcoin", "ETHUSDT": "ethereum", "BNBUSDT": "binancecoin",
-    "SOLUSDT": "solana", "XRPUSDT": "ripple", "ADAUSDT": "cardano",
-    "DOGEUSDT": "dogecoin", "DOTUSDT": "polkadot", "AVAXUSDT": "avalanche-2",
-    "MATICUSDT": "matic-network", "LINKUSDT": "chainlink", "UNIUSDT": "uniswap",
-    "LTCUSDT": "litecoin", "ATOMUSDT": "cosmos", "NEARUSDT": "near",
-    "SHIBUSDT": "shiba-inu", "TRXUSDT": "tron", "EOSUSDT": "eos",
-    "XLMUSDT": "stellar", "AAVEUSDT": "aave", "FILUSDT": "filecoin",
+    "BTCUSDT": "bitcoin",
+    "ETHUSDT": "ethereum",
+    "BNBUSDT": "binancecoin",
+    "SOLUSDT": "solana",
+    "XRPUSDT": "ripple",
+    "ADAUSDT": "cardano",
+    "DOGEUSDT": "dogecoin",
+    "DOTUSDT": "polkadot",
+    "AVAXUSDT": "avalanche-2",
+    "MATICUSDT": "matic-network",
+    "LINKUSDT": "chainlink",
+    "UNIUSDT": "uniswap",
+    "LTCUSDT": "litecoin",
+    "ATOMUSDT": "cosmos",
+    "NEARUSDT": "near",
+    "SHIBUSDT": "shiba-inu",
+    "TRXUSDT": "tron",
+    "EOSUSDT": "eos",
+    "XLMUSDT": "stellar",
+    "AAVEUSDT": "aave",
+    "FILUSDT": "filecoin",
 }
 
 # CoinCap 符號映射
 _COINCAP_IDS = {
-    "BTCUSDT": "bitcoin", "ETHUSDT": "ethereum", "BNBUSDT": "binancecoin",
-    "SOLUSDT": "solana", "XRPUSDT": "xrp", "ADAUSDT": "cardano",
-    "DOGEUSDT": "dogecoin", "DOTUSDT": "polkadot", "AVAXUSDT": "avalanche",
-    "LINKUSDT": "chainlink", "LTCUSDT": "litecoin", "ATOMUSDT": "cosmos",
+    "BTCUSDT": "bitcoin",
+    "ETHUSDT": "ethereum",
+    "BNBUSDT": "binancecoin",
+    "SOLUSDT": "solana",
+    "XRPUSDT": "xrp",
+    "ADAUSDT": "cardano",
+    "DOGEUSDT": "dogecoin",
+    "DOTUSDT": "polkadot",
+    "AVAXUSDT": "avalanche",
+    "LINKUSDT": "chainlink",
+    "LTCUSDT": "litecoin",
+    "ATOMUSDT": "cosmos",
 }
 
 
@@ -231,17 +256,25 @@ def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
         for row in data:
             if len(row) < 5:
                 continue
-            ts, o, h, low_px, c = row[0], float(row[1]), float(row[2]), float(row[3]), float(row[4])
+            ts, o, h, low_px, c = (
+                row[0],
+                float(row[1]),
+                float(row[2]),
+                float(row[3]),
+                float(row[4]),
+            )
             dt = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
-            records.append({
-                "date": dt,
-                "open": o,
-                "high": h,
-                "low": low_px,
-                "close": c,
-                "volume": 0.0,
-                "amount": 0.0,
-            })
+            records.append(
+                {
+                    "date": dt,
+                    "open": o,
+                    "high": h,
+                    "low": low_px,
+                    "close": c,
+                    "volume": 0.0,
+                    "amount": 0.0,
+                }
+            )
 
         if not records:
             return _coingecko_history_fallback(symbol, start_date)
@@ -251,7 +284,11 @@ def _coingecko_history(symbol: str, start_date: str = None) -> pd.DataFrame:
         df = df.sort_values("date").reset_index(drop=True)
 
         if start_date:
-            sd_str = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}" if len(start_date) == 8 else start_date
+            sd_str = (
+                f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+                if len(start_date) == 8
+                else start_date
+            )
             df = df[df["date"] >= sd_str]
 
         logger.info(f"CoinGecko OHLC {symbol}: {len(df)} 條記錄")
@@ -292,22 +329,28 @@ def _coingecko_history_fallback(symbol: str, start_date: str = None) -> pd.DataF
         for i, (ts, price) in enumerate(prices):
             vol = volumes[i][1] if i < len(volumes) else 0
             dt = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
-            records.append({
-                "date": dt,
-                "open": price,
-                "high": price,
-                "low": price,
-                "close": price,
-                "volume": float(vol),
-                "amount": 0.0,
-            })
+            records.append(
+                {
+                    "date": dt,
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                    "volume": float(vol),
+                    "amount": 0.0,
+                }
+            )
 
         df = pd.DataFrame(records)
         df = df.drop_duplicates(subset=["date"], keep="last")
         df = df.sort_values("date").reset_index(drop=True)
 
         if start_date:
-            sd_str = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}" if len(start_date) == 8 else start_date
+            sd_str = (
+                f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+                if len(start_date) == 8
+                else start_date
+            )
             df = df[df["date"] >= sd_str]
 
         logger.info(f"CoinGecko market_chart {symbol}: {len(df)} 條記錄（僅 close）")
@@ -369,15 +412,19 @@ def download_crypto_kline(
                     break
 
                 for k in data:
-                    all_data.append({
-                        "date": datetime.fromtimestamp(k[0] / 1000).strftime("%Y-%m-%d"),
-                        "open": float(k[1]),
-                        "high": float(k[2]),
-                        "low": float(k[3]),
-                        "close": float(k[4]),
-                        "volume": float(k[5]),
-                        "amount": float(k[7]),  # quote asset volume
-                    })
+                    all_data.append(
+                        {
+                            "date": datetime.fromtimestamp(k[0] / 1000).strftime(
+                                "%Y-%m-%d"
+                            ),
+                            "open": float(k[1]),
+                            "high": float(k[2]),
+                            "low": float(k[3]),
+                            "close": float(k[4]),
+                            "volume": float(k[5]),
+                            "amount": float(k[7]),  # quote asset volume
+                        }
+                    )
 
                 # 移動到下一批
                 last_close_time = data[-1][6]
@@ -392,7 +439,9 @@ def download_crypto_kline(
 
         except Exception as e:
             if attempt < MAX_RETRIES:
-                logger.warning(f"加密貨幣 {symbol} 下載失敗(第{attempt}次)，重試... ({e})")
+                logger.warning(
+                    f"加密貨幣 {symbol} 下載失敗(第{attempt}次)，重試... ({e})"
+                )
                 time.sleep(RETRY_DELAY * attempt)
             else:
                 logger.error(f"加密貨幣 {symbol} 下載失敗: {e}")
@@ -489,16 +538,18 @@ def get_crypto_multi_realtime(symbols: list[str] = None) -> list[dict]:
             sym = sym.upper().replace("-", "").replace("/", "")
             if sym in all_tickers:
                 t = all_tickers[sym]
-                results.append({
-                    "symbol": sym,
-                    "name": CRYPTO_SYMBOLS.get(sym, sym),
-                    "price": float(t["lastPrice"]),
-                    "change_pct": float(t["priceChangePercent"]),
-                    "high": float(t["highPrice"]),
-                    "low": float(t["lowPrice"]),
-                    "volume": float(t["volume"]),
-                    "market": "crypto",
-                })
+                results.append(
+                    {
+                        "symbol": sym,
+                        "name": CRYPTO_SYMBOLS.get(sym, sym),
+                        "price": float(t["lastPrice"]),
+                        "change_pct": float(t["priceChangePercent"]),
+                        "high": float(t["highPrice"]),
+                        "low": float(t["lowPrice"]),
+                        "volume": float(t["volume"]),
+                        "market": "crypto",
+                    }
+                )
     except Exception as e:
         logger.error(f"加密貨幣批量行情失敗: {e}")
 

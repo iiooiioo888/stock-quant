@@ -1,6 +1,7 @@
 """
 數據庫路由 — SQLite 單庫向後相容；預留讀寫分離擴展點。
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ def get_db_router() -> DatabaseRouter:
     global _default_router
     if _default_router is None:
         from src.config import settings
+
         replica = getattr(settings, "db_read_replica_path", None) or None
         _default_router = DatabaseRouter(read_replica_path=replica)
     return _default_router

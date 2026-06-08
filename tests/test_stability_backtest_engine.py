@@ -8,6 +8,7 @@
   - prepare_data 異常處理
   - run_backtest 端到端（合成數據 mock）
 """
+
 from __future__ import annotations
 
 import math
@@ -20,8 +21,8 @@ from datetime import datetime, timedelta
 import backtrader as bt
 from src.core.backtest import AStockCommission, _calc_risk_metrics, LimitFilter
 
-
 # ── AStockCommission 佣金計算 ───────────────────────────────────
+
 
 class TestAStockCommission:
     """A股精確佣金模型驗證。"""
@@ -90,7 +91,7 @@ class TestAStockCommission:
     def test_custom_params(self):
         """自定義費率參數（注意 COMM_PERC 會將 commission 除以 100）。"""
         comm = AStockCommission(
-            commission=0.03,      # 實際存為 0.0003
+            commission=0.03,  # 實際存為 0.0003
             min_commission=10.0,
             stamp_tax=0.001,
             transfer_fee=0.00002,
@@ -103,6 +104,7 @@ class TestAStockCommission:
 
 
 # ── 風險指標計算 ────────────────────────────────────────────────
+
 
 class TestRiskMetrics:
     """_calc_risk_metrics 邊界條件。"""
@@ -123,7 +125,10 @@ class TestRiskMetrics:
         """正常收益數據。"""
         np.random.seed(42)
         returns = list(np.random.normal(0.001, 0.02, 252))
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(252)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(252)
+        ]
         nav = [100]
         for r in returns:
             nav.append(nav[-1] * (1 + r))
@@ -136,7 +141,10 @@ class TestRiskMetrics:
     def test_all_positive_returns(self):
         """全正收益 — 無下行風險。"""
         returns = [0.01] * 100
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(100)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(100)
+        ]
         nav = [100]
         for r in returns:
             nav.append(nav[-1] * (1 + r))
@@ -148,7 +156,10 @@ class TestRiskMetrics:
     def test_all_negative_returns(self):
         """全負收益 — 最大回撤應很大。"""
         returns = [-0.01] * 100
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(100)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(100)
+        ]
         nav = [100]
         for r in returns:
             nav.append(nav[-1] * (1 + r))
@@ -160,7 +171,10 @@ class TestRiskMetrics:
     def test_zero_volatility(self):
         """零波動率（全部為零收益）。"""
         returns = [0.0] * 100
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(100)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(100)
+        ]
         nav = [100] * 101
         result = _calc_risk_metrics(returns, dates, 0, nav)
         assert result["annual_volatility"] == 0
@@ -168,7 +182,10 @@ class TestRiskMetrics:
     def test_extreme_returns(self):
         """極端收益（+50% 和 -50%）。"""
         returns = [0.5, -0.5, 0.5, -0.5]
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(4)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(4)
+        ]
         nav = [100, 150, 75, 112.5, 56.25]
         result = _calc_risk_metrics(returns, dates, 62.5, nav)
         assert not math.isnan(result["var_95"])
@@ -177,7 +194,10 @@ class TestRiskMetrics:
     def test_periods_per_year_weekly(self):
         """週線數據（52 週/年）影響年化。"""
         returns = list(np.random.normal(0.002, 0.03, 52))
-        dates = [(datetime(2024, 1, 1) + timedelta(weeks=i)).strftime("%Y-%m-%d") for i in range(52)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(weeks=i)).strftime("%Y-%m-%d")
+            for i in range(52)
+        ]
         nav = [100]
         for r in returns:
             nav.append(nav[-1] * (1 + r))
@@ -188,7 +208,10 @@ class TestRiskMetrics:
         """所有輸出不應含 NaN 或 Inf。"""
         np.random.seed(123)
         returns = list(np.random.normal(0.001, 0.02, 200))
-        dates = [(datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(200)]
+        dates = [
+            (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(200)
+        ]
         nav = [100]
         for r in returns:
             nav.append(nav[-1] * (1 + r))
@@ -201,23 +224,28 @@ class TestRiskMetrics:
 
 # ── LimitFilter 漲跌停 ─────────────────────────────────────────
 
+
 class TestLimitFilter:
     """漲跌停限制分析器 — 需要 bt.Strategy 上下文。"""
 
     def _make_filter(self):
         """創建帶 mock strategy 的 LimitFilter。"""
         import types
+
         cerebro = bt.Cerebro()
         # 用一個空的 data feed
-        data = bt.feeds.PandasData(dataname=pd.DataFrame(
-            {"open": [1], "high": [1], "low": [1], "close": [1], "volume": [100]},
-            index=[datetime(2024, 1, 1)]
-        ))
+        data = bt.feeds.PandasData(
+            dataname=pd.DataFrame(
+                {"open": [1], "high": [1], "low": [1], "close": [1], "volume": [100]},
+                index=[datetime(2024, 1, 1)],
+            )
+        )
         cerebro.adddata(data)
 
         class TestStrategy(bt.Strategy):
             def __init__(self):
                 self.lf = LimitFilter()
+
         cerebro.addstrategy(TestStrategy)
         results = cerebro.run()
         return results[0].lf
@@ -250,6 +278,7 @@ class TestLimitFilter:
 
 # ── run_backtest 端到端（合成數據） ─────────────────────────────
 
+
 class TestRunBacktestE2E:
     """端到端回測 — 使用合成數據 mock。"""
 
@@ -259,13 +288,16 @@ class TestRunBacktestE2E:
         prices = [start_price]
         for _ in range(n - 1):
             prices.append(prices[-1] * (1 + daily_return))
-        df = pd.DataFrame({
-            "open": [p * 0.99 for p in prices],
-            "high": [p * 1.02 for p in prices],
-            "low": [p * 0.98 for p in prices],
-            "close": prices,
-            "volume": [1000000] * n,
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": [p * 0.99 for p in prices],
+                "high": [p * 1.02 for p in prices],
+                "low": [p * 0.98 for p in prices],
+                "close": prices,
+                "volume": [1000000] * n,
+            },
+            index=dates,
+        )
         return df
 
     @patch("src.core.kline_timeframe.ensure_kline_for_backtest")
@@ -273,6 +305,7 @@ class TestRunBacktestE2E:
         """雙均線策略基本回測。"""
         mock_ensure.return_value = (self._make_synthetic_kline(200), "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         result = run_backtest("000001", strategy_name="dual_ma", cash=100000)
         assert "total_return_pct" in result
         assert "sharpe_ratio" in result
@@ -285,6 +318,7 @@ class TestRunBacktestE2E:
         """空數據應拋出 ValueError。"""
         mock_ensure.return_value = (pd.DataFrame(), "empty", "1d")
         from src.core.backtest import run_backtest
+
         with pytest.raises((ValueError, Exception)):
             run_backtest("999999", strategy_name="dual_ma")
 
@@ -293,6 +327,7 @@ class TestRunBacktestE2E:
         """未知策略名稱應拋出異常。"""
         mock_ensure.return_value = (self._make_synthetic_kline(100), "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         with pytest.raises((ValueError, KeyError)):
             run_backtest("000001", strategy_name="nonexistent_strategy_xyz")
 
@@ -301,6 +336,7 @@ class TestRunBacktestE2E:
         """僅 1 根 K 線不足以回測。"""
         mock_ensure.return_value = (self._make_synthetic_kline(1), "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         try:
             result = run_backtest("000001", strategy_name="dual_ma", cash=100000)
             assert isinstance(result.get("trade_details", []), list)
@@ -312,10 +348,16 @@ class TestRunBacktestE2E:
         """回測結果應包含完整風險指標字段。"""
         mock_ensure.return_value = (self._make_synthetic_kline(300), "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         result = run_backtest("000001", strategy_name="dual_ma", cash=100000)
         expected_fields = [
-            "var_95", "cvar_95", "sortino_ratio", "calmar_ratio",
-            "annual_volatility", "monthly_win_rate", "profit_loss_ratio",
+            "var_95",
+            "cvar_95",
+            "sortino_ratio",
+            "calmar_ratio",
+            "annual_volatility",
+            "monthly_win_rate",
+            "profit_loss_ratio",
         ]
         for field in expected_fields:
             assert field in result, f"缺少字段 {field}"
@@ -328,15 +370,19 @@ class TestRunBacktestE2E:
         dates = pd.bdate_range("2023-01-01", periods=200)
         close = 10.0 + np.cumsum(np.random.randn(200) * 0.3)
         close = np.maximum(close, 1.0)
-        df = pd.DataFrame({
-            "open": close * 0.99,
-            "high": close * 1.02,
-            "low": close * 0.98,
-            "close": close,
-            "volume": np.random.randint(100000, 1000000, 200).astype(float),
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": close * 0.99,
+                "high": close * 1.02,
+                "low": close * 0.98,
+                "close": close,
+                "volume": np.random.randint(100000, 1000000, 200).astype(float),
+            },
+            index=dates,
+        )
         mock_load.return_value = (df, "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         strategies = ["dual_ma", "rsi", "macd", "kdj", "bollinger"]
         for strat in strategies:
             try:
@@ -350,11 +396,13 @@ class TestRunBacktestE2E:
         """自定義初始資金。"""
         mock_ensure.return_value = (self._make_synthetic_kline(100), "synthetic", "1d")
         from src.core.backtest import run_backtest
+
         result = run_backtest("000001", strategy_name="dual_ma", cash=500000)
         assert result["code"] == "000001"
 
 
 # ── T1Filter T+1 分析器 ─────────────────────────────────────────
+
 
 class TestT1Filter:
     """T+1 限制分析器。"""
@@ -363,13 +411,16 @@ class TestT1Filter:
         """創建帶 T1Filter 的 Cerebro。"""
         dates = pd.bdate_range("2024-01-01", periods=20)
         close = [10.0 + i * 0.1 for i in range(20)]
-        df = pd.DataFrame({
-            "open": [p * 0.99 for p in close],
-            "high": [p * 1.02 for p in close],
-            "low": [p * 0.98 for p in close],
-            "close": close,
-            "volume": [1e6] * 20,
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": [p * 0.99 for p in close],
+                "high": [p * 1.02 for p in close],
+                "low": [p * 0.98 for p in close],
+                "close": close,
+                "volume": [1e6] * 20,
+            },
+            index=dates,
+        )
         from src.core.backtest import T1Filter
 
         cerebro = bt.Cerebro()
@@ -378,6 +429,7 @@ class TestT1Filter:
         class TestStrat(bt.Strategy):
             def __init__(self):
                 self.t1 = T1Filter()
+
         cerebro.addstrategy(TestStrat)
         results = cerebro.run()
         return results[0].t1
@@ -391,11 +443,13 @@ class TestT1Filter:
 
 # ── analyze_equity_curve ────────────────────────────────────────
 
+
 class TestAnalyzeEquityCurve:
     """淨值曲線深度分析。"""
 
     def test_normal_curve(self):
         from src.core.backtest import analyze_equity_curve
+
         nav = [100 + i * 0.5 for i in range(252)]
         dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(252)]
         returns = [(nav[i] / nav[i - 1]) - 1 for i in range(1, len(nav))]
@@ -410,12 +464,14 @@ class TestAnalyzeEquityCurve:
 
     def test_empty_curve(self):
         from src.core.backtest import analyze_equity_curve
+
         result = analyze_equity_curve([], [], [])
         assert "underwater_periods" in result
         assert result["max_underwater_days"] == 0
 
     def test_v_shaped_curve(self):
         from src.core.backtest import analyze_equity_curve
+
         nav = [100] * 20 + [80] * 20 + [100] * 20
         dates = [f"2024-01-{i+1:02d}" for i in range(60)]
         returns = [(nav[i] / nav[i - 1]) - 1 if i > 0 else 0.0 for i in range(60)]
@@ -425,15 +481,35 @@ class TestAnalyzeEquityCurve:
 
 # ── trade_analysis ──────────────────────────────────────────────
 
+
 class TestTradeAnalysis:
     """交易分析。"""
 
     def test_normal_trades(self):
         from src.core.backtest import trade_analysis
+
         trades = [
-            {"pnl": 500, "hold_days": 5, "return_pct": 5.0, "buy_date": "2024-01-02", "sell_date": "2024-01-07"},
-            {"pnl": -200, "hold_days": 3, "return_pct": -2.0, "buy_date": "2024-01-10", "sell_date": "2024-01-13"},
-            {"pnl": 300, "hold_days": 7, "return_pct": 3.0, "buy_date": "2024-01-15", "sell_date": "2024-01-22"},
+            {
+                "pnl": 500,
+                "hold_days": 5,
+                "return_pct": 5.0,
+                "buy_date": "2024-01-02",
+                "sell_date": "2024-01-07",
+            },
+            {
+                "pnl": -200,
+                "hold_days": 3,
+                "return_pct": -2.0,
+                "buy_date": "2024-01-10",
+                "sell_date": "2024-01-13",
+            },
+            {
+                "pnl": 300,
+                "hold_days": 7,
+                "return_pct": 3.0,
+                "buy_date": "2024-01-15",
+                "sell_date": "2024-01-22",
+            },
         ]
         result = trade_analysis(trades)
         assert result["total_trades"] == 3
@@ -446,14 +522,28 @@ class TestTradeAnalysis:
 
     def test_empty_trades(self):
         from src.core.backtest import trade_analysis
+
         result = trade_analysis([])
         assert result["total_trades"] == 0
 
     def test_all_wins(self):
         from src.core.backtest import trade_analysis
+
         trades = [
-            {"pnl": 100, "hold_days": 1, "return_pct": 1.0, "buy_date": "2024-01-01", "sell_date": "2024-01-02"},
-            {"pnl": 200, "hold_days": 2, "return_pct": 2.0, "buy_date": "2024-01-03", "sell_date": "2024-01-05"},
+            {
+                "pnl": 100,
+                "hold_days": 1,
+                "return_pct": 1.0,
+                "buy_date": "2024-01-01",
+                "sell_date": "2024-01-02",
+            },
+            {
+                "pnl": 200,
+                "hold_days": 2,
+                "return_pct": 2.0,
+                "buy_date": "2024-01-03",
+                "sell_date": "2024-01-05",
+            },
         ]
         result = trade_analysis(trades)
         assert result["streak"]["max_win_streak"] == 2
@@ -462,11 +552,13 @@ class TestTradeAnalysis:
 
 # ── monte_carlo_simulation ──────────────────────────────────────
 
+
 class TestMonteCarlo:
     """蒙地卡羅模擬。"""
 
     def test_basic_simulation(self):
         from src.core.backtest import monte_carlo_simulation
+
         np.random.seed(42)
         returns = list(np.random.normal(0.001, 0.02, 252))
         result = monte_carlo_simulation(returns, n_simulations=100, days=60)
@@ -480,6 +572,7 @@ class TestMonteCarlo:
 
     def test_empty_returns(self):
         from src.core.backtest import monte_carlo_simulation
+
         try:
             result = monte_carlo_simulation([], n_simulations=10, days=10)
             # 可能返回空結果或拋異常
@@ -489,6 +582,7 @@ class TestMonteCarlo:
 
     def test_confidence_intervals(self):
         from src.core.backtest import monte_carlo_simulation
+
         returns = [0.001] * 100
         try:
             result = monte_carlo_simulation(returns, n_simulations=50, days=30)
@@ -502,11 +596,13 @@ class TestMonteCarlo:
 
 # ── rolling_metrics ─────────────────────────────────────────────
 
+
 class TestRollingMetrics:
     """滾動指標。"""
 
     def test_basic_rolling(self):
         from src.core.backtest import rolling_metrics
+
         np.random.seed(42)
         returns = list(np.random.normal(0.001, 0.02, 252))
         dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(252)]
@@ -520,6 +616,7 @@ class TestRollingMetrics:
 
     def test_short_data(self):
         from src.core.backtest import rolling_metrics
+
         returns = [0.01, -0.01, 0.005]
         dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
         result = rolling_metrics(returns, dates, window=5)
@@ -528,6 +625,7 @@ class TestRollingMetrics:
 
     def test_summary_fields(self):
         from src.core.backtest import rolling_metrics
+
         np.random.seed(123)
         returns = list(np.random.normal(0.001, 0.02, 200))
         dates = [f"2024-{(i//28)+1:02d}-{(i%28)+1:02d}" for i in range(200)]
@@ -540,6 +638,7 @@ class TestRollingMetrics:
 
 # ── run_multi_strategy ──────────────────────────────────────────
 
+
 class TestRunMultiStrategy:
     """多策略並行回測。"""
 
@@ -550,15 +649,19 @@ class TestRunMultiStrategy:
         dates = pd.bdate_range("2023-01-01", periods=200)
         close = 10.0 + np.cumsum(np.random.randn(200) * 0.3)
         close = np.maximum(close, 1.0)
-        df = pd.DataFrame({
-            "open": close * 0.99,
-            "high": close * 1.02,
-            "low": close * 0.98,
-            "close": close,
-            "volume": np.random.randint(100000, 1000000, 200).astype(float),
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": close * 0.99,
+                "high": close * 1.02,
+                "low": close * 0.98,
+                "close": close,
+                "volume": np.random.randint(100000, 1000000, 200).astype(float),
+            },
+            index=dates,
+        )
         mock_ensure.return_value = (df, "synthetic", "1d")
         from src.core.backtest import run_multi_strategy
+
         results = run_multi_strategy("000001")
         assert isinstance(results, list)
         for r in results:

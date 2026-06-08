@@ -1,6 +1,7 @@
 """
 任務執行封裝 — Celery / 線程池共用，含緩存寫回與狀態更新。
 """
+
 from __future__ import annotations
 
 from src.utils.logger import logger
@@ -72,6 +73,7 @@ def _maybe_write_cache(task_id: str, result) -> None:
         return
     try:
         from src.core.result_cache import set_cached_compute
+
         set_cached_compute(
             ns,
             meta.get("params") or {},

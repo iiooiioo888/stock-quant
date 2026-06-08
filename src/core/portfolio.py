@@ -1,6 +1,7 @@
 """
 組合回測模塊 — 多策略 + 多股票 + 資金分配 + 再平衡
 """
+
 import math
 
 import backtrader as bt
@@ -29,6 +30,7 @@ def json_safe_portfolio_result(result: dict) -> dict:
     if not result:
         return result
     from src.core.task_manager import _to_json_safe
+
     return _to_json_safe(result)
 
 
@@ -176,11 +178,22 @@ def _calc_metrics(nav: list, dates: list, risk_free: float = 0.03) -> dict:
     total_return = (nav[-1] / nav[0] - 1) * 100
 
     from datetime import datetime
+
     if dates:
-        start = dates[0] if isinstance(dates[0], datetime) else datetime.strptime(str(dates[0]), "%Y-%m-%d")
-        end = dates[-1] if isinstance(dates[-1], datetime) else datetime.strptime(str(dates[-1]), "%Y-%m-%d")
+        start = (
+            dates[0]
+            if isinstance(dates[0], datetime)
+            else datetime.strptime(str(dates[0]), "%Y-%m-%d")
+        )
+        end = (
+            dates[-1]
+            if isinstance(dates[-1], datetime)
+            else datetime.strptime(str(dates[-1]), "%Y-%m-%d")
+        )
         years = (end - start).days / 365.25
-        annual_return = ((nav[-1] / nav[0]) ** (1 / years) - 1) * 100 if years > 0 else 0
+        annual_return = (
+            ((nav[-1] / nav[0]) ** (1 / years) - 1) * 100 if years > 0 else 0
+        )
     else:
         annual_return = 0
 
@@ -199,7 +212,9 @@ def _calc_metrics(nav: list, dates: list, risk_free: float = 0.03) -> dict:
     if daily_returns:
         mean_ret = np.mean(dr)
         std_ret = np.std(dr)
-        sharpe = (mean_ret - risk_free / 252) / std_ret * (252 ** 0.5) if std_ret > 0 else 0
+        sharpe = (
+            (mean_ret - risk_free / 252) / std_ret * (252**0.5) if std_ret > 0 else 0
+        )
     else:
         sharpe = 0
 
@@ -208,11 +223,19 @@ def _calc_metrics(nav: list, dates: list, risk_free: float = 0.03) -> dict:
     # VaR 95%
     var_95 = float(np.percentile(dr, 5)) if len(dr) > 1 else 0
     # CVaR
-    cvar_95 = float(np.mean(dr[dr <= var_95])) if len(dr) > 1 and np.any(dr <= var_95) else var_95
+    cvar_95 = (
+        float(np.mean(dr[dr <= var_95]))
+        if len(dr) > 1 and np.any(dr <= var_95)
+        else var_95
+    )
     # Sortino
     downside = dr[dr < 0]
     downside_std = float(np.std(downside)) if len(downside) > 0 else 1e-9
-    sortino_ratio = (float(mean_ret) - risk_free / 252) / downside_std * np.sqrt(252) if downside_std > 0 and daily_returns else 0
+    sortino_ratio = (
+        (float(mean_ret) - risk_free / 252) / downside_std * np.sqrt(252)
+        if downside_std > 0 and daily_returns
+        else 0
+    )
     # Annual volatility
     annual_volatility = float(np.std(dr) * np.sqrt(252)) if len(dr) > 1 else 0
     # Max drawdown recovery days
@@ -244,6 +267,7 @@ def _calc_metrics(nav: list, dates: list, risk_free: float = 0.03) -> dict:
     monthly_win_rate = 0
     if dates and len(dates) > 20:
         from collections import defaultdict
+
         month_returns = defaultdict(float)
         for i, d in enumerate(dates):
             dt = d if isinstance(d, datetime) else datetime.strptime(str(d), "%Y-%m-%d")
@@ -306,13 +330,16 @@ def run_portfolio(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash * weights[i],
             )
             sub_results.append(r)
             success_indices.append(i)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -326,10 +353,14 @@ def run_portfolio(
     rebalance_dates = None
     if rebalance == "periodic" and rebalance_freq_days:
         n_periods = len(aligned_navs[0])
-        rebalance_dates = list(range(rebalance_freq_days, n_periods, rebalance_freq_days))
+        rebalance_dates = list(
+            range(rebalance_freq_days, n_periods, rebalance_freq_days)
+        )
 
     portfolio_nav = _calc_portfolio_nav(aligned_navs, active_weights, rebalance_dates)
-    equal_weight_nav = _calc_portfolio_nav(aligned_navs, [1.0] * len(aligned_navs), None)
+    equal_weight_nav = _calc_portfolio_nav(
+        aligned_navs, [1.0] * len(aligned_navs), None
+    )
 
     portfolio_metrics = _calc_metrics(portfolio_nav, common_dates)
 
@@ -377,10 +408,10 @@ def run_portfolio(
 def calc_strategy_correlations(sub_results: list) -> dict:
     """
     計算子策略之間的相關性矩陣。
-    
+
     Args:
         sub_results: _run_strategy_on_data 返回的結果列表
-    
+
     Returns:
         {"labels": [...], "matrix": [[...], ...]}
     """
@@ -403,15 +434,13 @@ def calc_strategy_correlations(sub_results: list) -> dict:
         returns_matrix.append([date_to_ret.get(d, 0.0) for d in common_dates])
 
     import numpy as np
+
     returns_arr = np.array(returns_matrix)
     corr_matrix = np.corrcoef(returns_arr)
 
     matrix = []
     for row in corr_matrix:
-        matrix.append([
-            round(_safe_float(v, 0.0), 4)
-            for v in row
-        ])
+        matrix.append([round(_safe_float(v, 0.0), 4) for v in row])
 
     return {"labels": labels, "matrix": matrix}
 
@@ -450,14 +479,21 @@ def _calc_risk_contribution(sub_results: list, weights: list) -> list:
     labels = [f"{r['strategy']}/{r['code']}" for r in sub_results]
     result = []
     for i, label in enumerate(labels):
-        result.append({
-            "strategy": sub_results[i]["strategy"],
-            "code": sub_results[i]["code"],
-            "weight": round(float(norm_weights[i]), 4),
-            "risk_contribution": round(float(risk_contrib[i]), 4),
-            "risk_pct": round(float(risk_contrib[i] / np.sum(np.abs(risk_contrib)) * 100), 2)
-            if np.sum(np.abs(risk_contrib)) > 0 else 0,
-        })
+        result.append(
+            {
+                "strategy": sub_results[i]["strategy"],
+                "code": sub_results[i]["code"],
+                "weight": round(float(norm_weights[i]), 4),
+                "risk_contribution": round(float(risk_contrib[i]), 4),
+                "risk_pct": (
+                    round(
+                        float(risk_contrib[i] / np.sum(np.abs(risk_contrib)) * 100), 2
+                    )
+                    if np.sum(np.abs(risk_contrib)) > 0
+                    else 0
+                ),
+            }
+        )
 
     return result
 
@@ -492,12 +528,15 @@ def dynamic_weight_portfolio(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash / len(allocations),
             )
             sub_results.append(r)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -534,7 +573,9 @@ def dynamic_weight_portfolio(
             # 計算每個策略的滾動夏普
             sharpes = []
             for j in range(n_strategies):
-                window_returns = daily_returns_matrix[j][max(0, i - rolling_window + 1):i + 1]
+                window_returns = daily_returns_matrix[j][
+                    max(0, i - rolling_window + 1) : i + 1
+                ]
                 if len(window_returns) < 10 or np.std(window_returns) == 0:
                     sharpes.append(0.0)
                 else:
@@ -546,7 +587,9 @@ def dynamic_weight_portfolio(
             shifted = [s - min_sharpe + 0.1 for s in sharpes]  # 平移確保正值
             total = sum(shifted)
             current_weights = [s / total for s in shifted]
-            logger.debug(f"  第 {i} 天權重調整: {[round(w, 3) for w in current_weights]}")
+            logger.debug(
+                f"  第 {i} 天權重調整: {[round(w, 3) for w in current_weights]}"
+            )
 
         weight_history.append(list(current_weights))
 
@@ -604,7 +647,8 @@ def detect_degradation(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash / len(allocations),
             )
@@ -623,10 +667,13 @@ def detect_degradation(
     # 計算基準（等權組合）每日收益
     benchmark_returns = []
     for i in range(1, n_periods):
-        eq_ret = sum(
-            aligned_navs[j][i] / aligned_navs[j][i - 1] - 1
-            for j in range(n_strategies)
-        ) / n_strategies
+        eq_ret = (
+            sum(
+                aligned_navs[j][i] / aligned_navs[j][i - 1] - 1
+                for j in range(n_strategies)
+            )
+            / n_strategies
+        )
         benchmark_returns.append(eq_ret)
 
     # 檢測每個策略的衰退狀態
@@ -635,13 +682,20 @@ def detect_degradation(
 
     for j in range(n_strategies):
         strat_returns = [
-            aligned_navs[j][i] / aligned_navs[j][i - 1] - 1
-            for i in range(1, n_periods)
+            aligned_navs[j][i] / aligned_navs[j][i - 1] - 1 for i in range(1, n_periods)
         ]
 
         # 取最近 lookback_days 天
-        recent_strat = strat_returns[-lookback_days:] if len(strat_returns) >= lookback_days else strat_returns
-        recent_bench = benchmark_returns[-lookback_days:] if len(benchmark_returns) >= lookback_days else benchmark_returns
+        recent_strat = (
+            strat_returns[-lookback_days:]
+            if len(strat_returns) >= lookback_days
+            else strat_returns
+        )
+        recent_bench = (
+            benchmark_returns[-lookback_days:]
+            if len(benchmark_returns) >= lookback_days
+            else benchmark_returns
+        )
 
         # 計算連續跑輸天數（從最近往回數）
         consecutive_under = 0
@@ -711,7 +765,8 @@ def kelly_criterion(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash,
             )
@@ -723,16 +778,22 @@ def kelly_criterion(
 
             if len(wins) == 0 or len(losses) == 0:
                 # 無法計算 Kelly（沒有盈利或虧損交易）
-                results.append({
-                    "strategy": a["strategy"],
-                    "code": a["code"],
-                    "kelly_fraction": 0.0,
-                    "recommended_position": 0.0,
-                    "win_rate": round(len(wins) / len(daily_rets) * 100, 2) if len(daily_rets) > 0 else 0,
-                    "avg_win": 0.0,
-                    "avg_loss": 0.0,
-                    "note": "數據不足或單邊收益，無法計算 Kelly",
-                })
+                results.append(
+                    {
+                        "strategy": a["strategy"],
+                        "code": a["code"],
+                        "kelly_fraction": 0.0,
+                        "recommended_position": 0.0,
+                        "win_rate": (
+                            round(len(wins) / len(daily_rets) * 100, 2)
+                            if len(daily_rets) > 0
+                            else 0
+                        ),
+                        "avg_win": 0.0,
+                        "avg_loss": 0.0,
+                        "note": "數據不足或單邊收益，無法計算 Kelly",
+                    }
+                )
                 continue
 
             avg_win = float(np.mean(wins))
@@ -749,17 +810,19 @@ def kelly_criterion(
 
             recommended_position = round(cash * kelly_f, 2)
 
-            results.append({
-                "strategy": a["strategy"],
-                "code": a["code"],
-                "kelly_fraction": round(kelly_f, 6),
-                "recommended_position": recommended_position,
-                "win_rate": round(p * 100, 2),
-                "avg_win_pct": round(avg_win * 100, 4),
-                "avg_loss_pct": round(avg_loss * 100, 4),
-                "odds_ratio": round(b, 4),
-                "expected_growth": round(kelly_f * (p * avg_win - q * avg_loss), 8),
-            })
+            results.append(
+                {
+                    "strategy": a["strategy"],
+                    "code": a["code"],
+                    "kelly_fraction": round(kelly_f, 6),
+                    "recommended_position": recommended_position,
+                    "win_rate": round(p * 100, 2),
+                    "avg_win_pct": round(avg_win * 100, 4),
+                    "avg_loss_pct": round(avg_loss * 100, 4),
+                    "odds_ratio": round(b, 4),
+                    "expected_growth": round(kelly_f * (p * avg_win - q * avg_loss), 8),
+                }
+            )
 
             logger.info(
                 f"  [{i+1}] {a['strategy']}/{a['code']}: "
@@ -768,12 +831,14 @@ def kelly_criterion(
 
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
-            results.append({
-                "strategy": a["strategy"],
-                "code": a["code"],
-                "kelly_fraction": 0.0,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "strategy": a["strategy"],
+                    "code": a["code"],
+                    "kelly_fraction": 0.0,
+                    "error": str(e),
+                }
+            )
 
     # 半 Kelly（更保守的建議）
     for r in results:
@@ -820,13 +885,18 @@ def arbitrate_signals(
         for i, a in enumerate(allocations):
             try:
                 r = _run_strategy_on_data(
-                    a["strategy"], a["code"],
+                    a["strategy"],
+                    a["code"],
                     params=a.get("params"),
                     cash=cash / len(allocations),
                 )
                 daily_rets = np.array(r["daily_returns"])
                 # 取最近 rolling_window 天
-                recent = daily_rets[-rolling_window:] if len(daily_rets) >= rolling_window else daily_rets
+                recent = (
+                    daily_rets[-rolling_window:]
+                    if len(daily_rets) >= rolling_window
+                    else daily_rets
+                )
                 if len(recent) > 1 and np.std(recent) > 0:
                     sr = float(np.mean(recent) / np.std(recent) * np.sqrt(252))
                     # 將夏普轉為正權重（最低 0.1）
@@ -950,9 +1020,16 @@ def risk_parity_portfolio(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -996,7 +1073,7 @@ def risk_parity_portfolio(
             if risk_contrib[i] > 0:
                 # 風險貢獻過高 → 降權重，過低 → 升權重
                 adjustment = target_rc / risk_contrib[i]
-                new_weights[i] *= adjustment ** 0.5  # 用 0.5 次方避免震盪
+                new_weights[i] *= adjustment**0.5  # 用 0.5 次方避免震盪
 
         # 歸一化
         new_weights = new_weights / np.sum(new_weights)
@@ -1021,7 +1098,9 @@ def risk_parity_portfolio(
     marginal = cov_matrix @ weights
     risk_contrib = weights * marginal / port_vol
     total_rc = np.sum(np.abs(risk_contrib))
-    risk_pcts = [float(rc / total_rc * 100) if total_rc > 0 else 0 for rc in risk_contrib]
+    risk_pcts = [
+        float(rc / total_rc * 100) if total_rc > 0 else 0 for rc in risk_contrib
+    ]
 
     sub_metrics = []
     for i, r in enumerate(sub_results):
@@ -1074,7 +1153,12 @@ def mean_variance_optimize(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1103,7 +1187,9 @@ def mean_variance_optimize(
         port_ret = float(w @ mean_returns)
         port_vol = float(np.sqrt(w @ cov_matrix @ w))
         sharpe = (port_ret - 0.03) / port_vol if port_vol > 0 else 0
-        results.append({"weights": w, "return": port_ret, "volatility": port_vol, "sharpe": sharpe})
+        results.append(
+            {"weights": w, "return": port_ret, "volatility": port_vol, "sharpe": sharpe}
+        )
 
     # 按目標選擇最優組合
     if objective == "max_sharpe":
@@ -1134,12 +1220,14 @@ def mean_variance_optimize(
     results.sort(key=lambda x: x["volatility"])
     step = max(1, len(results) // 100)
     for r in results[::step][:100]:
-        frontier_points.append({
-            "return": round(r["return"] * 100, 4),
-            "risk": round(r["volatility"] * 100, 4),
-            "sharpe": round(r["sharpe"], 4),
-            "weights": [round(float(w), 4) for w in r["weights"]],
-        })
+        frontier_points.append(
+            {
+                "return": round(r["return"] * 100, 4),
+                "risk": round(r["volatility"] * 100, 4),
+                "sharpe": round(r["sharpe"], 4),
+                "weights": [round(float(w), 4) for w in r["weights"]],
+            }
+        )
 
     return {
         "portfolio": portfolio_metrics,
@@ -1189,7 +1277,12 @@ def volatility_targeting(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1219,7 +1312,7 @@ def volatility_targeting(
     for i in range(len(daily_returns)):
         # 計算近期已實現波動率
         start_idx = max(0, i - lookback_days + 1)
-        window = daily_returns[start_idx:i + 1]
+        window = daily_returns[start_idx : i + 1]
         if len(window) >= 5:
             realized_vol = float(np.std(window) * np.sqrt(252))
         else:
@@ -1293,7 +1386,12 @@ def max_diversification_portfolio(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1383,7 +1481,12 @@ def anti_correlation_portfolio(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1426,7 +1529,10 @@ def anti_correlation_portfolio(
     labels = [f"{r['strategy']}/{r['code']}" for r in sub_results]
     corr_data = {
         "labels": labels,
-        "matrix": [[round(float(corr_matrix[i][j]), 4) for j in range(n_strats)] for i in range(n_strats)],
+        "matrix": [
+            [round(float(corr_matrix[i][j]), 4) for j in range(n_strats)]
+            for i in range(n_strats)
+        ],
     }
 
     # 計算組合平均相關性
@@ -1490,7 +1596,12 @@ def regime_switch_portfolio(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1539,12 +1650,14 @@ def regime_switch_portfolio(
 
     for i in range(1, n):
         # 計算組合收益
-        port_ret = sum(current_weights[j] * returns_matrix[j][i] for j in range(n_strats))
+        port_ret = sum(
+            current_weights[j] * returns_matrix[j][i] for j in range(n_strats)
+        )
         portfolio_nav.append(portfolio_nav[-1] * (1 + port_ret))
 
         # 每 lookback_days 天重新判定狀態
         if i % lookback_days == 0 and i >= lookback_days:
-            window = eq_returns[max(0, i - lookback_days + 1):i + 1]
+            window = eq_returns[max(0, i - lookback_days + 1) : i + 1]
 
             if regime_method == "volatility":
                 # 高波動 → 防守（偏向均值回歸策略）
@@ -1554,15 +1667,13 @@ def regime_switch_portfolio(
                     regime = "high_vol"
                     # 偏向均值回歸策略
                     current_weights = [
-                        0.5 if ts < 0.5 else 0.5 / n_strats
-                        for ts in trend_scores
+                        0.5 if ts < 0.5 else 0.5 / n_strats for ts in trend_scores
                     ]
                 elif realized_vol < median_vol * 0.8:
                     regime = "low_vol"
                     # 偏向趨勢策略
                     current_weights = [
-                        1.5 if ts > 0.5 else 0.3 / n_strats
-                        for ts in trend_scores
+                        1.5 if ts > 0.5 else 0.3 / n_strats for ts in trend_scores
                     ]
                 else:
                     regime = "neutral"
@@ -1570,13 +1681,21 @@ def regime_switch_portfolio(
 
             elif regime_method == "trend":
                 # 趨勢判定：近期收益的夏普
-                recent_sharpe = (np.mean(window) / np.std(window) * np.sqrt(252)) if np.std(window) > 0 else 0
+                recent_sharpe = (
+                    (np.mean(window) / np.std(window) * np.sqrt(252))
+                    if np.std(window) > 0
+                    else 0
+                )
                 if recent_sharpe > 0.5:
                     regime = "uptrend"
-                    current_weights = [1.5 if ts > 0.5 else 0.3 / n_strats for ts in trend_scores]
+                    current_weights = [
+                        1.5 if ts > 0.5 else 0.3 / n_strats for ts in trend_scores
+                    ]
                 elif recent_sharpe < -0.5:
                     regime = "downtrend"
-                    current_weights = [0.3 if ts > 0.5 else 1.5 / n_strats for ts in trend_scores]
+                    current_weights = [
+                        0.3 if ts > 0.5 else 1.5 / n_strats for ts in trend_scores
+                    ]
                 else:
                     regime = "range"
                     current_weights = [default_weight] * n_strats
@@ -1602,6 +1721,7 @@ def regime_switch_portfolio(
 
     # 統計各狀態出現次數
     from collections import Counter
+
     regime_counts = dict(Counter(regime_history))
 
     return {
@@ -1646,13 +1766,20 @@ def black_litterman_portfolio(
     if cash is None:
         cash = settings.backtest_cash
 
-    logger.info(f"Black-Litterman 組合: {len(allocations)} 個子策略, {len(views)} 個觀點")
+    logger.info(
+        f"Black-Litterman 組合: {len(allocations)} 個子策略, {len(views)} 個觀點"
+    )
 
     # 運行所有子策略
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1763,8 +1890,13 @@ def black_litterman_portfolio(
         "portfolio_nav": portfolio_nav,
         "dates": [str(d) for d in common_dates],
         "optimal_weights": [round(w, 4) for w in weights_list],
-        "posterior_returns": {labels[i]: round(float(posterior_returns[i]) * 100, 4) for i in range(n_strats)},
-        "prior_returns": {labels[i]: round(float(pi[i]) * 100, 4) for i in range(n_strats)},
+        "posterior_returns": {
+            labels[i]: round(float(posterior_returns[i]) * 100, 4)
+            for i in range(n_strats)
+        },
+        "prior_returns": {
+            labels[i]: round(float(pi[i]) * 100, 4) for i in range(n_strats)
+        },
         "risk_aversion": round(risk_aversion, 4),
         "views_applied": view_keys,
         "method": "black_litterman",
@@ -1797,7 +1929,12 @@ def hierarchical_risk_parity(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -1908,12 +2045,16 @@ def hierarchical_risk_parity(
             var_right = _get_cluster_var(right_orig)
 
             # 分配比例：方差大的分配少
-            alloc = 1.0 - var_left / (var_left + var_right) if (var_left + var_right) > 0 else 0.5
+            alloc = (
+                1.0 - var_left / (var_left + var_right)
+                if (var_left + var_right) > 0
+                else 0.5
+            )
 
             for i in left:
                 weights[i] *= alloc
             for i in right:
-                weights[i] *= (1.0 - alloc)
+                weights[i] *= 1.0 - alloc
 
             stack.append(left)
             stack.append(right)
@@ -1952,11 +2093,13 @@ def hierarchical_risk_parity(
     # 聚類信息
     cluster_info = []
     for ci, (c1, c2, d) in enumerate(merge_order):
-        cluster_info.append({
-            "step": ci + 1,
-            "merged": [c1, c2],
-            "distance": round(d, 4),
-        })
+        cluster_info.append(
+            {
+                "step": ci + 1,
+                "merged": [c1, c2],
+                "distance": round(d, 4),
+            }
+        )
 
     return {
         "portfolio": portfolio_metrics,
@@ -1998,7 +2141,12 @@ def cvar_optimize(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -2127,7 +2275,12 @@ def multi_timeframe_signal(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -2148,7 +2301,11 @@ def multi_timeframe_signal(
         timeframe_signals = {}
         for w in windows:
             if n <= w:
-                timeframe_signals[f"{w}d"] = {"signal": "hold", "return_pct": 0.0, "reason": "數據不足"}
+                timeframe_signals[f"{w}d"] = {
+                    "signal": "hold",
+                    "return_pct": 0.0,
+                    "reason": "數據不足",
+                }
                 continue
 
             # 最近 w 天的收益
@@ -2188,17 +2345,19 @@ def multi_timeframe_signal(
             confirmed_signal = "hold"
             agreement = hold_count / total
 
-        results.append({
-            "strategy": r["strategy"],
-            "code": r["code"],
-            "label": label,
-            "timeframe_signals": timeframe_signals,
-            "confirmed_signal": confirmed_signal,
-            "agreement_score": round(agreement, 4),
-            "buy_votes": buy_count,
-            "sell_votes": sell_count,
-            "hold_votes": hold_count,
-        })
+        results.append(
+            {
+                "strategy": r["strategy"],
+                "code": r["code"],
+                "label": label,
+                "timeframe_signals": timeframe_signals,
+                "confirmed_signal": confirmed_signal,
+                "agreement_score": round(agreement, 4),
+                "buy_votes": buy_count,
+                "sell_votes": sell_count,
+                "hold_votes": hold_count,
+            }
+        )
 
     # 整體組合信號
     all_confirmed = [r["confirmed_signal"] for r in results]
@@ -2254,7 +2413,12 @@ def dynamic_rebalance_trigger(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -2292,7 +2456,9 @@ def dynamic_rebalance_trigger(
         # 更新各策略價值
         current_values = current_values * (1 + returns)
         total_val = np.sum(current_values)
-        current_weights = current_values / total_val if total_val > 0 else target_weights.copy()
+        current_weights = (
+            current_values / total_val if total_val > 0 else target_weights.copy()
+        )
 
         # 檢查是否需要再平衡
         needs_rebalance = False
@@ -2314,16 +2480,28 @@ def dynamic_rebalance_trigger(
             # 短期波動率
             recent_port_returns = []
             for k in range(max(1, i - vol_window + 1), i + 1):
-                rp = float(np.array([daily_returns_matrix[j][k] for j in range(n_strats)]) @ current_weights)
+                rp = float(
+                    np.array([daily_returns_matrix[j][k] for j in range(n_strats)])
+                    @ current_weights
+                )
                 recent_port_returns.append(rp)
-            short_vol = float(np.std(recent_port_returns)) if len(recent_port_returns) > 1 else 0
+            short_vol = (
+                float(np.std(recent_port_returns))
+                if len(recent_port_returns) > 1
+                else 0
+            )
 
             # 長期波動率
             long_port_returns = []
             for k in range(max(1, i - vol_window * 2 + 1), i + 1):
-                lp = float(np.array([daily_returns_matrix[j][k] for j in range(n_strats)]) @ current_weights)
+                lp = float(
+                    np.array([daily_returns_matrix[j][k] for j in range(n_strats)])
+                    @ current_weights
+                )
                 long_port_returns.append(lp)
-            long_vol = float(np.std(long_port_returns)) if len(long_port_returns) > 1 else 0
+            long_vol = (
+                float(np.std(long_port_returns)) if len(long_port_returns) > 1 else 0
+            )
 
             if long_vol > 0 and short_vol > long_vol * 2:
                 needs_rebalance = True
@@ -2335,12 +2513,14 @@ def dynamic_rebalance_trigger(
             # 執行再平衡
             current_weights = target_weights.copy()
             current_values = target_weights.copy() * total_val
-            rebalance_history.append({
-                "day_index": i,
-                "date": str(common_dates[i]) if i < len(common_dates) else str(i),
-                "reasons": trigger_reasons,
-                "max_drift_pct": round(max_drift, 2),
-            })
+            rebalance_history.append(
+                {
+                    "day_index": i,
+                    "date": str(common_dates[i]) if i < len(common_dates) else str(i),
+                    "reasons": trigger_reasons,
+                    "max_drift_pct": round(max_drift, 2),
+                }
+            )
 
     # 計算指標
     portfolio_metrics = _calc_metrics(portfolio_nav, common_dates)
@@ -2398,9 +2578,19 @@ def sector_exposure_limit(
             return "科創板"
         elif code.startswith("300"):
             return "創業板"
-        elif code.startswith("600") or code.startswith("601") or code.startswith("603") or code.startswith("605"):
+        elif (
+            code.startswith("600")
+            or code.startswith("601")
+            or code.startswith("603")
+            or code.startswith("605")
+        ):
             return "上證主板"
-        elif code.startswith("000") or code.startswith("001") or code.startswith("002") or code.startswith("003"):
+        elif (
+            code.startswith("000")
+            or code.startswith("001")
+            or code.startswith("002")
+            or code.startswith("003")
+        ):
             return "深證主板"
         else:
             return "其他"
@@ -2415,7 +2605,12 @@ def sector_exposure_limit(
     sub_results = []
     for i, a in enumerate(allocations):
         try:
-            r = _run_strategy_on_data(a["strategy"], a["code"], params=a.get("params"), cash=cash / len(allocations))
+            r = _run_strategy_on_data(
+                a["strategy"],
+                a["code"],
+                params=a.get("params"),
+                cash=cash / len(allocations),
+            )
             sub_results.append(r)
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
@@ -2441,7 +2636,9 @@ def sector_exposure_limit(
     max_iter = 100
     for iteration in range(max_iter):
         # 找超標板塊
-        over_limit = {s: e for s, e in sector_exposure.items() if e > max_sector_pct + 0.01}
+        over_limit = {
+            s: e for s, e in sector_exposure.items() if e > max_sector_pct + 0.01
+        }
         if not over_limit:
             break
 
@@ -2526,11 +2723,11 @@ def efficient_frontier(allocations: list[dict], n_points: int = 20) -> dict:
     """
     生成有效前沿點。
     通過隨機生成不同權重組合，計算各自的收益率和風險。
-    
+
     Args:
         allocations: 子策略配置列表
         n_points: 生成點數
-    
+
     Returns:
         {"points": [{"return": ..., "risk": ..., "sharpe": ..., "weights": [...]}], ...}
     """
@@ -2576,12 +2773,14 @@ def efficient_frontier(allocations: list[dict], n_points: int = 20) -> dict:
         port_return = float(w @ mean_returns)
         port_risk = float(np.sqrt(w @ cov_matrix @ w))
         sharpe = (port_return - 0.03) / port_risk if port_risk > 0 else 0
-        points.append({
-            "return": round(port_return * 100, 4),
-            "risk": round(port_risk * 100, 4),
-            "sharpe": round(sharpe, 4),
-            "weights": [round(float(x), 4) for x in w],
-        })
+        points.append(
+            {
+                "return": round(port_return * 100, 4),
+                "risk": round(port_risk * 100, 4),
+                "sharpe": round(sharpe, 4),
+                "weights": [round(float(x), 4) for x in w],
+            }
+        )
 
     # 按風險排序並取 n_points 個均勻分佈的點
     points.sort(key=lambda x: x["risk"])
@@ -2634,12 +2833,15 @@ def strategy_voting_portfolio(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash / len(allocations),
             )
             sub_results.append(r)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -2768,12 +2970,15 @@ def momentum_of_momentum(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash / len(allocations),
             )
             sub_results.append(r)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -2801,29 +3006,36 @@ def momentum_of_momentum(
     for i in range(1, n_periods):
         # 計算組合收益
         port_ret = sum(
-            current_weights[j] * daily_returns_matrix[j][i]
-            for j in range(n_strats)
+            current_weights[j] * daily_returns_matrix[j][i] for j in range(n_strats)
         )
         portfolio_nav.append(portfolio_nav[-1] * (1 + port_ret))
 
         # 每 lookback/2 天重新計算權重
         if i % (lookback // 2) == 0 and i >= lookback:
-            first_momentum = []   # 一階動量：近期 Sharpe
+            first_momentum = []  # 一階動量：近期 Sharpe
             second_momentum = []  # 二階動量：Sharpe 的變化
 
             for j in range(n_strats):
                 # 計算近期 Sharpe（一階動量）
-                recent = daily_returns_matrix[j][max(0, i - lookback + 1):i + 1]
+                recent = daily_returns_matrix[j][max(0, i - lookback + 1) : i + 1]
                 half = lookback // 2
 
                 if len(recent) >= half:
                     # 前半段 Sharpe
                     front = recent[:half]
-                    front_sharpe = (np.mean(front) / np.std(front) * np.sqrt(252)) if np.std(front) > 0 else 0
+                    front_sharpe = (
+                        (np.mean(front) / np.std(front) * np.sqrt(252))
+                        if np.std(front) > 0
+                        else 0
+                    )
 
                     # 後半段 Sharpe
                     back = recent[half:]
-                    back_sharpe = (np.mean(back) / np.std(back) * np.sqrt(252)) if np.std(back) > 0 else 0
+                    back_sharpe = (
+                        (np.mean(back) / np.std(back) * np.sqrt(252))
+                        if np.std(back) > 0
+                        else 0
+                    )
 
                     # 一階動量 = 當前 Sharpe
                     current_sharpe = back_sharpe
@@ -2847,12 +3059,14 @@ def momentum_of_momentum(
             else:
                 current_weights = [default_weight] * n_strats
 
-            momentum_history.append({
-                "day": i,
-                "first_momentum": [round(m, 4) for m in first_momentum],
-                "second_momentum": [round(m, 4) for m in second_momentum],
-                "weights": [round(w, 4) for w in current_weights],
-            })
+            momentum_history.append(
+                {
+                    "day": i,
+                    "first_momentum": [round(m, 4) for m in first_momentum],
+                    "second_momentum": [round(m, 4) for m in second_momentum],
+                    "weights": [round(w, 4) for w in current_weights],
+                }
+            )
 
         weight_history.append(list(current_weights))
 
@@ -2905,12 +3119,15 @@ def adaptive_regime_portfolio(
     for i, a in enumerate(allocations):
         try:
             r = _run_strategy_on_data(
-                a["strategy"], a["code"],
+                a["strategy"],
+                a["code"],
                 params=a.get("params"),
                 cash=cash / len(allocations),
             )
             sub_results.append(r)
-            logger.info(f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%")
+            logger.info(
+                f"  [{i+1}] {a['strategy']}/{a['code']}: {r['total_return_pct']:.2f}%"
+            )
         except Exception as e:
             logger.error(f"  [{i+1}] {a['strategy']}/{a['code']} 失敗: {e}")
 
@@ -2929,7 +3146,14 @@ def adaptive_regime_portfolio(
         daily_returns_matrix.append(dr)
 
     # 策略分類
-    trend_strategies = {"dual_ma", "macd", "turtle", "dual_thrust", "momentum", "breakout"}
+    trend_strategies = {
+        "dual_ma",
+        "macd",
+        "turtle",
+        "dual_thrust",
+        "momentum",
+        "breakout",
+    }
     mean_revert_strategies = {"bollinger", "rsi", "kdj", "mean_reversion"}
 
     # 為每個策略計算類型標籤
@@ -2953,8 +3177,7 @@ def adaptive_regime_portfolio(
     for i in range(1, n_periods):
         # 計算組合收益
         port_ret = sum(
-            current_weights[j] * daily_returns_matrix[j][i]
-            for j in range(n_strats)
+            current_weights[j] * daily_returns_matrix[j][i] for j in range(n_strats)
         )
         portfolio_nav.append(portfolio_nav[-1] * (1 + port_ret))
 
@@ -2963,13 +3186,19 @@ def adaptive_regime_portfolio(
             # 計算等權組合近期波動率
             eq_returns = []
             for k in range(max(0, i - lookback_days + 1), i + 1):
-                eq_ret = sum(daily_returns_matrix[j][k] for j in range(n_strats)) / n_strats
+                eq_ret = (
+                    sum(daily_returns_matrix[j][k] for j in range(n_strats)) / n_strats
+                )
                 eq_returns.append(eq_ret)
 
-            realized_vol = float(np.std(eq_returns) * np.sqrt(252)) if len(eq_returns) > 5 else 0.20
+            realized_vol = (
+                float(np.std(eq_returns) * np.sqrt(252))
+                if len(eq_returns) > 5
+                else 0.20
+            )
 
             # 狀態判定
-            vol_threshold_low = 0.15   # 低波動閾值
+            vol_threshold_low = 0.15  # 低波動閾值
             vol_threshold_high = 0.25  # 高波動閾值
 
             if realized_vol < vol_threshold_low:
@@ -2999,12 +3228,14 @@ def adaptive_regime_portfolio(
             # 歸一化
             total_w = sum(current_weights)
             current_weights = [w / total_w for w in current_weights]
-            regime_history.append({
-                "day": i,
-                "regime": regime,
-                "realized_vol": round(realized_vol, 4),
-                "weights": [round(w, 4) for w in current_weights],
-            })
+            regime_history.append(
+                {
+                    "day": i,
+                    "regime": regime,
+                    "realized_vol": round(realized_vol, 4),
+                    "weights": [round(w, 4) for w in current_weights],
+                }
+            )
 
         weight_history.append(list(current_weights))
 
@@ -3021,14 +3252,22 @@ def adaptive_regime_portfolio(
 
     # 狀態統計
     from collections import Counter
-    regime_counts = dict(Counter(r["regime"] for r in regime_history)) if regime_history else {}
+
+    regime_counts = (
+        dict(Counter(r["regime"] for r in regime_history)) if regime_history else {}
+    )
 
     # 計算各狀態下的平均權重
     regime_weight_summary = {}
     for regime_name in regime_counts:
-        regime_weights = [r["weights"] for r in regime_history if r["regime"] == regime_name]
+        regime_weights = [
+            r["weights"] for r in regime_history if r["regime"] == regime_name
+        ]
         if regime_weights:
-            avg_w = [round(float(np.mean([w[j] for w in regime_weights])), 4) for j in range(n_strats)]
+            avg_w = [
+                round(float(np.mean([w[j] for w in regime_weights])), 4)
+                for j in range(n_strats)
+            ]
             regime_weight_summary[regime_name] = {
                 "avg_weights": avg_w,
                 "count": regime_counts[regime_name],

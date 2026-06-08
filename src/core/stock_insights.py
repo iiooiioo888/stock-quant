@@ -1,6 +1,7 @@
 """
 股票一句話投資邏輯 / 業務簡介 — 資產詳情頁展示用。
 """
+
 from __future__ import annotations
 
 import re
@@ -101,7 +102,9 @@ def build_investment_thesis(
     return f"{nm} — 可結合 K 線、估值與基本面欄位進行研究。"
 
 
-def enrich_detail_thesis(detail: dict[str, Any], inst: Optional[Any] = None) -> dict[str, Any]:
+def enrich_detail_thesis(
+    detail: dict[str, Any], inst: Optional[Any] = None
+) -> dict[str, Any]:
     """為 build_asset_detail 結果附加 investment_thesis。"""
     if not isinstance(detail, dict):
         return detail

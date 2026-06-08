@@ -1,4 +1,5 @@
 """任務並行派發測試 — 驗證 _drain_queue 不雙重計數 in_flight"""
+
 import threading
 import time
 import uuid
@@ -64,6 +65,7 @@ def test_drain_dispatches_up_to_max_workers(max_workers_3):
         def work():
             started.wait()
             time.sleep(0.15)
+
         return work
 
     for i in range(3):

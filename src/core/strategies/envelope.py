@@ -7,9 +7,10 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("envelope", "均線通道策略")
 class EnvelopeStrategy(OrderManagedStrategy):
     """均线通道策略 — 基于均线的上下轨通道，触下轨买入，触上轨卖出"""
+
     params = (
-        ("period", 20),       # 均线周期
-        ("deviation_pct", 5), # 通道偏离百分比
+        ("period", 20),  # 均线周期
+        ("deviation_pct", 5),  # 通道偏离百分比
     )
 
     def __init__(self):
@@ -36,4 +37,3 @@ class EnvelopeStrategy(OrderManagedStrategy):
             # 卖出：价格触及上轨
             if price >= upper:
                 self.order = self.sell()
-

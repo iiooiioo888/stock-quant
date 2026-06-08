@@ -1,4 +1,5 @@
 """訂閱與方案 API — 定價頁、權益查詢、開發環境升級、Stripe Webhook 占位。"""
+
 from __future__ import annotations
 
 import hmac
@@ -76,7 +77,9 @@ async def billing_checkout(body: dict, user: User = Depends(require_auth)):
     expires_at = None
     status = "active"
     if trial_days > 0:
-        expires_at = (datetime.now() + timedelta(days=trial_days)).isoformat(timespec="seconds")
+        expires_at = (datetime.now() + timedelta(days=trial_days)).isoformat(
+            timespec="seconds"
+        )
         status = "trialing"
     set_user_plan(user.id, plan_id, status=status, expires_at=expires_at)
     fresh_user = get_user_by_id(user.id) or user

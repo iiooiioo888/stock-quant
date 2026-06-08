@@ -6,6 +6,7 @@
   - 回測結果結構完整
   - 核心指標在合理範圍內
 """
+
 import pytest
 import sys
 import os
@@ -19,25 +20,30 @@ import backtrader as bt
 import pandas as pd
 import numpy as np
 
-
 # ============================================================
 # Fixtures
 # ============================================================
 
-def _generate_synthetic_data(n_days: int = 300, start_price: float = 100.0, volatility: float = 0.02) -> pd.DataFrame:
+
+def _generate_synthetic_data(
+    n_days: int = 300, start_price: float = 100.0, volatility: float = 0.02
+) -> pd.DataFrame:
     """生成合成 K 線數據（無需真實數據庫）"""
     np.random.seed(42)
     dates = pd.bdate_range(start="2023-01-01", periods=n_days)
     returns = np.random.normal(0.0003, volatility, n_days)
     prices = start_price * np.cumprod(1 + returns)
 
-    df = pd.DataFrame({
-        "Open": prices * (1 + np.random.uniform(-0.005, 0.005, n_days)),
-        "High": prices * (1 + np.abs(np.random.normal(0, 0.01, n_days))),
-        "Low": prices * (1 - np.abs(np.random.normal(0, 0.01, n_days))),
-        "Close": prices,
-        "Volume": np.random.randint(100000, 10000000, n_days).astype(float),
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "Open": prices * (1 + np.random.uniform(-0.005, 0.005, n_days)),
+            "High": prices * (1 + np.abs(np.random.normal(0, 0.01, n_days))),
+            "Low": prices * (1 - np.abs(np.random.normal(0, 0.01, n_days))),
+            "Close": prices,
+            "Volume": np.random.randint(100000, 10000000, n_days).astype(float),
+        },
+        index=dates,
+    )
 
     # 確保 High >= max(Open, Close) 且 Low <= min(Open, Close)
     df["High"] = df[["Open", "Close", "High"]].max(axis=1)
@@ -51,7 +57,9 @@ def synthetic_data():
     return _generate_synthetic_data()
 
 
-def _run_strategy_backtest(strategy_cls, data: pd.DataFrame, params: dict = None) -> dict:
+def _run_strategy_backtest(
+    strategy_cls, data: pd.DataFrame, params: dict = None
+) -> dict:
     """用 Backtrader 運行策略回測"""
     cerebro = bt.Cerebro()
     if params:
@@ -160,93 +168,194 @@ class TestAllStrategies:
         assert r["total_trades"] >= 0
 
     def test_macd(self, synthetic_data):
-        r = self._test_strategy(MACDStrategy, synthetic_data, {"fast": 12, "slow": 26, "signal": 9})
+        r = self._test_strategy(
+            MACDStrategy, synthetic_data, {"fast": 12, "slow": 26, "signal": 9}
+        )
 
     def test_bollinger(self, synthetic_data):
-        r = self._test_strategy(BollingerStrategy, synthetic_data, {"period": 20, "devfactor": 2.0})
+        r = self._test_strategy(
+            BollingerStrategy, synthetic_data, {"period": 20, "devfactor": 2.0}
+        )
 
     def test_kdj(self, synthetic_data):
-        r = self._test_strategy(KDJStrategy, synthetic_data, {
-            "period": 9, "period_dfast": 3, "period_dslow": 3,
-            "overbought": 80, "oversold": 20,
-        })
+        r = self._test_strategy(
+            KDJStrategy,
+            synthetic_data,
+            {
+                "period": 9,
+                "period_dfast": 3,
+                "period_dslow": 3,
+                "overbought": 80,
+                "oversold": 20,
+            },
+        )
 
     def test_rsi(self, synthetic_data):
-        r = self._test_strategy(RSIStrategy, synthetic_data, {
-            "period": 14, "overbought": 70, "oversold": 30,
-        })
+        r = self._test_strategy(
+            RSIStrategy,
+            synthetic_data,
+            {
+                "period": 14,
+                "overbought": 70,
+                "oversold": 30,
+            },
+        )
 
     def test_grid(self, synthetic_data):
-        r = self._test_strategy(GridStrategy, synthetic_data, {
-            "grid_pct": 3.0, "position_pct": 0.1,
-        })
+        r = self._test_strategy(
+            GridStrategy,
+            synthetic_data,
+            {
+                "grid_pct": 3.0,
+                "position_pct": 0.1,
+            },
+        )
 
     def test_turtle(self, synthetic_data):
-        r = self._test_strategy(TurtleStrategy, synthetic_data, {
-            "entry_period": 20, "exit_period": 10, "atr_period": 20, "risk_pct": 1.0,
-        })
+        r = self._test_strategy(
+            TurtleStrategy,
+            synthetic_data,
+            {
+                "entry_period": 20,
+                "exit_period": 10,
+                "atr_period": 20,
+                "risk_pct": 1.0,
+            },
+        )
 
     def test_dual_thrust(self, synthetic_data):
-        r = self._test_strategy(DualThrustStrategy, synthetic_data, {
-            "period": 4, "k_up": 0.5, "k_down": 0.5,
-        })
+        r = self._test_strategy(
+            DualThrustStrategy,
+            synthetic_data,
+            {
+                "period": 4,
+                "k_up": 0.5,
+                "k_down": 0.5,
+            },
+        )
 
     def test_momentum(self, synthetic_data):
-        r = self._test_strategy(MomentumStrategy, synthetic_data, {
-            "lookback": 20, "hold_period": 5,
-        })
+        r = self._test_strategy(
+            MomentumStrategy,
+            synthetic_data,
+            {
+                "lookback": 20,
+                "hold_period": 5,
+            },
+        )
 
     def test_mean_reversion(self, synthetic_data):
-        r = self._test_strategy(MeanReversionStrategy, synthetic_data, {
-            "period": 20, "entry_zscore": -2.0, "exit_zscore": 0.0,
-        })
+        r = self._test_strategy(
+            MeanReversionStrategy,
+            synthetic_data,
+            {
+                "period": 20,
+                "entry_zscore": -2.0,
+                "exit_zscore": 0.0,
+            },
+        )
 
     def test_volume_price(self, synthetic_data):
-        r = self._test_strategy(VolumePriceStrategy, synthetic_data, {
-            "price_ma": 20, "volume_ma": 20, "volume_ratio": 2.0,
-        })
+        r = self._test_strategy(
+            VolumePriceStrategy,
+            synthetic_data,
+            {
+                "price_ma": 20,
+                "volume_ma": 20,
+                "volume_ratio": 2.0,
+            },
+        )
 
     def test_breakout(self, synthetic_data):
-        r = self._test_strategy(BreakoutStrategy, synthetic_data, {
-            "period": 60, "atr_period": 20, "atr_multiplier": 2.0,
-        })
+        r = self._test_strategy(
+            BreakoutStrategy,
+            synthetic_data,
+            {
+                "period": 60,
+                "atr_period": 20,
+                "atr_multiplier": 2.0,
+            },
+        )
 
     def test_composite(self, synthetic_data):
-        r = self._test_strategy(CompositeStrategy, synthetic_data, {
-            "min_agreement": 3, "ma_fast": 5, "ma_slow": 20,
-            "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30,
-            "boll_period": 20, "boll_dev": 2.0,
-        })
+        r = self._test_strategy(
+            CompositeStrategy,
+            synthetic_data,
+            {
+                "min_agreement": 3,
+                "ma_fast": 5,
+                "ma_slow": 20,
+                "rsi_period": 14,
+                "rsi_overbought": 70,
+                "rsi_oversold": 30,
+                "boll_period": 20,
+                "boll_dev": 2.0,
+            },
+        )
 
     def test_vwap(self, synthetic_data):
-        r = self._test_strategy(VWAPStrategy, synthetic_data, {
-            "period": 20, "deviation_pct": 1.0,
-        })
+        r = self._test_strategy(
+            VWAPStrategy,
+            synthetic_data,
+            {
+                "period": 20,
+                "deviation_pct": 1.0,
+            },
+        )
 
     def test_envelope(self, synthetic_data):
-        r = self._test_strategy(EnvelopeStrategy, synthetic_data, {
-            "period": 20, "deviation_pct": 5,
-        })
+        r = self._test_strategy(
+            EnvelopeStrategy,
+            synthetic_data,
+            {
+                "period": 20,
+                "deviation_pct": 5,
+            },
+        )
 
     def test_parabolic_sar(self, synthetic_data):
-        r = self._test_strategy(ParabolicSARStrategy, synthetic_data, {
-            "af_start": 0.02, "af_step": 0.02, "af_max": 0.20,
-        })
+        r = self._test_strategy(
+            ParabolicSARStrategy,
+            synthetic_data,
+            {
+                "af_start": 0.02,
+                "af_step": 0.02,
+                "af_max": 0.20,
+            },
+        )
 
     def test_obv(self, synthetic_data):
-        r = self._test_strategy(OBVStrategy, synthetic_data, {
-            "obv_ma_period": 20, "price_ma_period": 20,
-        })
+        r = self._test_strategy(
+            OBVStrategy,
+            synthetic_data,
+            {
+                "obv_ma_period": 20,
+                "price_ma_period": 20,
+            },
+        )
 
     def test_bollinger_squeeze(self, synthetic_data):
-        r = self._test_strategy(BollingerSqueezeStrategy, synthetic_data, {
-            "period": 20, "devfactor": 2.0, "squeeze_threshold": 0.03, "squeeze_lookback": 5,
-        })
+        r = self._test_strategy(
+            BollingerSqueezeStrategy,
+            synthetic_data,
+            {
+                "period": 20,
+                "devfactor": 2.0,
+                "squeeze_threshold": 0.03,
+                "squeeze_lookback": 5,
+            },
+        )
 
     def test_adx_trend(self, synthetic_data):
-        r = self._test_strategy(ADXTrendStrategy, synthetic_data, {
-            "adx_period": 14, "adx_threshold": 25, "di_period": 14,
-        })
+        r = self._test_strategy(
+            ADXTrendStrategy,
+            synthetic_data,
+            {
+                "adx_period": 14,
+                "adx_threshold": 25,
+                "di_period": 14,
+            },
+        )
 
     def test_ema_cross(self, synthetic_data):
         self._test_strategy(EMACrossStrategy, synthetic_data, {"fast": 12, "slow": 26})
@@ -255,42 +364,84 @@ class TestAllStrategies:
         self._test_strategy(DonchianStrategy, synthetic_data, {"period": 20})
 
     def test_williams_r(self, synthetic_data):
-        self._test_strategy(WilliamsRStrategy, synthetic_data, {
-            "period": 14, "overbought": -20, "oversold": -80,
-        })
+        self._test_strategy(
+            WilliamsRStrategy,
+            synthetic_data,
+            {
+                "period": 14,
+                "overbought": -20,
+                "oversold": -80,
+            },
+        )
 
     def test_cci(self, synthetic_data):
-        self._test_strategy(CCIStrategy, synthetic_data, {
-            "period": 20, "overbought": 100, "oversold": -100,
-        })
+        self._test_strategy(
+            CCIStrategy,
+            synthetic_data,
+            {
+                "period": 20,
+                "overbought": 100,
+                "oversold": -100,
+            },
+        )
 
     def test_supertrend(self, synthetic_data):
-        self._test_strategy(SuperTrendStrategy, synthetic_data, {
-            "period": 10, "multiplier": 3.0,
-        })
+        self._test_strategy(
+            SuperTrendStrategy,
+            synthetic_data,
+            {
+                "period": 10,
+                "multiplier": 3.0,
+            },
+        )
 
     def test_atr_trail(self, synthetic_data):
-        self._test_strategy(ATRTrailTrendStrategy, synthetic_data, {
-            "ma_period": 20, "atr_period": 14, "atr_mult": 2.5,
-        })
+        self._test_strategy(
+            ATRTrailTrendStrategy,
+            synthetic_data,
+            {
+                "ma_period": 20,
+                "atr_period": 14,
+                "atr_mult": 2.5,
+            },
+        )
 
     def test_ema_volume(self, synthetic_data):
-        self._test_strategy(EMAVolumeStrategy, synthetic_data, {
-            "fast": 12, "slow": 26, "vol_ma": 20, "vol_ratio": 1.2,
-        })
+        self._test_strategy(
+            EMAVolumeStrategy,
+            synthetic_data,
+            {
+                "fast": 12,
+                "slow": 26,
+                "vol_ma": 20,
+                "vol_ratio": 1.2,
+            },
+        )
 
     def test_triple_ma(self, synthetic_data):
-        self._test_strategy(TripleMAFilterStrategy, synthetic_data, {
-            "fast": 5, "mid": 20, "slow": 60,
-        })
+        self._test_strategy(
+            TripleMAFilterStrategy,
+            synthetic_data,
+            {
+                "fast": 5,
+                "mid": 20,
+                "slow": 60,
+            },
+        )
 
     def test_macd_rsi(self, synthetic_data):
         self._test_strategy(MacdRsiFilterStrategy, synthetic_data)
 
     def test_pullback_ma(self, synthetic_data):
-        self._test_strategy(PullbackMAStrategy, synthetic_data, {
-            "fast": 10, "slow": 50, "trend": 120,
-        })
+        self._test_strategy(
+            PullbackMAStrategy,
+            synthetic_data,
+            {
+                "fast": 10,
+                "slow": 50,
+                "trend": 120,
+            },
+        )
 
 
 class TestStrategiesDict:
@@ -334,14 +485,26 @@ class TestRiskPipeline:
 
     def test_pipeline_init(self):
         from src.core.risk_pipeline import RiskPipeline
+
         pipeline = RiskPipeline(total_capital=100000)
         assert pipeline.total_capital == 100000
         assert pipeline.portfolio.cash == 100000
 
     def test_pipeline_process_buy_signal(self):
         from src.core.risk_pipeline import RiskPipeline, TradeSignal, SignalType
-        pipeline = RiskPipeline(total_capital=100000, sizing_method="fixed", fixed_fraction=0.1)
-        signals = [TradeSignal(code="000001", strategy="dual_ma", signal=SignalType.BUY, price=10.0, strength=50.0)]
+
+        pipeline = RiskPipeline(
+            total_capital=100000, sizing_method="fixed", fixed_fraction=0.1
+        )
+        signals = [
+            TradeSignal(
+                code="000001",
+                strategy="dual_ma",
+                signal=SignalType.BUY,
+                price=10.0,
+                strength=50.0,
+            )
+        ]
         orders = pipeline.process_signals(signals, {"000001": 10.0}, {"000001": 0.25})
         assert len(orders) >= 1
         buy_orders = [o for o in orders if o.side.value == "buy"]
@@ -350,15 +513,32 @@ class TestRiskPipeline:
             assert buy_orders[0].shares % 100 == 0  # A 股最小單位
 
     def test_pipeline_rejects_weak_signal(self):
-        from src.core.risk_pipeline import RiskPipeline, TradeSignal, SignalType, RiskRejectionReason
+        from src.core.risk_pipeline import (
+            RiskPipeline,
+            TradeSignal,
+            SignalType,
+            RiskRejectionReason,
+        )
+
         pipeline = RiskPipeline(total_capital=100000, min_signal_strength=20.0)
-        signals = [TradeSignal(code="000001", strategy="dual_ma", signal=SignalType.BUY, price=10.0, strength=5.0)]
+        signals = [
+            TradeSignal(
+                code="000001",
+                strategy="dual_ma",
+                signal=SignalType.BUY,
+                price=10.0,
+                strength=5.0,
+            )
+        ]
         orders = pipeline.process_signals(signals, {"000001": 10.0})
         rejected = [o for o in orders if o.risk_status == "rejected"]
-        assert any(o.rejection_reason == RiskRejectionReason.SIGNAL_TOO_WEAK for o in rejected)
+        assert any(
+            o.rejection_reason == RiskRejectionReason.SIGNAL_TOO_WEAK for o in rejected
+        )
 
     def test_pipeline_state(self):
         from src.core.risk_pipeline import RiskPipeline
+
         pipeline = RiskPipeline(total_capital=100000)
         state = pipeline.get_state()
         assert "cash" in state
@@ -371,6 +551,7 @@ class TestDataQuality:
 
     def test_validate_synthetic_data(self):
         from src.core.data_quality import DataIssue
+
         # 用合成數據測試（不依賴數據庫）
         issue = DataIssue("TEST", "test_type", "warning", "測試問題", 5, True)
         d = issue.to_dict()
@@ -380,6 +561,7 @@ class TestDataQuality:
     def test_generate_trading_dates(self):
         from src.core.data_quality import _generate_trading_dates
         from datetime import date
+
         dates = _generate_trading_dates(date(2024, 1, 1), date(2024, 1, 10))
         # 1/1 是元旦假期（但這個函數不排除），1/6-1/7 是週末
         assert len(dates) > 0
@@ -390,8 +572,14 @@ class TestDataQuality:
     def test_filter_holiday_gaps(self):
         from src.core.data_quality import _filter_holiday_gaps
         from datetime import date
+
         # 4 天連續缺失（可能是假期）
-        holiday = [date(2024, 2, 9), date(2024, 2, 10), date(2024, 2, 11), date(2024, 2, 12)]
+        holiday = [
+            date(2024, 2, 9),
+            date(2024, 2, 10),
+            date(2024, 2, 11),
+            date(2024, 2, 12),
+        ]
         assert _filter_holiday_gaps(holiday) == []
         # 2 天缺失（不太像假期）
         gap = [date(2024, 3, 5), date(2024, 3, 6)]

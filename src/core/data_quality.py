@@ -9,6 +9,7 @@
   validate_all         — 批量校驗所有股票
   repair_data          — 自動修復可修復的問題
 """
+
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -20,13 +21,22 @@ from src.utils.logger import logger
 # 數據質量問題定義
 # ============================================================
 
+
 class DataIssue:
     """數據質量問題"""
-    def __init__(self, code: str, issue_type: str, severity: str,
-                 description: str, affected_rows: int = 0, auto_fixable: bool = False):
+
+    def __init__(
+        self,
+        code: str,
+        issue_type: str,
+        severity: str,
+        description: str,
+        affected_rows: int = 0,
+        auto_fixable: bool = False,
+    ):
         self.code = code
-        self.issue_type = issue_type      # missing_dates, outlier, price_gap, zero_volume, stale_data, negative_price
-        self.severity = severity          # critical, warning, info
+        self.issue_type = issue_type  # missing_dates, outlier, price_gap, zero_volume, stale_data, negative_price
+        self.severity = severity  # critical, warning, info
         self.description = description
         self.affected_rows = affected_rows
         self.auto_fixable = auto_fixable
@@ -47,6 +57,7 @@ class DataIssue:
 # ============================================================
 # 核心校驗函數
 # ============================================================
+
 
 def validate_stock_data(
     code: str,
@@ -82,10 +93,16 @@ def validate_stock_data(
     df = load_daily_kline(code)
 
     if df.empty:
-        issues.append(DataIssue(
-            code, "no_data", "critical",
-            f"{code} 無任何歷史數據", 0, False,
-        ))
+        issues.append(
+            DataIssue(
+                code,
+                "no_data",
+                "critical",
+                f"{code} 無任何歷史數據",
+                0,
+                False,
+            )
+        )
         return issues
 
     # 確保 date 列是 datetime
@@ -99,21 +116,31 @@ def validate_stock_data(
             if col in df.columns:
                 bad = df[df[col] <= 0]
                 if not bad.empty:
-                    issues.append(DataIssue(
-                        code, "negative_price", "critical",
-                        f"{col} 列存在 {len(bad)} 條非正價格",
-                        len(bad), False,
-                    ))
+                    issues.append(
+                        DataIssue(
+                            code,
+                            "negative_price",
+                            "critical",
+                            f"{col} 列存在 {len(bad)} 條非正價格",
+                            len(bad),
+                            False,
+                        )
+                    )
 
         # high < low
         if "high" in df.columns and "low" in df.columns:
             inverted = df[df["high"] < df["low"]]
             if not inverted.empty:
-                issues.append(DataIssue(
-                    code, "inverted_hl", "critical",
-                    f"high < low 的異常記錄: {len(inverted)} 條",
-                    len(inverted), False,
-                ))
+                issues.append(
+                    DataIssue(
+                        code,
+                        "inverted_hl",
+                        "critical",
+                        f"high < low 的異常記錄: {len(inverted)} 條",
+                        len(inverted),
+                        False,
+                    )
+                )
 
     # --- 2. 缺失交易日 ---
     if check_missing_dates and len(df) > 1:
@@ -127,11 +154,16 @@ def validate_stock_data(
             missing_filtered = _filter_holiday_gaps(missing)
             if missing_filtered:
                 severity = "warning" if len(missing_filtered) < 10 else "critical"
-                issues.append(DataIssue(
-                    code, "missing_dates", severity,
-                    f"缺失 {len(missing_filtered)} 個交易日（排除假期後）",
-                    len(missing_filtered), False,
-                ))
+                issues.append(
+                    DataIssue(
+                        code,
+                        "missing_dates",
+                        severity,
+                        f"缺失 {len(missing_filtered)} 個交易日（排除假期後）",
+                        len(missing_filtered),
+                        False,
+                    )
+                )
 
     # --- 3. 價格異常值（Z-score） ---
     if check_outliers and len(df) > 20:
@@ -145,22 +177,32 @@ def validate_stock_data(
                 df["z_score"] = (returns - mean_r) / std_r
                 outliers = df[df["z_score"].abs() > outlier_threshold]
                 if not outliers.empty:
-                    issues.append(DataIssue(
-                        code, "outlier", "warning",
-                        f"價格異常波動 (Z>{outlier_threshold}): {len(outliers)} 條",
-                        len(outliers), False,
-                    ))
+                    issues.append(
+                        DataIssue(
+                            code,
+                            "outlier",
+                            "warning",
+                            f"價格異常波動 (Z>{outlier_threshold}): {len(outliers)} 條",
+                            len(outliers),
+                            False,
+                        )
+                    )
 
     # --- 4. 價格跳空缺口 ---
     if check_price_gaps and len(df) > 1:
         df["gap_pct"] = abs(df["close"].pct_change() * 100)
         big_gaps = df[df["gap_pct"] > gap_threshold_pct]
         if not big_gaps.empty:
-            issues.append(DataIssue(
-                code, "price_gap", "warning",
-                f"單日漲跌 > {gap_threshold_pct}%: {len(big_gaps)} 條（可能除權）",
-                len(big_gaps), False,
-            ))
+            issues.append(
+                DataIssue(
+                    code,
+                    "price_gap",
+                    "warning",
+                    f"單日漲跌 > {gap_threshold_pct}%: {len(big_gaps)} 條（可能除權）",
+                    len(big_gaps),
+                    False,
+                )
+            )
 
     # --- 5. 成交量異常 ---
     if check_volume and "volume" in df.columns and len(df) > 20:
@@ -172,45 +214,65 @@ def validate_stock_data(
             # 零成交量
             zero_vol = df[vol == 0]
             if not zero_vol.empty:
-                issues.append(DataIssue(
-                    code, "zero_volume", "info",
-                    f"零成交量: {len(zero_vol)} 條",
-                    len(zero_vol), False,
-                ))
+                issues.append(
+                    DataIssue(
+                        code,
+                        "zero_volume",
+                        "info",
+                        f"零成交量: {len(zero_vol)} 條",
+                        len(zero_vol),
+                        False,
+                    )
+                )
             # 異常放量
             extreme_vol = df[vol_z > 8]
             if not extreme_vol.empty:
-                issues.append(DataIssue(
-                    code, "extreme_volume", "info",
-                    f"異常放量 (Z>8): {len(extreme_vol)} 條",
-                    len(extreme_vol), False,
-                ))
+                issues.append(
+                    DataIssue(
+                        code,
+                        "extreme_volume",
+                        "info",
+                        f"異常放量 (Z>8): {len(extreme_vol)} 條",
+                        len(extreme_vol),
+                        False,
+                    )
+                )
 
     # --- 6. 數據過期 ---
     if check_staleness:
         last_date = df["date"].max()
-        if hasattr(last_date, 'date'):
+        if hasattr(last_date, "date"):
             last_date = last_date.date()
         today = datetime.now().date()
         # 只在交易日檢查
         if _is_weekday(today):
             days_since = (today - last_date).days
             if days_since > staleness_days:
-                issues.append(DataIssue(
-                    code, "stale_data", "warning",
-                    f"最後數據日期: {last_date}，已 {days_since} 天未更新",
-                    0, False,
-                ))
+                issues.append(
+                    DataIssue(
+                        code,
+                        "stale_data",
+                        "warning",
+                        f"最後數據日期: {last_date}，已 {days_since} 天未更新",
+                        0,
+                        False,
+                    )
+                )
 
     # --- 7. 重複記錄 ---
     if "date" in df.columns:
         dupes = df[df.duplicated(subset=["date"], keep=False)]
         if not dupes.empty:
-            issues.append(DataIssue(
-                code, "duplicate_dates", "warning",
-                f"重複日期記錄: {len(dupes)} 條",
-                len(dupes), True,
-            ))
+            issues.append(
+                DataIssue(
+                    code,
+                    "duplicate_dates",
+                    "warning",
+                    f"重複日期記錄: {len(dupes)} 條",
+                    len(dupes),
+                    True,
+                )
+            )
 
     return issues
 
@@ -250,16 +312,24 @@ def validate_all(
                 all_issues.extend(issues)
         except Exception as e:
             logger.debug(f"校驗 {code} 失敗: {e}")
-            all_issues.append(DataIssue(
-                code, "validation_error", "warning",
-                f"校驗過程出錯: {e}", 0, False,
-            ))
+            all_issues.append(
+                DataIssue(
+                    code,
+                    "validation_error",
+                    "warning",
+                    f"校驗過程出錯: {e}",
+                    0,
+                    False,
+                )
+            )
 
     # 按嚴重級別過濾
     if severity_filter:
         severity_order = {"critical": 0, "warning": 1, "info": 2}
         min_level = severity_order.get(severity_filter, 2)
-        all_issues = [i for i in all_issues if severity_order.get(i.severity, 2) <= min_level]
+        all_issues = [
+            i for i in all_issues if severity_order.get(i.severity, 2) <= min_level
+        ]
 
     # 統計
     by_type = {}
@@ -275,7 +345,9 @@ def validate_all(
         f"   問題總數: {len(all_issues)} (🔴{critical_count} 🟡{warning_count})",
     ]
     if by_type:
-        summary_lines.append("   類型分佈: " + ", ".join(f"{k}={v}" for k, v in sorted(by_type.items())))
+        summary_lines.append(
+            "   類型分佈: " + ", ".join(f"{k}={v}" for k, v in sorted(by_type.items()))
+        )
 
     return {
         "total_stocks": len(codes),
@@ -312,12 +384,15 @@ def repair_data(code: str, dry_run: bool = True) -> list[str]:
                 try:
                     with get_conn() as conn:
                         # 保留每組重複日期中 id 最大的記錄
-                        conn.execute("""
+                        conn.execute(
+                            """
                             DELETE FROM daily_kline
                             WHERE code = ? AND id NOT IN (
                                 SELECT MAX(id) FROM daily_kline WHERE code = ? GROUP BY date
                             )
-                        """, (code, code))
+                        """,
+                            (code, code),
+                        )
                     repairs.append(f"已刪除 {code} 的重複日期記錄")
                 except Exception as e:
                     repairs.append(f"刪除重複記錄失敗: {e}")
@@ -328,6 +403,7 @@ def repair_data(code: str, dry_run: bool = True) -> list[str]:
 # ============================================================
 # 輔助函數
 # ============================================================
+
 
 def _generate_trading_dates(start, end) -> set:
     """生成指定區間內的所有工作日（排除週末，不排除假期）"""
@@ -370,7 +446,7 @@ def _filter_holiday_gaps(missing_dates: list) -> list:
 
 def _is_weekday(d) -> bool:
     """判斷是否工作日"""
-    if hasattr(d, 'weekday'):
+    if hasattr(d, "weekday"):
         return d.weekday() < 5
     return True
 
@@ -378,6 +454,7 @@ def _is_weekday(d) -> bool:
 # ============================================================
 # 除權因子檢測
 # ============================================================
+
 
 def detect_split_adjustments(code: str, threshold: float = 0.3) -> list[dict]:
     """
@@ -405,12 +482,14 @@ def detect_split_adjustments(code: str, threshold: float = 0.3) -> list[dict]:
             continue
         # 除權通常導致價格驟降（ratio < 0.7）或驟升（ratio > 1.3，如高送轉）
         if abs(ratio - 1) > threshold:
-            events.append({
-                "date": str(df.iloc[idx]["date"])[:10],
-                "prev_close": round(float(df.iloc[idx - 1]["close"]), 2),
-                "close": round(float(df.iloc[idx]["close"]), 2),
-                "ratio": round(float(ratio), 4),
-                "possible_event": "送股/轉增" if ratio > 1 else "分紅/配股",
-            })
+            events.append(
+                {
+                    "date": str(df.iloc[idx]["date"])[:10],
+                    "prev_close": round(float(df.iloc[idx - 1]["close"]), 2),
+                    "close": round(float(df.iloc[idx]["close"]), 2),
+                    "ratio": round(float(ratio), 4),
+                    "possible_event": "送股/轉增" if ratio > 1 else "分紅/配股",
+                }
+            )
 
     return events

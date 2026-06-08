@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("triple_ma", "三重均線過濾策略")
 class TripleMAFilterStrategy(OrderManagedStrategy):
     """三重均線多頭排列 + 快線金叉"""
+
     params = (("fast", 5), ("mid", 20), ("slow", 60))
 
     def __init__(self):
@@ -25,4 +26,3 @@ class TripleMAFilterStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif (self.crossover < 0 or c < self.ma_m[0]) and self.position:
             self.order = self.sell()
-
