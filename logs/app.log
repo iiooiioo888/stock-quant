@@ -1,2 +1,17 @@
 2026-06-08 07:55:56 | WARNING | stock_quant | 已創建默認管理員賬號 admin，密碼已寫入: /workspace/data/.admin_password
 2026-06-08 07:55:56 | WARNING | stock_quant | 默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。
+2026-06-08 08:17:01 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:02 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:09 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'bcrypt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'
+2026-06-08 08:17:21 | WARNING | stock_quant | 默認管理員初始化跳過: No module named 'jwt'

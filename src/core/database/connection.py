@@ -1,4 +1,4 @@
-"""統一資料庫連線層 — SQLite + PostgreSQL"""
+"""統一資料庫連線層 — SQLite + PostgreSQL (psycopg3)"""
 
 from __future__ import annotations
 import re, sqlite3, threading
@@ -218,7 +218,9 @@ def _get_pg_conn():
     conn = getattr(_pg_tls, "conn", None)
     if conn:
         try:
-            conn.execute("SELECT 1")
+            # psycopg3 使用 execute 進行健康檢查
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
             return conn
         except Exception:
             try:
@@ -226,17 +228,21 @@ def _get_pg_conn():
             except Exception:
                 pass
             _pg_tls.conn = None
-    import psycopg2
+    
+    # 使用 psycopg3 (psycopg) 替代 psycopg2
+    import psycopg
+    from psycopg import Connection
 
     url = settings.database_url
     if not url:
         raise ValueError("database_url 為空")
-    pg_conn = psycopg2.connect(url)
-    pg_conn.autocommit = False
+    
+    # psycopg3 支援直接傳入 URL
+    pg_conn: Connection = psycopg.connect(url, autocommit=False)
     conn = PGConnection(pg_conn)
     _pg_tls.conn = conn
     if not _pg_warned:
-        logger.info(f"PostgreSQL 連接已建立")
+        logger.info(f"PostgreSQL 連接已建立 (psycopg3)")
         _pg_warned = True
     return conn
 
