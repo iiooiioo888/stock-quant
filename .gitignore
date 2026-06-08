@@ -11,20 +11,15 @@ __pycache__/
 *.out
 
 # Dependencies
-node_modules/
-venv/
 .venv/
-.env
-.env.local
-*.env.*
-
-# Build directories
+venv/
+node_modules/
+.mypy_cache/
+.pytest_cache/
 dist/
 build/
 target/
-.coverage
-coverage/
-htmlcov/
+.gradle/
 
 # Logs and temp files
 *.log
@@ -32,19 +27,25 @@ htmlcov/
 *.swp
 *.swo
 
+# Environment
+.env
+.env.local
+*.env.*
+
 # Editors
 .vscode/
 .idea/
-*.DS_Store
+
+# System files
+.DS_Store
 Thumbs.db
 
-# Python specific
-*.pyc
-__pycache__/
-.mypy_cache/
-.pytest_cache/
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
-# Compression files
+# Compressed files
 *.zip
 *.gz
 *.tar
