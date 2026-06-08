@@ -1,5 +1,2 @@
-# Examples 1 and 2 demonstrate that only build artifacts, dependencies, and temp files should be in .gitignore
-# Source files (.js, .md) should not be added to .gitignore unless they are clearly generated or sensitive
-
-# No build artifacts, dependencies, or temp files detected in changes
-# Only source/config files present (.js, .md) which should not be ignored
+# Examples 1:
+(empty — output nothing)
