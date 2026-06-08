@@ -1,0 +1,2 @@
+2026-06-08 07:55:56 | WARNING | stock_quant | 已創建默認管理員賬號 admin，密碼已寫入: /workspace/data/.admin_password
+2026-06-08 07:55:56 | WARNING | stock_quant | 默認賬號為 admin/admin；公開部署請設置 SQ_DEMO_ADMIN_PASSWORD 或登入後修改密碼。
