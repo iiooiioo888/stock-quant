@@ -31,6 +31,16 @@ target/
 .env
 .env.local
 *.env.*
+!.env.example
+
+# Local secrets and database (never commit)
+data/.admin_password
+data/.jwt_secret
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/runtime_admin_controls.json
+.qwen/
 
 # Editors
 .vscode/
