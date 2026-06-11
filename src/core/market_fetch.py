@@ -223,34 +223,27 @@ def fetch_history_df(
         return df, "local_db"
 
     code = symbol_to_a_share_code(symbol)
-
-    # 2. Yahoo Finance
     yahoo_sym = a_share_to_yahoo(symbol) if code else symbol
-    try:
-        df = _fetch_yahoo_chart(yahoo_sym, range_str=days_to_yahoo_range(days), interval="1d")
-    except CircuitBreakerOpenError:
-        df = pd.DataFrame()
-    except Exception:
-        df = pd.DataFrame()
-    if not df.empty:
-        df = df.tail(days).reset_index(drop=True)
-        out, src = _return_online(df, "yahoo")
-        if not out.empty:
-            return out, src
 
-    # 3. 東方財富
-    try:
-        df = _fetch_eastmoney_kline(symbol, days)
-    except CircuitBreakerOpenError:
-        df = pd.DataFrame()
-    except Exception:
-        df = pd.DataFrame()
-    if not df.empty and len(df) >= 2:
-        out, src = _return_online(df, "eastmoney")
-        if not out.empty:
-            return out, src
+    # 2. A 股統一降級鏈（Yahoo → 東財 → AKShare → 新浪/網易/騰訊/HTTP）
+    if code:
+        try:
+            from src.core.kline_fetcher import fetch_a_share_history
 
-    # 4. 全球模塊（Yahoo + Twelve Data）
+            start = (datetime.now() - timedelta(days=days + 60)).strftime("%Y%m%d")
+            df, src = fetch_a_share_history(
+                code,
+                start_date=start,
+                skip_local=True,
+                days=days,
+            )
+            if not df.empty and len(df) >= 2:
+                df = df.tail(days).reset_index(drop=True)
+                return df, src or "a_share_unified"
+        except Exception as e:
+            logger.debug(f"A 股統一降級 {code} 失敗: {e}")
+
+    # 3. 全球模塊（Yahoo + Twelve Data）
     try:
         start = (datetime.now() - timedelta(days=days + 60)).strftime("%Y%m%d")
         df = _fetch_global_download(yahoo_sym, start_date=start)

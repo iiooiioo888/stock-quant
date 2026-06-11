@@ -17,6 +17,9 @@ _cache_defer: int = 0
 _cache_flush: int = 0
 _kline_persist_rows: int = 0
 _kline_fetch: dict[str, int] = defaultdict(int)
+_rate_limit_429: dict[str, int] = defaultdict(int)
+_fetch_latency_ms: dict[str, list[float]] = defaultdict(list)
+_LATENCY_SAMPLES_MAX = 200
 _financials: dict[str, int] = defaultdict(int)
 _financials_resolve: dict[str, int] = defaultdict(int)
 
@@ -70,6 +73,39 @@ def record_kline_fetch(source: str) -> None:
         pass
 
 
+def record_rate_limit_429(source: str) -> None:
+    """記錄資料源 HTTP 429 次數。"""
+    key = (source or "unknown").strip() or "unknown"
+    with _lock:
+        _inc(_rate_limit_429, key)
+
+
+def record_fetch_latency(source: str, latency_ms: float) -> None:
+    """記錄單次拉取延遲（毫秒），各源保留最近 N 筆樣本。"""
+    key = (source or "unknown").strip() or "unknown"
+    if latency_ms < 0:
+        return
+    with _lock:
+        samples = _fetch_latency_ms[key]
+        samples.append(float(latency_ms))
+        if len(samples) > _LATENCY_SAMPLES_MAX:
+            del samples[: len(samples) - _LATENCY_SAMPLES_MAX]
+
+
+def _latency_summary(samples: list[float]) -> dict[str, float]:
+    if not samples:
+        return {}
+    ordered = sorted(samples)
+    n = len(ordered)
+    return {
+        "count": n,
+        "avg_ms": round(sum(ordered) / n, 2),
+        "p50_ms": round(ordered[n // 2], 2),
+        "p95_ms": round(ordered[min(n - 1, int(n * 0.95))], 2),
+        "max_ms": round(ordered[-1], 2),
+    }
+
+
 def record_financials(outcome: str) -> None:
     """outcome: db_hit | online_fetch | stale_fallback | empty"""
     key = (outcome or "unknown").strip() or "unknown"
@@ -105,6 +141,10 @@ def get_pipeline_metrics() -> dict[str, Any]:
             "kline": {
                 "persist_rows_total": _kline_persist_rows,
                 "fetch_by_source": dict(sorted(_kline_fetch.items())),
+                "rate_limit_429_by_source": dict(sorted(_rate_limit_429.items())),
+                "latency_by_source": {
+                    k: _latency_summary(v) for k, v in sorted(_fetch_latency_ms.items())
+                },
             },
             "financials": {
                 "get_fundamentals": dict(sorted(_financials.items())),
@@ -137,6 +177,8 @@ def reset_pipeline_metrics() -> None:
         _cache_flush = 0
         _kline_persist_rows = 0
         _kline_fetch.clear()
+        _rate_limit_429.clear()
+        _fetch_latency_ms.clear()
         _financials.clear()
         _financials_resolve.clear()
         _started_at = time.time()

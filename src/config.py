@@ -98,6 +98,17 @@ class Settings(BaseSettings):
     download_max_workers: int = Field(default=3, ge=1, le=8)
     download_throttle_sec: float = Field(default=0.5, ge=0.1, le=2.0)
 
+    # ====== 資料源開關與限速 ======
+    yahoo_enabled: bool = Field(default=True, description="是否啟用 Yahoo Finance（SQ_YAHOO_ENABLED）")
+    akshare_enabled: bool = Field(default=True, description="是否啟用 AKShare 備選源（SQ_AKSHARE_ENABLED）")
+    yahoo_request_interval: float = Field(
+        default=1.0,
+        ge=0.2,
+        le=10.0,
+        description="Yahoo 主動請求最小間隔（秒），SQ_YAHOO_REQUEST_INTERVAL",
+    )
+    yahoo_max_retries: int = Field(default=3, ge=1, le=10, description="Yahoo 單請求最大重試次數")
+
     # ====== 任務並行 ======
     task_max_workers: int = Field(default=0, ge=0, le=32)  # 0 = 自動 min(4, CPU-1)
     task_parallel_grid: bool = True

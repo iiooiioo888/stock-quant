@@ -123,10 +123,9 @@ def download_one_auto(
 
         n, src = download_global_auto(code, start_date)
     elif market == "a_share":
-        from src.core.history import _download_a_share
+        from src.core.kline_fetcher import download_a_share_kline
 
-        n = _download_a_share(code, start_date)
-        src = "a_share_chain" if n else ""
+        n, src = download_a_share_kline(code, start_date)
     elif market == "crypto":
         from src.core.history import _download_crypto
 
@@ -138,10 +137,9 @@ def download_one_auto(
         n = _download_forex(code, start_date)
         src = "frankfurter" if n else ""
     else:
-        from src.core.history import _download_a_share
+        from src.core.kline_fetcher import download_a_share_kline
 
-        n = _download_a_share(code, start_date)
-        src = "a_share_chain" if n else ""
+        n, src = download_a_share_kline(code, start_date)
 
     if n > 0:
         try:

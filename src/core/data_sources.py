@@ -242,13 +242,28 @@ def get_all_sources() -> dict[str, list[dict]]:
 # ============================================================
 # 通用降級執行器
 # ============================================================
+_FETCH_HANDLERS: dict[str, dict[str, object]] = {}
+_last_fetch_source: str = ""
+
+
+def register_fetch_handler(category: str, source_name: str, handler: object) -> None:
+    """為指定類別的數據源綁定 fetch 適配器（需實作 fetch_history 等方法）。"""
+    _FETCH_HANDLERS.setdefault(category, {})[source_name] = handler
+
+
+def get_last_fetch_source() -> str:
+    """execute_with_fallback 最近一次成功命中的 source slug（由適配器設定）。"""
+    return _last_fetch_source
+
+
 def execute_with_fallback(category: str, func_name: str, *args, **kwargs):
     """
     通用降級執行器：按優先級嘗試數據源。
 
-    每個數據源對象必須有對應的 func_name 方法。
+    優先使用 register_fetch_handler 綁定的適配器，否則回退到 DataSource 自身方法。
     返回第一個成功的結果。
     """
+    global _last_fetch_source
     sources = get_sources(category)
     if not sources:
         logger.error(f"無可用數據源: {category}")
@@ -256,19 +271,33 @@ def execute_with_fallback(category: str, func_name: str, *args, **kwargs):
 
     last_error = None
     for source in sources:
-        func = getattr(source, func_name, None)
+        handler = _FETCH_HANDLERS.get(category, {}).get(source.name, source)
+        func = getattr(handler, func_name, None)
         if not func:
             continue
         try:
             source.throttle()
+            t0 = time.time()
             result = func(*args, **kwargs)
+            elapsed_ms = (time.time() - t0) * 1000.0
+            try:
+                from src.core.auto_kline_fetch import source_slug
+                from src.core.pipeline_observability import record_fetch_latency
+
+                record_fetch_latency(source_slug(source.name), elapsed_ms)
+            except Exception:
+                pass
             if result is not None:
                 source.record_success()
+                try:
+                    from src.core.auto_kline_fetch import source_slug
+
+                    _last_fetch_source = source_slug(source.name)
+                except Exception:
+                    _last_fetch_source = source.name
                 return result
-            # 返回 None：視作軟失敗（不熔斷），讓其他源繼續嘗試
             source.record_soft_failure()
         except Exception as e:
-            # requests 的 HTTPError：可根據 status code 做更細緻打分（404 只降分不熔斷）
             if isinstance(e, requests.HTTPError) and getattr(e, "response", None) is not None:
                 try:
                     sc = int(e.response.status_code)
@@ -290,6 +319,7 @@ def execute_with_fallback(category: str, func_name: str, *args, **kwargs):
             last_error = e
             logger.debug(f"{source.name}.{func_name} 失敗: {e}")
 
+    _last_fetch_source = ""
     if last_error:
         logger.warning(f"所有 {category} 數據源均失敗: {last_error}")
     return None
