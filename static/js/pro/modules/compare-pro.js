@@ -1274,13 +1274,7 @@
     tb.querySelectorAll('[data-cmp-asset]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const code = btn.getAttribute('data-cmp-asset');
-        const sym = `${code}.SH`;
-        window.StockQPro?.App?.nav?.('assets', { syncHash: true });
-        try {
-          window.StockQPro?.pages?.assets?.openDetail?.(sym);
-        } catch (_) {
-          location.hash = `#/asset/${encodeURIComponent(sym)}`;
-        }
+        window.StockQPro?.openAsset?.(code);
       });
     });
   }

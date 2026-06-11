@@ -28,9 +28,29 @@
     return false;
   }
 
+  /** 資產詳情 / Yahoo 報價用標的代碼（6 位 A 股補 .SS / .SZ） */
+  function normalizeAssetSymbol(raw) {
+    const s = String(raw || '').trim().toUpperCase();
+    if (!s) return '';
+    if (/^\d{6}\.(SS|SZ|SH)$/i.test(s)) {
+      const code = s.slice(0, 6);
+      return `${code}${s.endsWith('.SZ') ? '.SZ' : '.SS'}`;
+    }
+    if (/^\d{1,6}$/.test(s)) {
+      const c = s.padStart(6, '0');
+      const suf = /^6|^68|^51|^52|^56|^58/.test(c) ? '.SS' : '.SZ';
+      return `${c}${suf}`;
+    }
+    if (/^\d{4,5}\.HK$/i.test(s)) {
+      return s.replace(/(\d+)\.HK/i, (_, d) => `${d.padStart(4, '0')}.HK`);
+    }
+    return s;
+  }
+
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.SymbolUtils = {
     normalizeCompareCode,
     isValidCompareSymbol,
+    normalizeAssetSymbol,
   };
 })();

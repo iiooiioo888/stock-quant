@@ -6,6 +6,7 @@
   const App = {
     current: '',
     _navGen: 0,
+    _pendingAssetSymbol: null,
     _ws: null,
     _wsGen: 0,
     _wsRetry: 0,
@@ -195,6 +196,11 @@
       const pid = String(id || '').trim();
       if (!pid) return;
 
+      const hash = String(location.hash || '');
+      if (pid !== 'assets' || !/^#\/asset\//.test(hash)) {
+        this._pendingAssetSymbol = null;
+      }
+
       const prev = this.current;
       const gen = ++this._navGen;
 
@@ -251,8 +257,20 @@
         }
       } catch (_) {}
       finally {
-        if (gen === this._navGen) this._setPageLoading(pid, false);
+        if (gen === this._navGen) {
+          this._setPageLoading(pid, false);
+          if (pid === 'assets') this._flushPendingAssetDetail();
+        }
       }
+    },
+
+    _flushPendingAssetDetail() {
+      const sym = this._pendingAssetSymbol;
+      if (!sym || this.current !== 'assets') return;
+      this._pendingAssetSymbol = null;
+      try {
+        window.StockQPro?.pages?.assets?.openDetail?.(sym);
+      } catch (_) {}
     },
 
     navFromHash() {
@@ -260,12 +278,11 @@
       const assetM = h.match(/^#\/asset\/([^/?#]+)/);
       if (assetM) {
         const sym = decodeURIComponent(assetM[1]);
+        this._pendingAssetSymbol = sym;
         this.nav('assets', { syncHash: false });
-        try {
-          window.StockQPro?.pages?.assets?.openDetail?.(sym);
-        } catch (_) {}
         return true;
       }
+      this._pendingAssetSymbol = null;
       const m = h.match(/^#\/([^/?#]+)/);
       if (!m) return false;
       const tab = m[1];

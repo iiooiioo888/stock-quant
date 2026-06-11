@@ -104,9 +104,16 @@
     return String(val);
   }
 
+  function normalizeAssetSymbol(symbol) {
+    const fn = window.StockQPro?.SymbolUtils?.normalizeAssetSymbol;
+    if (fn) return fn(symbol);
+    return String(symbol || '').trim().toUpperCase();
+  }
+
   function openAsset(symbol) {
-    if (!symbol) return;
-    location.hash = `#/asset/${encodeURIComponent(symbol)}`;
+    const sym = normalizeAssetSymbol(symbol);
+    if (!sym) return;
+    location.hash = `#/asset/${encodeURIComponent(sym)}`;
     window.StockQPro?.App?.navFromHash?.();
   }
 
@@ -140,7 +147,7 @@
   }
 
   function showDetail(symbol) {
-    const sym = String(symbol || '').trim();
+    const sym = normalizeAssetSymbol(symbol);
     if (state.detailSymbol !== sym) {
       state.detailTab = 'quote';
       state.chartMode = 'line';
@@ -1072,10 +1079,9 @@
                 onClick: () => window.StockQPro?.App?.nav?.('pricing', { syncHash: true }),
               }, '升級'),
             )
-            : ((d.investment_thesis || d.one_liner)
+            : (d.investment_thesis || d.one_liner)
               ? UI.h('p', { class: 'asset-detail-thesis' }, d.investment_thesis || d.one_liner)
-              : null)
-            : null,
+              : null,
         ),
       ),
       UI.h('div', { class: `asset-detail-quote is-${pctCls}` },
