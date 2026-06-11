@@ -1,4 +1,3 @@
-
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
@@ -6,6 +5,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("grid", "網格交易策略")
 class GridStrategy(OrderManagedStrategy):
     """網格交易策略"""
+
     params = (
         ("grid_pct", 3.0),
         ("position_pct", 0.1),
@@ -43,9 +43,11 @@ class GridStrategy(OrderManagedStrategy):
                 self.grid_level = current_level
 
         elif current_level > self.grid_level and self.position:
-            shares = min(self.position.size, int(self.position.size * self.p.position_pct / 100 * 100))
+            shares = min(
+                self.position.size,
+                int(self.position.size * self.p.position_pct / 100 * 100),
+            )
             shares = max(shares, self.lot_size)
             if shares >= self.lot_size:
                 self.order = self.sell(size=shares)
                 self.grid_level = current_level
-

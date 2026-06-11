@@ -10,6 +10,7 @@
 
 每次觸發會經 task_manager 登記，出現在任務中心列表。
 """
+
 import threading
 import uuid
 from collections.abc import Callable
@@ -34,6 +35,7 @@ def _get_scheduler():
         with _lock:
             if _scheduler is None:
                 from apscheduler.schedulers.background import BackgroundScheduler
+
                 _scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
     return _scheduler
 
@@ -87,12 +89,16 @@ def list_jobs() -> list[dict]:
     jobs = []
     for job in scheduler.get_jobs():
         next_run = job.next_run_time
-        jobs.append({
-            "id": job.id,
-            "name": job.name or job.id,
-            "next_run": next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else None,
-            "trigger": str(job.trigger),
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "name": job.name or job.id,
+                "next_run": (
+                    next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else None
+                ),
+                "trigger": str(job.trigger),
+            }
+        )
     return jobs
 
 
@@ -181,10 +187,14 @@ def _run_scheduled_as_task(
     return task_id
 
 
-def _wrap_scheduled_job(job_id: str, display_name: str, fn: Callable[..., Any], **kwargs):
+def _wrap_scheduled_job(
+    job_id: str, display_name: str, fn: Callable[..., Any], **kwargs
+):
     """包裝 APScheduler 回調：觸發時登記至任務列表。"""
+
     def tracked():
         return _run_scheduled_as_task(job_id, display_name, fn, **kwargs)
+
     tracked.__name__ = f"tracked_{job_id}"
     return tracked
 
@@ -192,6 +202,7 @@ def _wrap_scheduled_job(job_id: str, display_name: str, fn: Callable[..., Any], 
 # ============================================================
 # 每日策略報告
 # ============================================================
+
 
 def enable_daily_report(codes: list[str] = None):
     """啟用每日報告任務（15:30 觸發）"""
@@ -201,10 +212,12 @@ def enable_daily_report(codes: list[str] = None):
     def _job_impl():
         logger.info("執行每日報告任務...")
         from src.core.report import generate_daily_report
+
         report = generate_daily_report(codes)
         logger.info(f"每日報告:\n{report}")
         try:
             from src.core.alerts import send_notification
+
             send_notification(report, msg_type="daily_report")
         except Exception as e:
             logger.debug(f"通知發送跳過: {e}")
@@ -212,8 +225,12 @@ def enable_daily_report(codes: list[str] = None):
 
     scheduler.add_job(
         _wrap_scheduled_job("daily_report", "每日策略報告", _job_impl),
-        "cron", hour=15, minute=30,
-        id="daily_report", replace_existing=True, name="每日策略報告",
+        "cron",
+        hour=15,
+        minute=30,
+        id="daily_report",
+        replace_existing=True,
+        name="每日策略報告",
     )
     logger.info("已啟用每日報告任務 (15:30)")
 
@@ -227,6 +244,7 @@ def disable_daily_report():
 # ============================================================
 # 策略衰減檢測
 # ============================================================
+
 
 def enable_degradation_check(codes: list[str] = None, lookback_days: int = 30):
     """
@@ -267,11 +285,13 @@ def enable_degradation_check(codes: list[str] = None, lookback_days: int = 30):
 
                 avg_return = np.mean(returns_list)
                 if avg_return < -5 and all(r < 0 for r in returns_list):
-                    degraded.append({
-                        "strategy": strategy_name,
-                        "avg_return_pct": round(float(avg_return), 2),
-                        "stocks_checked": len(returns_list),
-                    })
+                    degraded.append(
+                        {
+                            "strategy": strategy_name,
+                            "avg_return_pct": round(float(avg_return), 2),
+                            "stocks_checked": len(returns_list),
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"衰減檢測 {strategy_name} 失敗: {e}")
 
@@ -282,6 +302,7 @@ def enable_degradation_check(codes: list[str] = None, lookback_days: int = 30):
             logger.warning(msg)
             try:
                 from src.core.alerts import send_notification
+
                 send_notification(msg, msg_type="degradation_alert")
             except Exception:
                 pass
@@ -291,8 +312,12 @@ def enable_degradation_check(codes: list[str] = None, lookback_days: int = 30):
 
     scheduler.add_job(
         _wrap_scheduled_job("degradation_check", "策略衰減檢測", _job_impl),
-        "cron", hour=16, minute=0,
-        id="degradation_check", replace_existing=True, name="策略衰減檢測",
+        "cron",
+        hour=16,
+        minute=0,
+        id="degradation_check",
+        replace_existing=True,
+        name="策略衰減檢測",
     )
     logger.info("已啟用策略衰減檢測 (16:00)")
 
@@ -306,6 +331,7 @@ def disable_degradation_check():
 # ============================================================
 # 策略相關性監控
 # ============================================================
+
 
 def enable_correlation_monitor(codes: list[str] = None):
     """
@@ -348,25 +374,37 @@ def enable_correlation_monitor(codes: list[str] = None):
             for j in range(i + 1, len(cols)):
                 c = corr.iloc[i, j]
                 if abs(c) > 0.8:
-                    high_corr_pairs.append({
-                        "strategy_1": cols[i],
-                        "strategy_2": cols[j],
-                        "correlation": round(float(c), 4),
-                    })
+                    high_corr_pairs.append(
+                        {
+                            "strategy_1": cols[i],
+                            "strategy_2": cols[j],
+                            "correlation": round(float(c), 4),
+                        }
+                    )
 
         if high_corr_pairs:
             msg = "📊 策略相關性報告:\n"
             for p in high_corr_pairs:
-                msg += f"  ⚠️ {p['strategy_1']} ↔ {p['strategy_2']}: {p['correlation']}\n"
+                msg += (
+                    f"  ⚠️ {p['strategy_1']} ↔ {p['strategy_2']}: {p['correlation']}\n"
+                )
             logger.warning(msg)
         else:
             logger.info("策略相關性監控: 無高相關策略對")
-        return {"high_corr_pairs": len(high_corr_pairs), "job_id": "correlation_monitor"}
+        return {
+            "high_corr_pairs": len(high_corr_pairs),
+            "job_id": "correlation_monitor",
+        }
 
     scheduler.add_job(
         _wrap_scheduled_job("correlation_monitor", "策略相關性監控", _job_impl),
-        "cron", day_of_week="mon", hour=16, minute=30,
-        id="correlation_monitor", replace_existing=True, name="策略相關性監控",
+        "cron",
+        day_of_week="mon",
+        hour=16,
+        minute=30,
+        id="correlation_monitor",
+        replace_existing=True,
+        name="策略相關性監控",
     )
     logger.info("已啟用策略相關性監控 (每週一 16:30)")
 
@@ -381,6 +419,7 @@ def disable_correlation_monitor():
 # 數據質量巡檢
 # ============================================================
 
+
 def enable_data_quality_check():
     """
     啟用數據質量巡檢（每日 09:00 觸發）。
@@ -394,17 +433,21 @@ def enable_data_quality_check():
     def _job_impl():
         logger.info("執行數據質量巡檢...")
         from src.core.data_quality import validate_all
+
         report = validate_all(severity_filter="warning")
         logger.info(f"數據質量:\n{report['summary']}")
 
         if report.get("total_issues", 0) > 0:
-            critical = [i for i in report.get("issues", []) if i.get("severity") == "critical"]
+            critical = [
+                i for i in report.get("issues", []) if i.get("severity") == "critical"
+            ]
             if critical:
                 msg = f"🔴 數據質量告警: {len(critical)} 個嚴重問題\n"
                 for i in critical[:5]:
                     msg += f"  • {i['code']}: {i['description']}\n"
                 try:
                     from src.core.alerts import send_notification
+
                     send_notification(msg, msg_type="data_quality_alert")
                 except Exception:
                     pass
@@ -415,8 +458,12 @@ def enable_data_quality_check():
 
     scheduler.add_job(
         _wrap_scheduled_job("data_quality_check", "數據質量巡檢", _job_impl),
-        "cron", hour=9, minute=0,
-        id="data_quality_check", replace_existing=True, name="數據質量巡檢",
+        "cron",
+        hour=9,
+        minute=0,
+        id="data_quality_check",
+        replace_existing=True,
+        name="數據質量巡檢",
     )
     logger.info("已啟用數據質量巡檢 (09:00)")
 
@@ -431,6 +478,7 @@ def disable_data_quality_check():
 # 增量數據更新
 # ============================================================
 
+
 def enable_incremental_update(codes: list[str] = None):
     """啟用增量數據更新（工作日 08:05，可配置）"""
     from src.config import settings
@@ -443,6 +491,7 @@ def enable_incremental_update(codes: list[str] = None):
     def _job_impl(task_id: str):
         logger.info("執行定時增量數據更新...")
         from src.core.download_tasks import run_incremental
+
         result = run_incremental(codes=watch_codes, task_id=task_id)
         logger.info(
             f"增量更新完成: 更新 {result.get('updated', 0)} 只, "
@@ -483,6 +532,7 @@ def disable_incremental_update():
 # 策略排行榜刷新
 # ============================================================
 
+
 def enable_leaderboard_refresh(codes: list[str] = None):
     """啟用策略排行榜刷新（每週日 17:00）"""
     scheduler = _get_scheduler()
@@ -491,6 +541,7 @@ def enable_leaderboard_refresh(codes: list[str] = None):
     def _job_impl():
         logger.info("執行策略排行榜刷新...")
         from src.core.leaderboard import update_leaderboard
+
         rows = update_leaderboard(codes)
         logger.info(f"排行榜已更新: {len(rows)} 條記錄")
         return {"rows": len(rows), "job_id": "leaderboard_refresh"}
@@ -684,6 +735,7 @@ def enable_daily_full_download(codes: list[str] = None):
     def _job_impl(task_id: str):
         logger.info("執行每日完整數據爬取...")
         from src.core.download_tasks import run_incremental
+
         # 強制模式：重新下載最近的數據，確保完整性
         result = run_incremental(codes=watch_codes, force=False, task_id=task_id)
         updated = result.get("updated", 0)
@@ -710,8 +762,6 @@ def enable_daily_full_download(codes: list[str] = None):
     logger.info("已啟用每日數據爬取 (09:00)")
 
 
-
-
 def enable_crypto_5m_download(symbols: list[str] = None):
     """啟用加密貨幣 5 分鐘 K 線下載（每天 09:05）"""
     from src.config import settings
@@ -722,6 +772,7 @@ def enable_crypto_5m_download(symbols: list[str] = None):
     def _job_impl(task_id: str):
         logger.info("執行加密貨幣 5 分鐘 K 線下載...")
         from src.core.crypto_5m_download import download_crypto_5m_all
+
         result = download_crypto_5m_all(symbols=symbols, days=7)
         updated = result.get("updated", 0)
         total = result.get("total", 0)
@@ -734,7 +785,10 @@ def enable_crypto_5m_download(symbols: list[str] = None):
             "加密貨幣5分鐘K線",
             _job_impl,
             task_type="data_incremental",
-            extra_params={"symbols": symbols or ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]},
+            extra_params={
+                "symbols": symbols
+                or ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+            },
             pass_task_id=True,
         ),
         "cron",

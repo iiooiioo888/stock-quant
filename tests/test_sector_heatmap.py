@@ -1,4 +1,5 @@
 """板塊熱力圖數據測試"""
+
 import pytest
 
 
@@ -10,8 +11,20 @@ class TestSectorHeatmap:
             sec,
             "get_sector_list",
             lambda sector_type="industry": [
-                {"name": "銀行", "change_pct": 2.5, "amount": 0, "rise_count": 10, "fall_count": 5},
-                {"name": "電子", "change_pct": 0, "amount": 0, "rise_count": 0, "fall_count": 0},
+                {
+                    "name": "銀行",
+                    "change_pct": 2.5,
+                    "amount": 0,
+                    "rise_count": 10,
+                    "fall_count": 5,
+                },
+                {
+                    "name": "電子",
+                    "change_pct": 0,
+                    "amount": 0,
+                    "rise_count": 0,
+                    "fall_count": 0,
+                },
             ],
         )
         rows = sec.get_sector_heatmap_data("industry")

@@ -2,6 +2,7 @@
 全自動策略參數優化 — 對 watchlist 中所有股票運行 Optuna，
 找到共識最佳參數（跨股票的中位數），報告推薦但不自動寫回 config
 """
+
 import numpy as np
 
 from src.config import settings
@@ -62,9 +63,13 @@ def auto_optimize_watchlist(
             logger.info(f"  優化 {code}/{strat_name}...")
             try:
                 if method == "optuna":
-                    best_params = _optuna_for_stock(code, strat_name, param_ranges, objective, n_trials)
+                    best_params = _optuna_for_stock(
+                        code, strat_name, param_ranges, objective, n_trials
+                    )
                 else:
-                    best_params = _grid_for_stock(code, strat_name, param_ranges, objective)
+                    best_params = _grid_for_stock(
+                        code, strat_name, param_ranges, objective
+                    )
                 per_stock[code] = best_params
             except Exception as e:
                 logger.error(f"  {code}/{strat_name} 失敗: {e}")
@@ -90,7 +95,9 @@ def auto_optimize_watchlist(
             default_score = _score(default_result, objective)
             recommended_score = _score(recommended_result, objective)
             if default_score != 0:
-                improvement = (recommended_score - default_score) / abs(default_score) * 100
+                improvement = (
+                    (recommended_score - default_score) / abs(default_score) * 100
+                )
         except Exception:
             pass
 
@@ -123,7 +130,9 @@ def auto_optimize_watchlist(
     }
 
 
-def _optuna_for_stock(code: str, strategy_name: str, param_ranges: dict, objective: str, n_trials: int) -> dict:
+def _optuna_for_stock(
+    code: str, strategy_name: str, param_ranges: dict, objective: str, n_trials: int
+) -> dict:
     """對單個股票做 Optuna 優化"""
     import optuna
 
@@ -137,9 +146,17 @@ def _optuna_for_stock(code: str, strategy_name: str, param_ranges: dict, objecti
 
         if "fast" in params and "slow" in params and params["fast"] >= params["slow"]:
             return float("-inf")
-        if "entry_period" in params and "exit_period" in params and params["entry_period"] <= params["exit_period"]:
+        if (
+            "entry_period" in params
+            and "exit_period" in params
+            and params["entry_period"] <= params["exit_period"]
+        ):
             return float("-inf")
-        if "overbought" in params and "oversold" in params and params["overbought"] <= params["oversold"]:
+        if (
+            "overbought" in params
+            and "oversold" in params
+            and params["overbought"] <= params["oversold"]
+        ):
             return float("-inf")
 
         try:
@@ -161,10 +178,15 @@ def _optuna_for_stock(code: str, strategy_name: str, param_ranges: dict, objecti
     return best
 
 
-def _grid_for_stock(code: str, strategy_name: str, param_ranges: dict, objective: str) -> dict:
+def _grid_for_stock(
+    code: str, strategy_name: str, param_ranges: dict, objective: str
+) -> dict:
     """對單個股票做網格搜索（較快但粗糙）"""
     from src.core.optimize import grid_search
-    results = grid_search(code, strategy_name, objective=objective, top_n=1, verbose=False)
+
+    results = grid_search(
+        code, strategy_name, objective=objective, top_n=1, verbose=False
+    )
     if results:
         return results[0]["params"]
     return {}

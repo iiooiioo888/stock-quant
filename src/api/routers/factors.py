@@ -6,6 +6,7 @@
 - POST /api/factors/screen        多因子選股打分
 - POST /api/factors/ic            因子 IC 分析
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -22,29 +23,38 @@ router = APIRouter()
 
 # ── Pydantic Models ──────────────────────────────────────────
 
+
 class FactorDefinition(BaseModel):
     """因子定義"""
+
     key: str = Field(..., description="因子唯一標識", examples=["pe_ttm"])
     label: str = Field(..., description="因子中文名稱", examples=["市盈率(TTM)"])
     category: str = Field(..., description="因子類別", examples=["value"])
-    direction: int = Field(..., description="方向：1=越高越好, -1=越低越好, 0=中性", examples=[-1])
+    direction: int = Field(
+        ..., description="方向：1=越高越好, -1=越低越好, 0=中性", examples=[-1]
+    )
     description: str = Field(..., description="因子說明", examples=["越低越好"])
 
 
 class FactorDefinitionsResponse(BaseModel):
     """因子定義響應"""
+
     success: bool = True
     factors: list[FactorDefinition] = Field(..., description="因子列表")
     categories: dict[str, list[str]] = Field(
-        ..., description="按類別分組",
+        ...,
+        description="按類別分組",
         examples=[{"value": ["pe_ttm", "pb"], "quality": ["roe", "gross_margin"]}],
     )
 
 
 class FactorScreenRequest(BaseModel):
     """多因子選股請求"""
+
     codes: list[str] = Field(
-        ..., min_length=1, max_length=500,
+        ...,
+        min_length=1,
+        max_length=500,
         description="股票代碼列表",
         examples=[["600519", "000001", "601318"]],
     )
@@ -58,6 +68,7 @@ class FactorScreenRequest(BaseModel):
 
 class StockScore(BaseModel):
     """個股打分結果"""
+
     code: str = Field(..., examples=["600519"])
     score: float = Field(..., description="綜合得分", examples=[1.2345])
     rank: int = Field(..., description="排名", examples=[1])
@@ -66,6 +77,7 @@ class StockScore(BaseModel):
 
 class FactorScreenResponse(BaseModel):
     """多因子選股響應"""
+
     success: bool = True
     results: list[StockScore] = Field(..., description="打分排名結果")
     total: int = Field(..., description="輸入股票總數", examples=[3])
@@ -74,13 +86,16 @@ class FactorScreenResponse(BaseModel):
 
 class ICAnalysisRequest(BaseModel):
     """因子 IC 分析請求"""
+
     factor_values: list[float] = Field(
-        ..., min_length=5,
+        ...,
+        min_length=5,
         description="因子值序列",
         examples=[[0.5, 0.8, 1.2, 0.3, 0.9, 1.1, 0.6, 0.7, 1.0, 0.4]],
     )
     forward_returns: list[float] = Field(
-        ..., min_length=5,
+        ...,
+        min_length=5,
         description="對應的未來收益率序列",
         examples=[[0.01, -0.02, 0.03, -0.01, 0.02, 0.01, -0.03, 0.02, 0.01, -0.01]],
     )
@@ -88,6 +103,7 @@ class ICAnalysisRequest(BaseModel):
 
 class ICResult(BaseModel):
     """IC 分析結果"""
+
     ic: float = Field(..., description="Pearson IC", examples=[0.15])
     rank_ic: float = Field(..., description="Spearman Rank IC", examples=[0.18])
     ic_ir: float = Field(..., description="IC 信息比率", examples=[0.15])
@@ -96,11 +112,13 @@ class ICResult(BaseModel):
 
 class ICAnalysisResponse(BaseModel):
     """IC 分析響應"""
+
     success: bool = True
     result: ICResult
 
 
 # ── 端點 ─────────────────────────────────────────────────────
+
 
 @router.get(
     "/api/factors/definitions",
@@ -130,13 +148,36 @@ class ICAnalysisResponse(BaseModel):
                     "example": {
                         "success": True,
                         "factors": [
-                            {"key": "pe_ttm", "label": "市盈率(TTM)", "category": "value", "direction": -1, "description": "越低越好"},
-                            {"key": "roe", "label": "ROE", "category": "quality", "direction": 1, "description": "越高越好"},
-                            {"key": "momentum_20d", "label": "20日動量", "category": "momentum", "direction": 1, "description": "20日收益率"},
+                            {
+                                "key": "pe_ttm",
+                                "label": "市盈率(TTM)",
+                                "category": "value",
+                                "direction": -1,
+                                "description": "越低越好",
+                            },
+                            {
+                                "key": "roe",
+                                "label": "ROE",
+                                "category": "quality",
+                                "direction": 1,
+                                "description": "越高越好",
+                            },
+                            {
+                                "key": "momentum_20d",
+                                "label": "20日動量",
+                                "category": "momentum",
+                                "direction": 1,
+                                "description": "20日收益率",
+                            },
                         ],
                         "categories": {
                             "value": ["pe_ttm", "pb", "dividend_yield"],
-                            "quality": ["roe", "gross_margin", "net_margin", "debt_ratio"],
+                            "quality": [
+                                "roe",
+                                "gross_margin",
+                                "net_margin",
+                                "debt_ratio",
+                            ],
                             "momentum": ["momentum_20d", "momentum_60d"],
                         },
                     }
@@ -148,6 +189,7 @@ class ICAnalysisResponse(BaseModel):
 async def factor_definitions():
     """列出所有因子定義（名稱、類別、方向、說明）"""
     from src.core.factor_engine import list_factor_definitions, list_factor_categories
+
     return {
         "success": True,
         "factors": list_factor_definitions(),
@@ -225,6 +267,7 @@ async def factor_screen(body: FactorScreenRequest, user: User = Depends(require_
 
     # 載入 K 線數據
     import pandas as pd
+
     kline_map = {}
     for code in codes:
         try:
@@ -295,7 +338,9 @@ async def factor_screen(body: FactorScreenRequest, user: User = Depends(require_
         401: {"description": "未登錄"},
     },
 )
-async def factor_ic_analysis(body: ICAnalysisRequest, user: User = Depends(require_auth)):
+async def factor_ic_analysis(
+    body: ICAnalysisRequest, user: User = Depends(require_auth)
+):
     """因子 IC 分析。"""
     from src.core.factor_engine import compute_ic
 

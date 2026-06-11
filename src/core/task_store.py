@@ -3,6 +3,7 @@ Redis 任務狀態存儲 — 替代進程內存 _tasks dict，支持多實例共
 
 當 Redis 不可用時自動降級到進程內存（與現有行為一致）。
 """
+
 from __future__ import annotations
 
 import json
@@ -27,10 +28,12 @@ def _get_redis():
     _initialized = True
     try:
         from src.config import settings
+
         if not getattr(settings, "redis_enabled", False):
             logger.info("📦 任務存儲: Redis 未啟用，使用進程內存")
             return None
         import redis as redis_lib
+
         url = getattr(settings, "redis_url", "redis://localhost:6379/0")
         pwd = getattr(settings, "redis_password", "")
         _redis_client = redis_lib.from_url(

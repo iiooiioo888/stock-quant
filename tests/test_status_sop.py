@@ -1,4 +1,5 @@
 """GET /api/status 內嵌 SOP 摘要。"""
+
 from fastapi.testclient import TestClient
 
 from src.api.app import app

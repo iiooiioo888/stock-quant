@@ -1,4 +1,5 @@
 """統一 API 錯誤 JSON：{"code", "msg", "trace_id"}"""
+
 from __future__ import annotations
 
 import uuid
@@ -35,7 +36,9 @@ def api_error_response(request: Request, code: int, msg: str) -> JSONResponse:
     )
 
 
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
     tid = get_trace_id(request)
     detail = exc.detail
     if isinstance(detail, dict):

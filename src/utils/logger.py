@@ -1,6 +1,7 @@
 """
 日誌系統 — 控制台 + 文件輪轉；支援 SQ_LOG_FORMAT=json 結構化輸出
 """
+
 from __future__ import annotations
 
 import json

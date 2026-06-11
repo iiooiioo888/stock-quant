@@ -7,6 +7,7 @@
 - 與正式回測數據隔離（不污染生產記錄）
 - 支持滑點、手續費、止損/止盈等進階控制
 """
+
 import importlib.util
 from typing import Optional
 
@@ -16,14 +17,14 @@ from src.utils.logger import logger
 def load_strategy_from_code(strategy_code: str, class_name: str = "MyStrategy"):
     """
     從源碼字符串動態載入策略類
-    
+
     Args:
         strategy_code: 用戶提供的策略源碼
         class_name: 策略類名（默認 MyStrategy，也可自動檢測）
-    
+
     Returns:
         策略類對象
-    
+
     Raises:
         ImportError: 載入失敗
     """
@@ -37,7 +38,8 @@ def load_strategy_from_code(strategy_code: str, class_name: str = "MyStrategy"):
     # 嘗試自動檢測類名
     if class_name == "MyStrategy":
         import re
-        match = re.search(r'class\s+(\w+)\s*\(\s*UserStrategy\s*\)', strategy_code)
+
+        match = re.search(r"class\s+(\w+)\s*\(\s*UserStrategy\s*\)", strategy_code)
         if match:
             class_name = match.group(1)
 
@@ -58,18 +60,21 @@ def load_strategy_from_code(strategy_code: str, class_name: str = "MyStrategy"):
     # 注入允許的依賴
     try:
         import numpy as np
+
         safe_globals["np"] = np
     except ImportError:
         pass
 
     try:
         import pandas as pd
+
         safe_globals["pd"] = pd
     except ImportError:
         pass
 
     try:
         from src.core.strategy_base import UserStrategy
+
         safe_globals["UserStrategy"] = UserStrategy
     except ImportError as e:
         raise ImportError(f"無法導入 UserStrategy：{e}")
@@ -102,7 +107,7 @@ def run_sandbox_backtest(
 ):
     """
     執行沙箱模式回測
-    
+
     Args:
         code: 股票代碼
         strategy_code: 用戶策略源碼
@@ -114,7 +119,7 @@ def run_sandbox_backtest(
         timeframe: K 線週期
         task_id: 任務 ID
         user_id: 用戶 ID
-    
+
     Returns:
         回測結果字典
     """
@@ -173,7 +178,9 @@ def run_sandbox_backtest(
         result["strategy_type"] = "custom_user_strategy"
         result["user_id"] = user_id
 
-        logger.info(f"[沙箱回測] 完成：{code}, 最終資產={result.get('final_assets', 'N/A')}")
+        logger.info(
+            f"[沙箱回測] 完成：{code}, 最終資產={result.get('final_assets', 'N/A')}"
+        )
 
         return result
 

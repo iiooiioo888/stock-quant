@@ -1,6 +1,7 @@
 """
 數據導出 — CSV / JSON 格式
 """
+
 import csv
 import io
 import json
@@ -12,10 +13,10 @@ from src.utils.logger import logger
 def export_backtest_csv(result_id: int) -> str:
     """
     導出回測結果為 CSV 字符串。
-    
+
     Args:
         result_id: 回測結果 ID
-    
+
     Returns:
         CSV 格式字符串
     """
@@ -67,21 +68,23 @@ def export_trades_csv(code: str, strategy: str) -> str:
     """
     導出交易明細為 CSV 字符串。
     從最近的回測結果中提取交易明細。
-    
+
     Args:
         code: 股票代碼
         strategy: 策略名稱
-    
+
     Returns:
         CSV 格式字符串
     """
     from src.core.db import get_backtest_history
+
     results = get_backtest_history(code=code, strategy=strategy, limit=1)
     if not results:
         return ""
 
     # 重新跑一次回測以獲取交易明細
     from src.core.backtest import run_backtest
+
     try:
         bt_result = run_backtest(code, strategy_name=strategy)
     except Exception as e:
@@ -95,19 +98,32 @@ def export_trades_csv(code: str, strategy: str) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
 
-    writer.writerow(["買入日期", "買入價格", "賣出日期", "賣出價格", "數量", "盈虧", "收益率(%)", "持有天數"])
+    writer.writerow(
+        [
+            "買入日期",
+            "買入價格",
+            "賣出日期",
+            "賣出價格",
+            "數量",
+            "盈虧",
+            "收益率(%)",
+            "持有天數",
+        ]
+    )
 
     for t in trades:
-        writer.writerow([
-            t.get("buy_date", ""),
-            t.get("buy_price", ""),
-            t.get("sell_date", ""),
-            t.get("sell_price", ""),
-            t.get("size", ""),
-            t.get("pnl", ""),
-            t.get("return_pct", ""),
-            t.get("hold_days", ""),
-        ])
+        writer.writerow(
+            [
+                t.get("buy_date", ""),
+                t.get("buy_price", ""),
+                t.get("sell_date", ""),
+                t.get("sell_price", ""),
+                t.get("size", ""),
+                t.get("pnl", ""),
+                t.get("return_pct", ""),
+                t.get("hold_days", ""),
+            ]
+        )
 
     return output.getvalue()
 
@@ -115,6 +131,7 @@ def export_trades_csv(code: str, strategy: str) -> str:
 def export_trades_json(code: str, strategy: str) -> str:
     """導出交易明細為 JSON 字符串"""
     from src.core.backtest import run_backtest
+
     try:
         bt_result = run_backtest(code, strategy_name=strategy)
         trades = bt_result.get("trade_details", [])

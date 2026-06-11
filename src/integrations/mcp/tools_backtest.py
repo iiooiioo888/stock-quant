@@ -1,8 +1,14 @@
 """
 回測任務 MCP Tools — 供 LLM 提交與查詢異步回測。
 """
+
 from src.integrations.mcp.protocol import ToolSpec, build_input_schema
-from src.integrations.mcp.utils import ERR_NOT_FOUND, ERR_VALIDATION, error_result, json_result
+from src.integrations.mcp.utils import (
+    ERR_NOT_FOUND,
+    ERR_VALIDATION,
+    error_result,
+    json_result,
+)
 
 
 def _task_summary(task: dict) -> dict:
@@ -76,6 +82,7 @@ def handle_sq_run_backtest(args: dict) -> str:
         }
         if force_refresh:
             from src.core.result_cache import drop_cached_compute
+
             drop_cached_compute("backtest_advanced", task_params, code=code)
 
         task = create_task(
@@ -85,23 +92,27 @@ def handle_sq_run_backtest(args: dict) -> str:
             force_refresh=force_refresh,
         )
         if task.get("is_duplicate"):
-            return json_result({
-                "task_id": task["task_id"],
-                "async": True,
-                "is_duplicate": True,
-                "message": "相同回測正在執行，請稍後用 sq_get_task 查詢",
-            })
+            return json_result(
+                {
+                    "task_id": task["task_id"],
+                    "async": True,
+                    "is_duplicate": True,
+                    "message": "相同回測正在執行，請稍後用 sq_get_task 查詢",
+                }
+            )
 
         task_id = task["task_id"]
 
         if task.get("status") == "completed" and task.get("result") is not None:
-            return json_result({
-                "task_id": task_id,
-                "async": False,
-                "from_cache": bool(task.get("from_cache")),
-                "message": "緩存命中，已完成",
-                "result_preview": _task_summary(task).get("result_preview"),
-            })
+            return json_result(
+                {
+                    "task_id": task_id,
+                    "async": False,
+                    "from_cache": bool(task.get("from_cache")),
+                    "message": "緩存命中，已完成",
+                    "result_preview": _task_summary(task).get("result_preview"),
+                }
+            )
 
         def _work():
             return run_backtest(
@@ -124,16 +135,21 @@ def handle_sq_run_backtest(args: dict) -> str:
             cache_params=task_params,
             cache_code=code,
         )
-        return json_result({
-            "task_id": task_id,
-            "async": bool(dispatched.get("async")),
-            "from_cache": bool(dispatched.get("from_cache")),
-            "message": "已提交回測" if dispatched.get("async") else "回測已完成",
-            "result_preview": (
-                _task_summary({"result": dispatched.get("result")}).get("result_preview")
-                if not dispatched.get("async") else None
-            ),
-        })
+        return json_result(
+            {
+                "task_id": task_id,
+                "async": bool(dispatched.get("async")),
+                "from_cache": bool(dispatched.get("from_cache")),
+                "message": "已提交回測" if dispatched.get("async") else "回測已完成",
+                "result_preview": (
+                    _task_summary({"result": dispatched.get("result")}).get(
+                        "result_preview"
+                    )
+                    if not dispatched.get("async")
+                    else None
+                ),
+            }
+        )
     except Exception as e:
         return error_result(str(e))
 
@@ -152,21 +168,25 @@ def handle_sq_run_multi_backtest(args: dict) -> str:
         task_params = {"code": code}
         task = create_task("backtest_multi", task_params, title=f"AI 多策略 {code}")
         if task.get("is_duplicate"):
-            return json_result({
-                "task_id": task["task_id"],
-                "async": True,
-                "is_duplicate": True,
-                "message": "多策略對比進行中，請用 sq_get_task 查詢",
-            })
+            return json_result(
+                {
+                    "task_id": task["task_id"],
+                    "async": True,
+                    "is_duplicate": True,
+                    "message": "多策略對比進行中，請用 sq_get_task 查詢",
+                }
+            )
 
         task_id = task["task_id"]
         if task.get("status") == "completed" and task.get("result") is not None:
-            return json_result({
-                "task_id": task_id,
-                "async": False,
-                "message": "已完成（緩存）",
-                "strategies_count": len(task.get("result") or []),
-            })
+            return json_result(
+                {
+                    "task_id": task_id,
+                    "async": False,
+                    "message": "已完成（緩存）",
+                    "strategies_count": len(task.get("result") or []),
+                }
+            )
 
         dispatched = dispatch_async_task(
             task_id,
@@ -175,11 +195,13 @@ def handle_sq_run_multi_backtest(args: dict) -> str:
             cache_params=task_params,
             cache_code=code,
         )
-        return json_result({
-            "task_id": task_id,
-            "async": bool(dispatched.get("async")),
-            "message": "已提交多策略回測" if dispatched.get("async") else "已完成",
-        })
+        return json_result(
+            {
+                "task_id": task_id,
+                "async": bool(dispatched.get("async")),
+                "message": "已提交多策略回測" if dispatched.get("async") else "已完成",
+            }
+        )
     except Exception as e:
         return error_result(str(e))
 
@@ -204,29 +226,38 @@ BACKTEST_TOOLS: list[ToolSpec] = [
     ToolSpec(
         name="sq_run_backtest",
         description="提交單股單策略進階回測（異步）。完成後用 sq_get_task 查 task_id。",
-        input_schema=build_input_schema({
-            "code": {"type": "string", "description": "6 位 A 股代碼"},
-            "strategy": {"type": "string", "description": "策略 key，默認 dual_ma"},
-            "timeframe": {"type": "string", "description": "1d / 1h / 1m"},
-            "cash": {"type": "number", "description": "初始資金"},
-            "force_refresh": {"type": "boolean", "description": "忽略緩存強制重算"},
-        }, required=["code"]),
+        input_schema=build_input_schema(
+            {
+                "code": {"type": "string", "description": "6 位 A 股代碼"},
+                "strategy": {"type": "string", "description": "策略 key，默認 dual_ma"},
+                "timeframe": {"type": "string", "description": "1d / 1h / 1m"},
+                "cash": {"type": "number", "description": "初始資金"},
+                "force_refresh": {"type": "boolean", "description": "忽略緩存強制重算"},
+            },
+            required=["code"],
+        ),
         handler=handle_sq_run_backtest,
     ),
     ToolSpec(
         name="sq_run_multi_backtest",
         description="對單股運行全部內置策略對比（異步，耗時較長）。",
-        input_schema=build_input_schema({
-            "code": {"type": "string", "description": "6 位 A 股代碼"},
-        }, required=["code"]),
+        input_schema=build_input_schema(
+            {
+                "code": {"type": "string", "description": "6 位 A 股代碼"},
+            },
+            required=["code"],
+        ),
         handler=handle_sq_run_multi_backtest,
     ),
     ToolSpec(
         name="sq_get_task",
         description="查詢回測/下載等異步任務的進度與結果摘要。",
-        input_schema=build_input_schema({
-            "task_id": {"type": "string", "description": "任務 ID"},
-        }, required=["task_id"]),
+        input_schema=build_input_schema(
+            {
+                "task_id": {"type": "string", "description": "任務 ID"},
+            },
+            required=["task_id"],
+        ),
         handler=handle_sq_get_task,
     ),
 ]

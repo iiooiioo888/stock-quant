@@ -1,4 +1,5 @@
 """股票與市場"""
+
 import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
@@ -15,10 +16,12 @@ router = APIRouter()
 
 # ====== 股票庫 ======
 
+
 @router.get("/api/stock-universe/stats")
 async def stock_universe_stats():
     """股票庫統計"""
     from src.core.stock_universe import get_universe_stats
+
     return get_universe_stats()
 
 
@@ -114,6 +117,7 @@ async def stock_universe_enrich_intros(
 
 
 # ====== 股票 Logo（下載至 data/stock_logos/，API 僅讀本地） ======
+
 
 def _stock_logo_response(code: str, market: str = "", name: str = "") -> Response:
     from src.core.stock_logo import read_cached_logo, schedule_logo_fetch
@@ -216,6 +220,7 @@ async def sync_stock_logos(
 
 
 # ====== 股票 ======
+
 
 @router.get("/api/stocks")
 async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
@@ -338,7 +343,9 @@ def _compare_series_stats(closes: list) -> dict:
 
         vol_pct = round(math.sqrt(var) * math.sqrt(252) * 100, 2)
     n = max(len(daily), 1)
-    annual_return_pct = round(((last / base) ** (252 / n) - 1) * 100, 2) if base > 0 else 0.0
+    annual_return_pct = (
+        round(((last / base) ** (252 / n) - 1) * 100, 2) if base > 0 else 0.0
+    )
     return {
         "total_return_pct": total_return_pct,
         "annual_return_pct": annual_return_pct,
@@ -426,7 +433,9 @@ def _compare_beta_alpha(stock_rets: list[float], index_rets: list[float]) -> dic
     }
 
 
-def _compare_align_to_dates(prices_by_date: dict[str, float], anchor_dates: list[str]) -> tuple[list[str], list[float]]:
+def _compare_align_to_dates(
+    prices_by_date: dict[str, float], anchor_dates: list[str]
+) -> tuple[list[str], list[float]]:
     """按 anchor 日期對齊指數/標的收盤價（前向填充）"""
     if not anchor_dates:
         return [], []
@@ -446,7 +455,9 @@ def _compare_align_to_dates(prices_by_date: dict[str, float], anchor_dates: list
     return out_dates, out_prices
 
 
-def _load_compare_index_overlay(index_code: str, anchor_dates: list[str], days: int) -> dict | None:
+def _load_compare_index_overlay(
+    index_code: str, anchor_dates: list[str], days: int
+) -> dict | None:
     """載入指數序列並對齊至標的日期軸"""
     index_code = _normalize_compare_code(index_code)
     if index_code not in COMPARE_INDEXES or not anchor_dates:
@@ -602,7 +613,11 @@ async def compare_stocks(
     bench_code = _normalize_compare_code(benchmark) if benchmark else None
     if bench_code and bench_code not in result and result:
         bench_code = next(iter(result.keys()))
-    excess = _compare_excess_series(result, bench_code) if bench_code and len(result) > 1 else {}
+    excess = (
+        _compare_excess_series(result, bench_code)
+        if bench_code and len(result) > 1
+        else {}
+    )
 
     index_overlay = None
     idx_norm = _normalize_compare_code(index_code) if index_code else None
@@ -618,7 +633,9 @@ async def compare_stocks(
         "missing": missing,
         "loaded": len(result),
         "total": len(codes),
-        "correlation": _compare_correlation_matrix(result) if len(result) >= 2 else None,
+        "correlation": (
+            _compare_correlation_matrix(result) if len(result) >= 2 else None
+        ),
         "benchmark": bench_code,
         "excess_return": excess if excess else None,
         "index_overlay": index_overlay,
@@ -658,7 +675,11 @@ async def get_stock_analysis_page(
     from src.core.local_kline import ensure_daily_kline, normalize_kline_code
     from src.core.market_fetch import build_sparkline_item, df_to_kline_records
     from src.core.result_cache import get_data_version
-    from src.core.stock_basics import build_stock_overview, load_stock_financials, load_stock_profile
+    from src.core.stock_basics import (
+        build_stock_overview,
+        load_stock_financials,
+        load_stock_profile,
+    )
 
     code = normalize_kline_code(code.strip())
     profile = load_stock_profile(code)
@@ -695,7 +716,10 @@ async def get_stock_analysis_page(
             "updated_at": None,
         }
         try:
-            from src.core.signals import get_current_signals_for_codes, score_signal_strength
+            from src.core.signals import (
+                get_current_signals_for_codes,
+                score_signal_strength,
+            )
 
             rows = get_current_signals_for_codes([code])
             row = rows[0] if rows else {}
@@ -781,13 +805,23 @@ async def download_stocks(codes: list[str] = None):
         title=f"下載 {MARKET_NAMES['a_share']}（{len(codes)} 只）",
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同下載任務執行中", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同下載任務執行中",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     if task.get("status") == "completed" and task.get("result"):
-        return {"success": True, "task_id": task_id, "async": False,
-                "from_cache": task.get("from_cache"), "result": task.get("result")}
+        return {
+            "success": True,
+            "task_id": task_id,
+            "async": False,
+            "from_cache": task.get("from_cache"),
+            "result": task.get("result"),
+        }
 
     return dispatch_async_task(
         task_id,
@@ -809,8 +843,13 @@ async def incremental_update(codes: list[str] = None, force: bool = False):
         title=f"增量更新 A 股（{len(task_params['codes'])} 只）",
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同增量任務執行中", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同增量任務執行中",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     return dispatch_async_task(
@@ -820,6 +859,7 @@ async def incremental_update(codes: list[str] = None, force: bool = False):
 
 
 # ====== 多市場支持 ======
+
 
 @router.get("/api/markets")
 async def list_markets():
@@ -841,18 +881,24 @@ async def list_markets():
     # 全球市場
     catalog = get_market_catalog()
     for key, cat in catalog.items():
-        available[key] = {"name": cat["name"], "icon": cat["icon"], "description": f"{len(cat['symbols'])} 個標的"}
+        available[key] = {
+            "name": cat["name"],
+            "icon": cat["icon"],
+            "description": f"{len(cat['symbols'])} 個標的",
+        }
 
     result = []
     for mkt_key, info in available.items():
         count = next((m["count"] for m in markets if m["market"] == mkt_key), 0)
-        result.append({
-            "market": mkt_key,
-            "name": info.get("name", mkt_key),
-            "icon": info.get("icon", ""),
-            "description": info.get("description", ""),
-            "data_count": count,
-        })
+        result.append(
+            {
+                "market": mkt_key,
+                "name": info.get("name", mkt_key),
+                "icon": info.get("icon", ""),
+                "description": info.get("description", ""),
+                "data_count": count,
+            }
+        )
 
     return {"markets": result}
 
@@ -870,24 +916,34 @@ async def list_market_symbols(market: str):
     if market == "crypto":
         symbols = get_crypto_symbols()
         existing = set(load_all_codes_by_market("crypto"))
-        result = [{"code": k, "name": v, "has_data": k in existing} for k, v in symbols.items()]
+        result = [
+            {"code": k, "name": v, "has_data": k in existing}
+            for k, v in symbols.items()
+        ]
         return {"market": market, "symbols": result, "total": len(result)}
 
     elif market == "forex":
         pairs = get_forex_pairs()
         existing = set(load_all_codes_by_market("forex"))
-        result = [{"code": k, "name": v, "has_data": k in existing} for k, v in pairs.items()]
+        result = [
+            {"code": k, "name": v, "has_data": k in existing} for k, v in pairs.items()
+        ]
         return {"market": market, "symbols": result, "total": len(result)}
 
     elif market in catalog:
         cat = catalog[market]
         existing = set(load_all_codes_by_market(market))
-        result = [{"code": k, "name": v, "has_data": k in existing} for k, v in cat["symbols"].items()]
+        result = [
+            {"code": k, "name": v, "has_data": k in existing}
+            for k, v in cat["symbols"].items()
+        ]
         return {"market": market, "symbols": result, "total": len(result)}
 
     else:
         codes = load_all_codes_by_market("a_share")
-        result = [{"code": c, "name": STOCK_NAMES.get(c, c), "has_data": True} for c in codes]
+        result = [
+            {"code": c, "name": STOCK_NAMES.get(c, c), "has_data": True} for c in codes
+        ]
         return {"market": market, "symbols": result, "total": len(result)}
 
 
@@ -925,8 +981,13 @@ async def download_market_data(market: str, body: list | dict | None = None):
         title=f"下載 {market_name}（{len(codes)} 個標的）",
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "相同下載任務執行中", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同下載任務執行中",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     return dispatch_async_task(
@@ -944,8 +1005,13 @@ async def download_all_markets():
     task_params = {"scope": "all_markets"}
     task = create_task("data_download_all", task_params, title="下載全市場數據")
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True,
-                "message": "全市場下載任務執行中", "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "全市場下載任務執行中",
+            "async": True,
+        }
 
     task_id = task["task_id"]
     return dispatch_async_task(
@@ -959,6 +1025,7 @@ async def get_market_realtime(market: str, symbols: str = None):
     """獲取指定市場的實時行情"""
     if market == "crypto":
         from src.core.crypto.service import CryptoDisabledError, get_crypto_service
+
         try:
             sym_list = symbols.split(",") if symbols else None
             data = get_crypto_service().get_realtime(sym_list)
@@ -968,12 +1035,14 @@ async def get_market_realtime(market: str, symbols: str = None):
 
     elif market == "forex":
         from src.core.forex import get_forex_multi_realtime
+
         sym_list = symbols.split(",") if symbols else settings.forex_watchlist
         data = get_forex_multi_realtime(sym_list)
         return {"market": "forex", "data": data}
 
     elif market in ("us_stock", "hk_stock", "index", "etf", "commodity"):
         from src.core.global_market import get_global_realtime, MARKET_CATALOG
+
         if symbols:
             sym_list = symbols.split(",")
         else:
@@ -990,6 +1059,7 @@ async def get_market_realtime(market: str, symbols: str = None):
 async def get_crypto_kline_compat(symbol: str = "BTCUSDT", days: int = 30):
     """獲取加密貨幣 K 線數據（相容路由，委派 CryptoService）"""
     from src.core.crypto.service import CryptoDisabledError, get_crypto_service
+
     try:
         return get_crypto_service().get_kline(symbol=symbol, days=days)
     except CryptoDisabledError as e:

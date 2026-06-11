@@ -1,4 +1,5 @@
 """自動生成預警規則"""
+
 from unittest.mock import patch
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 @pytest.fixture
 def auth_headers(client):
     import uuid
+
     pw = "alert_auto_pw_2026"
     username = f"alertauto_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})
@@ -18,7 +20,9 @@ class TestAlertRulesAuto:
     def test_suggest_without_auth(self, client):
         with patch(
             "src.core.alert_rules_auto.fetch_latest_prices",
-            return_value={"000001": {"price": 10.0, "name": "平安銀行", "source": "test"}},
+            return_value={
+                "000001": {"price": 10.0, "name": "平安銀行", "source": "test"}
+            },
         ):
             resp = client.get("/api/alerts/rules/suggest?code=000001")
         assert resp.status_code == 200

@@ -1,6 +1,7 @@
 """
 實時行情獲取模塊（多源備選，增強容錯）
 """
+
 import time
 
 import akshare as ak
@@ -12,9 +13,11 @@ from src.utils.logger import logger
 
 MAX_RETRIES = 2
 _REQ_SESSION = requests.Session()
-_REQ_SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-})
+_REQ_SESSION.headers.update(
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+)
 
 
 # ============================================================
@@ -56,6 +59,7 @@ def _fetch_em_bid_ask(code: str) -> dict | None:
 _spot_cache: dict = {}
 _spot_cache_ts: float = 0
 
+
 def _fetch_em_spot_batch(codes: list[str]) -> dict[str, dict]:
     """
     東方財富全量行情（一次請求拿全部 A 股，緩存 10 秒）。
@@ -73,11 +77,18 @@ def _fetch_em_spot_batch(codes: list[str]) -> dict[str, dict]:
         if df.empty:
             return {}
         col_map = {
-            "代码": "code", "名称": "name", "最新价": "price",
-            "涨跌幅": "change_pct", "涨跌额": "change",
-            "成交量": "volume", "成交额": "amount",
-            "今开": "open", "最高": "high", "最低": "low",
-            "昨收": "prev_close", "换手率": "turnover",
+            "代码": "code",
+            "名称": "name",
+            "最新价": "price",
+            "涨跌幅": "change_pct",
+            "涨跌额": "change",
+            "成交量": "volume",
+            "成交额": "amount",
+            "今开": "open",
+            "最高": "high",
+            "最低": "low",
+            "昨收": "prev_close",
+            "换手率": "turnover",
             "量比": "volume_ratio",
         }
         df = df.rename(columns=col_map)
@@ -85,8 +96,19 @@ def _fetch_em_spot_batch(codes: list[str]) -> dict[str, dict]:
         # 向量化處理：比 iterrows() 快 10-50 倍
         _spot_cache = {}
         code_series = df["code"].astype(str)
-        for col in ("price", "change_pct", "change", "volume", "amount",
-                     "open", "high", "low", "prev_close", "turnover", "volume_ratio"):
+        for col in (
+            "price",
+            "change_pct",
+            "change",
+            "volume",
+            "amount",
+            "open",
+            "high",
+            "low",
+            "prev_close",
+            "turnover",
+            "volume_ratio",
+        ):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
@@ -235,6 +257,7 @@ def _fetch_tencent(code: str) -> dict | None:
 # ============================================================
 _EM_SECID_MAP = {}
 
+
 def _fetch_em_push2(code: str) -> dict | None:
     """東財 push2 接口（比 akshare 更快，直接 HTTP）"""
     try:
@@ -302,6 +325,7 @@ def fetch_one_realtime(code: str) -> dict | None:
     # 源 1：Yahoo Finance
     try:
         from src.core.yahoo_finance import fetch_a_share_realtime
+
         result = fetch_a_share_realtime(code)
         if result and result.get("price", 0) > 0:
             return result
@@ -353,6 +377,7 @@ def fetch_realtime(codes: list[str]) -> pd.DataFrame:
 
     # 批量接口不足，逐個查詢（添加隨機延遲防止被識別為爬蟲）
     import random
+
     rows = []
     for code in codes:
         row = fetch_one_realtime(code)

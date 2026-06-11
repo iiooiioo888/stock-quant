@@ -1,12 +1,14 @@
 """
 API 煙霧測試 — CI 內快速驗證核心端點（等同 test_all.sh 子集）
 """
+
 import pytest
 
 
 @pytest.fixture
 def auth_headers(client):
     import uuid
+
     pw = "smoke_test_pw_2026"
     username = f"smokeuser_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})
@@ -158,7 +160,11 @@ class TestSmokeAPI:
         assert packs["hstech"].get("catalog_count", 0) >= 10
         assert data.get("theme_packs_locked") is True
         stock = next(
-            (x for x in (data.get("instruments") or []) if x.get("symbol") == "0700.HK"),
+            (
+                x
+                for x in (data.get("instruments") or [])
+                if x.get("symbol") == "0700.HK"
+            ),
             None,
         )
         if stock:

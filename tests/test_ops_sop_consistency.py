@@ -1,4 +1,5 @@
 """CLI、REST、MCP 共用判定一致性。"""
+
 import json
 
 from fastapi.testclient import TestClient

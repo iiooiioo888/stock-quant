@@ -7,9 +7,10 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("bollinger_squeeze", "布林帶收窄突破策略")
 class BollingerSqueezeStrategy(OrderManagedStrategy):
     """布林带收窄策略 — 布林带宽收窄后突破，预期大行情"""
+
     params = (
-        ("period", 20),           # 布林带周期
-        ("devfactor", 2.0),       # 标准差倍数
+        ("period", 20),  # 布林带周期
+        ("devfactor", 2.0),  # 标准差倍数
         ("squeeze_threshold", 0.03),  # 带宽收窄阈值（带宽/中轨 < 此值视为收窄）
         ("squeeze_lookback", 5),  # 收窄持续判断回看期
     )
@@ -69,4 +70,3 @@ class BollingerSqueezeStrategy(OrderManagedStrategy):
                     self.order = self.buy(size=shares)
             elif self.position and price > top:
                 self.order = self.sell()
-

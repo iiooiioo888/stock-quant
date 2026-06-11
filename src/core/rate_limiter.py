@@ -4,6 +4,7 @@ Redis 滑動窗口限流器 — 替代 app.py 的進程內存限流。
 當 Redis 不可用時自動降級到進程內存（與現有行為一致）。
 跨實例共享限流狀態，支持多 worker 部署。
 """
+
 from __future__ import annotations
 
 import threading
@@ -30,9 +31,11 @@ def _get_redis():
         _initialized = True
         try:
             from src.config import settings
+
             if not getattr(settings, "redis_enabled", False):
                 return None
             import redis as redis_lib
+
             url = getattr(settings, "redis_url", "redis://localhost:6379/0")
             pwd = getattr(settings, "redis_password", "")
             _redis_client = redis_lib.from_url(
@@ -123,13 +126,13 @@ def check_rate_limit(
 ) -> tuple[bool, int]:
     """
     滑動窗口限流檢查。
-    
+
     Args:
         client_ip: 客戶端 IP
         limit: 窗口內最大請求數
         window_sec: 窗口大小（秒）
         namespace: 可選命名空間（如 "auth"）
-    
+
     Returns:
         (allowed: bool, retry_after: int)
     """
@@ -150,7 +153,9 @@ def check_rate_limit(
             return allowed, max(retry_after, 0)
         else:
             # script load 失敗，用 EVAL 代替
-            result = r.eval(_SLIDING_WINDOW_LUA, 1, key, str(now), str(window_sec), str(limit))
+            result = r.eval(
+                _SLIDING_WINDOW_LUA, 1, key, str(now), str(window_sec), str(limit)
+            )
             return bool(result[0]), max(int(result[1]), 0)
     except Exception as e:
         logger.debug(f"Redis rate limit 失敗，降級到內存: {e}")
@@ -188,6 +193,7 @@ def reset(client_ip: str, namespace: str = "") -> None:
 # 進程內存降級（兼容現有行為）
 # ---------------------------------------------------------------------------
 
+
 class _MemoryRateLimiter:
     """有界滑動窗口限流器（進程內存，線程安全）。"""
 
@@ -201,7 +207,9 @@ class _MemoryRateLimiter:
         self._last_full_cleanup = time.time()
         self._lock = threading.Lock()
 
-    def check(self, client_ip: str, limit: int, window_sec: int = 60) -> tuple[bool, int]:
+    def check(
+        self, client_ip: str, limit: int, window_sec: int = 60
+    ) -> tuple[bool, int]:
         now = time.time()
         window_start = now - window_sec
 
@@ -246,7 +254,9 @@ class _MemoryRateLimiter:
 _memory_limiters: dict[str, _MemoryRateLimiter] = {}
 
 
-def _memory_check(client_ip: str, limit: int, window_sec: int, namespace: str) -> tuple[bool, int]:
+def _memory_check(
+    client_ip: str, limit: int, window_sec: int, namespace: str
+) -> tuple[bool, int]:
     key = namespace or "default"
     if key not in _memory_limiters:
         _memory_limiters[key] = _MemoryRateLimiter()

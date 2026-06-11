@@ -1,4 +1,5 @@
 """CLI commands: strategy"""
+
 from datetime import datetime
 
 import numpy as np
@@ -24,8 +25,6 @@ def cmd_strategy_create(args):
     print(f"✅ 策略模板已創建: {result_path}")
     print(f"   策略名稱: {args.name}")
     print(f"   編輯文件後運行: python main.py strategy list")
-
-
 
 
 def cmd_strategy_list(args):
@@ -61,8 +60,6 @@ def cmd_strategy_list(args):
     print(f"\n共 {len(STRATEGIES) + len(user_strategies)} 個策略")
 
 
-
-
 def cmd_strategy_leaderboard(args):
     """顯示策略排行榜"""
     from src.core.leaderboard import update_leaderboard, get_leaderboard
@@ -72,7 +69,9 @@ def cmd_strategy_leaderboard(args):
     update_leaderboard(codes=codes)
 
     sort_by = args.sort_by if hasattr(args, "sort_by") and args.sort_by else "sharpe"
-    results = get_leaderboard(sort_by=sort_by, limit=args.limit if hasattr(args, "limit") else 20)
+    results = get_leaderboard(
+        sort_by=sort_by, limit=args.limit if hasattr(args, "limit") else 20
+    )
 
     if not results:
         print("暫無排行榜數據")
@@ -81,16 +80,30 @@ def cmd_strategy_leaderboard(args):
     print(f"\n{'='*80}")
     print(f"🏆 策略排行榜 (按 {sort_by} 排序)")
     print(f"{'='*80}")
-    print(f"{'排名':>4} {'策略':<16} {'類型':<8} {'股票':<10} {'夏普':>8} {'收益率':>10} {'回撤':>10} {'勝率':>8}")
+    print(
+        f"{'排名':>4} {'策略':<16} {'類型':<8} {'股票':<10} {'夏普':>8} {'收益率':>10} {'回撤':>10} {'勝率':>8}"
+    )
     print(f"{'-'*4} {'-'*16} {'-'*8} {'-'*10} {'-'*8} {'-'*10} {'-'*10} {'-'*8}")
 
     for r in results:
         source_icon = "🔧" if r.get("source") == "builtin" else "👤"
         sharpe = f"{r.get('sharpe_ratio', 0):.2f}" if r.get("sharpe_ratio") else "N/A"
-        ret = f"{r.get('total_return_pct', 0):.2f}%" if r.get("total_return_pct") is not None else "N/A"
-        dd = f"{r.get('max_drawdown_pct', 0):.2f}%" if r.get("max_drawdown_pct") is not None else "N/A"
-        wr = f"{r.get('win_rate_pct', 0):.1f}%" if r.get("win_rate_pct") is not None else "N/A"
-        print(f"{r.get('rank', 0):>4} {r.get('strategy_name', ''):<16} {source_icon:<8} "
-              f"{r.get('code', ''):<10} {sharpe:>8} {ret:>10} {dd:>10} {wr:>8}")
-
-
+        ret = (
+            f"{r.get('total_return_pct', 0):.2f}%"
+            if r.get("total_return_pct") is not None
+            else "N/A"
+        )
+        dd = (
+            f"{r.get('max_drawdown_pct', 0):.2f}%"
+            if r.get("max_drawdown_pct") is not None
+            else "N/A"
+        )
+        wr = (
+            f"{r.get('win_rate_pct', 0):.1f}%"
+            if r.get("win_rate_pct") is not None
+            else "N/A"
+        )
+        print(
+            f"{r.get('rank', 0):>4} {r.get('strategy_name', ''):<16} {source_icon:<8} "
+            f"{r.get('code', ''):<10} {sharpe:>8} {ret:>10} {dd:>10} {wr:>8}"
+        )

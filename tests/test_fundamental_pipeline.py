@@ -1,4 +1,5 @@
 """財報與數據管線單元測試"""
+
 from datetime import date, timedelta
 
 from src.core.data_pipeline import (
@@ -7,7 +8,11 @@ from src.core.data_pipeline import (
     is_stale,
     parse_ymd,
 )
-from src.core.fundamental import fundamentals_row_to_fin, get_fundamentals, load_fundamentals_db
+from src.core.fundamental import (
+    fundamentals_row_to_fin,
+    get_fundamentals,
+    load_fundamentals_db,
+)
 
 
 class TestDataPipeline:
@@ -31,12 +36,14 @@ class TestDataPipeline:
 
 class TestFundamentals:
     def test_row_to_fin(self):
-        fin = fundamentals_row_to_fin({
-            "code": "600519",
-            "pe_ttm": 25.0,
-            "pb": 8.0,
-            "update_date": "2024-01-01",
-        })
+        fin = fundamentals_row_to_fin(
+            {
+                "code": "600519",
+                "pe_ttm": 25.0,
+                "pb": 8.0,
+                "update_date": "2024-01-01",
+            }
+        )
         assert fin.get("has_data") is True
         assert fin.get("pe_ttm") == 25.0
 
@@ -45,4 +52,8 @@ class TestFundamentals:
         out = get_fundamentals("600519", max_age_days=365, force_refresh=False)
         assert isinstance(out, dict)
         if row:
-            assert out.get("code") == "600519" or out == row or out.get("pe_ttm") is not None
+            assert (
+                out.get("code") == "600519"
+                or out == row
+                or out.get("pe_ttm") is not None
+            )

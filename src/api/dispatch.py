@@ -1,4 +1,5 @@
 """異步任務提交輔助（供各 API router 共用）"""
+
 from src.utils.logger import logger
 
 
@@ -28,8 +29,12 @@ def dispatch_async_task(
         if cache_namespace and cache_params is not None:
             try:
                 from src.core.result_cache import set_cached_compute
+
                 set_cached_compute(
-                    cache_namespace, cache_params, result, code=cache_code,
+                    cache_namespace,
+                    cache_params,
+                    result,
+                    code=cache_code,
                 )
             except Exception as e:
                 logger.debug(f"緩存寫入跳過: {e}")
@@ -38,6 +43,7 @@ def dispatch_async_task(
     if cache_namespace and cache_params is not None:
         from src.core.task_manager import get_task
         import src.core.task_manager as tm
+
         with tm._lock:
             t = tm._tasks.get(task_id)
             if t is not None:

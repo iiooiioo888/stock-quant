@@ -1,4 +1,5 @@
 """signals_heatmap 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -38,9 +39,12 @@ async def run_heatmap(
         raise HTTPException(400, "請選擇參數 X 和參數 Y（不可為空）")
 
     cache_params = {
-        "code": code, "strategy": strategy,
-        "param_x": param_x, "param_y": param_y,
-        "grid_size": grid_size, "objective": objective,
+        "code": code,
+        "strategy": strategy,
+        "param_x": param_x,
+        "param_y": param_y,
+        "grid_size": grid_size,
+        "objective": objective,
     }
     cached = get_cached_compute("heatmap", cache_params, code=code)
     if cached is not None:
@@ -48,17 +52,18 @@ async def run_heatmap(
 
     try:
         result = param_heatmap(
-            code=code, strategy_name=strategy,
-            param_x=param_x, param_y=param_y,
-            grid_size=grid_size, objective=objective,
+            code=code,
+            strategy_name=strategy,
+            param_x=param_x,
+            param_y=param_y,
+            grid_size=grid_size,
+            objective=objective,
         )
         set_cached_compute("heatmap", cache_params, result, code=code)
         return {"success": True, "result": result, "from_cache": False}
     except Exception as e:
         logger.error(f"熱力圖失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.get("/api/heatmap/params/{strategy}")
@@ -88,11 +93,11 @@ async def get_strategy_params(strategy: str):
 # ====== 股票篩選 ======
 
 
-
 @router.get("/api/signals/current")
 async def get_current_signals():
     """獲取所有監控股票的當前信號"""
     from src.api.routers.data_ops import _fetch_current_signals
+
     try:
         signals_data = _fetch_current_signals()
         return {"success": True, "signals": signals_data, "total": len(signals_data)}
@@ -101,24 +106,31 @@ async def get_current_signals():
         raise HTTPException(500, str(e))
 
 
-
-
 @router.get("/api/signals/trading")
 async def get_trading_signals():
     """儀表盤交易信號（與 current 同源，兼容舊前端路由）"""
     from src.api.routers.data_ops import _fetch_current_signals
+
     try:
         signals_data = _fetch_current_signals()
-        return {"success": True, "signals": signals_data, "data": signals_data, "total": len(signals_data)}
+        return {
+            "success": True,
+            "signals": signals_data,
+            "data": signals_data,
+            "total": len(signals_data),
+        }
     except Exception as e:
         logger.error(f"獲取交易信號失敗: {e}")
         raise HTTPException(500, str(e))
 
 
-
-
 @router.get("/api/signals/history")
-async def get_signal_history(code: str = None, strategy: str = None, days: int = 30, user = Depends(get_current_user)):
+async def get_signal_history(
+    code: str = None,
+    strategy: str = None,
+    days: int = 30,
+    user=Depends(get_current_user),
+):
     """獲取歷史信號記錄（登錄用戶優先看自己的數據）"""
     from src.core.signals import get_historical_signals
     from src.core.db import get_signal_logs
@@ -126,7 +138,9 @@ async def get_signal_history(code: str = None, strategy: str = None, days: int =
     user_id = user.id if user else None
     try:
         if code:
-            logs = get_signal_logs(code=code, strategy=strategy, days=days, user_id=user_id)
+            logs = get_signal_logs(
+                code=code, strategy=strategy, days=days, user_id=user_id
+            )
             if not logs:
                 logs = get_historical_signals(code=code, days=days, strategy=strategy)
             return {"success": True, "signals": logs, "total": len(logs)}
@@ -136,8 +150,6 @@ async def get_signal_history(code: str = None, strategy: str = None, days: int =
     except Exception as e:
         logger.error(f"獲取歷史信號失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.get("/api/signals/strength")
@@ -169,7 +181,6 @@ async def get_signal_strength(code: str = None):
 # ====== 數據導出 ======
 
 
-
 @router.get("/api/signals/backtest")
 async def signals_backtest(
     codes: str = None,
@@ -191,8 +202,6 @@ async def signals_backtest(
         raise HTTPException(500, str(e))
 
 
-
-
 @router.get("/api/signals/heatmap")
 async def signals_heatmap(
     codes: str = None,
@@ -209,8 +218,6 @@ async def signals_heatmap(
     except Exception as e:
         logger.error(f"信號熱力圖失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.get("/api/signals/ranking")
@@ -234,6 +241,3 @@ async def signals_ranking(
 
 
 # ====== 增強回測分析 API ======
-
-
-

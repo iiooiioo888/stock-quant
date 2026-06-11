@@ -1,4 +1,5 @@
 """外部 HTTP 防護與 Mock 輔助（P1）。"""
+
 from __future__ import annotations
 
 from typing import Any, Callable

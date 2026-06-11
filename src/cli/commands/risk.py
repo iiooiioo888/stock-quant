@@ -1,4 +1,5 @@
 """CLI commands: risk"""
+
 from datetime import datetime
 
 import numpy as np
@@ -60,6 +61,7 @@ def cmd_risk(args):
             win_rate = args.win_rate
             # 從最近回測中獲取盈虧數據
             from src.core.db import get_backtest_history
+
             avg_win = 1.0
             avg_loss = 1.0
             code = args.code
@@ -74,7 +76,9 @@ def cmd_risk(args):
                     print(f"  從回測歷史獲取盈虧比: {avg_ratio:.2f}")
 
             value = sizer.kelly_position(win_rate, avg_win, avg_loss)
-            kelly_f = (win_rate * avg_win - (1 - win_rate)) / avg_win if avg_win > 0 else 0
+            kelly_f = (
+                (win_rate * avg_win - (1 - win_rate)) / avg_win if avg_win > 0 else 0
+            )
             print(f"  勝率: {win_rate:.1%}")
             print(f"  盈虧比: {avg_win / avg_loss:.2f}")
             print(f"  Kelly 比例: {kelly_f:.4f}")
@@ -115,11 +119,13 @@ def cmd_risk(args):
         positions = []
         for code in settings.watchlist:
             vol = calculate_volatility(code)
-            positions.append({
-                "code": code,
-                "value": 20000,  # 假設每隻 2 萬
-                "vol": vol if vol > 0 else 0.20,
-            })
+            positions.append(
+                {
+                    "code": code,
+                    "value": 20000,  # 假設每隻 2 萬
+                    "vol": vol if vol > 0 else 0.20,
+                }
+            )
 
         portfolio = budget.portfolio_risk_budget(positions)
         suggestions = budget.suggest_rebalance(positions)
@@ -136,8 +142,14 @@ def cmd_risk(args):
         print(f"\n{'代碼':>8} {'權重':>8} {'波動率':>8} {'風險貢獻':>10} {'狀態':>8}")
         print("-" * 46)
         for p in portfolio.get("positions", []):
-            check = budget.check_position(p["value"], portfolio["total_value"], p["vol"])
-            status_icon = "✅" if check["status"] == "正常" else "⚠️" if check["status"] == "警告" else "❌"
+            check = budget.check_position(
+                p["value"], portfolio["total_value"], p["vol"]
+            )
+            status_icon = (
+                "✅"
+                if check["status"] == "正常"
+                else "⚠️" if check["status"] == "警告" else "❌"
+            )
             print(
                 f"{p['code']:>8} {p['weight_pct']:>7.1f}% {p['vol']:>7.4f} "
                 f"{p['risk_contribution']:>9.4f} {status_icon}{check['status']:>6}"
@@ -145,8 +157,14 @@ def cmd_risk(args):
 
         print(f"\n再平衡建議:")
         for s in suggestions:
-            action_icon = "🟢" if s["action"] == "加倉" else "🔴" if s["action"] == "減倉" else "⚪"
-            print(f"  {action_icon} {s['code']}: {s['action']}  調整: ¥{s['adjustment']:,.0f}")
+            action_icon = (
+                "🟢"
+                if s["action"] == "加倉"
+                else "🔴" if s["action"] == "減倉" else "⚪"
+            )
+            print(
+                f"  {action_icon} {s['code']}: {s['action']}  調整: ¥{s['adjustment']:,.0f}"
+            )
 
     elif args.risk_action == "drawdown":
         # 回撤保護分析
@@ -174,6 +192,7 @@ def cmd_risk(args):
         elif args.code:
             # 用回測結果模擬
             from src.core.backtest import run_backtest
+
             print(f"正在回測 {args.code} 以獲取淨值序列...")
             result = run_backtest(args.code, strategy_name="dual_ma")
             nav_data = result.get("nav", [])
@@ -197,12 +216,16 @@ def cmd_risk(args):
         print(f"  實際最大回撤: {result['max_drawdown_pct']:.2f}%")
         print(f"  最大回撤日期: {result['max_dd_date']}")
         print(f"  熔斷觸發次數: {result['total_triggers']}")
-        print(f"  會觸發停止交易: {'是 ❌' if result['would_stop_trading'] else '否 ✅'}")
+        print(
+            f"  會觸發停止交易: {'是 ❌' if result['would_stop_trading'] else '否 ✅'}"
+        )
 
         breakers = result.get("circuit_breakers", [])
         if breakers:
             print(f"\n熔斷觸發詳情:")
-            print(f"{'觸發日期':<12} {'回撤%':>8} {'峰值日期':<12} {'峰值':>12} {'觸發值':>12} {'恢復日期':<12} {'恢復天數':>8}")
+            print(
+                f"{'觸發日期':<12} {'回撤%':>8} {'峰值日期':<12} {'峰值':>12} {'觸發值':>12} {'恢復日期':<12} {'恢復天數':>8}"
+            )
             print("-" * 80)
             for b in breakers:
                 recovery = b.get("recovery_date", "未恢復") or "未恢復"
@@ -218,9 +241,9 @@ def cmd_risk(args):
     else:
         print("用法:")
         print("  python main.py risk position-size --capital 100000 --atr 2.5")
-        print("  python main.py risk position-size --capital 100000 --code 600519 --method atr")
+        print(
+            "  python main.py risk position-size --capital 100000 --code 600519 --method atr"
+        )
         print("  python main.py risk budget-check")
         print("  python main.py risk drawdown --nav-file nav.csv")
         print("  python main.py risk drawdown --code 600519")
-
-

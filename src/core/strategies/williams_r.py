@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("williams_r", "威廉指標策略")
 class WilliamsRStrategy(OrderManagedStrategy):
     """威廉指標 %R 超買超賣反轉"""
+
     params = (("period", 14), ("overbought", -20), ("oversold", -80))
 
     def __init__(self):
@@ -22,4 +23,3 @@ class WilliamsRStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif wr_prev <= self.p.overbought and wr > self.p.overbought and self.position:
             self.order = self.sell()
-

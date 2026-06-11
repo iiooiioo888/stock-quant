@@ -1,4 +1,5 @@
 """策略基類與止損/止盈包裝。"""
+
 import backtrader as bt
 
 
@@ -9,7 +10,12 @@ class OrderManagedStrategy(bt.Strategy):
         self.order = None
 
     def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
+        if order.status in [
+            order.Completed,
+            order.Canceled,
+            order.Margin,
+            order.Rejected,
+        ]:
             self.order = None
 
 
@@ -17,16 +23,18 @@ class OrderManagedStrategy(bt.Strategy):
 # 止損/止盈策略包裝器
 # ============================================================
 
+
 class StrategyWithSLTP(bt.Strategy):
     """
     止損/止盈包裝策略。
     包裝任意策略，監控未實現盈虧，自動觸發止損/止盈。
     注意：此策略只負責監控持倉並在觸發條件時賣出，不開新倉。
     """
+
     params = (
-        ("stop_loss_pct", 0),       # 止損百分比 (0 = 不啟用)
-        ("take_profit_pct", 0),     # 止盈百分比 (0 = 不啟用)
-        ("trailing_stop_pct", 0),   # 移動止損 (0 = 不啟用)
+        ("stop_loss_pct", 0),  # 止損百分比 (0 = 不啟用)
+        ("take_profit_pct", 0),  # 止盈百分比 (0 = 不啟用)
+        ("trailing_stop_pct", 0),  # 移動止損 (0 = 不啟用)
     )
 
     def __init__(self):
@@ -38,7 +46,12 @@ class StrategyWithSLTP(bt.Strategy):
         # 只追蹤自己發出的訂單
         if order is not self.sltp_order:
             return
-        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
+        if order.status in [
+            order.Completed,
+            order.Canceled,
+            order.Margin,
+            order.Rejected,
+        ]:
             if order.status == order.Completed and order.isbuy():
                 self.entry_price = order.executed.price
                 self.max_price = order.executed.price

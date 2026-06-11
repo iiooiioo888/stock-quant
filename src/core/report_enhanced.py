@@ -1,6 +1,7 @@
 """
 增強報告模塊 — 全面回測分析報告、多股對比報告、策略分析報告
 """
+
 from datetime import datetime
 
 import numpy as np
@@ -132,29 +133,33 @@ def generate_comparison_report(codes: list, strategy: str) -> dict:
         try:
             bt = run_backtest(code, strategy_name=strategy)
             ta = trade_analysis(bt.get("trade_details", []))
-            results.append({
-                "code": code,
-                "total_return_pct": bt.get("total_return_pct", 0),
-                "annual_return_pct": bt.get("annual_return_pct", 0),
-                "sharpe_ratio": bt.get("sharpe_ratio", 0),
-                "sortino_ratio": bt.get("sortino_ratio", 0),
-                "calmar_ratio": bt.get("calmar_ratio", 0),
-                "max_drawdown_pct": bt.get("max_drawdown_pct", 0),
-                "annual_volatility": bt.get("annual_volatility", 0),
-                "win_rate_pct": bt.get("win_rate_pct", 0),
-                "total_trades": bt.get("total_trades", 0),
-                "profit_factor": ta.get("profit_factor", 0),
-                "expectancy": ta.get("expectancy", 0),
-                "var_95": bt.get("var_95", 0),
-                "nav": bt.get("nav", []),
-                "dates": bt.get("dates", []),
-            })
+            results.append(
+                {
+                    "code": code,
+                    "total_return_pct": bt.get("total_return_pct", 0),
+                    "annual_return_pct": bt.get("annual_return_pct", 0),
+                    "sharpe_ratio": bt.get("sharpe_ratio", 0),
+                    "sortino_ratio": bt.get("sortino_ratio", 0),
+                    "calmar_ratio": bt.get("calmar_ratio", 0),
+                    "max_drawdown_pct": bt.get("max_drawdown_pct", 0),
+                    "annual_volatility": bt.get("annual_volatility", 0),
+                    "win_rate_pct": bt.get("win_rate_pct", 0),
+                    "total_trades": bt.get("total_trades", 0),
+                    "profit_factor": ta.get("profit_factor", 0),
+                    "expectancy": ta.get("expectancy", 0),
+                    "var_95": bt.get("var_95", 0),
+                    "nav": bt.get("nav", []),
+                    "dates": bt.get("dates", []),
+                }
+            )
         except Exception as e:
             logger.error(f"對比報告 {code} 失敗: {e}")
-            results.append({
-                "code": code,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "code": code,
+                    "error": str(e),
+                }
+            )
 
     # 排除失敗的
     valid = [r for r in results if "error" not in r]
@@ -177,8 +182,14 @@ def generate_comparison_report(codes: list, strategy: str) -> dict:
     # 計算平均指標
     avg_metrics = {}
     if valid:
-        for key in ["total_return_pct", "annual_return_pct", "sharpe_ratio",
-                     "sortino_ratio", "max_drawdown_pct", "win_rate_pct"]:
+        for key in [
+            "total_return_pct",
+            "annual_return_pct",
+            "sharpe_ratio",
+            "sortino_ratio",
+            "max_drawdown_pct",
+            "win_rate_pct",
+        ]:
             vals = [r.get(key, 0) for r in valid]
             avg_metrics[f"avg_{key}"] = round(float(np.mean(vals)), 4)
 
@@ -226,7 +237,7 @@ def generate_strategy_report(strategy_name: str, codes: list = None) -> dict:
 
     # 獲取策略默認參數
     default_params = {}
-    if hasattr(strategy_cls, 'params'):
+    if hasattr(strategy_cls, "params"):
         default_params = dict(strategy_cls.params._getpairs())
 
     stock_results = []
@@ -234,19 +245,21 @@ def generate_strategy_report(strategy_name: str, codes: list = None) -> dict:
         try:
             bt = run_backtest(code, strategy_name=strategy_name)
             ta = trade_analysis(bt.get("trade_details", []))
-            stock_results.append({
-                "code": code,
-                "total_return_pct": bt.get("total_return_pct", 0),
-                "annual_return_pct": bt.get("annual_return_pct", 0),
-                "sharpe_ratio": bt.get("sharpe_ratio", 0),
-                "sortino_ratio": bt.get("sortino_ratio", 0),
-                "calmar_ratio": bt.get("calmar_ratio", 0),
-                "max_drawdown_pct": bt.get("max_drawdown_pct", 0),
-                "win_rate_pct": bt.get("win_rate_pct", 0),
-                "total_trades": bt.get("total_trades", 0),
-                "profit_factor": ta.get("profit_factor", 0),
-                "expectancy": ta.get("expectancy", 0),
-            })
+            stock_results.append(
+                {
+                    "code": code,
+                    "total_return_pct": bt.get("total_return_pct", 0),
+                    "annual_return_pct": bt.get("annual_return_pct", 0),
+                    "sharpe_ratio": bt.get("sharpe_ratio", 0),
+                    "sortino_ratio": bt.get("sortino_ratio", 0),
+                    "calmar_ratio": bt.get("calmar_ratio", 0),
+                    "max_drawdown_pct": bt.get("max_drawdown_pct", 0),
+                    "win_rate_pct": bt.get("win_rate_pct", 0),
+                    "total_trades": bt.get("total_trades", 0),
+                    "profit_factor": ta.get("profit_factor", 0),
+                    "expectancy": ta.get("expectancy", 0),
+                }
+            )
         except Exception as e:
             logger.error(f"策略報告 {code}/{strategy_name} 失敗: {e}")
             stock_results.append({"code": code, "error": str(e)})
@@ -257,9 +270,18 @@ def generate_strategy_report(strategy_name: str, codes: list = None) -> dict:
     # 計算平均指標
     avg_metrics = {}
     if valid:
-        for key in ["total_return_pct", "annual_return_pct", "sharpe_ratio",
-                     "sortino_ratio", "calmar_ratio", "max_drawdown_pct",
-                     "win_rate_pct", "total_trades", "profit_factor", "expectancy"]:
+        for key in [
+            "total_return_pct",
+            "annual_return_pct",
+            "sharpe_ratio",
+            "sortino_ratio",
+            "calmar_ratio",
+            "max_drawdown_pct",
+            "win_rate_pct",
+            "total_trades",
+            "profit_factor",
+            "expectancy",
+        ]:
             vals = [r.get(key, 0) for r in valid]
             avg_metrics[f"avg_{key}"] = round(float(np.mean(vals)), 4)
             avg_metrics[f"std_{key}"] = round(float(np.std(vals)), 4)
@@ -321,38 +343,48 @@ def _generate_param_suggestions(strategy_name: str, valid_results: list) -> list
     avg_pf = np.mean([r.get("profit_factor", 0) for r in valid_results])
 
     if avg_dd > 20:
-        suggestions.append({
-            "type": "risk",
-            "level": "high",
-            "message": f"平均最大回撤 {avg_dd:.1f}% 偏高，建議設置 10-15% 止損或使用移動止損",
-        })
+        suggestions.append(
+            {
+                "type": "risk",
+                "level": "high",
+                "message": f"平均最大回撤 {avg_dd:.1f}% 偏高，建議設置 10-15% 止損或使用移動止損",
+            }
+        )
 
     if avg_wr < 35:
-        suggestions.append({
-            "type": "win_rate",
-            "level": "medium",
-            "message": f"平均勝率 {avg_wr:.1f}% 偏低，建議加入趨勢過濾器（如 MA200）減少假信號",
-        })
+        suggestions.append(
+            {
+                "type": "win_rate",
+                "level": "medium",
+                "message": f"平均勝率 {avg_wr:.1f}% 偏低，建議加入趨勢過濾器（如 MA200）減少假信號",
+            }
+        )
 
     if avg_sharpe < 0.5:
-        suggestions.append({
-            "type": "performance",
-            "level": "medium",
-            "message": f"平均夏普 {avg_sharpe:.2f} 不理想，建議運行參數優化: python main.py optimize <code> {strategy_name}",
-        })
+        suggestions.append(
+            {
+                "type": "performance",
+                "level": "medium",
+                "message": f"平均夏普 {avg_sharpe:.2f} 不理想，建議運行參數優化: python main.py optimize <code> {strategy_name}",
+            }
+        )
 
     if avg_pf < 1.0:
-        suggestions.append({
-            "type": "profit_factor",
-            "level": "high",
-            "message": f"平均盈虧比 {avg_pf:.2f} < 1，策略整體虧損，需要重新設計進出場邏輯",
-        })
+        suggestions.append(
+            {
+                "type": "profit_factor",
+                "level": "high",
+                "message": f"平均盈虧比 {avg_pf:.2f} < 1，策略整體虧損，需要重新設計進出場邏輯",
+            }
+        )
     elif avg_pf < 1.5:
-        suggestions.append({
-            "type": "profit_factor",
-            "level": "low",
-            "message": f"平均盈虧比 {avg_pf:.2f} 尚可，建議加大盈利倉位或縮小止損以提升盈虧比",
-        })
+        suggestions.append(
+            {
+                "type": "profit_factor",
+                "level": "low",
+                "message": f"平均盈虧比 {avg_pf:.2f} 尚可，建議加大盈利倉位或縮小止損以提升盈虧比",
+            }
+        )
 
     # 策略特定建議
     param_grids = {
@@ -363,10 +395,12 @@ def _generate_param_suggestions(strategy_name: str, valid_results: list) -> list
         "rsi": "period (10-20), overbought (65-80), oversold (20-35)",
     }
     if strategy_name in param_grids and avg_sharpe < 1.0:
-        suggestions.append({
-            "type": "optimize",
-            "level": "info",
-            "message": f"建議搜索參數空間: {param_grids[strategy_name]}",
-        })
+        suggestions.append(
+            {
+                "type": "optimize",
+                "level": "info",
+                "message": f"建議搜索參數空間: {param_grids[strategy_name]}",
+            }
+        )
 
     return suggestions

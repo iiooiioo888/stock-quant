@@ -1,6 +1,7 @@
 """
 股票基本數據 — 從本地日 K / 實時快照 / 基本面庫彙總技術與行情指標
 """
+
 import sqlite3
 from typing import Optional
 
@@ -23,7 +24,9 @@ def _normalize_code(code: str) -> str:
 def _infer_market(code: str) -> str:
     """依代碼推斷 stock_universe.market。"""
     c = str(code).strip().upper()
-    if c.endswith(".HK") or (c.replace(".", "").isdigit() and len(c.replace(".", "")) <= 5):
+    if c.endswith(".HK") or (
+        c.replace(".", "").isdigit() and len(c.replace(".", "")) <= 5
+    ):
         return "hk_stock"
     if c.endswith(".US") or (not c.replace(".", "").isdigit()):
         return "us_stock"
@@ -117,7 +120,9 @@ def load_stock_financials(
         from src.core.data_pipeline import is_stale
         from src.core.fundamental import get_fundamentals
 
-        stale = not fundamentals or is_stale(fundamentals.get("update_date"), max_age_days)
+        stale = not fundamentals or is_stale(
+            fundamentals.get("update_date"), max_age_days
+        )
         missing_core = not fundamentals or fundamentals.get("pe_ttm") is None
         if stale or missing_core:
             fresh = get_fundamentals(code, max_age_days=max_age_days)
@@ -125,10 +130,24 @@ def load_stock_financials(
                 fundamentals = {
                     k: fresh[k]
                     for k in (
-                        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
-                        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-                        "revenue", "net_profit", "revenue_yoy", "profit_yoy",
-                        "update_date", "name",
+                        "pe_ttm",
+                        "pb",
+                        "ps_ttm",
+                        "roe",
+                        "eps",
+                        "bvps",
+                        "total_mv",
+                        "circulating_mv",
+                        "gross_margin",
+                        "net_margin",
+                        "debt_ratio",
+                        "dividend_yield",
+                        "revenue",
+                        "net_profit",
+                        "revenue_yoy",
+                        "profit_yoy",
+                        "update_date",
+                        "name",
                     )
                     if fresh.get(k) is not None
                 }
@@ -137,9 +156,23 @@ def load_stock_financials(
 
     fin: dict = {"code": code, "has_data": False}
     for key in (
-        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
-        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-        "revenue", "net_profit", "revenue_yoy", "profit_yoy", "update_date",
+        "pe_ttm",
+        "pb",
+        "ps_ttm",
+        "roe",
+        "eps",
+        "bvps",
+        "total_mv",
+        "circulating_mv",
+        "gross_margin",
+        "net_margin",
+        "debt_ratio",
+        "dividend_yield",
+        "revenue",
+        "net_profit",
+        "revenue_yoy",
+        "profit_yoy",
+        "update_date",
     ):
         val = fundamentals.get(key) if fundamentals else None
         if val is None and profile:
@@ -165,7 +198,15 @@ def load_stock_financials(
     fin["has_data"] = any(
         fin.get(k) is not None
         for k in fin
-        if k not in ("code", "has_data", "source", "realtime_price", "realtime_change_pct", "realtime_updated_at")
+        if k
+        not in (
+            "code",
+            "has_data",
+            "source",
+            "realtime_price",
+            "realtime_change_pct",
+            "realtime_updated_at",
+        )
     )
     return fin if fin["has_data"] else None
 
@@ -257,7 +298,11 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
     turnover = last.get("turnover")
 
     c = df["close"].to_numpy(dtype=float, copy=False)
-    v = df["volume"].to_numpy(dtype=float, copy=False) if "volume" in df.columns else np.zeros(len(df))
+    v = (
+        df["volume"].to_numpy(dtype=float, copy=False)
+        if "volume" in df.columns
+        else np.zeros(len(df))
+    )
 
     ma5 = _np_tail_mean(c, 5)
     ma10 = _np_tail_mean(c, 10)
@@ -277,7 +322,7 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
     volatility_20d = None
     if len(c) >= 21:
         ret = np.diff(c[-21:]) / c[-21:-1]
-        volatility_20d = round(float(ret.std() * (252 ** 0.5) * 100), 2)
+        volatility_20d = round(float(ret.std() * (252**0.5) * 100), 2)
 
     change_5d = _pct_change(close, float(c[-6])) if len(c) >= 6 else None
     change_20d = _pct_change(close, float(c[-21])) if len(c) >= 21 else None
@@ -302,7 +347,9 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
         "amplitude_pct": amplitude,
         "volume": volume,
         "amount": amount,
-        "turnover": float(turnover) if turnover is not None and pd.notna(turnover) else None,
+        "turnover": (
+            float(turnover) if turnover is not None and pd.notna(turnover) else None
+        ),
         "ma5": ma5,
         "ma10": ma10,
         "ma20": ma20,
@@ -315,8 +362,14 @@ def build_stock_overview(code: str, lookback: int = 250) -> dict:
         "volume_ratio": vol_ratio,
         "high_lookback": window_high,
         "low_lookback": window_low,
-        "pct_from_high": round((close / window_high - 1) * 100, 2) if window_high else None,
-        "pct_from_low": round((close / window_low - 1) * 100, 2) if window_low and window_low > 0 else None,
+        "pct_from_high": (
+            round((close / window_high - 1) * 100, 2) if window_high else None
+        ),
+        "pct_from_low": (
+            round((close / window_low - 1) * 100, 2)
+            if window_low and window_low > 0
+            else None
+        ),
         "volatility_annual_pct": volatility_20d,
         "change_5d_pct": change_5d,
         "change_20d_pct": change_20d,

@@ -3,6 +3,7 @@ stock-quant 核心 MCP Tools — 系統、策略、股票池、任務（只讀�
 
 與 FastAPI 共用 src.core / src.config，不繞過業務層直接拼 HTTP。
 """
+
 from src.config import settings
 from src.integrations.mcp.protocol import ToolSpec, build_input_schema
 from src.integrations.mcp.utils import ERR_INTERNAL, error_result, json_result
@@ -17,22 +18,28 @@ def handle_sq_health(_args: dict) -> str:
         sop_payload = build_health_sop_payload(snapshot=snap)
         index_audit = snap.get("index_audit") or {}
         ia_summary = sop_payload.get("index_audit") or {}
-        return json_result({
-            "status": sop_payload.get("status", "ok"),
-            "app": settings.app_name,
-            "version": settings.app_version,
-            "database": snap.get("database"),
-            "index_audit": {
-                "ok": index_audit.get("ok"),
-                "present_count": ia_summary.get("present_count") or index_audit.get("present_count"),
-                "expected_count": ia_summary.get("expected_count") or index_audit.get("expected_count"),
-                "missing_count": ia_summary.get("missing_count", len(index_audit.get("missing") or [])),
-            },
-            "pipeline_metrics": snap.get("pipeline_metrics"),
-            "data_sources_summary": snap.get("data_sources"),
-            "sop": sop_payload.get("sop"),
-            "checked_at": sop_payload.get("checked_at"),
-        })
+        return json_result(
+            {
+                "status": sop_payload.get("status", "ok"),
+                "app": settings.app_name,
+                "version": settings.app_version,
+                "database": snap.get("database"),
+                "index_audit": {
+                    "ok": index_audit.get("ok"),
+                    "present_count": ia_summary.get("present_count")
+                    or index_audit.get("present_count"),
+                    "expected_count": ia_summary.get("expected_count")
+                    or index_audit.get("expected_count"),
+                    "missing_count": ia_summary.get(
+                        "missing_count", len(index_audit.get("missing") or [])
+                    ),
+                },
+                "pipeline_metrics": snap.get("pipeline_metrics"),
+                "data_sources_summary": snap.get("data_sources"),
+                "sop": sop_payload.get("sop"),
+                "checked_at": sop_payload.get("checked_at"),
+            }
+        )
     except Exception as e:
         return error_result(str(e), code=ERR_INTERNAL)
 
@@ -40,10 +47,12 @@ def handle_sq_health(_args: dict) -> str:
 def handle_sq_config_summary(_args: dict) -> str:
     """脫敏配置摘要（不含密鑰）。"""
     try:
-        return json_result({
-            "summary_text": settings.summary(),
-            "demo_mode": settings.demo_mode,
-        })
+        return json_result(
+            {
+                "summary_text": settings.summary(),
+                "demo_mode": settings.demo_mode,
+            }
+        )
     except Exception as e:
         return error_result(str(e))
 

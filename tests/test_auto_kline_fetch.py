@@ -1,4 +1,5 @@
 """自動選源下載 — 單元測試（無外網）。"""
+
 from src.core.auto_kline_fetch import (
     SOURCE_SLUG,
     days_from_start_date,

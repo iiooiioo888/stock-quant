@@ -1,4 +1,5 @@
 """風控回測上下文與優化評分懲罰"""
+
 from src.core.risk_backtest import (
     RiskRunConfig,
     apply_risk_score_adjustment,
@@ -7,10 +8,12 @@ from src.core.risk_backtest import (
 
 
 def test_parse_risk_params_nested():
-    p = parse_risk_params({
-        "code": "600519",
-        "risk": {"stop_loss_pct": 8, "circuit_breaker_dd": 20},
-    })
+    p = parse_risk_params(
+        {
+            "code": "600519",
+            "risk": {"stop_loss_pct": 8, "circuit_breaker_dd": 20},
+        }
+    )
     assert p.stop_loss_pct == 8
     assert p.circuit_breaker_dd == 20
 

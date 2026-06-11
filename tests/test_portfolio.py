@@ -2,6 +2,7 @@
 組合模塊測試 — 測試組合回測、相關性、風險貢獻等
 使用合成數據，無需外部服務
 """
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -69,11 +70,19 @@ class TestAlignNavs:
 
         sub_results = [
             {
-                "dates": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3)],
+                "dates": [
+                    datetime(2024, 1, 1),
+                    datetime(2024, 1, 2),
+                    datetime(2024, 1, 3),
+                ],
                 "daily_returns": [0.01, -0.005, 0.02],
             },
             {
-                "dates": [datetime(2024, 1, 2), datetime(2024, 1, 3), datetime(2024, 1, 4)],
+                "dates": [
+                    datetime(2024, 1, 2),
+                    datetime(2024, 1, 3),
+                    datetime(2024, 1, 4),
+                ],
                 "daily_returns": [0.015, -0.01, 0.005],
             },
         ]
@@ -101,8 +110,18 @@ class TestCorrelationCalculation:
         dates = [datetime(2024, 1, 1) + timedelta(days=i) for i in range(n)]
 
         sub_results = [
-            {"strategy": "dual_ma", "code": "000001", "dates": dates, "daily_returns": returns_a},
-            {"strategy": "macd", "code": "600519", "dates": dates, "daily_returns": returns_b},
+            {
+                "strategy": "dual_ma",
+                "code": "000001",
+                "dates": dates,
+                "daily_returns": returns_a,
+            },
+            {
+                "strategy": "macd",
+                "code": "600519",
+                "dates": dates,
+                "daily_returns": returns_b,
+            },
         ]
 
         corr = calc_strategy_correlations(sub_results)
@@ -139,10 +158,18 @@ class TestRiskContribution:
         dates = [datetime(2024, 1, 1) + timedelta(days=i) for i in range(n)]
 
         sub_results = [
-            {"strategy": "dual_ma", "code": "000001", "dates": dates,
-             "daily_returns": list(np.random.normal(0.0003, 0.015, n))},
-            {"strategy": "macd", "code": "600519", "dates": dates,
-             "daily_returns": list(np.random.normal(0.0005, 0.02, n))},
+            {
+                "strategy": "dual_ma",
+                "code": "000001",
+                "dates": dates,
+                "daily_returns": list(np.random.normal(0.0003, 0.015, n)),
+            },
+            {
+                "strategy": "macd",
+                "code": "600519",
+                "dates": dates,
+                "daily_returns": list(np.random.normal(0.0005, 0.02, n)),
+            },
         ]
 
         result = _calc_risk_contribution(sub_results, [0.5, 0.5])

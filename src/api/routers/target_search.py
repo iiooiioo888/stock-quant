@@ -26,7 +26,9 @@ async def run_target_search_api(
     if not code:
         raise HTTPException(400, "請提供股票代碼")
     if strategy not in STRATEGIES:
-        raise HTTPException(400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}")
+        raise HTTPException(
+            400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}"
+        )
 
     task_params = {
         "code": code,
@@ -45,7 +47,12 @@ async def run_target_search_api(
         title=f"目標搜索 {code}/{strategy} ({target_metric} {objective} {target_value})",
     )
     if task.get("is_duplicate"):
-        return {"success": True, "task_id": task["task_id"], "is_duplicate": True, "async": True}
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "async": True,
+        }
 
     task_id = task["task_id"]
 
@@ -69,4 +76,3 @@ async def run_target_search_api(
         cache_params=task_params,
         cache_code=code,
     )
-

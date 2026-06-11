@@ -7,6 +7,7 @@ Interactive Brokers 行情 — 可選 ib_insync + TWS / IB Gateway
   SQ_IB_PORT=7497
   SQ_IB_CLIENT_ID=10
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,6 +36,7 @@ _ib_thread_stop = threading.Event()
 
 def _settings():
     from src.config import settings
+
     return settings
 
 
@@ -45,6 +47,7 @@ def ib_available() -> bool:
         if not getattr(s, "ib_enabled", False):
             return False
         import ib_insync  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -58,6 +61,7 @@ def ib_status(*, probe: bool = False) -> dict:
     enabled = getattr(s, "ib_enabled", False)
     try:
         import ib_insync  # noqa: F401
+
         lib_ok = True
     except ImportError:
         lib_ok = False
@@ -104,7 +108,9 @@ def _contract_from_spec(spec: dict[str, Any]):
     if sec == "IND":
         return Index(symbol, exchange, currency)
     if sec == "CMDTY":
-        return Contract(secType="CMDTY", symbol=symbol, exchange=exchange, currency=currency)
+        return Contract(
+            secType="CMDTY", symbol=symbol, exchange=exchange, currency=currency
+        )
     return Stock(symbol, exchange, currency)
 
 
@@ -164,6 +170,7 @@ def _ensure_ib_thread() -> None:
             # store
             globals()["_ib_loop"] = _ib_loop_local
             from ib_insync import IB
+
             globals()["_ib"] = IB()
             _ib_thread_ready.set()
             # run until stop
@@ -193,7 +200,9 @@ def _ensure_ib_thread() -> None:
     _ib_thread_ready.wait(timeout=3)
 
 
-def _ib_connect_threadsafe(host: str, port: int, client_id: int, timeout: int = 5) -> bool:
+def _ib_connect_threadsafe(
+    host: str, port: int, client_id: int, timeout: int = 5
+) -> bool:
     """在 IB 專用 loop 內執行 connectAsync，避免跨 loop future。"""
     if _ib_loop is None or _ib is None:
         return False
@@ -312,14 +321,16 @@ def fetch_ib_history(spec: dict[str, Any], days: int = 90) -> pd.DataFrame:
                 ds = dt.strftime("%Y-%m-%d")
             else:
                 ds = str(dt)[:10]
-            rows.append({
-                "date": ds,
-                "open": float(b.open),
-                "high": float(b.high),
-                "low": float(b.low),
-                "close": float(b.close),
-                "volume": float(b.volume or 0),
-            })
+            rows.append(
+                {
+                    "date": ds,
+                    "open": float(b.open),
+                    "high": float(b.high),
+                    "low": float(b.low),
+                    "close": float(b.close),
+                    "volume": float(b.volume or 0),
+                }
+            )
         df = pd.DataFrame(rows)
         return df.tail(days).reset_index(drop=True)
     except Exception as e:
@@ -356,7 +367,7 @@ def disconnect_ib():
 def ib_reconnect():
     """
     手動觸發 IB 重連（Phase 1 P1-3）
-    
+
     重置冷卻計時器，立即嘗試重新連接。
     返回連接狀態。
     """

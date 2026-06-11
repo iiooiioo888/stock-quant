@@ -1,4 +1,3 @@
-
 from src.core.strategies.base import OrderManagedStrategy
 from src.core.strategies.registry import register_strategy
 
@@ -6,9 +5,10 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("vwap", "VWAP成交量加權策略")
 class VWAPStrategy(OrderManagedStrategy):
     """VWAP 策略 — 成交量加权平均价格，价格低于 VWAP 买入，高于 VWAP 卖出"""
+
     params = (
-        ("period", 20),         # VWAP 计算周期
-        ("deviation_pct", 1.0), # 偏离阈值百分比
+        ("period", 20),  # VWAP 计算周期
+        ("deviation_pct", 1.0),  # 偏离阈值百分比
     )
 
     def __init__(self):
@@ -65,4 +65,3 @@ class VWAPStrategy(OrderManagedStrategy):
             # 卖出：价格高于 VWAP 超过 deviation_pct（溢价卖出）
             if deviation > self.p.deviation_pct:
                 self.order = self.sell()
-

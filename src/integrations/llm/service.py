@@ -6,6 +6,7 @@ LLM 服務層 — 模型路由 + Prompt Cache + 專用 Prompt 管理。
 - Redis Prompt Cache（相同問題 + 相同數據 → 返回上次結果）
 - 提供各業務場景的專用 System Prompt
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -82,9 +83,11 @@ def _get_cache_redis():
     _cache_initialized = True
     try:
         from src.config import settings
+
         if not getattr(settings, "redis_enabled", False):
             return None
         import redis as redis_lib
+
         url = getattr(settings, "redis_url", "redis://localhost:6379/0")
         pwd = getattr(settings, "redis_password", "")
         _redis_client = redis_lib.from_url(
@@ -165,14 +168,12 @@ _PROMPTS: dict[str, str] = {
 3. 給出可操作的優化建議（如調參、加風控）
 4. 使用繁體中文，數字保留合理精度
 不要編造數據；僅基於用戶提供的數據進行分析。""",
-
     "suggest": """你是 StockQ 量化平台的策略推薦專家。根據用戶描述的投資目標和偏好：
 1. 推薦 2-3 個適合的量化策略（從平台策略庫中選取）
 2. 說明每個策略的適用場景、風險特徵、歷史表現
 3. 給出參數配置建議
 4. 提醒風險注意事項
 使用繁體中文回答，語氣專業但易懂。""",
-
     "generate": """你是 StockQ 量化平台的策略代碼工程師。用戶會描述想要的策略邏輯，你需要：
 1. 生成符合 StockQ 策略框架的 Python 代碼
 2. 代碼必須包含 `generate_signals(df, params)` 函數
@@ -180,7 +181,6 @@ _PROMPTS: dict[str, str] = {
 4. 列出關鍵參數及其推薦範圍
 5. 提醒潛在風險（過擬合、參數敏感性等）
 代碼必須可直接在 StockQ 平台運行。""",
-
     "optimize": """你是 StockQ 量化平台的參數調優顧問。根據用戶的回測結果和策略描述：
 1. 分析當前參數的表現
 2. 建議調整的參數及其方向（增大/減小/替換）
@@ -188,14 +188,12 @@ _PROMPTS: dict[str, str] = {
 4. 提供 2-3 組推薦參數組合
 5. 提醒不要過度優化
 使用繁體中文，結合具體數據說明。""",
-
     "report": """你是 StockQ 量化平台的投資報告撰寫者。根據提供的數據和分析結果：
 1. 撰寫結構化投資報告（摘要、市場概況、策略分析、風險提示、結論）
 2. 數據引用要準確
 3. 語言專業、邏輯清晰
 4. 包含免責聲明
 使用繁體中文，格式清晰。""",
-
     "morning": """你是 StockQ 量化平台的市場分析師，負責撰寫每日晨報：
 1. 基於提供的市場數據，概述昨日市場表現
 2. 分析主要板塊/行業動向
@@ -215,6 +213,7 @@ def get_system_prompt(task: str) -> str:
 # 統一調用接口
 # ---------------------------------------------------------------------------
 
+
 def invoke_llm(
     task_type: str,
     user_message: str,
@@ -228,7 +227,7 @@ def invoke_llm(
 ) -> dict:
     """
     統一 LLM 調用入口。
-    
+
     - task_type: 用於模型路由和 prompt cache key
     - enable_cache: 是否啟用 prompt cache（流式調用應關閉）
     - 返回 {"success": True/False, "answer": ..., "model": ..., "cached": bool, ...}
@@ -260,10 +259,12 @@ def invoke_llm(
     if history:
         for item in history[-10:]:
             if isinstance(item, dict) and item.get("role") in ("user", "assistant"):
-                messages.append({
-                    "role": item["role"],
-                    "content": str(item.get("content", ""))[:4000],
-                })
+                messages.append(
+                    {
+                        "role": item["role"],
+                        "content": str(item.get("content", ""))[:4000],
+                    }
+                )
     messages.append({"role": "user", "content": user_message})
 
     # 5. 調用 LLM
@@ -313,7 +314,7 @@ def invoke_llm_stream(
 ) -> Generator[dict, None, None]:
     """
     統一 LLM 流式調用入口（SSE 事件）。
-    
+
     Yields: {"type": "status"|"token"|"done"|"error", ...}
     """
     cfg = resolve_llm_config(request_overrides, user_settings)
@@ -330,10 +331,12 @@ def invoke_llm_stream(
     if history:
         for item in history[-10:]:
             if isinstance(item, dict) and item.get("role") in ("user", "assistant"):
-                messages.append({
-                    "role": item["role"],
-                    "content": str(item.get("content", ""))[:4000],
-                })
+                messages.append(
+                    {
+                        "role": item["role"],
+                        "content": str(item.get("content", ""))[:4000],
+                    }
+                )
     messages.append({"role": "user", "content": user_message})
 
     yield {"type": "status", "message": f"正在使用 {model} 分析…", "model": model}

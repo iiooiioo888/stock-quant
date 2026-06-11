@@ -8,6 +8,7 @@
 寫入本地 K 線：persist_kline_df → defer_data_cache_clear；批量任務結束後 flush（見 data_pipeline）。
 財報：fundamental.get_fundamentals / data_pipeline.resolve_financials（非僅讀空表）。
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -130,16 +131,18 @@ def _fetch_eastmoney_kline(symbol: str, days: int) -> pd.DataFrame:
             parts = line.split(",")
             if len(parts) < 7:
                 continue
-            rows.append({
-                "date": parts[0],
-                "open": float(parts[1]),
-                "close": float(parts[2]),
-                "high": float(parts[3]),
-                "low": float(parts[4]),
-                "volume": float(parts[5]),
-                "amount": float(parts[6]) if len(parts) > 6 else 0,
-                "turnover": float(parts[10]) if len(parts) > 10 else 0,
-            })
+            rows.append(
+                {
+                    "date": parts[0],
+                    "open": float(parts[1]),
+                    "close": float(parts[2]),
+                    "high": float(parts[3]),
+                    "low": float(parts[4]),
+                    "volume": float(parts[5]),
+                    "amount": float(parts[6]) if len(parts) > 6 else 0,
+                    "turnover": float(parts[10]) if len(parts) > 10 else 0,
+                }
+            )
         df = pd.DataFrame(rows)
         return df.tail(days).reset_index(drop=True)
     except Exception as e:
@@ -148,6 +151,7 @@ def _fetch_eastmoney_kline(symbol: str, days: int) -> pd.DataFrame:
 
 
 # ── 外部調用熔斷封裝 ─────────────────────────────────────────
+
 
 @circuit_breaker("yahoo_chart", failure_threshold=5, recovery_timeout=180)
 def _fetch_yahoo_chart(symbol: str, range_str: str, interval: str) -> pd.DataFrame:
@@ -162,24 +166,28 @@ def _fetch_yahoo_quote(symbol: str) -> dict:
 @circuit_breaker("global_download", failure_threshold=3, recovery_timeout=120)
 def _fetch_global_download(symbol: str, start_date: str) -> pd.DataFrame:
     from src.core.global_market import download_global_symbol
+
     return download_global_symbol(symbol, start_date=start_date)
 
 
 @circuit_breaker("global_realtime", failure_threshold=3, recovery_timeout=120)
 def _fetch_global_realtime(symbols: list[str]) -> list[dict]:
     from src.core.global_market import get_global_realtime
+
     return get_global_realtime(symbols)
 
 
 @circuit_breaker("ib_bundle", failure_threshold=3, recovery_timeout=300)
 def _fetch_ib_bundle(ib_symbol: str, days: int) -> tuple:
     from src.core.ib_data import fetch_ib_bundle
+
     return fetch_ib_bundle(ib_symbol, days)
 
 
 @circuit_breaker("tv_bundle", failure_threshold=3, recovery_timeout=180)
 def _fetch_tv_bundle(tv_symbol: str, scanner: str, days: int, symbol: str) -> tuple:
     from src.core.tradingview_data import fetch_tv_bundle
+
     return fetch_tv_bundle(tv_symbol, scanner, days, symbol)
 
 
@@ -393,7 +401,7 @@ def build_index_chart_item(symbol: str, name: str, days: int) -> Optional[dict]:
 
     # 1. 先查本地數據庫（最快）
     df, hist_source = fetch_history_df(symbol, days, skip_catalog=True)
-    
+
     # 2. 本地無數據時才打外部 API
     if df.empty or len(df) < 2:
         df_ext, quote_ext, primary_source = _fetch_catalog_primary(symbol, days)

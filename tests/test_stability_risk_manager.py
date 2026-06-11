@@ -8,6 +8,7 @@
   - drawdown_circuit_breaker 熔斷邏輯
   - 並發安全
 """
+
 from __future__ import annotations
 
 import math
@@ -20,8 +21,8 @@ from src.core.risk_manager import (
     drawdown_circuit_breaker,
 )
 
-
 # ── PositionSizer ───────────────────────────────────────────────
+
 
 class TestPositionSizer:
     """倉位管理器測試。"""
@@ -113,26 +114,36 @@ class TestPositionSizer:
     # -- volatility_target --
     def test_vol_target_reduce_position(self, sizer):
         """當前波動率高於目標 → 縮倉。"""
-        pos = sizer.volatility_target(target_vol=0.15, current_vol=0.30, current_position=100000)
+        pos = sizer.volatility_target(
+            target_vol=0.15, current_vol=0.30, current_position=100000
+        )
         assert pos < 100000
 
     def test_vol_target_increase_position(self, sizer):
         """當前波動率低於目標 → 加倉。"""
-        pos = sizer.volatility_target(target_vol=0.30, current_vol=0.15, current_position=100000)
+        pos = sizer.volatility_target(
+            target_vol=0.30, current_vol=0.15, current_position=100000
+        )
         assert pos > 100000
 
     def test_vol_target_zero_vol_raises(self, sizer):
         with pytest.raises(ValueError):
-            sizer.volatility_target(target_vol=0.15, current_vol=0, current_position=100000)
+            sizer.volatility_target(
+                target_vol=0.15, current_vol=0, current_position=100000
+            )
 
     def test_vol_target_capped_at_total(self, sizer):
         """調整後倉位不超過總資金。"""
-        pos = sizer.volatility_target(target_vol=0.50, current_vol=0.10, current_position=900000)
+        pos = sizer.volatility_target(
+            target_vol=0.50, current_vol=0.10, current_position=900000
+        )
         assert pos <= sizer.total_capital
 
     def test_vol_target_floor(self, sizer):
         """調整比例下限 0.1。"""
-        pos = sizer.volatility_target(target_vol=0.01, current_vol=0.50, current_position=100000)
+        pos = sizer.volatility_target(
+            target_vol=0.01, current_vol=0.50, current_position=100000
+        )
         assert pos >= 100000 * 0.1
 
     # -- drawdown_adjusted --
@@ -160,6 +171,7 @@ class TestPositionSizer:
 
 
 # ── RiskBudget ──────────────────────────────────────────────────
+
 
 class TestRiskBudget:
     """風險預算管理。"""
@@ -209,6 +221,7 @@ class TestRiskBudget:
 
 # ── DrawdownProtector ───────────────────────────────────────────
 
+
 class TestDrawdownProtector:
     """回撤保護器。"""
 
@@ -257,6 +270,7 @@ class TestDrawdownProtector:
 
 # ── drawdown_circuit_breaker ────────────────────────────────────
 
+
 class TestDrawdownCircuitBreaker:
     """回撤熔斷分析。"""
 
@@ -302,6 +316,7 @@ class TestDrawdownCircuitBreaker:
 
 # ── DrawdownProtector 併發 ──────────────────────────────────────
 
+
 class TestDrawdownProtectorConcurrency:
     """回撤保護器併發安全。"""
 
@@ -309,6 +324,7 @@ class TestDrawdownProtectorConcurrency:
         """多線程同時 update 不崩潰。"""
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         protector = DrawdownProtector(max_drawdown_pct=20.0, warning_pct=10.0)
         protector.update(1000000)  # set peak
         errors = []
@@ -330,6 +346,7 @@ class TestDrawdownProtectorConcurrency:
     def test_position_multiplier_thread_safety(self):
         """get_position_multiplier 併發調用。"""
         import threading
+
         protector = DrawdownProtector()
         errors = []
 
@@ -348,6 +365,7 @@ class TestDrawdownProtectorConcurrency:
 
 
 # ── RiskBudget 進階邊界 ────────────────────────────────────────
+
 
 class TestRiskBudgetAdvanced:
     """風險預算進階測試。"""

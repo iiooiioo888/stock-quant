@@ -1,6 +1,7 @@
 """
 基本面數據模塊 — PE、PB、ROE、市值、營收淨利等（akshare 多源降級 + SQLite 緩存）
 """
+
 import sqlite3
 import time
 from datetime import datetime
@@ -64,6 +65,7 @@ def init_fundamentals_table():
 # 基本面數據獲取
 # ============================================================
 
+
 def _normalize_code(code: str) -> str:
     code = str(code).strip()
     if code.isdigit() and len(code) < 6:
@@ -81,12 +83,30 @@ def fundamentals_row_to_fin(row: dict) -> dict:
     if not row:
         return {}
     code = row.get("code", "")
-    fin: dict = {"code": code, "has_data": False, "source": row.get("source", "fundamentals_db")}
+    fin: dict = {
+        "code": code,
+        "has_data": False,
+        "source": row.get("source", "fundamentals_db"),
+    }
     for key in (
-        "pe_ttm", "pb", "ps_ttm", "roe", "eps", "bvps", "total_mv", "circulating_mv",
-        "gross_margin", "net_margin", "debt_ratio", "dividend_yield",
-        "revenue", "net_profit", "revenue_yoy", "profit_yoy",
-        "update_date", "name",
+        "pe_ttm",
+        "pb",
+        "ps_ttm",
+        "roe",
+        "eps",
+        "bvps",
+        "total_mv",
+        "circulating_mv",
+        "gross_margin",
+        "net_margin",
+        "debt_ratio",
+        "dividend_yield",
+        "revenue",
+        "net_profit",
+        "revenue_yoy",
+        "profit_yoy",
+        "update_date",
+        "name",
     ):
         val = row.get(key)
         if val is not None and val != "":
@@ -99,7 +119,9 @@ def fundamentals_row_to_fin(row: dict) -> dict:
     return fin if fin["has_data"] else {}
 
 
-def get_fundamentals(code: str, max_age_days: int = 7, force_refresh: bool = False) -> dict:
+def get_fundamentals(
+    code: str, max_age_days: int = 7, force_refresh: bool = False
+) -> dict:
     """
     獲取單只股票基本面：庫內未過期則命中，否則 akshare 拉取並寫庫。
     """
@@ -146,7 +168,9 @@ def fetch_fundamentals_online(code: str) -> dict:
         try:
             partial = fetcher(code)
             if partial:
-                result.update({k: v for k, v in partial.items() if v is not None and v != ""})
+                result.update(
+                    {k: v for k, v in partial.items() if v is not None and v != ""}
+                )
         except Exception as e:
             logger.debug(f"{code} 財報接口 {fetcher.__name__} 失敗: {e}")
 
@@ -173,18 +197,32 @@ def _fetch_analysis_indicator(code: str) -> dict:
     ud = latest.get("日期") or latest.get("报告期") or latest.get("report_date")
     return {
         "name": "",
-        "update_date": str(ud)[:10] if ud is not None else datetime.now().strftime("%Y-%m-%d"),
+        "update_date": (
+            str(ud)[:10] if ud is not None else datetime.now().strftime("%Y-%m-%d")
+        ),
         "pe_ttm": _safe_float(latest, ["市盈率(TTM)", "市盈率", "pe_ttm"]),
         "pb": _safe_float(latest, ["市净率", "市淨率", "pb"]),
-        "roe": _safe_float(latest, ["净资产收益率(%)", "净资产收益率", "加权净资产收益率(%)", "roe"]),
+        "roe": _safe_float(
+            latest, ["净资产收益率(%)", "净资产收益率", "加权净资产收益率(%)", "roe"]
+        ),
         "eps": _safe_float(latest, ["基本每股收益(元)", "基本每股收益", "eps"]),
         "bvps": _safe_float(latest, ["每股净资产(元)", "每股净资产", "bvps"]),
-        "gross_margin": _safe_float(latest, ["销售毛利率(%)", "毛利率(%)", "gross_margin"]),
+        "gross_margin": _safe_float(
+            latest, ["销售毛利率(%)", "毛利率(%)", "gross_margin"]
+        ),
         "net_margin": _safe_float(latest, ["销售净利率(%)", "净利率(%)", "net_margin"]),
-        "debt_ratio": _safe_float(latest, ["资产负债率(%)", "资产负债率", "debt_ratio"]),
-        "revenue": _safe_float(latest, ["营业总收入(元)", "营业总收入", "营业收入", "revenue"], default=0),
-        "net_profit": _safe_float(latest, ["净利润(元)", "净利润", "net_profit"], default=0),
-        "dividend_yield": _safe_float(latest, ["股息率(%)", "股息率", "dividend_yield"], default=0),
+        "debt_ratio": _safe_float(
+            latest, ["资产负债率(%)", "资产负债率", "debt_ratio"]
+        ),
+        "revenue": _safe_float(
+            latest, ["营业总收入(元)", "营业总收入", "营业收入", "revenue"], default=0
+        ),
+        "net_profit": _safe_float(
+            latest, ["净利润(元)", "净利润", "net_profit"], default=0
+        ),
+        "dividend_yield": _safe_float(
+            latest, ["股息率(%)", "股息率", "dividend_yield"], default=0
+        ),
     }
 
 
@@ -258,11 +296,15 @@ def _enrich_revenue_profit(code: str, result: dict) -> None:
             return
         latest = df.iloc[0]
         if not result.get("revenue"):
-            rev = _safe_float(latest, ["营业总收入", "營業總收入", "营业收入"], default=0)
+            rev = _safe_float(
+                latest, ["营业总收入", "營業總收入", "营业收入"], default=0
+            )
             if rev:
                 result["revenue"] = _to_yi(rev) if rev > 1e6 else rev
         if not result.get("net_profit"):
-            npf = _safe_float(latest, ["净利润", "淨利潤", "归属于母公司所有者的净利润"], default=0)
+            npf = _safe_float(
+                latest, ["净利润", "淨利潤", "归属于母公司所有者的净利润"], default=0
+            )
             if npf:
                 result["net_profit"] = _to_yi(npf) if npf > 1e6 else npf
         rd = latest.get("报告日") or latest.get("报告期")
@@ -275,7 +317,7 @@ def _enrich_revenue_profit(code: str, result: dict) -> None:
 def screen_by_fundamentals(filters: dict) -> list[dict]:
     """
     按基本面指標篩選股票
-    
+
     Args:
         filters: 篩選條件
             - pe_max: PE < 某值
@@ -284,7 +326,7 @@ def screen_by_fundamentals(filters: dict) -> list[dict]:
             - debt_max: 資產負債率 < 某值%
             - mv_min: 總市值 > 某億
             - dividend_min: 股息率 > 某值%
-    
+
     Returns:
         符合條件的股票列表
     """
@@ -346,7 +388,7 @@ def _screen_from_db(filters: dict) -> list[dict]:
                 WHERE {where}
                 ORDER BY roe DESC NULLS LAST
                 LIMIT 100""",
-            params
+            params,
         ).fetchall()
 
     return [dict(r) for r in rows]
@@ -378,21 +420,32 @@ def _screen_from_api(filters: dict) -> list[dict]:
 
         # 篩選
         if "pe_max" in filters and "pe_ttm" in df.columns:
-            df = df[(df["pe_ttm"].notna()) & (df["pe_ttm"] > 0) & (df["pe_ttm"] <= filters["pe_max"])]
+            df = df[
+                (df["pe_ttm"].notna())
+                & (df["pe_ttm"] > 0)
+                & (df["pe_ttm"] <= filters["pe_max"])
+            ]
         if "pb_max" in filters and "pb" in df.columns:
-            df = df[(df["pb"].notna()) & (df["pb"] > 0) & (df["pb"] <= filters["pb_max"])]
+            df = df[
+                (df["pb"].notna()) & (df["pb"] > 0) & (df["pb"] <= filters["pb_max"])
+            ]
         if "mv_min" in filters and "total_mv_raw" in df.columns:
-            df = df[(df["total_mv_raw"].notna()) & (df["total_mv_raw"] >= filters["mv_min"] * 1e8)]
+            df = df[
+                (df["total_mv_raw"].notna())
+                & (df["total_mv_raw"] >= filters["mv_min"] * 1e8)
+            ]
 
         result = []
         for _, row in df.head(50).iterrows():
-            result.append({
-                "code": str(row.get("code", "")),
-                "name": str(row.get("name", "")),
-                "pe_ttm": float(row.get("pe_ttm", 0) or 0),
-                "pb": float(row.get("pb", 0) or 0),
-                "total_mv": _to_yi(float(row.get("total_mv_raw", 0) or 0)),
-            })
+            result.append(
+                {
+                    "code": str(row.get("code", "")),
+                    "name": str(row.get("name", "")),
+                    "pe_ttm": float(row.get("pe_ttm", 0) or 0),
+                    "pb": float(row.get("pb", 0) or 0),
+                    "total_mv": _to_yi(float(row.get("total_mv_raw", 0) or 0)),
+                }
+            )
 
         return result
 
@@ -404,6 +457,7 @@ def _screen_from_api(filters: dict) -> list[dict]:
 # ============================================================
 # 輔助函數
 # ============================================================
+
 
 def _safe_float(row, candidates: list, default=0):
     """安全取浮點值"""
@@ -430,6 +484,7 @@ def _to_yi(value: float) -> float:
 # ============================================================
 # 數據庫操作
 # ============================================================
+
 
 def _save_fundamentals(data: dict):
     """保存基本面數據到數據庫"""
@@ -459,7 +514,7 @@ def _save_fundamentals(data: dict):
                 data.get("debt_ratio"),
                 data.get("dividend_yield"),
                 None,
-            )
+            ),
         )
     logger.debug(f"保存基本面: {data.get('code')}")
 

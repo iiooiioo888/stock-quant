@@ -5,6 +5,7 @@ stock-quant 項目級 MCP Server（stdio）— Cursor / Claude Desktop 接入入
 啟動：python -m src.integrations.mcp.server
 依賴：pip install -r requirements-mcp.txt
 """
+
 import asyncio
 import json
 import sys
@@ -44,21 +45,25 @@ def _run_stdio():
         spec = get_tool_by_name(name)
         if spec is None:
             domains = tool_domains()
-            return [TextContent(
-                type="text",
-                text=error_result(
-                    f"未知 tool: {name}",
-                    code=ERR_UNKNOWN_TOOL,
-                    tool=name,
-                    available_domains=domains,
-                ),
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=error_result(
+                        f"未知 tool: {name}",
+                        code=ERR_UNKNOWN_TOOL,
+                        tool=name,
+                        available_domains=domains,
+                    ),
+                )
+            ]
         text = spec.handler(arguments or {})
         return [TextContent(type="text", text=text)]
 
     async def main():
         async with stdio_server() as (read_stream, write_stream):
-            await app.run(read_stream, write_stream, app.create_initialization_options())
+            await app.run(
+                read_stream, write_stream, app.create_initialization_options()
+            )
 
     asyncio.run(main())
 

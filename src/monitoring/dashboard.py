@@ -1,19 +1,20 @@
 """
 Grafana Dashboard 指標定義 - 預設儀表板配置
 """
+
 from typing import Any
 
 
 class DashboardMetrics:
     """
     Grafana Dashboard 指標定義
-    
+
     提供預設的儀表板配置，可用於：
     1. 自動創建 Grafana Dashboard
     2. 前端直接讀取指標數據
     3. 導出為 JSON 供 Grafana 導入
     """
-    
+
     @staticmethod
     def get_dashboard_config() -> dict[str, Any]:
         """獲取 Grafana Dashboard 配置"""
@@ -62,15 +63,15 @@ class DashboardMetrics:
                         "type": "stat",
                         "targets": [
                             {
-                                "expr": "backtest_tasks_total{status=\"started\"}",
+                                "expr": 'backtest_tasks_total{status="started"}',
                                 "legendFormat": "Started",
                             },
                             {
-                                "expr": "backtest_tasks_total{status=\"completed\"}",
+                                "expr": 'backtest_tasks_total{status="completed"}',
                                 "legendFormat": "Completed",
                             },
                             {
-                                "expr": "backtest_tasks_total{status=\"failed\"}",
+                                "expr": 'backtest_tasks_total{status="failed"}',
                                 "legendFormat": "Failed",
                             },
                         ],
@@ -127,19 +128,20 @@ class DashboardMetrics:
                 },
             }
         }
-    
+
     @staticmethod
     def get_quick_stats(collector_metrics: dict) -> dict[str, Any]:
         """獲取快速統計數據（用於前端即時顯示）"""
         cache = collector_metrics.get("cache", {})
         queues = collector_metrics.get("queues", {})
         counters = collector_metrics.get("counters", {})
-        
+
         total_tasks = sum(
-            v for k, v in counters.items() 
+            v
+            for k, v in counters.items()
             if k.startswith("backtest_tasks_total") and "started" in k
         )
-        
+
         return {
             "cache_hit_rate": cache.get("hit_rate", 0.0),
             "cache_hits": cache.get("hits", 0),

@@ -1,4 +1,5 @@
 """NDJSON 流式工具測試"""
+
 import pytest
 
 from src.api.ndjson import iter_ndjson_lines, ndjson_stream

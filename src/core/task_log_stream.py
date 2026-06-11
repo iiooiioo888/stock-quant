@@ -1,4 +1,5 @@
 """任務執行期間捕獲 stdout/stderr，供 WebSocket 與任務日誌 API 使用。"""
+
 from __future__ import annotations
 
 import io

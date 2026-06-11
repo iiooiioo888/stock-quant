@@ -1,6 +1,7 @@
 """
 市場數據下載任務 — 支持進度回報與任務列表展示
 """
+
 import random
 import threading
 import time
@@ -63,6 +64,7 @@ def _update_download_meta(
 
 def _check_cancelled(task_id: str):
     from src.core.task_manager import is_task_cancelled
+
     if task_id and is_task_cancelled(task_id):
         raise RuntimeError("任務已取消")
 
@@ -105,8 +107,7 @@ def _download_codes_parallel(
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_one, i, code): (i, code)
-            for i, code in enumerate(codes)
+            pool.submit(_one, i, code): (i, code) for i, code in enumerate(codes)
         }
         for fut in as_completed(futures):
             _check_cancelled(task_id)
@@ -239,8 +240,7 @@ def run_download_all(task_id: str = None) -> dict:
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_one, i, code): (i, code)
-            for i, code in enumerate(flat_codes)
+            pool.submit(_one, i, code): (i, code) for i, code in enumerate(flat_codes)
         }
         for fut in as_completed(futures):
             _check_cancelled(task_id)
@@ -266,7 +266,13 @@ def run_download_all(task_id: str = None) -> dict:
     for r in all_results:
         mk = r["market"]
         if mk not in by_market:
-            by_market[mk] = {"market": mk, "market_name": MARKET_NAMES.get(mk, mk), "records": 0, "symbols": 0, "success": 0}
+            by_market[mk] = {
+                "market": mk,
+                "market_name": MARKET_NAMES.get(mk, mk),
+                "records": 0,
+                "symbols": 0,
+                "success": 0,
+            }
         by_market[mk]["records"] += r["records"]
         by_market[mk]["symbols"] += 1
         if r["records"] > 0:
@@ -298,7 +304,9 @@ def run_download_all(task_id: str = None) -> dict:
     return result
 
 
-def run_incremental(codes: list[str] = None, force: bool = False, task_id: str = None) -> dict:
+def run_incremental(
+    codes: list[str] = None, force: bool = False, task_id: str = None
+) -> dict:
     """增量更新（包裝 history.download_incremental，帶進度）"""
     from src.core.history import download_incremental
 

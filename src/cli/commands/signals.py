@@ -1,4 +1,5 @@
 """CLI commands: signals"""
+
 from datetime import datetime
 
 import numpy as np
@@ -19,8 +20,10 @@ def cmd_signals(args):
     """實時交易信號"""
     from src.core.db import get_signal_logs
     from src.core.signals import (
-        SignalEngine, score_signal_strength,
-        compute_and_push_signals, get_historical_signals,
+        SignalEngine,
+        score_signal_strength,
+        compute_and_push_signals,
+        get_historical_signals,
     )
 
     ensure_db()
@@ -84,7 +87,9 @@ def cmd_signals(args):
             return
 
         days = args.days or 30
-        strategy = args.strategy if hasattr(args, "strategy") and args.strategy else None
+        strategy = (
+            args.strategy if hasattr(args, "strategy") and args.strategy else None
+        )
 
         # 先查數據庫
         logs = get_signal_logs(code=code, strategy=strategy, days=days)
@@ -110,7 +115,9 @@ def cmd_signals(args):
                 sig_icon = "  🔴賣"
             else:
                 sig_icon = "  ⚪持"
-            print(f"{s['triggered_at']:<12} {s['strategy']:<14} {sig_icon} {s['price']:>10.2f} {s.get('strength', 0):>8.1f}")
+            print(
+                f"{s['triggered_at']:<12} {s['strategy']:<14} {sig_icon} {s['price']:>10.2f} {s.get('strength', 0):>8.1f}"
+            )
 
     elif args.action == "strength":
         # 查看信號強度
@@ -177,7 +184,9 @@ def cmd_signals(args):
         print(f"\n{'='*80}")
         print(f"📊 綜合信號排名")
         print(f"{'='*80}")
-        print(f"{'排名':>4} {'代碼':>8} {'綜合分數':>10} {'推薦':>10} {'最新價格':>10} {'信號數':>6}")
+        print(
+            f"{'排名':>4} {'代碼':>8} {'綜合分數':>10} {'推薦':>10} {'最新價格':>10} {'信號數':>6}"
+        )
         print("-" * 60)
 
         for r in rankings[:50]:
@@ -204,7 +213,9 @@ def cmd_signals(args):
                 for strat, detail in r.get("strategy_details", {}).items():
                     sig = detail["signal"]
                     sig_icon = "🟢" if sig == "buy" else "🔴" if sig == "sell" else "⚪"
-                    print(f"        {sig_icon} {strat:<14} 強度={detail['strength']:>6.1f}  權重={detail['weight']:.3f}")
+                    print(
+                        f"        {sig_icon} {strat:<14} 強度={detail['strength']:>6.1f}  權重={detail['weight']:.3f}"
+                    )
 
     elif args.action == "heatmap":
         # 信號熱力圖
@@ -258,7 +269,9 @@ def cmd_signals(args):
                     row += f"{'N/A':>6}"
             print(row)
 
-        print(f"\n圖例: >30 🟢強買 | 10~30 🔵偏多 | -10~10 ⚪中性 | -30~-10 🟡偏空 | <-30 🔴強賣")
+        print(
+            f"\n圖例: >30 🟢強買 | 10~30 🔵偏多 | -10~10 ⚪中性 | -30~-10 🟡偏空 | <-30 🔴強賣"
+        )
 
     elif args.action == "backtest":
         # 信號回測驗證
@@ -286,10 +299,14 @@ def cmd_signals(args):
             acc = overall.get(f"accuracy_{key}", 0)
             print(f"  {key} 方向正確率: {acc:.1%}")
 
-        print(f"\n{'策略':<14} {'信號數':>6} {'買/賣':>8} {'1d準確':>8} {'3d準確':>8} {'5d準確':>8} {'10d準確':>8} {'1d收益':>8}")
+        print(
+            f"\n{'策略':<14} {'信號數':>6} {'買/賣':>8} {'1d準確':>8} {'3d準確':>8} {'5d準確':>8} {'10d準確':>8} {'1d收益':>8}"
+        )
         print("-" * 80)
 
-        for strat_name, stats in sorted(by_strategy.items(), key=lambda x: x[1].get("accuracy_1d", 0), reverse=True):
+        for strat_name, stats in sorted(
+            by_strategy.items(), key=lambda x: x[1].get("accuracy_1d", 0), reverse=True
+        ):
             print(
                 f"{strat_name:<14} {stats['total_signals']:>6} "
                 f"{stats['buy_signals']:>3}/{stats['sell_signals']:<3} "
@@ -304,7 +321,9 @@ def cmd_signals(args):
         details = result.get("signal_details", [])
         if details:
             print(f"\n最近信號明細 (前 20 條):")
-            print(f"{'日期':<12} {'代碼':>8} {'策略':<14} {'信號':>6} {'價格':>10} {'1d收益':>8}")
+            print(
+                f"{'日期':<12} {'代碼':>8} {'策略':<14} {'信號':>6} {'價格':>10} {'1d收益':>8}"
+            )
             print("-" * 62)
             for d in details[:20]:
                 sig = d.get("signal", "")
@@ -322,5 +341,3 @@ def cmd_signals(args):
         print("  python main.py signals ranking               # 綜合信號排名")
         print("  python main.py signals heatmap --code 600519 # 信號熱力圖")
         print("  python main.py signals backtest --code 600519 # 信號回測驗證")
-
-

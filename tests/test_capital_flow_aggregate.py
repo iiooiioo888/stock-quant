@@ -1,4 +1,5 @@
 """北向資金按日聚合"""
+
 from src.core.capital_flow import aggregate_north_flow_daily
 
 

@@ -1,4 +1,5 @@
 """儀表盤 — 板塊與資金流向圖表 API"""
+
 from fastapi import APIRouter, Query
 
 from src.utils.logger import logger
@@ -20,7 +21,9 @@ async def sectors_capital_flow_rank(top_n: int = Query(20, ge=5, le=50)):
             "sectors": sectors,
             "total": len(sectors),
             "degraded": degraded,
-            "degraded_message": "資料降級：僅板塊漲跌，無主力淨額" if degraded else None,
+            "degraded_message": (
+                "資料降級：僅板塊漲跌，無主力淨額" if degraded else None
+            ),
         }
     except Exception as e:
         logger.error(f"板塊資金排名失敗: {e}", exc_info=True)
@@ -86,8 +89,7 @@ async def dashboard_market_charts(days: int = Query(20, ge=5, le=60)):
             "sector_flow": sector_flow,
             "sector_flow_degraded": flow_degraded,
             "sector_flow_degraded_message": (
-                "資料降級：僅板塊漲跌，無主力淨額"
-                if flow_degraded else None
+                "資料降級：僅板塊漲跌，無主力淨額" if flow_degraded else None
             ),
             "sector_scatter": sector_scatter,
             "sector_heatmap": sector_heatmap,

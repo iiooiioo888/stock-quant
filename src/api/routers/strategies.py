@@ -1,4 +1,5 @@
 """strategies 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -33,8 +34,6 @@ async def create_strategy(body: dict):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.get("/api/strategies/list")
 async def list_strategies_api(user=Depends(get_current_user)):
     """列出所有策略（內置 + 用戶）"""
@@ -52,6 +51,7 @@ async def list_strategies_api(user=Depends(get_current_user)):
         controls = None
         try:
             from src.core.admin_controls import get_controls
+
             controls = (get_controls().get("scopes") or {}).get("strategies") or {}
         except Exception:
             controls = {}
@@ -62,28 +62,34 @@ async def list_strategies_api(user=Depends(get_current_user)):
                 continue
             display = STRATEGY_NAMES.get(name, name)
             desc = (cls.__doc__ or "").strip().split("\n")[0]
-            builtin.append({
-                "name": name,
-                "display_name": display,
-                "source": "builtin",
-                "description": f"{display} — {desc}" if desc else display,
-                "params": {},
-            })
+            builtin.append(
+                {
+                    "name": name,
+                    "display_name": display,
+                    "source": "builtin",
+                    "description": f"{display} — {desc}" if desc else display,
+                    "params": {},
+                }
+            )
 
         user_strategies = list_user_strategies()
         user_list = []
         for s in user_strategies:
             if controls and controls.get("user_enabled") is False:
                 continue
-            if controls and not is_allowed("strategies", None, user=user, name=s.get("name")):
+            if controls and not is_allowed(
+                "strategies", None, user=user, name=s.get("name")
+            ):
                 continue
-            user_list.append({
-                "name": s["name"],
-                "source": "user",
-                "description": s["description"],
-                "params": s["params"],
-                "filepath": s.get("filepath", ""),
-            })
+            user_list.append(
+                {
+                    "name": s["name"],
+                    "source": "user",
+                    "description": s["description"],
+                    "params": s["params"],
+                    "filepath": s.get("filepath", ""),
+                }
+            )
 
         return {
             "builtin": builtin,
@@ -92,8 +98,6 @@ async def list_strategies_api(user=Depends(get_current_user)):
         }
 
     return cached_response("api:strategies:list", ttl=120, builder=_build)
-
-
 
 
 @router.get("/api/strategies/likes")
@@ -110,8 +114,6 @@ async def strategy_likes_state_api(user=Depends(get_current_user)):
     if user:
         mine = get_user_liked_keys(user.id)
     return {"success": True, "counts": counts, "mine": mine}
-
-
 
 
 @router.post("/api/strategies/likes/toggle")
@@ -139,8 +141,6 @@ async def strategy_likes_toggle_api(body: dict, user=Depends(require_auth)):
     return {"success": True, **result}
 
 
-
-
 @router.post("/api/strategies/upload")
 async def upload_strategy(file: UploadFile = File(...)):
     """上傳用戶策略 .py 文件（AST 白名單沙箱，寫入前校驗）"""
@@ -152,22 +152,30 @@ async def upload_strategy(file: UploadFile = File(...)):
     )
 
     if not settings.allow_strategy_upload:
-        raise HTTPException(403, "管理員已禁用自定義策略上傳（SQ_ALLOW_STRATEGY_UPLOAD=false）")
+        raise HTTPException(
+            403, "管理員已禁用自定義策略上傳（SQ_ALLOW_STRATEGY_UPLOAD=false）"
+        )
 
     safe_name = sanitize_strategy_filename(file.filename or "")
     if not safe_name:
-        raise HTTPException(400, "檔名僅允許字母數字與底線，且須為 .py（例: my_ma_strategy.py）")
+        raise HTTPException(
+            400, "檔名僅允許字母數字與底線，且須為 .py（例: my_ma_strategy.py）"
+        )
 
     raw = await file.read(settings.strategy_upload_max_bytes + 1)
     if len(raw) > settings.strategy_upload_max_bytes:
-        raise HTTPException(400, f"策略檔案超過 {settings.strategy_upload_max_bytes} bytes 上限")
+        raise HTTPException(
+            400, f"策略檔案超過 {settings.strategy_upload_max_bytes} bytes 上限"
+        )
 
     try:
         source = raw.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(400, "策略檔案必須為 UTF-8 編碼")
 
-    check = validate_strategy_source(source, max_bytes=settings.strategy_upload_max_bytes)
+    check = validate_strategy_source(
+        source, max_bytes=settings.strategy_upload_max_bytes
+    )
     if not check.ok:
         raise HTTPException(400, f"策略安全校驗失敗: {check.error}")
 
@@ -200,8 +208,6 @@ async def upload_strategy(file: UploadFile = File(...)):
     }
 
 
-
-
 @router.get("/api/strategies/leaderboard")
 async def get_leaderboard_api(sort_by: str = "sharpe", limit: int = 50):
     """獲取策略排行榜"""
@@ -218,14 +224,13 @@ async def get_leaderboard_api(sort_by: str = "sharpe", limit: int = 50):
             "empty": len(results) == 0,
             "hint": (
                 "排行榜暫無數據，請先 POST /api/strategies/leaderboard/update 生成排名"
-                if len(results) == 0 else None
+                if len(results) == 0
+                else None
             ),
         }
     except Exception as e:
         logger.error(f"獲取排行榜失敗: {e}", exc_info=True)
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/strategies/leaderboard/update")
@@ -245,12 +250,13 @@ async def update_leaderboard_api(codes: list[str] = None):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.post("/api/strategies/test")
 async def test_user_strategy(body: dict):
     """快速回測用戶策略"""
-    from src.core.strategy_base import list_user_strategies, quick_backtest_user_strategy
+    from src.core.strategy_base import (
+        list_user_strategies,
+        quick_backtest_user_strategy,
+    )
 
     strategy_name = body.get("strategy_name", "").strip()
     code = body.get("code", "").strip()
@@ -268,7 +274,10 @@ async def test_user_strategy(body: dict):
             break
 
     if not target:
-        raise HTTPException(404, f"未找到用戶策略: {strategy_name}，可用: {[s['name'] for s in user_strategies]}")
+        raise HTTPException(
+            404,
+            f"未找到用戶策略: {strategy_name}，可用: {[s['name'] for s in user_strategies]}",
+        )
 
     try:
         cls = target["class"]
@@ -281,6 +290,3 @@ async def test_user_strategy(body: dict):
 
 
 # ====== 實時行情 ======
-
-
-

@@ -1,4 +1,5 @@
 """data_ops 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -28,8 +29,6 @@ async def get_stock_list_api(market: str = "all"):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.post("/api/screener/screen")
 async def screen_stocks_api(body: dict):
     """股票篩選"""
@@ -49,7 +48,6 @@ async def screen_stocks_api(body: dict):
 # ====== 基準對比 ======
 
 
-
 @router.get("/api/benchmark")
 async def get_benchmark(start: str = None, end: str = None):
     """獲取滬深300基準數據"""
@@ -61,8 +59,6 @@ async def get_benchmark(start: str = None, end: str = None):
     except Exception as e:
         logger.error(f"基準數據獲取失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/benchmark/compare")
@@ -86,13 +82,12 @@ async def compare_benchmark_api(body: dict):
 
 # ====== 實時信號 ======
 
+
 def _fetch_current_signals():
     from src.core.signals import SignalEngine, compute_and_push_signals
 
     engine = SignalEngine()
     return compute_and_push_signals(engine, list(settings.watchlist))
-
-
 
 
 @router.get("/api/export/backtest/{result_id}")
@@ -110,17 +105,19 @@ async def export_backtest(
     if format == "json":
         content = export_backtest_json(result_id)
         from fastapi.responses import Response
+
         return Response(content=content, media_type="application/json")
     else:
         content = export_backtest_csv(result_id)
         from fastapi.responses import Response
+
         return Response(
             content=content,
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=backtest_{result_id}.csv"}
+            headers={
+                "Content-Disposition": f"attachment; filename=backtest_{result_id}.csv"
+            },
         )
-
-
 
 
 @router.get("/api/export/trades")
@@ -139,19 +136,22 @@ async def export_trades(
     if format == "json":
         content = export_trades_json(code, strategy)
         from fastapi.responses import Response
+
         return Response(content=content, media_type="application/json")
     else:
         content = export_trades_csv(code, strategy)
         from fastapi.responses import Response
+
         return Response(
             content=content,
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=trades_{code}_{strategy}.csv"}
+            headers={
+                "Content-Disposition": f"attachment; filename=trades_{code}_{strategy}.csv"
+            },
         )
 
 
 # ====== 有效前沿 ======
-
 
 
 @router.get("/api/realtime")
@@ -177,7 +177,6 @@ async def get_realtime(codes: str = None):
 # ====== 風險管理 API ======
 
 
-
 @router.get("/api/data-quality/check")
 async def data_quality_check(code: str = None, severity: str = None):
     """數據質量校驗"""
@@ -186,15 +185,18 @@ async def data_quality_check(code: str = None, severity: str = None):
     try:
         if code:
             issues = validate_stock_data(code)
-            return {"success": True, "code": code, "issues": [i.to_dict() for i in issues], "total": len(issues)}
+            return {
+                "success": True,
+                "code": code,
+                "issues": [i.to_dict() for i in issues],
+                "total": len(issues),
+            }
         else:
             report = validate_all(severity_filter=severity)
             return {"success": True, **report}
     except Exception as e:
         logger.error(f"數據質量校驗失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/data-quality/repair")
@@ -208,8 +210,6 @@ async def data_quality_repair(code: str, dry_run: bool = True):
     except Exception as e:
         logger.error(f"數據修復失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.get("/api/data-quality/splits")
@@ -226,6 +226,3 @@ async def detect_splits(code: str):
 
 
 # ====== 模擬交易 API ======
-
-
-

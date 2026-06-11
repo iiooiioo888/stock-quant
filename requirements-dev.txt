@@ -1,10 +1,13 @@
 # 開發 / CI 可選依賴（不影響主應用運行）
-pytest>=8.0.0
-pytest-cov>=4.1.0
-pytest-asyncio>=0.23.0
-playwright>=1.40.0
-numba>=0.59.0
-ruff>=0.4.0
-mypy>=1.8.0
-responses>=0.25.0
-sentry-sdk>=2.0.0
+pytest>=8.0.0,<9.0.0
+pytest-cov>=4.1.0,<5.0.0
+pytest-asyncio>=0.23.0,<1.0.0
+playwright>=1.40.0,<2.0.0
+ruff>=0.4.0,<1.0.0
+mypy>=1.8.0,<2.0.0
+responses>=0.25.0,<1.0.0
+sentry-sdk>=2.0.0,<3.0.0
+
+# 測試工具
+hypothesis>=6.90.0,<7.0.0
+faker>=20.0.0,<21.0.0

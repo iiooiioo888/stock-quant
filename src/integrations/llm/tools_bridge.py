@@ -1,6 +1,7 @@
 """
 將 MCP ToolSpec 轉為 OpenAI function calling 格式並執行。
 """
+
 from __future__ import annotations
 
 import json
@@ -13,14 +14,16 @@ def tools_for_llm() -> list[dict]:
     """OpenAI Chat Completions tools 列表。"""
     out = []
     for spec in get_all_tools():
-        out.append({
-            "type": "function",
-            "function": {
-                "name": spec.name,
-                "description": spec.description,
-                "parameters": spec.input_schema,
-            },
-        })
+        out.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": spec.name,
+                    "description": spec.description,
+                    "parameters": spec.input_schema,
+                },
+            }
+        )
     return out
 
 
@@ -44,5 +47,11 @@ def execute_tool(name: str, arguments: dict | None) -> dict:
     except Exception:
         parsed = {"raw": text}
     if isinstance(parsed, dict) and parsed.get("error"):
-        return {"ok": False, "name": name, "result_text": text, "parsed": parsed, "error": parsed["error"]}
+        return {
+            "ok": False,
+            "name": name,
+            "result_text": text,
+            "parsed": parsed,
+            "error": parsed["error"],
+        }
     return {"ok": True, "name": name, "result_text": text, "parsed": parsed}

@@ -1,4 +1,5 @@
 """risk 路由（P5 從 app.py 拆分）。"""
+
 import json
 import time
 from pathlib import Path
@@ -76,7 +77,9 @@ async def risk_position_size(body: dict):
             target_vol = body.get("target_vol", 0.15)
             current_vol = body.get("current_vol", 0.20)
             current_position = body.get("current_position", capital * 0.5)
-            result_value = sizer.volatility_target(target_vol, current_vol, current_position)
+            result_value = sizer.volatility_target(
+                target_vol, current_vol, current_position
+            )
             return {
                 "success": True,
                 "method": "波動率目標",
@@ -97,15 +100,16 @@ async def risk_position_size(body: dict):
             }
 
         else:
-            raise HTTPException(400, f"未知方法: {method}，可選: atr, fixed, kelly, volatility, drawdown")
+            raise HTTPException(
+                400,
+                f"未知方法: {method}，可選: atr, fixed, kelly, volatility, drawdown",
+            )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"倉位計算失敗: {e}")
         raise HTTPException(500, str(e))
-
-
 
 
 @router.post("/api/risk/budget-check")
@@ -117,7 +121,9 @@ async def risk_budget_check(body: dict):
     max_single_risk = body.get("max_single_risk", 0.05)
     positions = body.get("positions", [])
 
-    budget = RiskBudget(max_portfolio_risk=max_portfolio_risk, max_single_risk=max_single_risk)
+    budget = RiskBudget(
+        max_portfolio_risk=max_portfolio_risk, max_single_risk=max_single_risk
+    )
 
     try:
         # 組合風險預算
@@ -150,8 +156,6 @@ async def risk_budget_check(body: dict):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.post("/api/risk/drawdown-protect")
 async def risk_drawdown_protect(body: dict):
     """回撤保護 — 分析淨值序列的回撤狀態和熔斷點"""
@@ -166,7 +170,9 @@ async def risk_drawdown_protect(body: dict):
             max_dd = body.get("max_drawdown_pct", 20.0)
             warning_dd = body.get("warning_pct", 10.0)
 
-            protector = DrawdownProtector(max_drawdown_pct=max_dd, warning_pct=warning_dd)
+            protector = DrawdownProtector(
+                max_drawdown_pct=max_dd, warning_pct=warning_dd
+            )
             results = []
             for v in nav_values:
                 result = protector.update(v)
@@ -192,7 +198,9 @@ async def risk_drawdown_protect(body: dict):
             return {"success": True, "mode": "circuit_breaker", "result": result}
 
         else:
-            raise HTTPException(400, f"未知模式: {mode}，可選: monitor, circuit_breaker")
+            raise HTTPException(
+                400, f"未知模式: {mode}，可選: monitor, circuit_breaker"
+            )
 
     except HTTPException:
         raise
@@ -202,7 +210,6 @@ async def risk_drawdown_protect(body: dict):
 
 
 # ====== 信號增強 API ======
-
 
 
 @router.post("/api/risk-pipeline/run")
@@ -225,17 +232,13 @@ async def run_risk_pipeline_api(body: dict = None):
         raise HTTPException(500, str(e))
 
 
-
-
 @router.get("/api/risk-pipeline/state")
 async def get_risk_pipeline_state():
     """獲取風控管道狀態"""
     from src.core.risk_pipeline import RiskPipeline
+
     pipeline = RiskPipeline()
     return {"success": True, "state": pipeline.get_state()}
 
 
 # ====== 數據質量 API ======
-
-
-

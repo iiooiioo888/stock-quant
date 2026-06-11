@@ -3,6 +3,7 @@
 
 sector 為穩定英文 key；展示用 STOCK_SECTOR_LABELS。
 """
+
 from __future__ import annotations
 
 STOCK_SECTOR_LABELS: dict[str, str] = {

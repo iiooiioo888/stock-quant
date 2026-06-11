@@ -9,6 +9,7 @@
 - 告警引擎觸發與冷卻
 - API 端點 mock 測試
 """
+
 import json
 import time
 from unittest.mock import patch, AsyncMock
@@ -16,14 +17,15 @@ from unittest.mock import patch, AsyncMock
 import numpy as np
 import pytest
 
-
 # ── BinanceStreamClient 測試 ──────────────────────────────────
+
 
 class TestWSClientParsing:
     """測試消息解析。"""
 
     def test_parse_trade(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "trade",
@@ -45,15 +47,24 @@ class TestWSClientParsing:
 
     def test_parse_kline(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "kline",
             "E": int(time.time() * 1000),
             "s": "BTCUSDT",
             "k": {
-                "t": 1000, "T": 2000, "i": "1m",
-                "o": "64000", "h": "65500", "l": "63500", "c": "65000",
-                "v": "100.5", "q": "6500000", "n": 50, "x": False,
+                "t": 1000,
+                "T": 2000,
+                "i": "1m",
+                "o": "64000",
+                "h": "65500",
+                "l": "63500",
+                "c": "65000",
+                "v": "100.5",
+                "q": "6500000",
+                "n": 50,
+                "x": False,
             },
         }
         result = client._parse_kline(data)
@@ -66,14 +77,22 @@ class TestWSClientParsing:
 
     def test_parse_ticker(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "24hrTicker",
             "E": int(time.time() * 1000),
             "s": "BTCUSDT",
-            "c": "65000", "o": "64000", "h": "66000", "l": "63000",
-            "v": "1000", "q": "65000000",
-            "p": "1000", "P": "1.56", "w": "64500", "n": 5000,
+            "c": "65000",
+            "o": "64000",
+            "h": "66000",
+            "l": "63000",
+            "v": "1000",
+            "q": "65000000",
+            "p": "1000",
+            "P": "1.56",
+            "w": "64500",
+            "n": 5000,
         }
         result = client._parse_ticker(data)
         assert result is not None
@@ -82,6 +101,7 @@ class TestWSClientParsing:
 
     def test_parse_depth(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "depthUpdate",
@@ -100,6 +120,7 @@ class TestWSClientParsing:
 
     def test_validate_valid_trade(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "trade",
@@ -113,6 +134,7 @@ class TestWSClientParsing:
 
     def test_validate_invalid_price(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "trade",
@@ -126,6 +148,7 @@ class TestWSClientParsing:
 
     def test_validate_stale_timestamp(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         data = {
             "e": "trade",
@@ -139,6 +162,7 @@ class TestWSClientParsing:
 
     def test_subscription_management(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         new = client.add_subscription("BTCUSDT", stream_types=["trade", "ticker"])
         assert "btcusdt@trade" in new
@@ -151,19 +175,24 @@ class TestWSClientParsing:
 
     def test_kline_subscription(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
-        new = client.add_subscription("BTCUSDT", stream_types=["kline"], kline_intervals=["1m", "5m"])
+        new = client.add_subscription(
+            "BTCUSDT", stream_types=["kline"], kline_intervals=["1m", "5m"]
+        )
         assert "btcusdt@kline_1m" in new
         assert "btcusdt@kline_5m" in new
 
     def test_depth_subscription(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         new = client.add_subscription("BTCUSDT", stream_types=["depth"])
         assert "btcusdt@depth@100ms" in new
 
     def test_get_status(self):
         from src.core.crypto.ws_client import BinanceStreamClient
+
         client = BinanceStreamClient()
         status = client.get_status()
         assert status["state"] == "idle"
@@ -173,12 +202,14 @@ class TestWSClientParsing:
 
 # ── StreamManager 測試 ────────────────────────────────────────
 
+
 class TestStreamManager:
     """測試串流管理器。"""
 
     @pytest.mark.asyncio
     async def test_on_trade_updates_snapshot(self):
         from src.core.crypto.stream_manager import CryptoStreamManager
+
         mgr = CryptoStreamManager()
         trade = {
             "symbol": "BTCUSDT",
@@ -199,6 +230,7 @@ class TestStreamManager:
     @pytest.mark.asyncio
     async def test_on_ticker_updates_snapshot(self):
         from src.core.crypto.stream_manager import CryptoStreamManager
+
         mgr = CryptoStreamManager()
         ticker = {
             "symbol": "BTCUSDT",
@@ -221,18 +253,29 @@ class TestStreamManager:
     @pytest.mark.asyncio
     async def test_trade_stats(self):
         from src.core.crypto.stream_manager import CryptoStreamManager
+
         mgr = CryptoStreamManager()
 
         # 模擬買入
-        await mgr.on_trade({
-            "symbol": "BTCUSDT", "price": 65000.0, "qty": 1.0,
-            "is_buyer_maker": False, "timestamp": time.time(),
-        })
+        await mgr.on_trade(
+            {
+                "symbol": "BTCUSDT",
+                "price": 65000.0,
+                "qty": 1.0,
+                "is_buyer_maker": False,
+                "timestamp": time.time(),
+            }
+        )
         # 模擬賣出
-        await mgr.on_trade({
-            "symbol": "BTCUSDT", "price": 65100.0, "qty": 0.5,
-            "is_buyer_maker": True, "timestamp": time.time(),
-        })
+        await mgr.on_trade(
+            {
+                "symbol": "BTCUSDT",
+                "price": 65100.0,
+                "qty": 0.5,
+                "is_buyer_maker": True,
+                "timestamp": time.time(),
+            }
+        )
 
         stats = mgr.get_trade_stats("BTCUSDT")
         assert stats["buy_volume"] == 1.0
@@ -241,6 +284,7 @@ class TestStreamManager:
 
     def test_snapshot_to_dict(self):
         from src.core.crypto.stream_manager import CryptoSnapshot
+
         snap = CryptoSnapshot(symbol="BTCUSDT", price=65000.0, change_pct=2.5)
         d = snap.to_dict()
         assert d["symbol"] == "BTCUSDT"
@@ -250,6 +294,7 @@ class TestStreamManager:
 
     def test_manager_stats(self):
         from src.core.crypto.stream_manager import CryptoStreamManager
+
         mgr = CryptoStreamManager()
         stats = mgr.get_manager_stats()
         assert stats["symbols_tracked"] == 0
@@ -258,18 +303,23 @@ class TestStreamManager:
 
 # ── 技術指標測試 ───────────────────────────────────────────────
 
+
 class TestCryptoIndicators:
     """測試技術指標計算。"""
 
     def test_compute_ema(self):
         from src.core.crypto.indicators import compute_ema
-        close = np.array([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110], dtype=np.float64)
+
+        close = np.array(
+            [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110], dtype=np.float64
+        )
         ema = compute_ema(close, 5)
         assert not np.isnan(ema[-1])
         assert ema[-1] > 100
 
     def test_compute_bollinger_bands(self):
         from src.core.crypto.indicators import compute_bollinger_bands
+
         close = np.arange(100, 130, dtype=np.float64)
         upper, middle, lower = compute_bollinger_bands(close, 20, 2.0)
         assert not np.isnan(middle[-1])
@@ -278,6 +328,7 @@ class TestCryptoIndicators:
 
     def test_compute_obv(self):
         from src.core.crypto.indicators import compute_obv
+
         close = np.array([10, 11, 10, 12, 11], dtype=np.float64)
         volume = np.array([100, 200, 150, 300, 100], dtype=np.float64)
         obv = compute_obv(close, volume)
@@ -285,10 +336,11 @@ class TestCryptoIndicators:
 
     def test_taker_buy_sell_ratio(self):
         from src.core.crypto.indicators import compute_taker_buy_sell_ratio
+
         trades = [
             {"qty": 1.0, "is_buyer_maker": False},  # buy
-            {"qty": 0.5, "is_buyer_maker": True},    # sell
-            {"qty": 2.0, "is_buyer_maker": False},   # buy
+            {"qty": 0.5, "is_buyer_maker": True},  # sell
+            {"qty": 2.0, "is_buyer_maker": False},  # buy
         ]
         result = compute_taker_buy_sell_ratio(trades)
         assert result["buy_volume"] == 3.0
@@ -297,11 +349,36 @@ class TestCryptoIndicators:
 
     def test_detect_large_orders(self):
         from src.core.crypto.indicators import detect_large_orders
+
         trades = [
-            {"price": 65000, "qty": 0.1, "quote_qty": 6500, "is_buyer_maker": False, "trade_time": 0},
-            {"price": 65000, "qty": 0.1, "quote_qty": 6500, "is_buyer_maker": True, "trade_time": 0},
-            {"price": 65000, "qty": 0.1, "quote_qty": 6500, "is_buyer_maker": False, "trade_time": 0},
-            {"price": 65000, "qty": 5.0, "quote_qty": 325000, "is_buyer_maker": False, "trade_time": 0},  # 大單
+            {
+                "price": 65000,
+                "qty": 0.1,
+                "quote_qty": 6500,
+                "is_buyer_maker": False,
+                "trade_time": 0,
+            },
+            {
+                "price": 65000,
+                "qty": 0.1,
+                "quote_qty": 6500,
+                "is_buyer_maker": True,
+                "trade_time": 0,
+            },
+            {
+                "price": 65000,
+                "qty": 0.1,
+                "quote_qty": 6500,
+                "is_buyer_maker": False,
+                "trade_time": 0,
+            },
+            {
+                "price": 65000,
+                "qty": 5.0,
+                "quote_qty": 325000,
+                "is_buyer_maker": False,
+                "trade_time": 0,
+            },  # 大單
         ]
         # multiplier×平均量：0.1×3 + 5.0 → 平均 1.325，×3 ≈ 3.98，5.0 為大單
         large = detect_large_orders(trades, multiplier=3.0)
@@ -310,6 +387,7 @@ class TestCryptoIndicators:
 
     def test_compute_all_crypto_indicators(self):
         from src.core.crypto.indicators import compute_all_crypto_indicators
+
         n = 100
         closes = np.random.uniform(60000, 70000, n)
         highs = closes + np.random.uniform(0, 500, n)
@@ -326,27 +404,50 @@ class TestCryptoIndicators:
 
     def test_volatility_percentile(self):
         from src.core.crypto.indicators import compute_volatility_percentile
+
         # 創建收窄波動序列
-        closes = np.concatenate([
-            np.random.uniform(60000, 70000, 80),  # 高波動
-            np.random.uniform(64000, 65000, 20),   # 低波動
-        ])
+        closes = np.concatenate(
+            [
+                np.random.uniform(60000, 70000, 80),  # 高波動
+                np.random.uniform(64000, 65000, 20),  # 低波動
+            ]
+        )
         pct = compute_volatility_percentile(closes)
         assert 0 <= pct <= 100
 
 
 # ── 微結構分析測試 ─────────────────────────────────────────────
 
+
 class TestMicrostructure:
     """測試微結構分析。"""
 
     def test_analyze_trades(self):
         from src.core.crypto.microstructure import CryptoMicrostructureAnalyzer
+
         analyzer = CryptoMicrostructureAnalyzer()
         trades = [
-            {"price": 65000, "qty": 0.1, "is_buyer_maker": False, "quote_qty": 6500, "timestamp": time.time()},
-            {"price": 65100, "qty": 0.2, "is_buyer_maker": True, "quote_qty": 13020, "timestamp": time.time()},
-            {"price": 65200, "qty": 0.3, "is_buyer_maker": False, "quote_qty": 19560, "timestamp": time.time()},
+            {
+                "price": 65000,
+                "qty": 0.1,
+                "is_buyer_maker": False,
+                "quote_qty": 6500,
+                "timestamp": time.time(),
+            },
+            {
+                "price": 65100,
+                "qty": 0.2,
+                "is_buyer_maker": True,
+                "quote_qty": 13020,
+                "timestamp": time.time(),
+            },
+            {
+                "price": 65200,
+                "qty": 0.3,
+                "is_buyer_maker": False,
+                "quote_qty": 19560,
+                "timestamp": time.time(),
+            },
         ]
         result = analyzer.analyze_trades(trades)
         assert result["trade_count"] == 3
@@ -355,12 +456,14 @@ class TestMicrostructure:
 
     def test_empty_trades(self):
         from src.core.crypto.microstructure import CryptoMicrostructureAnalyzer
+
         analyzer = CryptoMicrostructureAnalyzer()
         result = analyzer.analyze_trades([])
         assert result["trade_count"] == 0
 
     def test_analyze_depth(self):
         from src.core.crypto.microstructure import CryptoMicrostructureAnalyzer
+
         analyzer = CryptoMicrostructureAnalyzer()
         depth = {
             "bids": [[64900, 1.5], [64800, 2.0], [64700, 3.0]],
@@ -376,11 +479,13 @@ class TestMicrostructure:
 
 # ── 告警引擎測試 ───────────────────────────────────────────────
 
+
 class TestAlertEngine:
     """測試告警引擎。"""
 
     def test_create_default_rules(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine()
         rules = engine.create_default_rules("BTCUSDT")
         assert len(rules) == 8  # 8 條默認規則
@@ -388,6 +493,7 @@ class TestAlertEngine:
 
     def test_rsi_overbought_alert(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine(rsi_overbought=70.0)
         engine.create_default_rules("BTCUSDT")
 
@@ -401,6 +507,7 @@ class TestAlertEngine:
 
     def test_rsi_oversold_alert(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine(rsi_oversold=30.0)
         engine.create_default_rules("BTCUSDT")
 
@@ -414,27 +521,36 @@ class TestAlertEngine:
 
     def test_cooldown_prevents_duplicate(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine(rsi_overbought=70.0, default_cooldown_sec=300)
         engine.create_default_rules("BTCUSDT")
 
         # 第一次觸發
-        triggered1 = engine.evaluate("BTCUSDT", indicators={"rsi": 75.0}, snapshot={"price": 65000})
+        triggered1 = engine.evaluate(
+            "BTCUSDT", indicators={"rsi": 75.0}, snapshot={"price": 65000}
+        )
         assert len(triggered1) == 1
 
         # 冷卻期內不重複觸發
-        triggered2 = engine.evaluate("BTCUSDT", indicators={"rsi": 80.0}, snapshot={"price": 66000})
+        triggered2 = engine.evaluate(
+            "BTCUSDT", indicators={"rsi": 80.0}, snapshot={"price": 66000}
+        )
         assert len(triggered2) == 0
 
     def test_price_change_alert(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine(price_change_pct=5.0)
         engine.create_default_rules("BTCUSDT")
 
-        triggered = engine.evaluate("BTCUSDT", snapshot={"price": 65000, "change_pct": 8.0})
+        triggered = engine.evaluate(
+            "BTCUSDT", snapshot={"price": 65000, "change_pct": 8.0}
+        )
         assert any("漲幅" in e.message for e in triggered)
 
     def test_alert_history(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine()
         engine.create_default_rules("BTCUSDT")
         engine.evaluate("BTCUSDT", indicators={"rsi": 75.0}, snapshot={"price": 65000})
@@ -444,6 +560,7 @@ class TestAlertEngine:
 
     def test_enable_disable_rule(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine()
         rules = engine.create_default_rules("BTCUSDT")
 
@@ -455,6 +572,7 @@ class TestAlertEngine:
 
     def test_update_config(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine()
         engine.update_config({"rsi_overbought": 80.0, "rsi_oversold": 20.0})
         config = engine.get_config()
@@ -463,6 +581,7 @@ class TestAlertEngine:
 
     def test_stats(self):
         from src.core.crypto.alerts import CryptoAlertEngine
+
         engine = CryptoAlertEngine()
         engine.create_default_rules("BTCUSDT")
         stats = engine.get_stats()
@@ -471,6 +590,7 @@ class TestAlertEngine:
 
 
 # ── API 端點測試 ───────────────────────────────────────────────
+
 
 class TestCryptoAPIEndpoints:
     """測試 API 端點（mock 外部依賴）。"""
@@ -508,15 +628,18 @@ class TestCryptoAPIEndpoints:
 
     def test_crypto_indicators_mock(self, client):
         import pandas as pd
-        df = pd.DataFrame({
-            "date": [f"2026-05-{i:02d}" for i in range(1, 101)],
-            "open": np.random.uniform(60000, 70000, 100),
-            "high": np.random.uniform(61000, 71000, 100),
-            "low": np.random.uniform(59000, 69000, 100),
-            "close": np.random.uniform(60000, 70000, 100),
-            "volume": np.random.uniform(100, 1000, 100),
-            "amount": np.random.uniform(1000, 10000, 100),
-        })
+
+        df = pd.DataFrame(
+            {
+                "date": [f"2026-05-{i:02d}" for i in range(1, 101)],
+                "open": np.random.uniform(60000, 70000, 100),
+                "high": np.random.uniform(61000, 71000, 100),
+                "low": np.random.uniform(59000, 69000, 100),
+                "close": np.random.uniform(60000, 70000, 100),
+                "volume": np.random.uniform(100, 1000, 100),
+                "amount": np.random.uniform(1000, 10000, 100),
+            }
+        )
         with patch("src.core.crypto.service.download_crypto_kline", return_value=df):
             resp = client.get("/api/crypto/indicators?symbol=BTCUSDT&days=100")
         assert resp.status_code == 200

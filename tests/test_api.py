@@ -2,6 +2,7 @@
 API 測試 — 測試健康檢查端點和基本 API 流程
 使用 FastAPI TestClient，無需啟動服務
 """
+
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -54,6 +55,7 @@ class TestConfigEndpoint:
 @pytest.fixture
 def auth_headers(client):
     import uuid
+
     pw = "api_test_pw_2026"
     username = f"apitest_{uuid.uuid4().hex[:8]}"
     client.post("/api/auth/register", json={"username": username, "password": pw})

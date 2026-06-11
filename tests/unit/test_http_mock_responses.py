@@ -1,4 +1,5 @@
 """responses Mock 範例（P1）。"""
+
 import pytest
 
 responses = pytest.importorskip("responses")

@@ -1,4 +1,5 @@
 """CLI commands: backtest"""
+
 from datetime import datetime
 
 import numpy as np
@@ -22,25 +23,32 @@ def cmd_backtest(args):
     ensure_db()
 
     # 解析進階參數
-    slippage = getattr(args, 'slippage', 0.0) or 0.0
-    no_t1 = getattr(args, 'no_t1', False)
-    no_limit = getattr(args, 'no_limit', False)
+    slippage = getattr(args, "slippage", 0.0) or 0.0
+    no_t1 = getattr(args, "no_t1", False)
+    no_limit = getattr(args, "no_limit", False)
     enable_t1 = not no_t1
     enable_limit = not no_limit
 
     if args.strategy == "all":
         results = run_multi_strategy(args.code)
         if results:
-            print(f"\n{'策略':<14} {'收益率':>10} {'夏普':>10} {'回撤':>10} {'勝率':>8} {'交易':>8}")
+            print(
+                f"\n{'策略':<14} {'收益率':>10} {'夏普':>10} {'回撤':>10} {'勝率':>8} {'交易':>8}"
+            )
             print("-" * 62)
             for r in results:
-                sharpe = f"{r['sharpe_ratio']:.2f}" if r['sharpe_ratio'] else "N/A"
-                print(f"{r['strategy']:<14} {r['total_return_pct']:>9.2f}% {sharpe:>10} "
-                      f"{r['max_drawdown_pct']:>9.2f}% {r['win_rate_pct']:>7.1f}% {r['total_trades']:>8d}")
+                sharpe = f"{r['sharpe_ratio']:.2f}" if r["sharpe_ratio"] else "N/A"
+                print(
+                    f"{r['strategy']:<14} {r['total_return_pct']:>9.2f}% {sharpe:>10} "
+                    f"{r['max_drawdown_pct']:>9.2f}% {r['win_rate_pct']:>7.1f}% {r['total_trades']:>8d}"
+                )
     else:
         result = run_backtest(
-            args.code, strategy_name=args.strategy,
-            slippage_pct=slippage, enable_t1=enable_t1, enable_limit=enable_limit,
+            args.code,
+            strategy_name=args.strategy,
+            slippage_pct=slippage,
+            enable_t1=enable_t1,
+            enable_limit=enable_limit,
         )
         # 顯示進階回測摘要
         if slippage > 0 or no_t1 or no_limit:
@@ -53,7 +61,9 @@ def cmd_backtest(args):
             # 顯示過濾器結果
             lf = result.get("limit_filter", {})
             if lf:
-                print(f"  漲跌停阻止: 買入 {lf.get('blocked_buys', 0)} 次, 賣出 {lf.get('blocked_sells', 0)} 次")
+                print(
+                    f"  漲跌停阻止: 買入 {lf.get('blocked_buys', 0)} 次, 賣出 {lf.get('blocked_sells', 0)} 次"
+                )
             tf = result.get("t1_filter", {})
             if tf:
                 print(f"  T+1 阻止賣出: {tf.get('blocked_sells', 0)} 次")
@@ -71,8 +81,6 @@ def cmd_backtest(args):
                 print(f"  回撤平均持續: {dd_dist.get('mean_days', 0)} 天")
 
 
-
-
 def cmd_optimize(args):
     """參數優化"""
     from src.core.optimize import grid_search, optuna_search, optimize_all
@@ -80,10 +88,17 @@ def cmd_optimize(args):
     ensure_db()
 
     if args.strategy == "all":
-        optimize_all(args.code, objective=args.objective, method=args.method, n_trials=args.trials)
+        optimize_all(
+            args.code,
+            objective=args.objective,
+            method=args.method,
+            n_trials=args.trials,
+        )
     else:
         if args.method == "optuna":
-            results = optuna_search(args.code, args.strategy, objective=args.objective, n_trials=args.trials)
+            results = optuna_search(
+                args.code, args.strategy, objective=args.objective, n_trials=args.trials
+            )
         else:
             results = grid_search(args.code, args.strategy, objective=args.objective)
 
@@ -91,10 +106,10 @@ def cmd_optimize(args):
             print(f"\nTop {len(results)} 結果:")
             for i, r in enumerate(results, 1):
                 params_str = ", ".join(f"{k}={v}" for k, v in r["params"].items())
-                print(f"  {i}. score={r['score']:.4f}  return={r['total_return_pct']:.2f}%  "
-                      f"sharpe={r.get('sharpe_ratio', 0):.2f}  [{params_str}]")
-
-
+                print(
+                    f"  {i}. score={r['score']:.4f}  return={r['total_return_pct']:.2f}%  "
+                    f"sharpe={r.get('sharpe_ratio', 0):.2f}  [{params_str}]"
+                )
 
 
 def cmd_walkforward(args):
@@ -104,7 +119,9 @@ def cmd_walkforward(args):
     ensure_db()
 
     print(f"Walk-Forward 分析: {args.code}/{args.strategy}")
-    print(f"  訓練 {args.train_days} 天, 測試 {args.test_days} 天, 步進 {args.step_days} 天")
+    print(
+        f"  訓練 {args.train_days} 天, 測試 {args.test_days} 天, 步進 {args.step_days} 天"
+    )
 
     result = walk_forward(
         code=args.code,
@@ -129,14 +146,14 @@ def cmd_walkforward(args):
 
     print(f"\n各窗口詳情:")
     for w in result["windows"]:
-        print(f"  窗口 {w['window']}: "
-              f"測試 {w['test_period']} | "
-              f"收益 {w['test_return_pct']:+.2f}% | "
-              f"夏普 {w['test_sharpe']:.2f} | "
-              f"回撤 {w['test_max_dd_pct']:.1f}% | "
-              f"交易 {w['test_trades']} 次")
-
-
+        print(
+            f"  窗口 {w['window']}: "
+            f"測試 {w['test_period']} | "
+            f"收益 {w['test_return_pct']:+.2f}% | "
+            f"夏普 {w['test_sharpe']:.2f} | "
+            f"回撤 {w['test_max_dd_pct']:.1f}% | "
+            f"交易 {w['test_trades']} 次"
+        )
 
 
 def cmd_auto_optimize(args):
@@ -145,7 +162,9 @@ def cmd_auto_optimize(args):
 
     ensure_db()
 
-    print(f"自動參數優化: method={args.method}, trials={args.trials}, objective={args.objective}")
+    print(
+        f"自動參數優化: method={args.method}, trials={args.trials}, objective={args.objective}"
+    )
 
     result = auto_optimize_watchlist(
         method=args.method,
@@ -159,8 +178,6 @@ def cmd_auto_optimize(args):
     print("注意: 以上為推薦參數，不會自動寫入 config.py")
     print("如需使用，請手動更新 src/config.py 中的 strategy_params")
     print(f"{'='*60}")
-
-
 
 
 def cmd_heatmap(args):
@@ -195,8 +212,6 @@ def cmd_heatmap(args):
             for v in result["matrix"][i]
         )
         print(row)
-
-
 
 
 def cmd_screen(args):
@@ -238,5 +253,3 @@ def cmd_screen(args):
         if r.get("data"):
             data_str = "  ".join(f"{k}={v}" for k, v in r["data"].items())
             print(f"{'':>20}  {data_str}")
-
-

@@ -1,6 +1,7 @@
 """
 LLM Agent — 工具調用 + 可選流式輸出（SSE 事件）。
 """
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,9 @@ def _run_tool_round(
     執行一輪 LLM（可能含工具）。
     返回 (final_answer, had_tool_calls)。
     """
-    data = chat_completions(cfg, messages, tools=tools, tool_choice="auto", stream=False)
+    data = chat_completions(
+        cfg, messages, tools=tools, tool_choice="auto", stream=False
+    )
     if not isinstance(data, dict):
         return None, False
 
@@ -55,11 +58,13 @@ def _run_tool_round(
     tool_calls = message.get("tool_calls") or []
 
     if tool_calls:
-        messages.append({
-            "role": "assistant",
-            "content": message.get("content"),
-            "tool_calls": tool_calls,
-        })
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.get("content"),
+                "tool_calls": tool_calls,
+            }
+        )
         for tc in tool_calls:
             fn = tc.get("function") or {}
             name = fn.get("name") or ""
@@ -72,18 +77,23 @@ def _run_tool_round(
                 args = {}
 
             result = execute_tool(name, args)
-            tool_log.append({
-                "round": round_i + 1,
-                "name": name,
-                "arguments": args,
-                "ok": result.get("ok"),
-                "error": result.get("error"),
-            })
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.get("id") or name,
-                "content": result.get("result_text") or json.dumps(result, ensure_ascii=False),
-            })
+            tool_log.append(
+                {
+                    "round": round_i + 1,
+                    "name": name,
+                    "arguments": args,
+                    "ok": result.get("ok"),
+                    "error": result.get("error"),
+                }
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id") or name,
+                    "content": result.get("result_text")
+                    or json.dumps(result, ensure_ascii=False),
+                }
+            )
         return None, True
 
     answer = (message.get("content") or "").strip()
@@ -172,23 +182,29 @@ def stream_chat_events(
     for round_i in range(cfg.max_tool_rounds):
         yield {"type": "status", "message": f"第 {round_i + 1} 輪推理…"}
 
-        data = chat_completions(cfg, messages, tools=tools, tool_choice="auto", stream=False)
+        data = chat_completions(
+            cfg, messages, tools=tools, tool_choice="auto", stream=False
+        )
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         tool_calls = message.get("tool_calls") or []
 
         if tool_calls:
-            messages.append({
-                "role": "assistant",
-                "content": message.get("content"),
-                "tool_calls": tool_calls,
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": message.get("content"),
+                    "tool_calls": tool_calls,
+                }
+            )
             for tc in tool_calls:
                 fn = tc.get("function") or {}
                 name = fn.get("name") or ""
                 raw_args = fn.get("arguments") or "{}"
                 try:
-                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    args = (
+                        json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    )
                 except Exception:
                     args = {}
                 if not isinstance(args, dict):
@@ -196,24 +212,29 @@ def stream_chat_events(
 
                 yield {"type": "tool_start", "name": name, "arguments": args}
                 result = execute_tool(name, args)
-                tool_log.append({
-                    "round": round_i + 1,
-                    "name": name,
-                    "arguments": args,
-                    "ok": result.get("ok"),
-                    "error": result.get("error"),
-                })
+                tool_log.append(
+                    {
+                        "round": round_i + 1,
+                        "name": name,
+                        "arguments": args,
+                        "ok": result.get("ok"),
+                        "error": result.get("error"),
+                    }
+                )
                 yield {
                     "type": "tool_end",
                     "name": name,
                     "ok": result.get("ok"),
                     "error": result.get("error"),
                 }
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.get("id") or name,
-                    "content": result.get("result_text") or json.dumps(result, ensure_ascii=False),
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.get("id") or name,
+                        "content": result.get("result_text")
+                        or json.dumps(result, ensure_ascii=False),
+                    }
+                )
             continue
 
         yield {"type": "status", "message": "正在生成回答…"}
@@ -241,7 +262,9 @@ def stream_chat_events(
         except Exception:
             try:
                 data2 = chat_completions(cfg, messages, tools=None, stream=False)
-                answer = ((data2.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                answer = ((data2.get("choices") or [{}])[0].get("message") or {}).get(
+                    "content"
+                ) or ""
                 answer_parts = [answer]
                 if answer:
                     yield {"type": "token", "content": answer}

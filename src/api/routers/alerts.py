@@ -1,4 +1,5 @@
 """預警"""
+
 import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
@@ -11,8 +12,11 @@ from src.api.dispatch import dispatch_async_task
 
 router = APIRouter()
 
+
 @router.get("/api/alerts")
-async def list_alerts(limit: int = 50, code: str = None, user = Depends(get_current_user)):
+async def list_alerts(
+    limit: int = 50, code: str = None, user=Depends(get_current_user)
+):
     """獲取預警歷史（登錄用戶僅看自己的數據）"""
     user_id = user.id if user else None
     logs = get_alert_logs(limit=limit, code=code, user_id=user_id)
@@ -114,7 +118,7 @@ def _basic_alert_rule(code: str, name: str = "", change_pct: float = 5.0) -> dic
 
 
 @router.get("/api/watchlist")
-async def list_watchlist(user = Depends(get_current_user)):
+async def list_watchlist(user=Depends(get_current_user)):
     """自選股列表（含簡要行情）。登錄用戶返回個人 + 全局合併列表。"""
     from src.api.constants import STOCK_NAMES
     from src.core.watchlist_store import list_codes_for_user
@@ -138,15 +142,20 @@ async def list_watchlist(user = Depends(get_current_user)):
     for code in codes:
         rule = settings.alert_rules.get(code) or {}
         q = quotes.get(code) or {}
-        items.append({
-            "code": code,
-            "name": rule.get("name") or q.get("name") or STOCK_NAMES.get(code) or code,
-            "price": q.get("price"),
-            "change_pct": q.get("change_pct"),
-            "price_above": rule.get("price_above"),
-            "price_below": rule.get("price_below"),
-            "alert_change_pct": rule.get("change_pct"),
-        })
+        items.append(
+            {
+                "code": code,
+                "name": rule.get("name")
+                or q.get("name")
+                or STOCK_NAMES.get(code)
+                or code,
+                "price": q.get("price"),
+                "change_pct": q.get("change_pct"),
+                "price_above": rule.get("price_above"),
+                "price_below": rule.get("price_below"),
+                "alert_change_pct": rule.get("change_pct"),
+            }
+        )
     return {"success": True, "items": items, "total": len(items)}
 
 
@@ -158,7 +167,7 @@ async def add_to_watchlist(
     above_pct: float = 3.0,
     below_pct: float = 3.0,
     change_pct: float = 5.0,
-    user = Depends(require_auth),
+    user=Depends(require_auth),
 ):
     """添加股票到自選 / 監控列表（需登入）；auto_rule=true 時嘗試依最新價生成預警閾值"""
     from src.core.watchlist_store import ensure_in_watchlist_for_user, save_runtime
@@ -208,7 +217,7 @@ async def add_to_watchlist(
 
 
 @router.delete("/api/watchlist/{code}")
-async def remove_from_watchlist(code: str, user = Depends(get_current_user)):
+async def remove_from_watchlist(code: str, user=Depends(get_current_user)):
     """從自選列表移除。登錄用戶同時從個人列表移除。"""
     from src.core.watchlist_store import remove_from_watchlist_for_user
 

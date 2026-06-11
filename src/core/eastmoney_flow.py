@@ -3,6 +3,7 @@
 
 接口來源：data.eastmoney.com / push2 / push2his / datacenter-web
 """
+
 from __future__ import annotations
 
 import math
@@ -88,8 +89,16 @@ def fetch_sector_fund_flow_rank(
     """
     sector_type_map = {"industry": "2", "concept": "3", "region": "1"}
     indicator_map = {
-        "今日": ("f62", "1", "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f204,f205,f124"),
-        "5日": ("f164", "5", "f12,f14,f2,f109,f164,f165,f166,f167,f168,f169,f170,f171,f172,f173,f257,f258,f124"),
+        "今日": (
+            "f62",
+            "1",
+            "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f204,f205,f124",
+        ),
+        "5日": (
+            "f164",
+            "5",
+            "f12,f14,f2,f109,f164,f165,f166,f167,f168,f169,f170,f171,f172,f173,f257,f258,f124",
+        ),
     }
     if indicator not in indicator_map:
         indicator = "今日"
@@ -159,18 +168,20 @@ def fetch_market_fund_flow() -> list[dict]:
         parts = str(line).split(",")
         if len(parts) < 12:
             continue
-        result.append({
-            "code": "market",
-            "date": parts[0],
-            "close": float(parts[11] or 0),
-            "change_pct": float(parts[10] or 0),
-            "main_net": float(parts[1] or 0),
-            "small_net": float(parts[2] or 0),
-            "mid_net": float(parts[3] or 0),
-            "big_net": float(parts[4] or 0),
-            "super_net": float(parts[5] or 0),
-            "source": "eastmoney_http",
-        })
+        result.append(
+            {
+                "code": "market",
+                "date": parts[0],
+                "close": float(parts[11] or 0),
+                "change_pct": float(parts[10] or 0),
+                "main_net": float(parts[1] or 0),
+                "small_net": float(parts[2] or 0),
+                "mid_net": float(parts[3] or 0),
+                "big_net": float(parts[4] or 0),
+                "super_net": float(parts[5] or 0),
+                "source": "eastmoney_http",
+            }
+        )
 
     if result:
         logger.info(f"東財 HTTP 大盤資金: {len(result)} 條")
@@ -215,18 +226,20 @@ def _fetch_north_flow_one(symbol_key: str, mutual_type: str, days: int) -> list[
         # datacenter 原始單位為元；若數值偏小則按萬元換算
         if 0 < abs(main_net) < 1e7:
             main_net = main_net * 10000.0
-        result.append({
-            "code": label,
-            "date": date,
-            "close": 0,
-            "change_pct": 0,
-            "main_net": main_net,
-            "super_net": 0,
-            "big_net": 0,
-            "mid_net": 0,
-            "small_net": 0,
-            "source": "eastmoney_datacenter",
-        })
+        result.append(
+            {
+                "code": label,
+                "date": date,
+                "close": 0,
+                "change_pct": 0,
+                "main_net": main_net,
+                "super_net": 0,
+                "big_net": 0,
+                "mid_net": 0,
+                "small_net": 0,
+                "source": "eastmoney_datacenter",
+            }
+        )
 
     result.sort(key=lambda x: x["date"])
     if len(result) > days:
@@ -258,17 +271,43 @@ def fetch_sector_fund_flow_akshare(indicator: str = "今日") -> list[dict]:
             name = str(row.get("名称", "") or row.get("行业", ""))
             if not name:
                 continue
-            result.append({
-                "name": name,
-                "change_pct": float(row.get("今日涨跌幅", row.get("阶段涨跌幅", 0)) or 0),
-                "main_net": float(row.get("今日主力净流入-净额", row.get("主力净流入-净额", 0)) or 0),
-                "main_net_pct": float(row.get("今日主力净流入-净占比", row.get("主力净流入-净占比", 0)) or 0),
-                "super_large_net": float(row.get("今日超大单净流入-净额", row.get("超大单净流入-净额", 0)) or 0),
-                "large_net": float(row.get("今日大单净流入-净额", row.get("大单净流入-净额", 0)) or 0),
-                "medium_net": float(row.get("今日中单净流入-净额", row.get("中单净流入-净额", 0)) or 0),
-                "small_net": float(row.get("今日小单净流入-净额", row.get("小单净流入-净额", 0)) or 0),
-                "source": "akshare",
-            })
+            result.append(
+                {
+                    "name": name,
+                    "change_pct": float(
+                        row.get("今日涨跌幅", row.get("阶段涨跌幅", 0)) or 0
+                    ),
+                    "main_net": float(
+                        row.get("今日主力净流入-净额", row.get("主力净流入-净额", 0))
+                        or 0
+                    ),
+                    "main_net_pct": float(
+                        row.get(
+                            "今日主力净流入-净占比", row.get("主力净流入-净占比", 0)
+                        )
+                        or 0
+                    ),
+                    "super_large_net": float(
+                        row.get(
+                            "今日超大单净流入-净额", row.get("超大单净流入-净额", 0)
+                        )
+                        or 0
+                    ),
+                    "large_net": float(
+                        row.get("今日大单净流入-净额", row.get("大单净流入-净额", 0))
+                        or 0
+                    ),
+                    "medium_net": float(
+                        row.get("今日中单净流入-净额", row.get("中单净流入-净额", 0))
+                        or 0
+                    ),
+                    "small_net": float(
+                        row.get("今日小单净流入-净额", row.get("小单净流入-净额", 0))
+                        or 0
+                    ),
+                    "source": "akshare",
+                }
+            )
         return result
     except Exception as e:
         logger.debug(f"AKShare 板塊資金失敗: {e}")
@@ -284,18 +323,22 @@ def fetch_market_fund_flow_akshare() -> list[dict]:
             return []
         result = []
         for _, row in df.iterrows():
-            result.append({
-                "code": "market",
-                "date": str(row.get("日期", "")),
-                "close": float(row.get("上证指数", row.get("上证-收盘价", 0)) or 0),
-                "change_pct": float(row.get("上证指数-涨跌幅", row.get("上证-涨跌幅", 0)) or 0),
-                "main_net": float(row.get("主力净流入-净额", 0) or 0),
-                "super_net": float(row.get("超大单净流入-净额", 0) or 0),
-                "big_net": float(row.get("大单净流入-净额", 0) or 0),
-                "mid_net": float(row.get("中单净流入-净额", 0) or 0),
-                "small_net": float(row.get("小单净流入-净额", 0) or 0),
-                "source": "akshare",
-            })
+            result.append(
+                {
+                    "code": "market",
+                    "date": str(row.get("日期", "")),
+                    "close": float(row.get("上证指数", row.get("上证-收盘价", 0)) or 0),
+                    "change_pct": float(
+                        row.get("上证指数-涨跌幅", row.get("上证-涨跌幅", 0)) or 0
+                    ),
+                    "main_net": float(row.get("主力净流入-净额", 0) or 0),
+                    "super_net": float(row.get("超大单净流入-净额", 0) or 0),
+                    "big_net": float(row.get("大单净流入-净额", 0) or 0),
+                    "mid_net": float(row.get("中单净流入-净额", 0) or 0),
+                    "small_net": float(row.get("小单净流入-净额", 0) or 0),
+                    "source": "akshare",
+                }
+            )
         return result
     except Exception as e:
         logger.debug(f"AKShare 大盤資金失敗: {e}")
@@ -314,20 +357,26 @@ def fetch_north_flow_akshare(days: int = 30) -> list[dict]:
                     continue
                 tail = df.tail(days)
                 for _, row in tail.iterrows():
-                    net_col = "当日成交净买额" if "当日成交净买额" in tail.columns else None
+                    net_col = (
+                        "当日成交净买额" if "当日成交净买额" in tail.columns else None
+                    )
                     main_net = float(row.get(net_col, 0) or 0) if net_col else 0
-                    result.append({
-                        "code": label,
-                        "date": str(row.get("日期", "")),
-                        "close": 0,
-                        "change_pct": 0,
-                        "main_net": main_net * 1e8 if abs(main_net) < 1e6 else main_net,
-                        "super_net": 0,
-                        "big_net": 0,
-                        "mid_net": 0,
-                        "small_net": 0,
-                        "source": "akshare",
-                    })
+                    result.append(
+                        {
+                            "code": label,
+                            "date": str(row.get("日期", "")),
+                            "close": 0,
+                            "change_pct": 0,
+                            "main_net": (
+                                main_net * 1e8 if abs(main_net) < 1e6 else main_net
+                            ),
+                            "super_net": 0,
+                            "big_net": 0,
+                            "mid_net": 0,
+                            "small_net": 0,
+                            "source": "akshare",
+                        }
+                    )
                 time.sleep(0.3)
             if result:
                 return result
@@ -348,18 +397,20 @@ def fetch_north_flow_akshare(days: int = 30) -> list[dict]:
                         if "净流入" in str(col) or "净买" in str(col):
                             main_net = float(row.get(col, 0) or 0)
                             break
-                    result.append({
-                        "code": label,
-                        "date": str(row.get("日期", row.get("date", ""))),
-                        "close": 0,
-                        "change_pct": 0,
-                        "main_net": main_net,
-                        "super_net": 0,
-                        "big_net": 0,
-                        "mid_net": 0,
-                        "small_net": 0,
-                        "source": "akshare",
-                    })
+                    result.append(
+                        {
+                            "code": label,
+                            "date": str(row.get("日期", row.get("date", ""))),
+                            "close": 0,
+                            "change_pct": 0,
+                            "main_net": main_net,
+                            "super_net": 0,
+                            "big_net": 0,
+                            "mid_net": 0,
+                            "small_net": 0,
+                            "source": "akshare",
+                        }
+                    )
             return result
     except Exception as e:
         logger.debug(f"AKShare 北向 north_net 失敗: {e}")

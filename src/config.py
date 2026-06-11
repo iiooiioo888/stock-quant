@@ -1,12 +1,12 @@
 """
 配置管理 — 支持環境變量 + .env 文件 + 默認值
 """
+
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 from typing import Optional
-
 
 # 項目根目錄
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,13 +21,20 @@ class Settings(BaseSettings):
     app_name: str = "stock-quant"
     app_version: str = "1.1.0"
     debug: bool = False
-    log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    log_level: str = Field(
+        default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
+    )
     log_dir: str = str(BASE_DIR / "logs")
     log_format: str = Field(default="text", pattern="^(text|json)$")
-    sentry_dsn: Optional[str] = Field(default=None, description="可選 Sentry DSN（SQ_SENTRY_DSN）")
+    sentry_dsn: Optional[str] = Field(
+        default=None, description="可選 Sentry DSN（SQ_SENTRY_DSN）"
+    )
 
     # ====== 數據庫 ======
-    database_url: str = Field(default="", description="PostgreSQL URL; postgresql://user:pass@host:port/dbname")
+    database_url: str = Field(
+        default="",
+        description="PostgreSQL URL; postgresql://user:pass@host:port/dbname",
+    )
     db_path: str = str(DATA_DIR / "stock.db")
     sqlite_cache_size_kb: int = Field(default=64000, ge=1024, le=512000)
     sqlite_mmap_size: int = Field(default=268435456, ge=0, le=1073741824)
@@ -39,36 +46,46 @@ class Settings(BaseSettings):
     local_first_auto_fetch: bool = Field(default=True)
 
     # ====== 多幣種結算 ======
-    default_preferred_currency: str = Field(default="MOP", pattern=r"^(HKD|MOP|USD|CNY)$")
+    default_preferred_currency: str = Field(
+        default="MOP", pattern=r"^(HKD|MOP|USD|CNY)$"
+    )
 
     # ====== 盯盤 ======
-    watchlist: list[str] = Field(default=[
-        "000001",  # 平安銀行
-        "600519",  # 貴州茅台
-        "000858",  # 五糧液
-        "601318",  # 中國平安
-        "000333",  # 美的集團
-    ])
-    crypto_watchlist: list[str] = Field(default=[
-        "BTCUSDT",  # 比特幣
-        "ETHUSDT",  # 以太坊
-        "SOLUSDT",  # Solana
-        "BNBUSDT",  # 幣安幣
-        "XRPUSDT",  # 瑞波幣
-    ])
-    forex_watchlist: list[str] = Field(default=[
-        "USDCNY",   # 美元/人民幣
-        "EURUSD",   # 歐元/美元
-        "GBPUSD",   # 英鎊/美元
-        "USDJPY",   # 美元/日元
-    ])
+    watchlist: list[str] = Field(
+        default=[
+            "000001",  # 平安銀行
+            "600519",  # 貴州茅台
+            "000858",  # 五糧液
+            "601318",  # 中國平安
+            "000333",  # 美的集團
+        ]
+    )
+    crypto_watchlist: list[str] = Field(
+        default=[
+            "BTCUSDT",  # 比特幣
+            "ETHUSDT",  # 以太坊
+            "SOLUSDT",  # Solana
+            "BNBUSDT",  # 幣安幣
+            "XRPUSDT",  # 瑞波幣
+        ]
+    )
+    forex_watchlist: list[str] = Field(
+        default=[
+            "USDCNY",  # 美元/人民幣
+            "EURUSD",  # 歐元/美元
+            "GBPUSD",  # 英鎊/美元
+            "USDJPY",  # 美元/日元
+        ]
+    )
     poll_interval_sec: int = Field(default=10, ge=1, le=300)
     alert_cooldown_sec: int = Field(default=300, ge=0)
 
     # ====== 回測 ======
     backtest_cash: float = Field(default=100000.0, gt=0)
     backtest_commission: float = Field(default=0.001, ge=0, le=0.1)
-    backtest_stamp_tax: float = Field(default=0.0005, ge=0, le=0.1)  # 2023 年後 0.05%，僅賣出收取
+    backtest_stamp_tax: float = Field(
+        default=0.0005, ge=0, le=0.1
+    )  # 2023 年後 0.05%，僅賣出收取
     # 生產環境建議 SQ_ALLOW_STRATEGY_UPLOAD=false
     allow_strategy_upload: bool = True
     strategy_upload_max_bytes: int = Field(default=65536, ge=1024, le=512000)
@@ -85,8 +102,12 @@ class Settings(BaseSettings):
         default=True,
         description="是否強制每日回測/優化等配額；測試與 CI 可設 SQ_BILLING_QUOTA_ENFORCE=false",
     )
-    stripe_secret_key: Optional[str] = Field(default=None, description="Stripe Secret Key")
-    stripe_webhook_secret: Optional[str] = Field(default=None, description="Stripe Webhook Signing Secret")
+    stripe_secret_key: Optional[str] = Field(
+        default=None, description="Stripe Secret Key"
+    )
+    stripe_webhook_secret: Optional[str] = Field(
+        default=None, description="Stripe Webhook Signing Secret"
+    )
 
     # ====== 股票庫 ======
     stock_universe_max_count: int = Field(default=20000, ge=100, le=50000)
@@ -112,14 +133,20 @@ class Settings(BaseSettings):
     # ====== 任務並行 ======
     task_max_workers: int = Field(default=0, ge=0, le=32)  # 0 = 自動 min(4, CPU-1)
     task_parallel_grid: bool = True
-    optimize_parallel_backend: str = "auto"  # auto | joblib | futures（網格搜索並行後端）
+    optimize_parallel_backend: str = (
+        "auto"  # auto | joblib | futures（網格搜索並行後端）
+    )
     task_grid_workers: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
     optuna_n_jobs: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
     multi_strategy_workers: int = Field(default=4, ge=1, le=16)
-    optimize_all_workers: int = Field(default=2, ge=1, le=8)  # 僅 optimize_all_parallel=true 時生效
+    optimize_all_workers: int = Field(
+        default=2, ge=1, le=8
+    )  # 僅 optimize_all_parallel=true 時生效
     optimize_all_parallel: bool = False  # 默認策略串行+進程池，避免嵌套爆炸
     task_progress_save_interval_sec: float = Field(default=2.0, ge=0.5, le=30.0)
-    task_heavy_max_concurrent: int = Field(default=2, ge=1, le=16)  # Backtrader 等重型任務同時上限
+    task_heavy_max_concurrent: int = Field(
+        default=2, ge=1, le=16
+    )  # Backtrader 等重型任務同時上限
     task_timeout_sec: int = Field(default=1800, ge=60, le=86400)  # 單任務超時熔斷（秒）
     task_watchdog_interval_sec: float = Field(default=60.0, ge=10.0, le=600.0)
 
@@ -193,7 +220,9 @@ class Settings(BaseSettings):
     crypto_alert_rsi_overbought: float = Field(default=70.0, ge=50.0, le=95.0)
     crypto_alert_rsi_oversold: float = Field(default=30.0, ge=5.0, le=50.0)
     crypto_alert_cooldown_sec: int = Field(default=300, ge=10, le=3600)
-    crypto_alert_large_order_usd: float = Field(default=100000.0, ge=1000.0, le=10000000.0)
+    crypto_alert_large_order_usd: float = Field(
+        default=100000.0, ge=1000.0, le=10000000.0
+    )
 
     # ── 加密貨幣數據持久化 ──
     crypto_persist_trades: bool = False
@@ -224,11 +253,13 @@ class Settings(BaseSettings):
     cache_multi_strategy_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
     cache_lru_max_size: int = Field(default=2048, ge=256, le=16384)
     cache_warmup_on_startup: bool = False
-    cache_warmup_codes: list[str] = Field(default=[
-        "600519",
-        "000001",
-        "601318",
-    ])
+    cache_warmup_codes: list[str] = Field(
+        default=[
+            "600519",
+            "000001",
+            "601318",
+        ]
+    )
     cache_warmup_indicators: bool = True
     numba_enabled: bool = True
     heatmap_parallel: bool = True
@@ -242,15 +273,15 @@ class Settings(BaseSettings):
     prometheus_enabled: bool = True
     runtime_gc_interval_sec: float = Field(default=3600.0, ge=300.0, le=86400.0)
 
-
-
     # ====== Redis 緩存 ======
     redis_url: str = "redis://localhost:6379/0"
     redis_enabled: bool = False
     redis_password: str = ""
 
     # ====== WebSocket 安全 ======
-    ws_auth_required: bool = False  # 本地/演示可關閉；非演示模式見 effective_ws_auth_required
+    ws_auth_required: bool = (
+        False  # 本地/演示可關閉；非演示模式見 effective_ws_auth_required
+    )
 
     # ====== LLM 智能問答（OpenAI 兼容 API） ======
     llm_enabled: bool = True
@@ -270,123 +301,191 @@ class Settings(BaseSettings):
     web_host: str = "0.0.0.0"
     web_port: int = Field(default=8000, ge=1, le=65535)
     web_workers: int = Field(default=4, ge=1, le=16)
-    cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://localhost:5173"
+    cors_origins: str = (
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://localhost:5173"
+    )
 
     # ====== 策略參數（全部 29 個內置策略） ======
-    strategy_params: dict = Field(default={
-        # --- 趨勢類 ---
-        "dual_ma": {"fast": 5, "slow": 20},
-        "ema_cross": {"fast": 12, "slow": 26},
-        "macd": {"fast": 12, "slow": 26, "signal": 9},
-        "turtle": {"entry_period": 20, "exit_period": 10, "atr_period": 20, "risk_pct": 1.0},
-        "breakout": {"period": 60, "atr_period": 20, "atr_multiplier": 2.0},
-        "momentum": {"lookback": 20, "hold_period": 5},
-        "adx_trend": {"adx_period": 14, "adx_threshold": 25, "di_period": 14},
-        "parabolic_sar": {"af_start": 0.02, "af_step": 0.02, "af_max": 0.20},
-        "donchian": {"period": 20},
-        "supertrend": {"period": 10, "multiplier": 3.0},
-        "atr_trail": {"ma_period": 20, "atr_period": 14, "atr_mult": 2.5},
-        "triple_ma": {"fast": 5, "mid": 20, "slow": 60},
-        "pullback_ma": {"fast": 10, "slow": 50, "trend": 120},
-        # --- 均值回歸類 ---
-        "bollinger": {"period": 20, "devfactor": 2.0},
-        "bollinger_squeeze": {"period": 20, "devfactor": 2.0, "squeeze_threshold": 0.03, "squeeze_lookback": 5},
-        "mean_reversion": {"period": 20, "entry_zscore": -2.0, "exit_zscore": 0.0},
-        "envelope": {"period": 20, "deviation_pct": 5},
-        # --- 振盪指標類 ---
-        "rsi": {"period": 14, "overbought": 70, "oversold": 30},
-        "kdj": {"period": 9, "period_dfast": 3, "period_dslow": 3, "overbought": 80, "oversold": 20},
-        "williams_r": {"period": 14, "overbought": -20, "oversold": -80},
-        "cci": {"period": 20, "overbought": 100, "oversold": -100},
-        # --- 量價類 ---
-        "volume_price": {"price_ma": 20, "volume_ma": 20, "volume_ratio": 2.0},
-        "ema_volume": {"fast": 12, "slow": 26, "vol_ma": 20, "vol_ratio": 1.2},
-        "vwap": {"period": 20, "deviation_pct": 1.0},
-        "obv": {"obv_ma_period": 20, "price_ma_period": 20},
-        # --- 日內突破類 ---
-        "dual_thrust": {"period": 4, "k_up": 0.5, "k_down": 0.5},
-        "grid": {"grid_pct": 3.0, "position_pct": 0.1},
-        # --- 組合類 ---
-        "composite": {"min_agreement": 3, "ma_fast": 5, "ma_slow": 20, "macd_fast": 12, "macd_slow": 26, "macd_signal": 9, "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30, "boll_period": 20, "boll_dev": 2.0},
-        "macd_rsi": {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9, "rsi_period": 14, "rsi_max": 68, "rsi_min": 35},
-    })
+    strategy_params: dict = Field(
+        default={
+            # --- 趨勢類 ---
+            "dual_ma": {"fast": 5, "slow": 20},
+            "ema_cross": {"fast": 12, "slow": 26},
+            "macd": {"fast": 12, "slow": 26, "signal": 9},
+            "turtle": {
+                "entry_period": 20,
+                "exit_period": 10,
+                "atr_period": 20,
+                "risk_pct": 1.0,
+            },
+            "breakout": {"period": 60, "atr_period": 20, "atr_multiplier": 2.0},
+            "momentum": {"lookback": 20, "hold_period": 5},
+            "adx_trend": {"adx_period": 14, "adx_threshold": 25, "di_period": 14},
+            "parabolic_sar": {"af_start": 0.02, "af_step": 0.02, "af_max": 0.20},
+            "donchian": {"period": 20},
+            "supertrend": {"period": 10, "multiplier": 3.0},
+            "atr_trail": {"ma_period": 20, "atr_period": 14, "atr_mult": 2.5},
+            "triple_ma": {"fast": 5, "mid": 20, "slow": 60},
+            "pullback_ma": {"fast": 10, "slow": 50, "trend": 120},
+            # --- 均值回歸類 ---
+            "bollinger": {"period": 20, "devfactor": 2.0},
+            "bollinger_squeeze": {
+                "period": 20,
+                "devfactor": 2.0,
+                "squeeze_threshold": 0.03,
+                "squeeze_lookback": 5,
+            },
+            "mean_reversion": {"period": 20, "entry_zscore": -2.0, "exit_zscore": 0.0},
+            "envelope": {"period": 20, "deviation_pct": 5},
+            # --- 振盪指標類 ---
+            "rsi": {"period": 14, "overbought": 70, "oversold": 30},
+            "kdj": {
+                "period": 9,
+                "period_dfast": 3,
+                "period_dslow": 3,
+                "overbought": 80,
+                "oversold": 20,
+            },
+            "williams_r": {"period": 14, "overbought": -20, "oversold": -80},
+            "cci": {"period": 20, "overbought": 100, "oversold": -100},
+            # --- 量價類 ---
+            "volume_price": {"price_ma": 20, "volume_ma": 20, "volume_ratio": 2.0},
+            "ema_volume": {"fast": 12, "slow": 26, "vol_ma": 20, "vol_ratio": 1.2},
+            "vwap": {"period": 20, "deviation_pct": 1.0},
+            "obv": {"obv_ma_period": 20, "price_ma_period": 20},
+            # --- 日內突破類 ---
+            "dual_thrust": {"period": 4, "k_up": 0.5, "k_down": 0.5},
+            "grid": {"grid_pct": 3.0, "position_pct": 0.1},
+            # --- 組合類 ---
+            "composite": {
+                "min_agreement": 3,
+                "ma_fast": 5,
+                "ma_slow": 20,
+                "macd_fast": 12,
+                "macd_slow": 26,
+                "macd_signal": 9,
+                "rsi_period": 14,
+                "rsi_overbought": 70,
+                "rsi_oversold": 30,
+                "boll_period": 20,
+                "boll_dev": 2.0,
+            },
+            "macd_rsi": {
+                "macd_fast": 12,
+                "macd_slow": 26,
+                "macd_signal": 9,
+                "rsi_period": 14,
+                "rsi_max": 68,
+                "rsi_min": 35,
+            },
+        }
+    )
 
     # ====== 預警規則 ======
-    alert_rules: dict = Field(default={
-        "000001": {"name": "平安銀行", "price_above": 13.0, "price_below": 10.0, "change_pct": 5.0},
-        "600519": {"name": "貴州茅台", "price_above": 1800.0, "price_below": 1500.0, "change_pct": 3.0},
-        "000858": {"name": "五糧液", "price_above": 180.0, "price_below": 120.0, "change_pct": 4.0},
-        "601318": {"name": "中國平安", "price_above": 60.0, "price_below": 45.0, "change_pct": 4.0},
-        "000333": {"name": "美的集團", "price_above": 80.0, "price_below": 55.0, "change_pct": 4.0},
-    })
+    alert_rules: dict = Field(
+        default={
+            "000001": {
+                "name": "平安銀行",
+                "price_above": 13.0,
+                "price_below": 10.0,
+                "change_pct": 5.0,
+            },
+            "600519": {
+                "name": "貴州茅台",
+                "price_above": 1800.0,
+                "price_below": 1500.0,
+                "change_pct": 3.0,
+            },
+            "000858": {
+                "name": "五糧液",
+                "price_above": 180.0,
+                "price_below": 120.0,
+                "change_pct": 4.0,
+            },
+            "601318": {
+                "name": "中國平安",
+                "price_above": 60.0,
+                "price_below": 45.0,
+                "change_pct": 4.0,
+            },
+            "000333": {
+                "name": "美的集團",
+                "price_above": 80.0,
+                "price_below": 55.0,
+                "change_pct": 4.0,
+            },
+        }
+    )
 
     # ====== 預設組合 ======
-    portfolio_presets: dict = Field(default={
-        "conservative": {
-            "name": "穩健型",
-            "desc": "低風險，均線+布林+均值回歸為主",
-            "allocations": [
-                {"strategy": "dual_ma", "code": "600519", "weight": 0.20},
-                {"strategy": "bollinger", "code": "600519", "weight": 0.20},
-                {"strategy": "mean_reversion", "code": "000858", "weight": 0.20},
-                {"strategy": "dual_ma", "code": "000858", "weight": 0.20},
-                {"strategy": "bollinger", "code": "601318", "weight": 0.20},
-            ],
-            "rebalance": "periodic",
-            "rebalance_freq_days": 20,
-        },
-        "balanced": {
-            "name": "均衡型",
-            "desc": "多策略多股票分散，含動量和量價",
-            "allocations": [
-                {"strategy": "dual_ma", "code": "000001", "weight": 0.12},
-                {"strategy": "macd", "code": "600519", "weight": 0.12},
-                {"strategy": "bollinger", "code": "000858", "weight": 0.12},
-                {"strategy": "rsi", "code": "601318", "weight": 0.12},
-                {"strategy": "turtle", "code": "600519", "weight": 0.12},
-                {"strategy": "momentum", "code": "000333", "weight": 0.12},
-                {"strategy": "volume_price", "code": "000001", "weight": 0.12},
-                {"strategy": "composite", "code": "600519", "weight": 0.16},
-            ],
-            "rebalance": "periodic",
-            "rebalance_freq_days": 20,
-        },
-        "aggressive": {
-            "name": "激進型",
-            "desc": "高波動策略為主，突破+動量+DualThrust",
-            "allocations": [
-                {"strategy": "dual_thrust", "code": "600519", "weight": 0.20},
-                {"strategy": "turtle", "code": "000858", "weight": 0.15},
-                {"strategy": "breakout", "code": "000001", "weight": 0.20},
-                {"strategy": "momentum", "code": "000333", "weight": 0.20},
-                {"strategy": "composite", "code": "600519", "weight": 0.25},
-            ],
-            "rebalance": "none",
-        },
-        "trend_follower": {
-            "name": "趨勢跟蹤型",
-            "desc": "ADX+SAR+突破，強趨勢行情專用",
-            "allocations": [
-                {"strategy": "adx_trend", "code": "600519", "weight": 0.25},
-                {"strategy": "parabolic_sar", "code": "000858", "weight": 0.25},
-                {"strategy": "breakout", "code": "000001", "weight": 0.25},
-                {"strategy": "turtle", "code": "601318", "weight": 0.25},
-            ],
-            "rebalance": "none",
-        },
-        "value_trap_avoider": {
-            "name": "量價驗證型",
-            "desc": "OBV+VWAP+量價，用成交量驗證趨勢",
-            "allocations": [
-                {"strategy": "obv", "code": "600519", "weight": 0.25},
-                {"strategy": "vwap", "code": "000858", "weight": 0.25},
-                {"strategy": "volume_price", "code": "000001", "weight": 0.25},
-                {"strategy": "bollinger_squeeze", "code": "601318", "weight": 0.25},
-            ],
-            "rebalance": "periodic",
-            "rebalance_freq_days": 30,
-        },
-    })
+    portfolio_presets: dict = Field(
+        default={
+            "conservative": {
+                "name": "穩健型",
+                "desc": "低風險，均線+布林+均值回歸為主",
+                "allocations": [
+                    {"strategy": "dual_ma", "code": "600519", "weight": 0.20},
+                    {"strategy": "bollinger", "code": "600519", "weight": 0.20},
+                    {"strategy": "mean_reversion", "code": "000858", "weight": 0.20},
+                    {"strategy": "dual_ma", "code": "000858", "weight": 0.20},
+                    {"strategy": "bollinger", "code": "601318", "weight": 0.20},
+                ],
+                "rebalance": "periodic",
+                "rebalance_freq_days": 20,
+            },
+            "balanced": {
+                "name": "均衡型",
+                "desc": "多策略多股票分散，含動量和量價",
+                "allocations": [
+                    {"strategy": "dual_ma", "code": "000001", "weight": 0.12},
+                    {"strategy": "macd", "code": "600519", "weight": 0.12},
+                    {"strategy": "bollinger", "code": "000858", "weight": 0.12},
+                    {"strategy": "rsi", "code": "601318", "weight": 0.12},
+                    {"strategy": "turtle", "code": "600519", "weight": 0.12},
+                    {"strategy": "momentum", "code": "000333", "weight": 0.12},
+                    {"strategy": "volume_price", "code": "000001", "weight": 0.12},
+                    {"strategy": "composite", "code": "600519", "weight": 0.16},
+                ],
+                "rebalance": "periodic",
+                "rebalance_freq_days": 20,
+            },
+            "aggressive": {
+                "name": "激進型",
+                "desc": "高波動策略為主，突破+動量+DualThrust",
+                "allocations": [
+                    {"strategy": "dual_thrust", "code": "600519", "weight": 0.20},
+                    {"strategy": "turtle", "code": "000858", "weight": 0.15},
+                    {"strategy": "breakout", "code": "000001", "weight": 0.20},
+                    {"strategy": "momentum", "code": "000333", "weight": 0.20},
+                    {"strategy": "composite", "code": "600519", "weight": 0.25},
+                ],
+                "rebalance": "none",
+            },
+            "trend_follower": {
+                "name": "趨勢跟蹤型",
+                "desc": "ADX+SAR+突破，強趨勢行情專用",
+                "allocations": [
+                    {"strategy": "adx_trend", "code": "600519", "weight": 0.25},
+                    {"strategy": "parabolic_sar", "code": "000858", "weight": 0.25},
+                    {"strategy": "breakout", "code": "000001", "weight": 0.25},
+                    {"strategy": "turtle", "code": "601318", "weight": 0.25},
+                ],
+                "rebalance": "none",
+            },
+            "value_trap_avoider": {
+                "name": "量價驗證型",
+                "desc": "OBV+VWAP+量價，用成交量驗證趨勢",
+                "allocations": [
+                    {"strategy": "obv", "code": "600519", "weight": 0.25},
+                    {"strategy": "vwap", "code": "000858", "weight": 0.25},
+                    {"strategy": "volume_price", "code": "000001", "weight": 0.25},
+                    {"strategy": "bollinger_squeeze", "code": "601318", "weight": 0.25},
+                ],
+                "rebalance": "periodic",
+                "rebalance_freq_days": 30,
+            },
+        }
+    )
 
     model_config = {
         "env_prefix": "SQ_",
@@ -399,7 +498,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        if v and not v.startswith(("postgresql://","postgres://")):
+        if v and not v.startswith(("postgresql://", "postgres://")):
             raise ValueError("database_url 必須以 postgresql:// 開頭")
         return v
 
@@ -471,8 +570,9 @@ class Settings(BaseSettings):
                 )
             # CORS 警告：非 localhost 部署時提醒用戶
             non_localhost_origins = [
-                o for o in self.cors_origin_list()
-                if o and 'localhost' not in o.lower() and '127.0.0.1' not in o
+                o
+                for o in self.cors_origin_list()
+                if o and "localhost" not in o.lower() and "127.0.0.1" not in o
             ]
             if non_localhost_origins:
                 logger.warning(

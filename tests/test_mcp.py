@@ -1,4 +1,5 @@
 """全項目 MCP 註冊與 handlers（無需安裝 mcp SDK）。"""
+
 import json
 from unittest.mock import patch
 
@@ -49,4 +50,3 @@ class TestMcpCoreHandlers:
         data = json.loads(text)
         assert data["total"] == 1
         assert data["tasks"][0]["task_id"] == "t1"
-

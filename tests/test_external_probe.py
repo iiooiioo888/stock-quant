@@ -1,4 +1,5 @@
 """對外接口探活。"""
+
 from unittest.mock import patch
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 class TestExternalProbe:
     def test_registry_probe(self):
         from src.core.external_probe import probe_registry
+
         row = probe_registry()
         assert row["id"] == "registry"
         assert "health" in row.get("detail", {}) or row.get("ok") is not None

@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("dual_ma", "雙均線金叉策略")
 class DualMAStrategy(OrderManagedStrategy):
     """雙均線策略"""
+
     params = (
         ("fast", 5),
         ("slow", 20),
@@ -25,4 +26,3 @@ class DualMAStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif self.crossover < 0 and self.position:
             self.order = self.sell()
-

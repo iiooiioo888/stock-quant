@@ -1,6 +1,7 @@
 """
 多幣種資產結算 — 模擬持倉 / 用戶自定義持倉，USD 基準換算。
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,10 @@ from typing import Any, Optional
 from src.config import settings
 from src.core.db import get_conn, load_daily_kline
 from src.core.exchange import SUPPORTED_CURRENCIES, get_exchange_service
-from src.core.portfolio_ledger import import_settings_holdings_as_buys, recompute_holdings
+from src.core.portfolio_ledger import (
+    import_settings_holdings_as_buys,
+    recompute_holdings,
+)
 from src.core.portfolio_repo import get_portfolio_repo
 from src.core.result_cache import get_cached_compute, set_cached_compute
 from src.engine.fx.resolver import FXResolver
@@ -52,7 +56,9 @@ def get_user_preferred_currency(user_id: int) -> str:
             (user_id,),
         ).fetchone()
     if not row:
-        return _normalize_currency(getattr(settings, "default_preferred_currency", "MOP"))
+        return _normalize_currency(
+            getattr(settings, "default_preferred_currency", "MOP")
+        )
     pref = (row["preferred_currency"] or "").strip().upper()
     if pref in SUPPORTED_CURRENCIES:
         return pref
@@ -92,14 +98,12 @@ def _resolve_paper_session_id(user_id: int, user_settings: dict) -> Optional[str
     if sid:
         return str(sid)
     with get_conn() as conn:
-        row = conn.execute(
-            """
+        row = conn.execute("""
             SELECT id FROM paper_sessions
             WHERE status = 'active'
             ORDER BY started_at DESC
             LIMIT 1
-            """
-        ).fetchone()
+            """).fetchone()
     return row[0] if row else None
 
 
@@ -226,7 +230,9 @@ class PortfolioSettlementService:
     ) -> dict[str, Any]:
         target = _normalize_currency(currency or get_user_preferred_currency(user_id))
         if use_cache:
-            cached = get_cached_compute("portfolio_summary", {"user_id": user_id, "currency": target})
+            cached = get_cached_compute(
+                "portfolio_summary", {"user_id": user_id, "currency": target}
+            )
             if cached:
                 return cached
 
@@ -250,8 +256,14 @@ class PortfolioSettlementService:
             if raw_val <= 0:
                 continue
             curr = h.currency.upper()
-            rate_curr = Decimal(str(rates.get(curr, self.exchange.FALLBACK.get(curr, 1.0))))
-            fx_to_usd = Decimal("1") if curr == "USD" else (Decimal("1") / rate_curr if rate_curr else Decimal("1"))
+            rate_curr = Decimal(
+                str(rates.get(curr, self.exchange.FALLBACK.get(curr, 1.0)))
+            )
+            fx_to_usd = (
+                Decimal("1")
+                if curr == "USD"
+                else (Decimal("1") / rate_curr if rate_curr else Decimal("1"))
+            )
             display_rate = display_fx if curr != target else rate_curr
             calc_inputs.append(
                 HoldingCalc(
@@ -387,7 +399,11 @@ class PortfolioSettlementService:
 
             fx_by_date = get_historical_rates(days, target)
             fx_dates = sorted(fx_by_date.keys())
-            last_fx = fx_by_date[fx_dates[-1]] if fx_dates else self.exchange.FALLBACK.get(target, 1.0)
+            last_fx = (
+                fx_by_date[fx_dates[-1]]
+                if fx_dates
+                else self.exchange.FALLBACK.get(target, 1.0)
+            )
 
             for d, nav in rows:
                 fx = fx_by_date.get(d)
@@ -400,7 +416,9 @@ class PortfolioSettlementService:
                         fx = last_fx
                 last_fx = fx
                 nav_dec = Decimal(str(nav))
-                usd_nav = nav_dec / Decimal(str(self.exchange.FALLBACK.get("CNY", 7.248)))
+                usd_nav = nav_dec / Decimal(
+                    str(self.exchange.FALLBACK.get("CNY", 7.248))
+                )
                 val = (usd_nav * Decimal(str(fx))).quantize(Decimal("0.01"))
                 series.append({"date": d, "value": float(val)})
 

@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("kdj", "KDJ隨機指標策略")
 class KDJStrategy(OrderManagedStrategy):
     """KDJ 策略"""
+
     params = (
         ("period", 9),
         ("period_dfast", 3),
@@ -36,4 +37,3 @@ class KDJStrategy(OrderManagedStrategy):
             self.order = self.buy()
         elif k_prev >= d_prev and k < d and k > self.p.overbought and self.position:
             self.order = self.sell()
-

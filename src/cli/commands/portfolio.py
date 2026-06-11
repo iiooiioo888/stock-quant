@@ -1,4 +1,5 @@
 """CLI commands: portfolio"""
+
 from datetime import datetime
 
 import numpy as np
@@ -24,8 +25,6 @@ def cmd_portfolio(args):
     run_portfolio(allocations=get_allocations(args))
 
 
-
-
 def cmd_dynamic_portfolio(args):
     """動態權重組合回測"""
     from src.core.portfolio import dynamic_weight_portfolio
@@ -45,9 +44,9 @@ def cmd_dynamic_portfolio(args):
 
     print(f"\n子策略表現:")
     for s in result.get("sub_strategies", []):
-        print(f"  {s['strategy']}/{s['code']}: {s['total_return_pct']:+.2f}%  夏普={s.get('sharpe_ratio', 0):.2f}")
-
-
+        print(
+            f"  {s['strategy']}/{s['code']}: {s['total_return_pct']:+.2f}%  夏普={s.get('sharpe_ratio', 0):.2f}"
+        )
 
 
 def cmd_kelly(args):
@@ -69,7 +68,9 @@ def cmd_kelly(args):
         return
 
     print(f"\n{'='*70}")
-    print(f"{'策略':<14} {'勝率':>8} {'賠率':>8} {'Kelly':>10} {'半Kelly':>10} {'推薦倉位':>12}")
+    print(
+        f"{'策略':<14} {'勝率':>8} {'賠率':>8} {'Kelly':>10} {'半Kelly':>10} {'推薦倉位':>12}"
+    )
     print("-" * 70)
     for r in result.get("kelly_results", []):
         if "error" in r:
@@ -83,8 +84,6 @@ def cmd_kelly(args):
             f"{r['half_kelly_fraction']:>10.4f} "
             f"¥{r['recommended_position']:>10,.0f}"
         )
-
-
 
 
 def cmd_degradation(args):
@@ -107,7 +106,9 @@ def cmd_degradation(args):
         return
 
     print(f"\n{'='*70}")
-    print(f"{'策略':<14} {'連續跑輸':>10} {'狀態':>8} {'近期收益':>10} {'基準收益':>10} {'調整權重':>10}")
+    print(
+        f"{'策略':<14} {'連續跑輸':>10} {'狀態':>8} {'近期收益':>10} {'基準收益':>10} {'調整權重':>10}"
+    )
     print("-" * 70)
     for i, s in enumerate(result.get("degradation_status", [])):
         status = "⚠ 衰退" if s["is_degraded"] else "✓ 正常"
@@ -120,8 +121,6 @@ def cmd_degradation(args):
             f"{s['benchmark_return_pct']:>+9.2f}% "
             f"{w:>10.2%}"
         )
-
-
 
 
 def cmd_arbitrate(args):
@@ -152,15 +151,17 @@ def cmd_arbitrate(args):
     print(f"\n{'='*60}")
     print(f"投票詳情:")
     for v in result.get("vote_details", []):
-        print(f"  {v['strategy']}/{v['code']}: {v['signal']:>4}  權重={v['weight']:.4f}  投票值={v['vote_value']:+.4f}")
+        print(
+            f"  {v['strategy']}/{v['code']}: {v['signal']:>4}  權重={v['weight']:.4f}  投票值={v['vote_value']:+.4f}"
+        )
 
     print(f"\n{'='*60}")
     print(f"最終決策: {result['final_action'].upper()}")
     print(f"信心度: {result['confidence']:.2%}")
-    print(f"買入分: {result['buy_score']:.4f}  賣出分: {result['sell_score']:.4f}  持有分: {result['hold_score']:.4f}")
+    print(
+        f"買入分: {result['buy_score']:.4f}  賣出分: {result['sell_score']:.4f}  持有分: {result['hold_score']:.4f}"
+    )
     print(f"衝突程度: {result['conflict_level']}")
-
-
 
 
 def cmd_risk_parity(args):
@@ -197,8 +198,6 @@ def cmd_risk_parity(args):
             f"{s['total_return_pct']:>+9.2f}% "
             f"{s.get('sharpe_ratio', 0):>8.2f}"
         )
-
-
 
 
 def cmd_mvo(args):
@@ -239,8 +238,6 @@ def cmd_mvo(args):
         print(f"  風險範圍: {frontier[0]['risk']:.2f}% ~ {frontier[-1]['risk']:.2f}%")
 
 
-
-
 def cmd_vol_target(args):
     """波動率目標組合"""
     from src.core.portfolio import volatility_targeting
@@ -269,9 +266,9 @@ def cmd_vol_target(args):
     print(f"夏普比率: {pm.get('sharpe_ratio', 0):.4f}")
     print(f"最大回撤: {pm.get('max_drawdown_pct', 0):.2f}%")
     print(f"平均槓桿: {result.get('avg_leverage', 0):.2f}x")
-    print(f"槓桿範圍: {result.get('min_leverage', 0):.2f}x ~ {result.get('max_leverage', 0):.2f}x")
-
-
+    print(
+        f"槓桿範圍: {result.get('min_leverage', 0):.2f}x ~ {result.get('max_leverage', 0):.2f}x"
+    )
 
 
 def cmd_max_diversification(args):
@@ -302,8 +299,6 @@ def cmd_max_diversification(args):
     print(f"\n最優權重:")
     for s in result.get("sub_strategies", []):
         print(f"  {s['strategy']}/{s['code']}: {s['weight']:.1%}")
-
-
 
 
 def cmd_anti_corr(args):
@@ -347,8 +342,6 @@ def cmd_anti_corr(args):
             print(row_str)
 
 
-
-
 def cmd_regime_switch(args):
     """市場狀態切換組合"""
     from src.core.portfolio import regime_switch_portfolio
@@ -382,8 +375,6 @@ def cmd_regime_switch(args):
         print(f"  {regime}: {count} 次")
 
 
-
-
 def cmd_black_litterman(args):
     """Black-Litterman 模型組合"""
     from src.core.portfolio import black_litterman_portfolio
@@ -398,7 +389,9 @@ def cmd_black_litterman(args):
 
     print(f"Black-Litterman 模型: {len(allocations)} 個子策略")
     result = black_litterman_portfolio(
-        allocations=allocations, views=views, confidence=confidence,
+        allocations=allocations,
+        views=views,
+        confidence=confidence,
     )
 
     if not result or "error" in result:
@@ -424,8 +417,6 @@ def cmd_black_litterman(args):
             f"{s.get('posterior_return', 0):>+9.2f}% "
             f"{s['weight']:>9.1%}"
         )
-
-
 
 
 def cmd_hrp(args):
@@ -461,8 +452,6 @@ def cmd_hrp(args):
         print(f"\n聚類排序: {' → '.join(sort_order)}")
 
 
-
-
 def cmd_cvar(args):
     """CVaR 優化組合"""
     from src.core.portfolio import cvar_optimize
@@ -491,9 +480,9 @@ def cmd_cvar(args):
 
     print(f"\n最優權重:")
     for s in result.get("sub_strategies", []):
-        print(f"  {s['strategy']}/{s['code']}: {s['weight']:.1%}  (個股CVaR={s.get('individual_cvar', 0):.4f}%)")
-
-
+        print(
+            f"  {s['strategy']}/{s['code']}: {s['weight']:.1%}  (個股CVaR={s.get('individual_cvar', 0):.4f}%)"
+        )
 
 
 def cmd_multi_timeframe(args):
@@ -519,15 +508,27 @@ def cmd_multi_timeframe(args):
     for s in result.get("strategy_signals", []):
         print(f"\n  {s['label']}:")
         for tf, sig in s.get("timeframe_signals", {}).items():
-            icon = "🟢" if sig["signal"] == "buy" else "🔴" if sig["signal"] == "sell" else "⚪"
-            print(f"    {tf:>4}: {icon} {sig['signal']:>4}  收益={sig.get('return_pct', 0):+.2f}%")
-        conf_icon = "🟢" if s["confirmed_signal"] == "buy" else "🔴" if s["confirmed_signal"] == "sell" else "⚪"
-        print(f"    確認: {conf_icon} {s['confirmed_signal']}  (一致性={s['agreement_score']:.0%})")
+            icon = (
+                "🟢"
+                if sig["signal"] == "buy"
+                else "🔴" if sig["signal"] == "sell" else "⚪"
+            )
+            print(
+                f"    {tf:>4}: {icon} {sig['signal']:>4}  收益={sig.get('return_pct', 0):+.2f}%"
+            )
+        conf_icon = (
+            "🟢"
+            if s["confirmed_signal"] == "buy"
+            else "🔴" if s["confirmed_signal"] == "sell" else "⚪"
+        )
+        print(
+            f"    確認: {conf_icon} {s['confirmed_signal']}  (一致性={s['agreement_score']:.0%})"
+        )
 
     print(f"\n整體信號: {result.get('overall_signal', 'hold').upper()}")
-    print(f"  買入: {result.get('overall_buy_count', 0)}  賣出: {result.get('overall_sell_count', 0)}  持有: {result.get('overall_hold_count', 0)}")
-
-
+    print(
+        f"  買入: {result.get('overall_buy_count', 0)}  賣出: {result.get('overall_sell_count', 0)}  持有: {result.get('overall_hold_count', 0)}"
+    )
 
 
 def cmd_dynamic_rebalance(args):
@@ -540,7 +541,9 @@ def cmd_dynamic_rebalance(args):
 
     print(f"動態再平衡: 閾值={args.threshold}%, 波動率窗口={args.vol_window}天")
     result = dynamic_rebalance_trigger(
-        allocations=allocations, threshold_pct=args.threshold, vol_window=args.vol_window,
+        allocations=allocations,
+        threshold_pct=args.threshold,
+        vol_window=args.vol_window,
     )
 
     if not result or "error" in result:
@@ -560,8 +563,6 @@ def cmd_dynamic_rebalance(args):
         print(f"\n  [{rb['date']}] 偏移={rb['max_drift_pct']:.1f}%")
         for reason in rb.get("reasons", []):
             print(f"    → {reason}")
-
-
 
 
 def cmd_sector_limit(args):
@@ -593,9 +594,9 @@ def cmd_sector_limit(args):
 
     print(f"\n最優權重:")
     for s in result.get("sub_strategies", []):
-        print(f"  {s['strategy']}/{s['code']}: {s['weight']:.1%}  [{s.get('sector', '')}]")
-
-
+        print(
+            f"  {s['strategy']}/{s['code']}: {s['weight']:.1%}  [{s.get('sector', '')}]"
+        )
 
 
 def cmd_voting_portfolio(args):
@@ -603,7 +604,11 @@ def cmd_voting_portfolio(args):
     from src.core.portfolio import strategy_voting_portfolio
 
     ensure_db()
-    allocations = get_allocations(args) if getattr(args, "alloc", "") else list(EXTENDED_ALLOCATIONS)
+    allocations = (
+        get_allocations(args)
+        if getattr(args, "alloc", "")
+        else list(EXTENDED_ALLOCATIONS)
+    )
 
     print(f"投票式組合: 最低票數={args.min_votes}")
     result = strategy_voting_portfolio(
@@ -629,8 +634,6 @@ def cmd_voting_portfolio(args):
     print(f"  賣出天數: {vs.get('sell_days', 0)}")
     print(f"  持有天數: {vs.get('hold_days', 0)}")
     print(f"  總天數: {vs.get('total_days', 0)}")
-
-
 
 
 def cmd_momentum_of_momentum(args):
@@ -667,12 +670,16 @@ def cmd_momentum_of_momentum(args):
         print(f"\n最新動量記錄 (第 {latest['day']} 天):")
         for i, s in enumerate(result.get("sub_strategies", [])):
             fm = latest["first_momentum"][i] if i < len(latest["first_momentum"]) else 0
-            sm = latest["second_momentum"][i] if i < len(latest["second_momentum"]) else 0
+            sm = (
+                latest["second_momentum"][i]
+                if i < len(latest["second_momentum"])
+                else 0
+            )
             w = latest["weights"][i] if i < len(latest["weights"]) else 0
             trend = "↑" if sm > 0 else "↓" if sm < 0 else "→"
-            print(f"  {s['strategy']}/{s['code']}: Sharpe={fm:.2f} {trend} (Δ={sm:+.2f}), 權重={w:.1%}")
-
-
+            print(
+                f"  {s['strategy']}/{s['code']}: Sharpe={fm:.2f} {trend} (Δ={sm:+.2f}), 權重={w:.1%}"
+            )
 
 
 def cmd_adaptive_regime(args):
@@ -680,7 +687,11 @@ def cmd_adaptive_regime(args):
     from src.core.portfolio import adaptive_regime_portfolio
 
     ensure_db()
-    allocations = get_allocations(args) if getattr(args, "alloc", "") else list(EXTENDED_ALLOCATIONS)
+    allocations = (
+        get_allocations(args)
+        if getattr(args, "alloc", "")
+        else list(EXTENDED_ALLOCATIONS)
+    )
 
     print(f"自適應市場狀態組合...")
     result = adaptive_regime_portfolio(allocations=allocations)
@@ -701,7 +712,9 @@ def cmd_adaptive_regime(args):
     print(f"最大回撤: {pm.get('max_drawdown_pct', 0):.2f}%")
 
     thresholds = result.get("vol_thresholds", {})
-    print(f"\n波動率閾值: 低<{thresholds.get('low', 0.15):.0%}, 高>{thresholds.get('high', 0.25):.0%}")
+    print(
+        f"\n波動率閾值: 低<{thresholds.get('low', 0.15):.0%}, 高>{thresholds.get('high', 0.25):.0%}"
+    )
 
     print(f"\n狀態分佈:")
     for regime, count in rc.items():
@@ -715,5 +728,3 @@ def cmd_adaptive_regime(args):
                 for i, w in enumerate(info["avg_weights"])
             )
             print(f"  {regime} ({info['count']}次): {weights_str}")
-
-

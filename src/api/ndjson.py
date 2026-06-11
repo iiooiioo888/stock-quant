@@ -1,4 +1,5 @@
 """NDJSON 流式響應工具（分塊序列化，降低單次 JSON 峰值）。"""
+
 from __future__ import annotations
 
 import asyncio

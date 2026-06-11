@@ -1,4 +1,5 @@
 """GET /api/health/sop 端點。"""
+
 from fastapi.testclient import TestClient
 
 from src.api.app import app

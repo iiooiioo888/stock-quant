@@ -1,5 +1,11 @@
 """默認管理員賬號初始化測試"""
-from src.core.auth import ensure_default_admin, get_user_by_username, hash_password, verify_password
+
+from src.core.auth import (
+    ensure_default_admin,
+    get_user_by_username,
+    hash_password,
+    verify_password,
+)
 from src.core.db import get_conn
 
 

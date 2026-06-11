@@ -1,4 +1,5 @@
 """LLM 智能問答 API（含 SSE 流式、用戶 Key 設置）"""
+
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,7 +27,9 @@ def _user_settings_dict(user) -> dict:
 
 def _save_user_llm_settings(user_id: int, llm_partial: dict) -> dict:
     with get_conn() as conn:
-        row = conn.execute("SELECT settings FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT settings FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
         all_settings = {}
         if row and row[0]:
             try:
@@ -116,7 +119,9 @@ async def llm_chat(body: dict, user=Depends(require_auth)):
     gate_ai_assistant(user)
     message = body.get("message") or body.get("query") or ""
     history = body.get("history") or body.get("messages")
-    overrides = body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None
+    overrides = (
+        body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None
+    )
     user_settings = _user_settings_dict(user)
 
     result = run_chat(
@@ -144,7 +149,9 @@ async def llm_chat_stream(body: dict, user=Depends(require_auth)):
     gate_ai_assistant(user)
     message = body.get("message") or body.get("query") or ""
     history = body.get("history") or body.get("messages")
-    overrides = body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None
+    overrides = (
+        body.get("llm_config") if isinstance(body.get("llm_config"), dict) else None
+    )
     user_settings = _user_settings_dict(user)
 
     def event_gen():
@@ -227,7 +234,11 @@ async def llm_analyze_stream(body: dict, user=Depends(require_auth)):
     return StreamingResponse(
         event_gen(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -312,9 +323,13 @@ async def llm_optimize(body: dict, user=Depends(require_auth)):
     if current_params or backtest_result:
         extra_parts = []
         if current_params:
-            extra_parts.append(f"當前參數：{json.dumps(current_params, ensure_ascii=False)}")
+            extra_parts.append(
+                f"當前參數：{json.dumps(current_params, ensure_ascii=False)}"
+            )
         if backtest_result:
-            extra_parts.append(f"回測結果：{json.dumps(backtest_result, ensure_ascii=False)}")
+            extra_parts.append(
+                f"回測結果：{json.dumps(backtest_result, ensure_ascii=False)}"
+            )
         data = f"{data}\n\n{chr(10).join(extra_parts)}"
 
     result = invoke_llm(

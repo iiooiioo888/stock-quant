@@ -1,4 +1,5 @@
 """MCP sq_ops_check tool。"""
+
 import json
 
 from src.integrations.mcp.tools_observability import handle_sq_ops_check

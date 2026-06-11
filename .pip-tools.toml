@@ -1,0 +1,10 @@
+# pip-tools 配置文件
+# 使用方式：
+# 1. 安裝：pip install pip-tools
+# 2. 編譯依賴：uv pip compile pyproject.toml -o requirements-compiled.txt
+# 3. 安裝編譯後的依賴：uv pip install --system -r requirements-compiled.txt
+
+[tool.pip-tools]
+generate-hashes = true
+allow-unsafe = true
+strip-extras = true

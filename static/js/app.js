@@ -1,6 +1,18 @@
 /**
  * app.js — 主應用邏輯、Tab 路由、初始化
+ * 性能優化：懒加载、防抖節流、記憶體管理
  */
+
+// 性能監控指標
+const PerfMetrics = {
+  _metrics: {},
+  mark(name) { this._metrics[name] = performance.now(); },
+  measure(name, startMark, endMark) {
+    if (this._metrics[startMark] && this._metrics[endMark]) {
+      console.log(`⚡ ${name}: ${(this._metrics[endMark] - this._metrics[startMark]).toFixed(2)}ms`);
+    }
+  },
+};
 
 const App = {
   _ws: null,
@@ -11,51 +23,73 @@ const App = {
   _currentTab: 'dashboard',
   _routerReady: false,
   _tabIds: null,
+  _initPromises: new WeakMap(), // 追蹤初始化 Promise 避免重複
 
   /**
-   * 初始化應用
+   * 初始化應用 - 優化版：分階段初始化
    */
-  init() {
-    // 初始化 API（載入 token、設置 auth UI）
-    Api.init();
-
+  async init() {
+    PerfMetrics.mark('appInitStart');
+    
+    // 階段 1：關鍵路徑（阻塞首屏）
+    await Promise.all([
+      this._initCritical(),
+      Api.init(),
+    ]);
+    
+    // 階段 2：非關鍵資源（非阻塞）
+    this._initNonCritical();
+    
+    // 階段 3：預載數據（背景載入）
+    this._preloadData();
+    
+    PerfMetrics.mark('appInitEnd');
+    PerfMetrics.measure('App 初始化', 'appInitStart', 'appInitEnd');
+  },
+  
+  async _initCritical() {
     this.initTheme();
     this.initTabs();
+    this.initRouter();
+    this._initSidebarToggle();
+    this._initGlobalSearch();
+  },
+  
+  _initNonCritical() {
     this.initWebSocket();
     this._initGreeting();
     this._initMarketStatus();
     this._initTips();
-    this._initSidebarToggle();
-    this._initGlobalSearch();
     this._initTaskPanel();
-
-    // 並行預載（不阻塞首屏 Tab）
-    Promise.all([
-      this._initStrategies(),
-      this._initQuickStats(),
-    ]).catch(() => {});
-
-    // 路由：#/stock/代碼、#/stocks、#/dashboard 等各 Tab 深連結
-    this.initRouter();
-    if (typeof StockDetail !== 'undefined') StockDetail.initRouter();
+    this._initKeyboardShortcuts();
+    this._initQuickCardHover();
+    
+    // 子模塊延遲初始化
+    setTimeout(() => {
+      if (typeof Signals !== 'undefined') Signals.init();
+      if (typeof Data !== 'undefined') Data.init();
+      if (typeof Portfolio !== 'undefined') Portfolio.init();
+      if (typeof StockPicker !== 'undefined') StockPicker.initAll();
+      if (typeof Analysis !== 'undefined') Analysis.init();
+      if (typeof Backtest !== 'undefined') Backtest.init();
+    }, 100);
+  },
+  
+  async _preloadData() {
+    // 並行預載，不阻塞首屏
+    try {
+      await Promise.allSettled([
+        this._initStrategies(),
+        this._initQuickStats(),
+      ]);
+    } catch (e) { /* ignore */ }
+    
+    // 路由就緒後處理
     if (!this.routeFromHash(true)) {
       const lastTab = (typeof LocalStore !== 'undefined' && LocalStore.get('lastTab')) || 'dashboard';
       const valid = document.getElementById('tab-' + lastTab);
       this.loadTab(valid ? lastTab : 'dashboard', { syncHash: true });
     }
-
-    // 初始化子模塊
-    if (typeof Signals !== 'undefined') Signals.init();
-    if (typeof Data !== 'undefined') Data.init();
-    if (typeof Portfolio !== 'undefined') Portfolio.init();
-    if (typeof StockPicker !== 'undefined') StockPicker.initAll();
-    if (typeof Analysis !== 'undefined') Analysis.init();
-    if (typeof Backtest !== 'undefined') Backtest.init();
-
-    // 全局快捷鍵
-    this._initKeyboardShortcuts();
-    // 快捷卡片滑鼠追蹤光效
-    this._initQuickCardHover();
   },
 
   quickAction(tab) {

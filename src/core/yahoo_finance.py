@@ -4,6 +4,7 @@ Yahoo Finance 數據接口（免費，無需 API Key）
 A 股代碼映射：600519 → 600519.SS，000001 → 000001.SZ
 滬深300：000300.SS
 """
+
 from __future__ import annotations
 
 import random
@@ -305,7 +306,9 @@ def yahoo_quote(symbol: str) -> dict:
                 "price": round(float(price), 4),
                 "change_pct": round(float(change_pct), 2),
                 "change": round(float(change), 4),
-                "high": round(float(max(highs)), 4) if highs else round(float(price), 4),
+                "high": (
+                    round(float(max(highs)), 4) if highs else round(float(price), 4)
+                ),
                 "low": round(float(min(lows)), 4) if lows else round(float(price), 4),
                 "open": round(float(opens[-1]), 4) if opens else round(float(price), 4),
                 "volume": int(volumes[-1]) if volumes else 0,

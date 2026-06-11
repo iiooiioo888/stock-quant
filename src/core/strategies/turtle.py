@@ -7,6 +7,7 @@ from src.core.strategies.registry import register_strategy
 @register_strategy("turtle", "海龜趨勢跟蹤策略")
 class TurtleStrategy(OrderManagedStrategy):
     """海龜交易策略"""
+
     params = (
         ("entry_period", 20),
         ("exit_period", 10),
@@ -37,4 +38,3 @@ class TurtleStrategy(OrderManagedStrategy):
 
         elif self.position and price < self.lowest[-1]:
             self.order = self.sell()
-

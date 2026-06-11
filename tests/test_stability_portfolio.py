@@ -8,6 +8,7 @@
   - calc_strategy_correlations 相關性矩陣
   - json_safe_portfolio_result 序列化清理
 """
+
 from __future__ import annotations
 
 import math
@@ -22,8 +23,8 @@ from src.core.portfolio import (
     _align_navs,
 )
 
-
 # ── _safe_float ─────────────────────────────────────────────────
+
 
 class TestSafeFloat:
     """NaN/Inf 安全轉換。"""
@@ -61,6 +62,7 @@ class TestSafeFloat:
 
 # ── json_safe_portfolio_result ──────────────────────────────────
 
+
 class TestJsonSafe:
     """JSON 序列化清理。"""
 
@@ -93,6 +95,7 @@ class TestJsonSafe:
 
 
 # ── _calc_metrics ───────────────────────────────────────────────
+
 
 class TestCalcMetrics:
     """淨值指標計算。"""
@@ -138,6 +141,7 @@ class TestCalcMetrics:
 
 # ── _calc_portfolio_nav ─────────────────────────────────────────
 
+
 class TestPortfolioNav:
     """組合淨值計算。"""
 
@@ -167,6 +171,7 @@ class TestPortfolioNav:
 
 # ── _align_navs ─────────────────────────────────────────────────
 
+
 class TestAlignNavs:
     """淨值序列對齊。"""
 
@@ -174,8 +179,14 @@ class TestAlignNavs:
         """等長序列。"""
         # _align_navs 期望 [{"dates": [...], "daily_returns": [...]}, ...]
         sub = [
-            {"dates": ["2024-01-01", "2024-01-02", "2024-01-03"], "daily_returns": [0.0, 0.1, 0.0909]},
-            {"dates": ["2024-01-01", "2024-01-02", "2024-01-03"], "daily_returns": [0.0, -0.1, -0.1111]},
+            {
+                "dates": ["2024-01-01", "2024-01-02", "2024-01-03"],
+                "daily_returns": [0.0, 0.1, 0.0909],
+            },
+            {
+                "dates": ["2024-01-01", "2024-01-02", "2024-01-03"],
+                "daily_returns": [0.0, -0.1, -0.1111],
+            },
         ]
         result = _align_navs(sub)
         # 返回 (common_dates, aligned_navs)；nav 長度 = len(dates)+1（初始 1.0）
@@ -191,6 +202,7 @@ class TestAlignNavs:
 
 
 # ── calc_strategy_correlations ──────────────────────────────────
+
 
 class TestCorrelations:
     """策略相關性計算。"""
@@ -236,6 +248,7 @@ class TestCorrelations:
 
 # ── json_safe_portfolio_result 進階 ─────────────────────────────
 
+
 class TestJsonSafeAdvanced:
     """序列化清理進階測試。"""
 
@@ -273,6 +286,7 @@ class TestJsonSafeAdvanced:
 
 # ── _safe_float 進階 ────────────────────────────────────────────
 
+
 class TestSafeFloatAdvanced:
     """_safe_float 進階邊界。"""
 
@@ -282,10 +296,12 @@ class TestSafeFloatAdvanced:
 
     def test_numpy_float(self):
         import numpy as np
+
         assert _safe_float(np.float64(3.14)) == pytest.approx(3.14)
 
     def test_numpy_nan(self):
         import numpy as np
+
         assert _safe_float(np.float64("nan")) is None
 
     def test_very_small_float(self):
@@ -297,6 +313,7 @@ class TestSafeFloatAdvanced:
 
 
 # ── _calc_metrics 進階 ──────────────────────────────────────────
+
 
 class TestCalcMetricsAdvanced:
     """淨值指標進階測試。"""
@@ -335,6 +352,7 @@ class TestCalcMetricsAdvanced:
 
 
 # ── _calc_portfolio_nav 進階 ────────────────────────────────────
+
 
 class TestPortfolioNavAdvanced:
     """組合淨值進階測試。"""

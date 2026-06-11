@@ -1,4 +1,5 @@
 """CLI 入口：解析參數並分發到命令處理函數。"""
+
 from __future__ import annotations
 
 import argparse
@@ -173,7 +174,9 @@ def dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         if getattr(args, "scheduler_action", None):
             cmd_scheduler(args)
         else:
-            print("用法: python main.py scheduler {list|setup|run|enable|disable} [job_id]")
+            print(
+                "用法: python main.py scheduler {list|setup|run|enable|disable} [job_id]"
+            )
         return
 
     if cmd == "stock-universe":

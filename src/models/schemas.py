@@ -1,20 +1,23 @@
 """
 API 數據模型 — Pydantic schemas
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional
 
-
 # ====== 通用 ======
+
 
 class ApiResponse(BaseModel):
     """統一 API 響應"""
+
     success: bool = True
     message: str = ""
     data: Optional[dict | list] = None
 
 
 # ====== 股票 ======
+
 
 class StockInfo(BaseModel):
     code: str
@@ -30,6 +33,7 @@ class WatchlistUpdate(BaseModel):
 
 # ====== 回測 ======
 
+
 class BacktestRequest(BaseModel):
     code: str
     strategy: str = "dual_ma"
@@ -40,6 +44,7 @@ class BacktestRequest(BaseModel):
 
 class BacktestAdvancedRequest(BaseModel):
     """進階回測請求 — 支持滑點、T+1、漲跌停控制"""
+
     code: str
     strategy: str = "dual_ma"
     params: Optional[dict] = None
@@ -49,9 +54,9 @@ class BacktestAdvancedRequest(BaseModel):
     take_profit_pct: Optional[float] = None
     trailing_stop_pct: Optional[float] = None
     benchmark: bool = False
-    slippage_pct: float = 0.0        # 滑點百分比（默認 0.0）
-    enable_t1: bool = True            # 啟用 T+1 限制（默認 True）
-    enable_limit: bool = True         # 啟用漲跌停限制（默認 True）
+    slippage_pct: float = 0.0  # 滑點百分比（默認 0.0）
+    enable_t1: bool = True  # 啟用 T+1 限制（默認 True）
+    enable_limit: bool = True  # 啟用漲跌停限制（默認 True）
 
 
 class BacktestResult(BaseModel):
@@ -69,6 +74,7 @@ class BacktestResult(BaseModel):
 
 
 # ====== 優化 ======
+
 
 class OptimizeRequest(BaseModel):
     code: str
@@ -92,6 +98,7 @@ class OptimizeResult(BaseModel):
 
 
 # ====== 組合 ======
+
 
 class PortfolioAllocation(BaseModel):
     strategy: str
@@ -118,6 +125,7 @@ class PortfolioResult(BaseModel):
 
 # ====== 預警 ======
 
+
 class AlertRule(BaseModel):
     code: str
     name: str = ""
@@ -137,6 +145,7 @@ class AlertLog(BaseModel):
 
 # ====== 系統 ======
 
+
 class SystemStatus(BaseModel):
     version: str
     uptime: str
@@ -151,4 +160,3 @@ class HealthCheck(BaseModel):
     version: str
     database: str = "ok"
     uptime: str
-

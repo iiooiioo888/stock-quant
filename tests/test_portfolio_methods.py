@@ -1,8 +1,8 @@
 """組合方法 smoke 測試"""
+
 import pytest
 
 from src.core import portfolio as pf
-
 
 PORTFOLIO_FUNCS = [
     "run_portfolio",

@@ -7,6 +7,7 @@
 - 因子正交化：消除因子間多重共線性
 - 因子選股：綜合打分排名
 """
+
 from __future__ import annotations
 
 import math
@@ -21,26 +22,101 @@ import pandas as pd
 
 FACTOR_DEFINITIONS = {
     # 價值因子
-    "pe_ttm": {"label": "市盈率(TTM)", "category": "value", "direction": -1, "description": "越低越好"},
-    "pb": {"label": "市淨率", "category": "value", "direction": -1, "description": "越低越好"},
-    "dividend_yield": {"label": "股息率", "category": "value", "direction": 1, "description": "越高越好"},
+    "pe_ttm": {
+        "label": "市盈率(TTM)",
+        "category": "value",
+        "direction": -1,
+        "description": "越低越好",
+    },
+    "pb": {
+        "label": "市淨率",
+        "category": "value",
+        "direction": -1,
+        "description": "越低越好",
+    },
+    "dividend_yield": {
+        "label": "股息率",
+        "category": "value",
+        "direction": 1,
+        "description": "越高越好",
+    },
     # 質量因子
-    "roe": {"label": "ROE", "category": "quality", "direction": 1, "description": "越高越好"},
-    "gross_margin": {"label": "毛利率", "category": "quality", "direction": 1, "description": "越高越好"},
-    "net_margin": {"label": "淨利率", "category": "quality", "direction": 1, "description": "越高越好"},
-    "debt_ratio": {"label": "資產負債率", "category": "quality", "direction": -1, "description": "越低越好"},
+    "roe": {
+        "label": "ROE",
+        "category": "quality",
+        "direction": 1,
+        "description": "越高越好",
+    },
+    "gross_margin": {
+        "label": "毛利率",
+        "category": "quality",
+        "direction": 1,
+        "description": "越高越好",
+    },
+    "net_margin": {
+        "label": "淨利率",
+        "category": "quality",
+        "direction": 1,
+        "description": "越高越好",
+    },
+    "debt_ratio": {
+        "label": "資產負債率",
+        "category": "quality",
+        "direction": -1,
+        "description": "越低越好",
+    },
     # 成長因子
-    "revenue_yoy": {"label": "營收同比", "category": "growth", "direction": 1, "description": "越高越好"},
-    "profit_yoy": {"label": "利潤同比", "category": "growth", "direction": 1, "description": "越高越好"},
+    "revenue_yoy": {
+        "label": "營收同比",
+        "category": "growth",
+        "direction": 1,
+        "description": "越高越好",
+    },
+    "profit_yoy": {
+        "label": "利潤同比",
+        "category": "growth",
+        "direction": 1,
+        "description": "越高越好",
+    },
     # 動量因子（從 K 線計算）
-    "momentum_20d": {"label": "20日動量", "category": "momentum", "direction": 1, "description": "20日收益率"},
-    "momentum_60d": {"label": "60日動量", "category": "momentum", "direction": 1, "description": "60日收益率"},
+    "momentum_20d": {
+        "label": "20日動量",
+        "category": "momentum",
+        "direction": 1,
+        "description": "20日收益率",
+    },
+    "momentum_60d": {
+        "label": "60日動量",
+        "category": "momentum",
+        "direction": 1,
+        "description": "60日收益率",
+    },
     # 波動因子
-    "volatility_20d": {"label": "20日波動率", "category": "volatility", "direction": -1, "description": "越低越好"},
-    "atr_ratio": {"label": "ATR比率", "category": "volatility", "direction": -1, "description": "ATR/價格"},
+    "volatility_20d": {
+        "label": "20日波動率",
+        "category": "volatility",
+        "direction": -1,
+        "description": "越低越好",
+    },
+    "atr_ratio": {
+        "label": "ATR比率",
+        "category": "volatility",
+        "direction": -1,
+        "description": "ATR/價格",
+    },
     # 量價因子
-    "turnover_avg": {"label": "平均換手率", "category": "liquidity", "direction": 0, "description": "中性"},
-    "volume_ratio": {"label": "量比", "category": "liquidity", "direction": 0, "description": "當前量/均量"},
+    "turnover_avg": {
+        "label": "平均換手率",
+        "category": "liquidity",
+        "direction": 0,
+        "description": "中性",
+    },
+    "volume_ratio": {
+        "label": "量比",
+        "category": "liquidity",
+        "direction": 0,
+        "description": "當前量/均量",
+    },
 }
 
 
@@ -65,17 +141,31 @@ def list_factor_categories() -> dict[str, list[str]]:
 # 因子計算
 # ============================================================
 
+
 def compute_value_quality_factors(fundamentals: dict) -> dict[str, Optional[float]]:
     """從基本面數據計算價值/質量/成長因子。"""
     factors = {}
-    for key in ("pe_ttm", "pb", "roe", "gross_margin", "net_margin",
-                "debt_ratio", "dividend_yield", "revenue_yoy", "profit_yoy",
-                "ps_ttm", "eps", "bvps"):
+    for key in (
+        "pe_ttm",
+        "pb",
+        "roe",
+        "gross_margin",
+        "net_margin",
+        "debt_ratio",
+        "dividend_yield",
+        "revenue_yoy",
+        "profit_yoy",
+        "ps_ttm",
+        "eps",
+        "bvps",
+    ):
         factors[key] = fundamentals.get(key)
     return factors
 
 
-def compute_momentum_factors(closes: list[float], dates: list[str] = None) -> dict[str, Optional[float]]:
+def compute_momentum_factors(
+    closes: list[float], dates: list[str] = None
+) -> dict[str, Optional[float]]:
     """從收盤價序列計算動量因子。"""
     if not closes or len(closes) < 2:
         return {"momentum_20d": None, "momentum_60d": None}
@@ -94,8 +184,9 @@ def compute_momentum_factors(closes: list[float], dates: list[str] = None) -> di
     }
 
 
-def compute_volatility_factors(closes: list[float], highs: list[float] = None,
-                                lows: list[float] = None) -> dict[str, Optional[float]]:
+def compute_volatility_factors(
+    closes: list[float], highs: list[float] = None, lows: list[float] = None
+) -> dict[str, Optional[float]]:
     """從價格序列計算波動因子。"""
     if not closes or len(closes) < 20:
         return {"volatility_20d": None, "atr_ratio": None}
@@ -124,18 +215,28 @@ def compute_volatility_factors(closes: list[float], highs: list[float] = None,
     }
 
 
-def compute_liquidity_factors(volumes: list[float], turnovers: list[float] = None) -> dict[str, Optional[float]]:
+def compute_liquidity_factors(
+    volumes: list[float], turnovers: list[float] = None
+) -> dict[str, Optional[float]]:
     """從成交量序列計算流動性因子。"""
     if not volumes or len(volumes) < 5:
         return {"turnover_avg": None, "volume_ratio": None}
 
-    vol_arr = np.array(volumes[-20:], dtype=float) if len(volumes) >= 20 else np.array(volumes, dtype=float)
+    vol_arr = (
+        np.array(volumes[-20:], dtype=float)
+        if len(volumes) >= 20
+        else np.array(volumes, dtype=float)
+    )
     vol_avg = float(np.mean(vol_arr))
     vol_ratio = round(volumes[-1] / vol_avg, 4) if vol_avg > 0 else None
 
     turnover_avg = None
     if turnovers and len(turnovers) >= 5:
-        t_arr = np.array(turnovers[-20:], dtype=float) if len(turnovers) >= 20 else np.array(turnovers, dtype=float)
+        t_arr = (
+            np.array(turnovers[-20:], dtype=float)
+            if len(turnovers) >= 20
+            else np.array(turnovers, dtype=float)
+        )
         turnover_avg = round(float(np.mean(t_arr)), 4)
 
     return {
@@ -144,9 +245,14 @@ def compute_liquidity_factors(volumes: list[float], turnovers: list[float] = Non
     }
 
 
-def compute_all_factors(fundamentals: dict = None, closes: list[float] = None,
-                         highs: list[float] = None, lows: list[float] = None,
-                         volumes: list[float] = None, turnovers: list[float] = None) -> dict[str, Any]:
+def compute_all_factors(
+    fundamentals: dict = None,
+    closes: list[float] = None,
+    highs: list[float] = None,
+    lows: list[float] = None,
+    volumes: list[float] = None,
+    turnovers: list[float] = None,
+) -> dict[str, Any]:
     """計算所有可用因子。"""
     factors = {}
     if fundamentals:
@@ -163,6 +269,7 @@ def compute_all_factors(fundamentals: dict = None, closes: list[float] = None,
 # 因子標準化（Z-Score）
 # ============================================================
 
+
 def zscore_normalize(values: list[Optional[float]]) -> list[Optional[float]]:
     """Z-Score 標準化：(x - mean) / std。"""
     valid = [v for v in values if v is not None and not math.isnan(v)]
@@ -177,10 +284,14 @@ def zscore_normalize(values: list[Optional[float]]) -> list[Optional[float]]:
     return [round((v - mean) / std, 4) if v is not None else None for v in values]
 
 
-def rank_normalize(values: list[Optional[float]], ascending: bool = True) -> list[Optional[float]]:
+def rank_normalize(
+    values: list[Optional[float]], ascending: bool = True
+) -> list[Optional[float]]:
     """排名百分位標準化（0~1）。"""
     n = len(values)
-    valid_indices = [(i, v) for i, v in enumerate(values) if v is not None and not math.isnan(v)]
+    valid_indices = [
+        (i, v) for i, v in enumerate(values) if v is not None and not math.isnan(v)
+    ]
     if not valid_indices:
         return values
 
@@ -196,16 +307,19 @@ def rank_normalize(values: list[Optional[float]], ascending: bool = True) -> lis
 # IC 分析（Information Coefficient）
 # ============================================================
 
-def compute_ic(factor_values: list[float], forward_returns: list[float]) -> dict[str, float]:
+
+def compute_ic(
+    factor_values: list[float], forward_returns: list[float]
+) -> dict[str, float]:
     """
     計算因子 IC（Information Coefficient）。
-    
+
     IC = spearman_rank_correlation(factor, forward_return)
-    
+
     Args:
         factor_values: 因子值序列
         forward_returns: 對應的未來收益率
-    
+
     Returns:
         {"ic": float, "rank_ic": float, "ic_ir": float, "n": int}
     """
@@ -227,6 +341,7 @@ def compute_ic(factor_values: list[float], forward_returns: list[float]) -> dict
 
     # Spearman Rank IC
     from scipy import stats
+
     try:
         rank_ic, _ = stats.spearmanr(fv, fr)
         rank_ic = float(rank_ic) if not np.isnan(rank_ic) else 0.0
@@ -241,18 +356,23 @@ def compute_ic(factor_values: list[float], forward_returns: list[float]) -> dict
     }
 
 
-def compute_ic_series(factor_df: pd.DataFrame, return_df: pd.DataFrame,
-                       factor_col: str, return_col: str, window: int = 20) -> pd.DataFrame:
+def compute_ic_series(
+    factor_df: pd.DataFrame,
+    return_df: pd.DataFrame,
+    factor_col: str,
+    return_col: str,
+    window: int = 20,
+) -> pd.DataFrame:
     """
     計算滾動 IC 時間序列。
-    
+
     Args:
         factor_df: 因子數據（columns=[date, code, factor]）
         return_df: 收益數據（columns=[date, code, return]）
         factor_col: 因子列名
         return_col: 收益列名
         window: 滾動窗口
-    
+
     Returns:
         DataFrame with columns=[date, ic, rank_ic]
     """
@@ -270,7 +390,9 @@ def compute_ic_series(factor_df: pd.DataFrame, return_df: pd.DataFrame,
             continue
 
         ic_result = compute_ic(list(fv[:n]), list(fr[:n]))
-        results.append({"date": date, "ic": ic_result["ic"], "rank_ic": ic_result["rank_ic"]})
+        results.append(
+            {"date": date, "ic": ic_result["ic"], "rank_ic": ic_result["rank_ic"]}
+        )
 
     return pd.DataFrame(results)
 
@@ -279,15 +401,16 @@ def compute_ic_series(factor_df: pd.DataFrame, return_df: pd.DataFrame,
 # 因子正交化
 # ============================================================
 
+
 def orthogonalize_factors(factor_matrix: pd.DataFrame) -> pd.DataFrame:
     """
     因子正交化（Gram-Schmidt）：消除因子間多重共線性。
-    
+
     按列順序依次正交化（前面的因子優先級高）。
-    
+
     Args:
         factor_matrix: DataFrame，每列為一個因子
-    
+
     Returns:
         正交化後的 DataFrame
     """
@@ -308,7 +431,9 @@ def orthogonalize_factors(factor_matrix: pd.DataFrame) -> pd.DataFrame:
     for j in range(n_cols):
         v = mat[:, j].copy()
         for k in range(j):
-            proj = np.dot(orthogonal[:, k], v) / (np.dot(orthogonal[:, k], orthogonal[:, k]) + 1e-10)
+            proj = np.dot(orthogonal[:, k], v) / (
+                np.dot(orthogonal[:, k], orthogonal[:, k]) + 1e-10
+            )
             v -= proj * orthogonal[:, k]
         orthogonal[:, j] = v
 
@@ -325,17 +450,20 @@ def orthogonalize_factors(factor_matrix: pd.DataFrame) -> pd.DataFrame:
 # 因子選股打分
 # ============================================================
 
-def score_stocks(stock_factors: dict[str, dict[str, Optional[float]]],
-                  weights: dict[str, float] = None,
-                  top_n: int = 20) -> list[dict]:
+
+def score_stocks(
+    stock_factors: dict[str, dict[str, Optional[float]]],
+    weights: dict[str, float] = None,
+    top_n: int = 20,
+) -> list[dict]:
     """
     多因子綜合打分選股。
-    
+
     Args:
         stock_factors: {code: {factor_name: value, ...}, ...}
         weights: 因子權重（默認等權）
         top_n: 返回前 N 名
-    
+
     Returns:
         [{"code": str, "score": float, "factors": dict, "rank": int}, ...]
     """
@@ -382,11 +510,13 @@ def score_stocks(stock_factors: dict[str, dict[str, Optional[float]]],
                 weight_sum += w
 
         score = total / weight_sum if weight_sum > 0 else 0.0
-        scored.append({
-            "code": code,
-            "score": round(score, 4),
-            "factors": stock_factors.get(code, {}),
-        })
+        scored.append(
+            {
+                "code": code,
+                "score": round(score, 4),
+                "factors": stock_factors.get(code, {}),
+            }
+        )
 
     # 排序
     scored.sort(key=lambda x: x["score"], reverse=True)
@@ -400,20 +530,24 @@ def score_stocks(stock_factors: dict[str, dict[str, Optional[float]]],
 # 便捷 API
 # ============================================================
 
-def screen_by_factors(codes: list[str], fundamentals_map: dict[str, dict],
-                       kline_map: dict[str, pd.DataFrame] = None,
-                       weights: dict[str, float] = None,
-                       top_n: int = 20) -> list[dict]:
+
+def screen_by_factors(
+    codes: list[str],
+    fundamentals_map: dict[str, dict],
+    kline_map: dict[str, pd.DataFrame] = None,
+    weights: dict[str, float] = None,
+    top_n: int = 20,
+) -> list[dict]:
     """
     多因子選股便捷接口。
-    
+
     Args:
         codes: 股票代碼列表
         fundamentals_map: {code: fundamentals_dict}
         kline_map: {code: DataFrame with columns [close, high, low, volume, turnover]}
         weights: 因子權重
         top_n: 返回前 N 名
-    
+
     Returns:
         打分排名結果
     """

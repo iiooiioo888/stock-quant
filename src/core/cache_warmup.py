@@ -1,6 +1,7 @@
 """
 啟動/腳本用緩存預熱 — 將常用標的 K 線載入進程 LRU 與 L2 緩存。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +39,7 @@ def warmup_cache_sync(codes: list[str] | None = None) -> dict:
     indicator_warmed = 0
     if getattr(settings, "cache_warmup_indicators", True):
         from src.core.indicator_cache import warm_indicators_for_code
+
         for raw in targets:
             code = str(raw).strip()
             if code:

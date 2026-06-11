@@ -1,4 +1,5 @@
 """CLI 模組煙霧測試。"""
+
 import argparse
 
 from src.cli.parser import build_parser
