@@ -86,6 +86,19 @@ class Settings(BaseSettings):
     backtest_stamp_tax: float = Field(
         default=0.0005, ge=0, le=0.1
     )  # 2023 年後 0.05%，僅賣出收取
+    backtest_min_commission: float = Field(
+        default=5.0, ge=0, le=100.0, description="A 股單筆佣金下限（元）"
+    )
+    backtest_transfer_fee: float = Field(
+        default=0.00001, ge=0, le=0.01, description="過戶費費率（雙邊）"
+    )
+    backtest_adj: str = Field(
+        default="qfq",
+        pattern=r"^(qfq|hfq|none)$",
+        description="回測復權：qfq 前復權 / hfq 後復權 / none 不復權",
+    )
+    # 0 = 不清理；>0 時排程刪除早於 N 年的 K 線/日誌
+    data_retention_years: int = Field(default=0, ge=0, le=50)
     # 生產環境建議 SQ_ALLOW_STRATEGY_UPLOAD=false
     allow_strategy_upload: bool = True
     strategy_upload_max_bytes: int = Field(default=65536, ge=1024, le=512000)
@@ -117,7 +130,13 @@ class Settings(BaseSettings):
 
     # ====== 數據下載並行 ======
     download_max_workers: int = Field(default=3, ge=1, le=8)
-    download_throttle_sec: float = Field(default=0.5, ge=0.1, le=2.0)
+    download_throttle_sec: float = Field(default=0.5, ge=0.0, le=2.0)
+    download_akshare_max_concurrent: int = Field(
+        default=2, ge=1, le=4, description="AKShare（A 股）同時請求上限，配合信號量限流"
+    )
+    download_akshare_min_interval_sec: float = Field(
+        default=0.5, ge=0.0, le=5.0, description="AKShare 單次請求最小間隔（秒）"
+    )
 
     # ====== 資料源開關與限速 ======
     yahoo_enabled: bool = Field(default=True, description="是否啟用 Yahoo Finance（SQ_YAHOO_ENABLED）")
@@ -149,6 +168,9 @@ class Settings(BaseSettings):
     )  # Backtrader 等重型任務同時上限
     task_timeout_sec: int = Field(default=1800, ge=60, le=86400)  # 單任務超時熔斷（秒）
     task_watchdog_interval_sec: float = Field(default=60.0, ge=10.0, le=600.0)
+    task_auto_retry_max: int = Field(
+        default=1, ge=0, le=5, description="下載類任務失敗後自動重試次數（0=關閉）"
+    )
 
     # ====== 通知 ======
     notify_console: bool = True
@@ -161,6 +183,13 @@ class Settings(BaseSettings):
     notify_telegram: bool = False
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    notify_serverchan: bool = False
+    serverchan_sendkey: str = ""
+    notify_bark: bool = False
+    bark_url: str = ""  # 例如 https://api.day.app/<device_key>
+    notify_async: bool = True
+    notify_max_retries: int = Field(default=3, ge=0, le=8)
+    notify_history_limit: int = Field(default=500, ge=50, le=5000)
 
     # ====== 演示模式 ======
     demo_mode: bool = False
@@ -175,6 +204,7 @@ class Settings(BaseSettings):
     scheduler_job_correlation: bool = False
     scheduler_job_leaderboard: bool = True
     scheduler_job_daily_download: bool = True  # 每天 09:00 爬取數據
+    scheduler_job_data_retention: bool = True  # 定期清理過期 K 線/日誌
     scheduler_incremental_hour: int = Field(default=8, ge=0, le=23)
     scheduler_incremental_minute: int = Field(default=5, ge=0, le=59)
 
@@ -537,7 +567,7 @@ class Settings(BaseSettings):
             f"   數據庫: {'PostgreSQL' if self.database_url else self.db_path}",
             f"   盯盤: {len(self.watchlist)} 只 A股 + {len(self.crypto_watchlist)} 加密 + {len(self.forex_watchlist)} 外匯",
             f"   輪詢: {self.poll_interval_sec}s | 預警冷卻: {self.alert_cooldown_sec}s",
-            f"   回測資金: ¥{self.backtest_cash:,.0f} | 佣金: {self.backtest_commission:.1%} | 印花稅: {self.backtest_stamp_tax:.1%}",
+            f"   回測資金: ¥{self.backtest_cash:,.0f} | 佣金: {self.backtest_commission:.1%} | 印花稅: {self.backtest_stamp_tax:.1%} | 佣金下限: ¥{self.backtest_min_commission:.0f}",
             f"   緩存: {'啟用' if self.cache_enabled else '禁用'} | Redis: {'啟用' if self.redis_enabled else '禁用'}",
             f"   CORS: {self.cors_origins}",
             f"   策略: {len(self.strategy_params)} 個已配置",

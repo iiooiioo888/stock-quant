@@ -59,6 +59,8 @@ def test_init_database_creates_core_tables(isolated_db):
         "portfolio_transactions",
         "portfolio_holdings",
         "portfolio_snapshots",
+        "paper_nav_history",
+        "notification_history",
         "schema_migrations",
     }
     assert expected.issubset(tables)

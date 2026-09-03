@@ -103,7 +103,7 @@ docs/MCP.md
 
 ---
 
-## 已完成（第一輪 ~ 第七輪部分）
+## 已完成（第一輪 ~ 第八輪部分）
 
 ### 第一輪 ~ 第六輪
 
@@ -118,6 +118,21 @@ docs/MCP.md
 | —   | Pro 模塊化              | `dashboard-components.js` 組件庫、`module-loader` 按頁載入                               |
 | —   | 測試擴充                 | 59 個測試文件、640 用例（含 stability / perf / portfolio_ledger / database_schema 等）       |
 | —   | 文檔                   | `docs/manual/`* 說明書、`docs/MCP.md`                                                |
+
+
+### 第八輪（本輪落地）
+
+| #   | 項 | 說明 |
+| --- | --- | --- |
+| 65  | 異步任務深化 | 下載類自動重試 + `retry_hint`/`can_retry`；任務中心重試後自動輪詢；AKShare 信號量 + 最小間隔 |
+| 66  | 分頁與索引 | `backtest_results(code, strategy)` 複合索引；`/api/alerts` offset+total；`/api/stocks` 遊標分頁 |
+| 67  | 數據保留 | `SQ_DATA_RETENTION_YEARS` + 週日排程 + `POST /api/data/retention/purge` |
+| 68  | 通知增強 | 異步隊列+重試+SQLite 歷史；ServerChan / Bark |
+| 69  | 回測成本/週期 | 佣金下限/過戶費走配置；週線/月線重採樣；`adj=qfq/hfq/none` |
+| 70  | 測試補全 | crypto/forex/global/paper/budget/data_sources/download + BL/HRP/CVaR/sector-limit |
+
+
+---
 
 
 ---
@@ -136,27 +151,28 @@ docs/MCP.md
 
 ---
 
-## 待優化（第七輪續）
+## 待優化（第八輪後）
 
 > **〔已有〕** = 代碼庫已部分落地，應「深化」而非從零開始。
 
 ### 高優
 
-#### 1. 異步化深化 〔已有 task_manager / download_tasks〕
+#### 1. 異步化深化 〔本輪已深化〕
 
-- 前端任務中心：長任務進度條、失敗重試提示、提交後自動輪詢
-- `download_all_markets` 並發度調優（信號量 + AKShare 限流）
+- 〔已有〕下載類自動重試、`retry_hint`/`can_retry`、任務中心重試後自動輪詢
+- 〔已有〕`download_all_markets` AKShare 信號量 + 最小間隔（`SQ_DOWNLOAD_AKSHARE_*`）
+- 可續：非下載類任務自動重試策略、進度 stage 文案細化
 
-#### 2. 數據庫與分頁 API 〔已有部分索引與 limit/offset〕
+#### 2. 數據庫與分頁 API 〔本輪已落地〕
 
-- 複合索引 `backtest_results(code, strategy)`；大表清理策略
-- `/api/alerts` 增加 `offset` + `total`；`/api/stocks` 游標分頁
-- `SQ_DATA_RETENTION_YEARS` 定期清理舊數據
+- 〔已有〕`idx_bt_code_strategy`；`/api/alerts` offset+total；`/api/stocks` cursor
+- 〔已有〕`SQ_DATA_RETENTION_YEARS` + 週日排程
+- 可續：其餘大表改遊標；保留策略按表細分年限
 
-#### 3. 測試補全（基線 640 用例）
+#### 3. 測試補全 〔本輪已補專項〕
 
-- 尚無專項：`test_crypto` / `test_forex` / `test_global_market` / `test_paper_trading` / `test_compute_budget` / `test_data_sources` / `test_download_tasks`
-- 擴展 `test_portfolio_methods`：BL/HRP/CVaR/sector-limit
+- 〔已有〕`test_crypto` / `test_forex` / `test_global_market` / `test_paper_trading` / `test_compute_budget` / `test_data_sources` / `test_download_tasks`
+- 〔已有〕`test_portfolio_methods`：BL/HRP/CVaR/sector-limit
 - Pro UI：`test_ui_playwright_smoke` 可增 **資金流頁** 載入與圖表 smoke
 
 ### 中優
@@ -164,16 +180,20 @@ docs/MCP.md
 #### 4. 前端 〔Pro 已模塊化〕
 
 - 〔已有〕總覽 / 資金流分頁；隱藏滾動條、`.main` 單滾動容器（見 `.cursor/rules/ui-no-scrollbar.mdc`）
+- 〔已有〕回測頁 ECharts PNG 導出；通用 `chart-export.js`
 - 待遷：optimize / walkforward / heatmap / 數據中心等仍為 `legacy-mount` 內嵌，逐步改為 `*-pro.js`
-- 移動端響應式、K 線全面 Lightweight Charts、圖表 PNG 導出
+- 移動端響應式再加深、K 線全面 Lightweight Charts
+- 回測結果並排對比 UI 可再強化
 
-#### 5. 通知增強
+#### 5. 通知增強 〔本輪已落地〕
 
-- 異步隊列 + 失敗重試、通知歷史 SQLite、ServerChan/Bark
+- 〔已有〕異步隊列 + 失敗重試、`notification_history`、ServerChan/Bark
+- 可續：管理後台通知歷史頁、渠道配置 UI
 
-#### 6. 回測增強
+#### 6. 回測增強 〔本輪部分落地〕
 
-- 印花稅/過戶費/佣金下限、復權、多周期 K、結果並排對比 UI
+- 〔已有〕印花稅/過戶費/佣金下限走配置、前/後/不復權、週線/月線（日線重採樣）
+- 待：結果並排對比 UI 深化；hfq 本地持久化
 
 ### 低優
 

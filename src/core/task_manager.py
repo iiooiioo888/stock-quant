@@ -885,6 +885,62 @@ def _drain_queue():
         _start_worker(task_id, fn)
 
 
+_AUTO_RETRY_TYPES = frozenset(
+    {"data_download", "data_download_all", "data_incremental"}
+)
+
+
+def _try_auto_retry(task_id: str, error: str) -> bool:
+    """下載類任務失敗後自動重試（有上限，不阻塞 worker finally）。"""
+    try:
+        from src.config import settings
+
+        max_n = int(getattr(settings, "task_auto_retry_max", 1) or 0)
+    except Exception:
+        max_n = 1
+    if max_n <= 0:
+        return False
+    work_fn = None
+    retry_n = 0
+    with _lock:
+        t = _tasks.get(task_id)
+        if not t:
+            return False
+        if t.get("task_type") not in _AUTO_RETRY_TYPES:
+            return False
+        meta = t.setdefault("meta", {})
+        retry_n = int(meta.get("auto_retry_count") or 0)
+        if retry_n >= max_n:
+            return False
+        work_fn = t.get("_worker_fn")
+        if work_fn is None:
+            return False
+        meta["auto_retry_count"] = retry_n + 1
+        meta["retry_hint"] = f"第 {retry_n + 1}/{max_n} 次自動重試中…"
+        meta["last_error"] = (error or "")[:500]
+        t["status"] = STATUS_RETRYING
+        t["error"] = None
+        t["progress"] = 0
+        snapshot = dict(t)
+    _save_task_to_db(snapshot, force=True)
+    append_task_log(
+        task_id,
+        f"自動重試 {retry_n + 1}/{max_n}：上次錯誤 {(error or '')[:200]}",
+        level="warning",
+    )
+    _notify_task_update(task_id, "task_retrying")
+
+    def _delayed():
+        time.sleep(min(8.0, 1.5 * (2**retry_n)))
+        if is_task_cancelled(task_id):
+            update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+            return
+        submit_task(task_id, work_fn)
+
+    threading.Thread(target=_delayed, daemon=True, name=f"auto-retry-{task_id[:12]}").start()
+    return True
+
+
 def _start_worker(task_id: str, work_fn: Callable):
     def _run():
         from src.core.task_log_stream import capture_exception, task_log_context
@@ -911,13 +967,15 @@ def _start_worker(task_id: str, work_fn: Callable):
             capture_exception(task_id, e)
             if is_task_cancelled(task_id):
                 update_task(task_id, status=STATUS_CANCELLED, error="用戶取消")
+            elif _try_auto_retry(task_id, str(e)):
+                pass
             else:
                 logger.error(f"任務失敗 {task_id}: {e}")
                 update_task(task_id, status=STATUS_FAILED, error=str(e))
         finally:
             with _lock:
                 t = _tasks.get(task_id)
-                if t:
+                if t and t.get("status") != STATUS_RETRYING:
                     t.pop("_worker_fn", None)
             _cancel_flags.pop(task_id, None)
             _on_task_finished(task_id)
@@ -1422,6 +1480,28 @@ def _task_summary(task: dict) -> dict:
         "status_message": meta.get("message", ""),
         "download": dl if dl else None,
     }
+    try:
+        from src.core.task_retry import RETRYABLE_TASK_TYPES
+
+        can_retry = (
+            task.get("status") in (STATUS_FAILED, STATUS_CANCELLED)
+            and task.get("task_type") in RETRYABLE_TASK_TYPES
+        )
+    except Exception:
+        can_retry = task.get("status") in (STATUS_FAILED, STATUS_CANCELLED)
+    summary["can_retry"] = can_retry
+    auto_n = meta.get("auto_retry_count")
+    if auto_n:
+        summary["auto_retry_count"] = auto_n
+    if task.get("status") == STATUS_RETRYING:
+        summary["retry_hint"] = meta.get("retry_hint") or "正在重試，請稍候…"
+    elif can_retry:
+        summary["retry_hint"] = (
+            meta.get("retry_hint")
+            or "任務失敗，可一鍵重試（沿用原參數重新提交）。"
+        )
+    elif meta.get("retry_hint"):
+        summary["retry_hint"] = meta["retry_hint"]
     if task.get("result") and isinstance(task["result"], dict):
         r = task["result"]
         if "total_records" in r:

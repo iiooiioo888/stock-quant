@@ -541,9 +541,12 @@ const Api = {
     return this.post(`/api/stocks/update?force=${force}`, codes ?? null);
   },
   async getStatus() { return this.get('/api/status'); },
-  async getStocks(limit = 300) {
+  async getStocks(limit = 300, opts = {}) {
     const cap = Math.min(20000, Math.max(1, Number(limit) || 300));
-    return this.get(`/api/stocks?limit=${cap}`);
+    let url = `/api/stocks?limit=${cap}`;
+    if (opts.cursor) url += `&cursor=${encodeURIComponent(opts.cursor)}`;
+    else if (opts.offset != null) url += `&offset=${Number(opts.offset) || 0}`;
+    return this.get(url);
   },
 
   /** 分頁拉取股票庫（市值 TOP，最多 maxCount 條） */
@@ -659,8 +662,8 @@ const Api = {
   },
   async getPortfolioPresets() { return this.get('/api/portfolio/presets'); },
 
-  async getAlerts(limit = 50, code = null) {
-    let url = `/api/alerts?limit=${limit}`;
+  async getAlerts(limit = 50, code = null, offset = 0) {
+    let url = `/api/alerts?limit=${limit}&offset=${Number(offset) || 0}`;
     if (code) url += `&code=${code}`;
     return this.get(url);
   },

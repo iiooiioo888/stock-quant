@@ -108,7 +108,9 @@ class _HttpDirectAdapter:
         return df
 
 
-def _fetch_akshare_eastmoney_df(code: str, start_date: str) -> pd.DataFrame | None:
+def _fetch_akshare_eastmoney_df(
+    code: str, start_date: str, adjust: str = "qfq"
+) -> pd.DataFrame | None:
     try:
         import akshare as ak
         from src.core.history import _patch_akshare_session
@@ -118,7 +120,7 @@ def _fetch_akshare_eastmoney_df(code: str, start_date: str) -> pd.DataFrame | No
             symbol=code,
             period="daily",
             start_date=start_date,
-            adjust="qfq",
+            adjust=adjust or "",
         )
         if df is None or df.empty:
             return None

@@ -225,4 +225,12 @@ async def detect_splits(code: str):
         raise HTTPException(500, str(e))
 
 
+@router.post("/api/data/retention/purge")
+async def purge_data_retention(dry_run: bool = True, user=Depends(require_admin)):
+    """依 SQ_DATA_RETENTION_YEARS 清理過期 K 線與日誌（預設 dry_run）。"""
+    from src.core.data_retention import purge_old_data
+
+    return {"success": True, **purge_old_data(dry_run=dry_run)}
+
+
 # ====== 模擬交易 API ======

@@ -1106,15 +1106,15 @@ def _format_bar_datetime(dt) -> str:
     return str(dt)[:16]
 
 
-def _get_prepared_df(code: str, timeframe: str = "1d") -> pd.DataFrame:
-    """Backtrader 用 OHLCV DataFrame（按 code+週期 進程內緩存）"""
+def _get_prepared_df(code: str, timeframe: str = "1d", adj: str = "qfq") -> pd.DataFrame:
+    """Backtrader 用 OHLCV DataFrame（按 code+週期+復權 進程內緩存）"""
     from src.core.kline_timeframe import cache_key, ensure_kline_for_backtest
 
-    key = cache_key(code, timeframe)
+    key = cache_key(code, timeframe, adj)
     if key in _prepared_df_cache:
         return _prepared_df_cache[key]
 
-    df, _src, _tf = ensure_kline_for_backtest(code, timeframe)
+    df, _src, _tf = ensure_kline_for_backtest(code, timeframe, adj=adj)
     if df.empty:
         raise ValueError(f"股票 {code} 無歷史數據（請檢查代碼、週期或網路）")
 
@@ -1128,9 +1128,11 @@ def _get_prepared_df(code: str, timeframe: str = "1d") -> pd.DataFrame:
     return df
 
 
-def prepare_data(code: str, timeframe: str = "1d") -> bt.feeds.PandasData:
+def prepare_data(code: str, timeframe: str = "1d", adj: str = "qfq") -> bt.feeds.PandasData:
     """從數據庫讀取數據並轉為 Backtrader 格式"""
-    return bt.feeds.PandasData(dataname=_get_prepared_df(code, timeframe=timeframe))
+    return bt.feeds.PandasData(
+        dataname=_get_prepared_df(code, timeframe=timeframe, adj=adj)
+    )
 
 
 def run_backtest(
@@ -1150,6 +1152,7 @@ def run_backtest(
     enable_t1: bool = True,
     enable_limit: bool = True,
     timeframe: str = "1d",
+    adj: str = None,
     task_id: str = None,
     circuit_breaker_dd: float = None,
     max_position_pct: float = None,
@@ -1173,13 +1176,15 @@ def run_backtest(
         slippage_pct: 滑點百分比（默認 0.0，即 0%）
         enable_t1: 是否啟用 T+1 限制（默認 True）
         enable_limit: 是否啟用漲跌停限制（默認 True）
-        timeframe: K 線週期 1d / 1h / 1m（默認 1d）
+        timeframe: K 線週期 1d / 1w / 1mo / 1h / 1m（默認 1d）
+        adj: 復權 qfq / hfq / none（默認配置 SQ_BACKTEST_ADJ）
         sandbox_mode: 是否為沙箱模式（不污染正式記錄）
     """
     from src.core.kline_timeframe import (
         bars_per_year as tf_bars_per_year,
     )
     from src.core.kline_timeframe import (
+        normalize_adj,
         normalize_timeframe,
         timeframe_label,
     )
@@ -1187,6 +1192,7 @@ def run_backtest(
     tf = normalize_timeframe(timeframe)
     bpy = tf_bars_per_year(tf)
     tf_label = timeframe_label(tf)
+    adj_n = normalize_adj(adj or getattr(settings, "backtest_adj", "qfq"))
 
     if cash is None:
         cash = settings.backtest_cash
@@ -1238,7 +1244,7 @@ def run_backtest(
             cerebro, _rc, sltp=False, commission=False, slippage=False
         )
 
-    data = prepare_data(code, timeframe=tf)
+    data = prepare_data(code, timeframe=tf, adj=adj_n)
     # 將股票代碼掛載到 data 上，供 LimitFilter 使用
     data._name = code
     cerebro.adddata(data)
@@ -1272,7 +1278,7 @@ def run_backtest(
     )
     effective_slip_pct = slippage_pct
     if use_volume_slip and slippage_pct > 0:
-        prep_df = _get_prepared_df(code, timeframe=tf)
+        prep_df = _get_prepared_df(code, timeframe=tf, adj=adj_n)
         bar_vol = (
             float(prep_df["Volume"].iloc[-1])
             if not prep_df.empty and "Volume" in prep_df.columns
@@ -1290,10 +1296,13 @@ def run_backtest(
     slip_pct = effective_slip_pct / 100.0 if effective_slip_pct > 0 else 0.0
     # 使用 A 股精確佣金模型（佣金最低 5 元 + 印花稅僅賣出 + 過戶費）
     stamp_tax_rate = settings.backtest_stamp_tax
+    min_comm = float(getattr(settings, "backtest_min_commission", 5.0) or 0)
+    transfer_fee = float(getattr(settings, "backtest_transfer_fee", 0.00001) or 0)
     comm_info = AStockCommission(
         commission=commission,
         stamp_tax=stamp_tax_rate,
-        min_commission=5.0,
+        min_commission=min_comm,
+        transfer_fee=transfer_fee,
     )
     cerebro.broker.addcommissioninfo(comm_info)
     if slip_pct > 0:
@@ -1494,6 +1503,11 @@ def run_backtest(
         "strategy_name": STRATEGY_NAMES.get(strategy_name, strategy_name),
         "timeframe": tf,
         "timeframe_label": tf_label,
+        "adj": adj_n,
+        "commission": commission,
+        "min_commission": float(getattr(settings, "backtest_min_commission", 5.0) or 0),
+        "stamp_tax": stamp_tax_rate,
+        "transfer_fee": transfer_fee,
         "bars_count": len(dates),
         "initial_cash": cash,
         "final_value": final_value,

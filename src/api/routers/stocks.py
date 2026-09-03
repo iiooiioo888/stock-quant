@@ -223,19 +223,33 @@ async def sync_stock_logos(
 
 
 @router.get("/api/stocks")
-async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
-    """獲取股票列表（默認從 stock_universe 按市值排名，limit 最大 20000）"""
+async def list_stocks(
+    limit: int = Query(500, ge=1, le=20000),
+    cursor: str | None = Query(None, description="遊標：{rank_mv}|{code}"),
+    offset: int = Query(0, ge=0, description="相容舊客戶端；有 cursor 時忽略"),
+):
+    """獲取股票列表。優先遊標分頁（cursor），避免大 offset。"""
     from src.core.api_cache import cached_response
     from src.core.db import load_all_codes
 
     cap = min(limit, 20000)
+    cur = (cursor or "").strip() or None
+    off = 0 if cur else max(0, int(offset or 0))
+
+    def _encode_cursor(row: dict) -> str:
+        return f"{row.get('rank_mv') or 0}|{row.get('code', '')}"
 
     def _build():
         from src.core.stock_universe import query_stock_universe, get_universe_stats
 
         stats = get_universe_stats()
         if stats.get("total", 0) > 0:
-            rows, total = query_stock_universe(market=None, limit=cap, offset=0)
+            fetch = cap + 1
+            rows, total = query_stock_universe(
+                market=None, limit=fetch, offset=off, cursor=cur
+            )
+            has_more = len(rows) > cap
+            rows = rows[:cap]
             stocks = [
                 {
                     "code": r["code"],
@@ -253,29 +267,49 @@ async def list_stocks(limit: int = Query(500, ge=1, le=20000)):
                 }
                 for r in rows
             ]
+            next_cursor = _encode_cursor(rows[-1]) if has_more and rows else None
             return {
                 "stocks": stocks,
                 "total": total,
                 "limit": cap,
+                "offset": off,
+                "cursor": cur,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
                 "source": "stock_universe",
             }
 
         codes = load_all_codes()
+        if cur:
+            try:
+                start = codes.index(cur.split("|")[-1]) + 1
+            except ValueError:
+                start = 0
+        else:
+            start = off
+        chunk = codes[start : start + cap]
+        has_more = (start + len(chunk)) < len(codes)
         stocks = []
-        for code in codes[:cap]:
+        for code in chunk:
             name = STOCK_NAMES.get(code, "")
             if not name:
                 rule = settings.alert_rules.get(code, {})
                 name = rule.get("name", code)
             stocks.append({"code": code, "name": name, "data_points": 0})
+        next_cursor = f"0|{chunk[-1]}" if has_more and chunk else None
         return {
             "stocks": stocks,
             "total": len(codes),
             "limit": cap,
+            "offset": start,
+            "cursor": cur,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
             "source": "daily_kline",
         }
 
-    return cached_response(f"api:stocks:list:{cap}", ttl=30, builder=_build)
+    cache_key = f"api:stocks:list:{cap}:{cur or ''}:{off}"
+    return cached_response(cache_key, ttl=30, builder=_build)
 
 
 @router.get("/api/stocks/names")

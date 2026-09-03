@@ -425,3 +425,15 @@ class SchemaMigration(Base):
     version = Column(Integer, nullable=False, unique=True)
     name = Column(Text, nullable=False)
     applied_at = Column(Text, nullable=False)
+
+
+class NotificationHistory(Base):
+    __tablename__ = "notification_history"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel = Column(Text, nullable=False)
+    msg_type = Column(Text, nullable=False, default="alert")
+    message = Column(Text, nullable=False)
+    status = Column(Text, nullable=False)
+    error = Column(Text)
+    attempts = Column(Integer, default=1)
+    created_at = Column(Text, nullable=False)

@@ -1248,36 +1248,72 @@ def query_stock_universe(
     limit: int = 100,
     offset: int = 0,
     order_by: str = "rank_mv",
+    cursor: str | None = None,
 ) -> tuple[list[dict], int]:
-    """查詢股票庫（分頁）。"""
+    """查詢股票庫（分頁）。
+
+    cursor 格式：`{order_value}|{code}`。提供 cursor 時忽略 offset。
+    """
     init_stock_universe_table()
     allowed_order = {"rank_mv", "total_mv", "change_pct", "code", "name"}
     if order_by not in allowed_order:
         order_by = "rank_mv"
 
-    conditions = ["1=1"]
-    params: list = []
+    filter_conds = ["1=1"]
+    filter_params: list = []
     if market and market != "all":
-        conditions.append("market = ?")
-        params.append(market)
+        filter_conds.append("market = ?")
+        filter_params.append(market)
     if keyword:
-        conditions.append("(code LIKE ? OR name LIKE ? OR intro LIKE ?)")
+        filter_conds.append("(code LIKE ? OR name LIKE ? OR intro LIKE ?)")
         kw = f"%{keyword.strip()}%"
-        params.extend([kw, kw, kw])
+        filter_params.extend([kw, kw, kw])
 
-    where = " AND ".join(conditions)
+    page_conds = list(filter_conds)
+    page_params = list(filter_params)
+    if cursor:
+        raw = str(cursor).strip()
+        if "|" in raw:
+            left, right = raw.split("|", 1)
+            cursor_code = right.strip()
+            cursor_val = left.strip()
+        else:
+            cursor_code = raw
+            cursor_val = raw
+        if order_by in ("code", "name"):
+            page_conds.append(f"({order_by} > ? OR ({order_by} = ? AND code > ?))")
+            page_params.extend([cursor_val, cursor_val, cursor_code])
+        else:
+            try:
+                num_val = float(cursor_val)
+            except ValueError:
+                num_val = 0.0
+            page_conds.append(f"({order_by} > ? OR ({order_by} = ? AND code > ?))")
+            page_params.extend([num_val, num_val, cursor_code])
+
+    filter_where = " AND ".join(filter_conds)
+    page_where = " AND ".join(page_conds)
+    use_offset = not cursor
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         total = conn.execute(
-            f"SELECT COUNT(*) AS c FROM stock_universe WHERE {where}",
-            params,
+            f"SELECT COUNT(*) AS c FROM stock_universe WHERE {filter_where}",
+            filter_params,
         ).fetchone()["c"]
-        rows = conn.execute(
-            f"""SELECT * FROM stock_universe WHERE {where}
-                ORDER BY {order_by} ASC
-                LIMIT ? OFFSET ?""",
-            params + [limit, offset],
-        ).fetchall()
+        if use_offset:
+            rows = conn.execute(
+                f"""SELECT * FROM stock_universe WHERE {page_where}
+                    ORDER BY {order_by} ASC, code ASC
+                    LIMIT ? OFFSET ?""",
+                page_params + [int(limit), max(0, int(offset or 0))],
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""SELECT * FROM stock_universe WHERE {page_where}
+                    ORDER BY {order_by} ASC, code ASC
+                    LIMIT ?""",
+                page_params + [int(limit)],
+            ).fetchall()
     return [dict(r) for r in rows], int(total)
 
 

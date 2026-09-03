@@ -718,6 +718,11 @@ def setup_from_settings():
         disable_daily_full_download()
         disable_crypto_5m_download()
 
+    if getattr(settings, "scheduler_job_data_retention", True):
+        enable_data_retention_purge()
+    else:
+        disable_data_retention_purge()
+
     jobs = list_jobs()
     logger.info(f"定時任務已按配置註冊: {len(jobs)} 個 — {[j['id'] for j in jobs]}")
     return jobs
@@ -809,3 +814,40 @@ def disable_crypto_5m_download():
 def disable_daily_full_download():
     _remove_job_safe("daily_full_download")
     logger.info("已禁用每日數據爬取")
+
+
+def enable_data_retention_purge():
+    """每週日 03:30 清理過期 K 線/日誌（依 SQ_DATA_RETENTION_YEARS）。"""
+    scheduler = _get_scheduler()
+    _remove_job_safe("data_retention_purge")
+
+    def _job_impl(task_id: str):
+        from src.core.data_retention import purge_old_data
+
+        result = purge_old_data(dry_run=False)
+        logger.info(f"數據保留清理完成: {result}")
+        return result
+
+    scheduler.add_job(
+        _wrap_scheduled_job(
+            "data_retention_purge",
+            "歷史數據保留清理",
+            _job_impl,
+            task_type="scheduled_job",
+            extra_params={"job": "data_retention"},
+            pass_task_id=True,
+        ),
+        "cron",
+        day_of_week="sun",
+        hour=3,
+        minute=30,
+        id="data_retention_purge",
+        replace_existing=True,
+        name="歷史數據保留清理",
+    )
+    logger.info("已啟用歷史數據保留清理 (週日 03:30)")
+
+
+def disable_data_retention_purge():
+    _remove_job_safe("data_retention_purge")
+    logger.info("已禁用歷史數據保留清理")

@@ -11,6 +11,8 @@ from src.config import settings
 from src.utils.logger import logger
 
 _meta_lock = threading.Lock()
+_AK_SEM: threading.BoundedSemaphore | None = None
+_AK_SEM_N = 0
 
 MARKET_NAMES = {
     "a_share": "A股",
@@ -23,6 +25,50 @@ MARKET_NAMES = {
     "commodity": "商品期貨",
     "global": "全球",
 }
+
+# 走 AKShare 的市場：需信號量 + 較嚴格間隔，避免被封
+_AKSHARE_MARKETS = frozenset({"a_share"})
+
+
+def _akshare_semaphore() -> threading.BoundedSemaphore:
+    """A 股 AKShare 並發上限（進程內單例，worker 數可變）。"""
+    global _AK_SEM, _AK_SEM_N
+    n = max(1, int(getattr(settings, "download_akshare_max_concurrent", 2) or 2))
+    with _meta_lock:
+        if _AK_SEM is None or _AK_SEM_N != n:
+            _AK_SEM = threading.BoundedSemaphore(n)
+            _AK_SEM_N = n
+        return _AK_SEM
+
+
+def _sleep_after_download(market: str) -> None:
+    throttle = float(getattr(settings, "download_throttle_sec", 0) or 0)
+    if throttle <= 0:
+        return
+    if market in _AKSHARE_MARKETS:
+        ak_min = float(getattr(settings, "download_akshare_min_interval_sec", 0.5) or 0)
+        base = max(throttle, ak_min)
+    else:
+        base = throttle
+    if base <= 0:
+        return
+    time.sleep(base * random.uniform(0.7, 1.3))
+
+
+def _download_one_guarded(code: str, market: str, mkt: str, task_id: str | None) -> int:
+    """下載單標的；A 股走 AKShare 信號量。"""
+    from src.core.history import download_one
+
+    _check_cancelled(task_id)
+    if market in _AKSHARE_MARKETS:
+        with _akshare_semaphore():
+            _check_cancelled(task_id)
+            count = download_one(code, market=mkt)
+            _sleep_after_download(market)
+            return count
+    count = download_one(code, market=mkt)
+    _sleep_after_download(market)
+    return count
 
 
 def _update_download_meta(
@@ -84,25 +130,19 @@ def _download_codes_parallel(
     task_id: str = None,
 ) -> tuple[list[dict], int]:
     """並發下載標的列表，返回 details 與總記錄數。"""
-    from src.core.history import download_one
-
     codes = codes or []
     total = len(codes)
     if total == 0:
         return [], 0
 
     workers = min(settings.download_max_workers, total)
-    throttle = settings.download_throttle_sec
     mkt = _market_key_to_mkt(market)
     results: list[dict | None] = [None] * total
     grand_total = 0
     completed = 0
 
     def _one(index: int, code: str) -> tuple[int, str, int]:
-        _check_cancelled(task_id)
-        count = download_one(code, market=mkt)
-        if throttle > 0:
-            time.sleep(throttle * random.uniform(0.7, 1.3))
+        count = _download_one_guarded(code, market, mkt, task_id)
         return index, code, count
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -184,9 +224,8 @@ def run_stocks_download(codes: list[str], task_id: str = None) -> dict:
 
 
 def run_download_all(task_id: str = None) -> dict:
-    """下載所有市場數據"""
+    """下載所有市場數據（A 股走 AKShare 信號量，其餘市場可較高並發）"""
     from src.core.global_market import MARKET_CATALOG
-    from src.core.history import download_one
 
     plan: list[tuple[str, str, list[str]]] = []
     plan.append(("a_share", MARKET_NAMES["a_share"], list(settings.watchlist)))
@@ -226,16 +265,11 @@ def run_download_all(task_id: str = None) -> dict:
             flat_meta.append((market_key, market_label))
 
     workers = min(settings.download_max_workers, max(len(flat_codes), 1))
-    throttle = settings.download_throttle_sec
 
     def _one(global_idx: int, code: str) -> tuple[int, str, str, int]:
-        _check_cancelled(task_id)
-        market_key, market_label = flat_meta[global_idx]
+        market_key, _market_label = flat_meta[global_idx]
         mkt = _market_key_to_mkt(market_key)
-        count = download_one(code, market=mkt)
-        if throttle > 0:
-            base = 0.5 if market_key == "a_share" else 0.3
-            time.sleep(base * random.uniform(0.7, 1.3))
+        count = _download_one_guarded(code, market_key, mkt, task_id)
         return global_idx, market_key, code, count
 
     with ThreadPoolExecutor(max_workers=workers) as pool:

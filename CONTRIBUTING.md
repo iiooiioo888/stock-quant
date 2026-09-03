@@ -147,6 +147,16 @@ def calcSharpe(r, rf=0.02):  # 命名不符合 snake_case，缺少 docstring
     return r.mean() / r.std()
 ```
 
+### 用戶策略沙箱（禁止 `exec` / `__import__`）
+
+上傳策略必須通過 `src/core/strategy_sandbox.py` 的 AST 白名單。**禁止**在用戶策略中使用：
+
+- `eval` / `exec` / `compile` / `__import__`
+- `open`、動態 `getattr`/`setattr`、雙下劃線逃逸（如 `().__class__`）
+- 未在白名單的 `import`（`os`、`subprocess`、`socket` 等）
+
+測試見 `tests/test_strategy_sandbox.py`。可選後續再整合 RestrictedPython，目前以 AST 攔截為準。
+
 ### 程式碼檢查工具
 
 ```bash

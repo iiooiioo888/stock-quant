@@ -20,6 +20,22 @@ TIMEFRAME_META: dict[str, dict] = {
         "bars_per_year": 252,
         "min_bars": 60,
     },
+    "1w": {
+        "label": "週線 (1週)",
+        "type": "resample_daily",
+        "resample_rule": "W-FRI",
+        "minute_period": None,
+        "bars_per_year": 52,
+        "min_bars": 30,
+    },
+    "1mo": {
+        "label": "月線 (1月)",
+        "type": "resample_daily",
+        "resample_rule": "ME",
+        "minute_period": None,
+        "bars_per_year": 12,
+        "min_bars": 12,
+    },
     "1h": {
         "label": "1 小時",
         "type": "minute",
@@ -41,6 +57,14 @@ _ALIASES = {
     "day": "1d",
     "daily": "1d",
     "d": "1d",
+    "1week": "1w",
+    "week": "1w",
+    "weekly": "1w",
+    "w": "1w",
+    "1month": "1mo",
+    "month": "1mo",
+    "monthly": "1mo",
+    "mo": "1mo",
     "1hour": "1h",
     "hour": "1h",
     "h": "1h",
@@ -54,7 +78,7 @@ _ALIASES = {
 
 
 def normalize_timeframe(timeframe: str | None) -> str:
-    """標準化為 1d / 1h / 1m。"""
+    """標準化為 1d / 1w / 1mo / 1h / 1m。"""
     raw = (timeframe or "1d").strip().lower()
     key = _ALIASES.get(raw, raw)
     if key not in TIMEFRAME_META:
@@ -84,8 +108,8 @@ def list_timeframes() -> list[dict]:
     ]
 
 
-def cache_key(code: str, timeframe: str | None) -> str:
-    return f"{normalize_kline_code(code)}|{normalize_timeframe(timeframe)}"
+def cache_key(code: str, timeframe: str | None, adj: str | None = "qfq") -> str:
+    return f"{normalize_kline_code(code)}|{normalize_timeframe(timeframe)}|{normalize_adj(adj)}"
 
 
 def _df_to_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,9 +123,62 @@ def _df_to_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     return out.sort_index()
 
 
+def normalize_adj(adj: str | None) -> str:
+    raw = (adj or "qfq").strip().lower()
+    if raw in ("", "none", "raw", "bfq"):
+        return "none"
+    if raw in ("hfq", "hf", "backward", "post"):
+        return "hfq"
+    return "qfq"
+
+
+def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    try:
+        resampled = df.resample(rule).agg(
+            {
+                "Open": "first",
+                "High": "max",
+                "Low": "min",
+                "Close": "last",
+                "Volume": "sum",
+            }
+        )
+    except ValueError:
+        fallback = "M" if rule == "ME" else rule
+        resampled = df.resample(fallback).agg(
+            {
+                "Open": "first",
+                "High": "max",
+                "Low": "min",
+                "Close": "last",
+                "Volume": "sum",
+            }
+        )
+    return resampled.dropna(subset=["Open", "Close"])
+
+
+def _load_daily_ohlcv(code: str, min_bars: int, adj: str = "qfq") -> tuple[pd.DataFrame, str]:
+    """本地日 K 預設為前復權；hfq/none 嘗試即時拉取。"""
+    adj = normalize_adj(adj)
+    if adj != "qfq":
+        try:
+            from src.config import settings
+            from src.core.kline_fetcher import _fetch_akshare_eastmoney_df
+
+            ak_adj = "" if adj == "none" else "hfq"
+            raw = _fetch_akshare_eastmoney_df(code, settings.history_start_date, adjust=ak_adj)
+            if raw is not None and not raw.empty:
+                return _df_to_ohlcv(raw), f"akshare_{adj}"
+        except Exception as e:
+            logger.debug(f"{code} {adj} 復權拉取失敗，回退本地前復權: {e}")
+    df, src = ensure_daily_kline(code, min_bars=min_bars)
+    return _df_to_ohlcv(df), src
+
+
 def ensure_kline_for_backtest(
     code: str,
     timeframe: str | None = "1d",
+    adj: str | None = "qfq",
 ) -> tuple[pd.DataFrame, str, str]:
     """
     讀取回測用 OHLCV（本地優先，不足時自動拉取）。
@@ -113,12 +190,19 @@ def ensure_kline_for_backtest(
     tf = normalize_timeframe(timeframe)
     meta = TIMEFRAME_META[tf]
     min_bars = meta["min_bars"]
+    adj_n = normalize_adj(adj)
 
-    if meta["type"] == "daily":
-        df, src = ensure_daily_kline(code, min_bars=min_bars)
-        if df.empty:
+    if meta["type"] in ("daily", "resample_daily"):
+        ohlcv, src = _load_daily_ohlcv(code, min_bars=min_bars, adj=adj_n)
+        if ohlcv.empty:
             raise ValueError(f"股票 {code} 無日線數據（請檢查代碼或網路）")
-        return _df_to_ohlcv(df), src, tf
+        if meta["type"] == "resample_daily":
+            rule = meta.get("resample_rule") or "W-FRI"
+            ohlcv = _resample_ohlcv(ohlcv, rule)
+            src = f"{src}_resample_{tf}"
+            if ohlcv.empty:
+                raise ValueError(f"股票 {code} 無法重採樣為 {timeframe_label(tf)}")
+        return ohlcv, src, tf
 
     period = meta["minute_period"]
     from src.core.db import load_minute_kline

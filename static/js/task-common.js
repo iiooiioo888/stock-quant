@@ -137,6 +137,9 @@ const TaskCommon = {
       const p = Number(task.progress) || 0;
       if (task.status === 'pending') return '正在：排隊中';
       if (task.status === 'retrying') return `正在：重試中（${p}%）`;
+      if (task.retry_hint && (task.status === 'running' || task.status === 'retrying')) {
+        return `正在：${task.retry_hint}`;
+      }
       return `正在：執行中（${p}%）`;
     }
     if (task.download_summary) {

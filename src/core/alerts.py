@@ -5,6 +5,8 @@
 import time
 from datetime import datetime
 
+from urllib.parse import quote
+
 import pandas as pd
 import requests
 
@@ -121,44 +123,130 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
         return False
 
 
+def send_serverchan(sendkey: str, message: str, title: str = "StockQ 通知") -> bool:
+    """ServerChan（方糖）微信推送。"""
+    key = (sendkey or "").strip()
+    if not key:
+        return False
+    try:
+        url = f"https://sctapi.ftqq.com/{key}.send"
+        resp = requests.post(
+            url,
+            data={"title": title[:32], "desp": message[:4096]},
+            timeout=10,
+        )
+        data = resp.json() if resp.content else {}
+        if resp.ok and int(data.get("code", 1)) == 0:
+            logger.info("ServerChan 通知發送成功")
+            return True
+        logger.error(f"ServerChan 通知失敗: {data}")
+        return False
+    except Exception as e:
+        logger.error(f"ServerChan 通知異常: {e}")
+        return False
+
+
+def send_bark(bark_url: str, message: str, title: str = "StockQ") -> bool:
+    """Bark iOS 推送。bark_url 可為 https://api.day.app/<key> 或完整推送 URL。"""
+    base = (bark_url or "").strip().rstrip("/")
+    if not base:
+        return False
+    try:
+        # 允許使用者填 device key 或完整 URL
+        if base.startswith("http"):
+            url = f"{base}/{quote(title)}/{quote(message[:1024])}"
+        else:
+            url = f"https://api.day.app/{base}/{quote(title)}/{quote(message[:1024])}"
+        resp = requests.get(url, timeout=10)
+        data = resp.json() if resp.content else {}
+        if resp.ok and int(data.get("code", 1)) == 200:
+            logger.info("Bark 通知發送成功")
+            return True
+        logger.error(f"Bark 通知失敗: {data}")
+        return False
+    except Exception as e:
+        logger.error(f"Bark 通知異常: {e}")
+        return False
+
+
 def send_notification(message: str, msg_type: str = "alert"):
-    """統一通知分發（帶模板渲染 + 節流）"""
+    """統一通知分發（帶模板渲染 + 節流 + 異步隊列）"""
     rendered = _render_template(msg_type, message)
 
     if _should_throttle(rendered):
         logger.debug(f"通知被節流: {rendered[:50]}...")
         return
 
-    # 控制台
+    from src.core.notify_queue import enqueue_notify
+
+    enqueue_notify(lambda: _dispatch_channels(rendered, msg_type))
+
+
+def _dispatch_channels(rendered: str, msg_type: str) -> None:
+    """實際發送各渠道（由隊列執行，含重試與歷史）。"""
+    from src.core.notify_queue import log_notification, send_with_retry
+
     if settings.notify_console:
         logger.info(f"[通知] {rendered}")
+        log_notification("console", rendered, status="ok", msg_type=msg_type)
 
-    # Webhook
     if settings.notify_webhook and settings.webhook_url:
-        try:
+
+        def _webhook():
             requests.post(
                 settings.webhook_url,
                 json={"msgtype": "text", "text": {"content": f"[股票預警] {rendered}"}},
                 timeout=5,
             )
-        except Exception as e:
-            logger.error(f"Webhook 推送失敗: {e}")
+            return True
 
-    # 企業微信
+        send_with_retry("webhook", _webhook, rendered, msg_type=msg_type)
+
     if settings.notify_wechat_work and settings.wechat_work_webhook:
-        send_wechat_work(settings.wechat_work_webhook, rendered)
+        send_with_retry(
+            "wechat_work",
+            lambda: send_wechat_work(settings.wechat_work_webhook, rendered),
+            rendered,
+            msg_type=msg_type,
+        )
 
-    # 釘釘
     if settings.notify_dingtalk and settings.dingtalk_webhook:
-        send_dingtalk(settings.dingtalk_webhook, rendered)
+        send_with_retry(
+            "dingtalk",
+            lambda: send_dingtalk(settings.dingtalk_webhook, rendered),
+            rendered,
+            msg_type=msg_type,
+        )
 
-    # Telegram
     if (
         settings.notify_telegram
         and settings.telegram_bot_token
         and settings.telegram_chat_id
     ):
-        send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, rendered)
+        send_with_retry(
+            "telegram",
+            lambda: send_telegram(
+                settings.telegram_bot_token, settings.telegram_chat_id, rendered
+            ),
+            rendered,
+            msg_type=msg_type,
+        )
+
+    if settings.notify_serverchan and settings.serverchan_sendkey:
+        send_with_retry(
+            "serverchan",
+            lambda: send_serverchan(settings.serverchan_sendkey, rendered),
+            rendered,
+            msg_type=msg_type,
+        )
+
+    if settings.notify_bark and settings.bark_url:
+        send_with_retry(
+            "bark",
+            lambda: send_bark(settings.bark_url, rendered),
+            rendered,
+            msg_type=msg_type,
+        )
 
 
 def get_notification_channels() -> list[dict]:
@@ -196,6 +284,18 @@ def get_notification_channels() -> list[dict]:
                 settings.telegram_bot_token and settings.telegram_chat_id
             ),
         },
+        {
+            "name": "ServerChan",
+            "key": "serverchan",
+            "enabled": settings.notify_serverchan,
+            "configured": bool(settings.serverchan_sendkey),
+        },
+        {
+            "name": "Bark",
+            "key": "bark",
+            "enabled": settings.notify_bark,
+            "configured": bool(settings.bark_url),
+        },
     ]
 
 
@@ -231,6 +331,12 @@ def test_all_channels() -> dict:
                 ok = send_telegram(
                     settings.telegram_bot_token, settings.telegram_chat_id, test_msg
                 )
+                results[ch["key"]] = "ok" if ok else "failed"
+            elif ch["key"] == "serverchan":
+                ok = send_serverchan(settings.serverchan_sendkey, test_msg)
+                results[ch["key"]] = "ok" if ok else "failed"
+            elif ch["key"] == "bark":
+                ok = send_bark(settings.bark_url, test_msg)
                 results[ch["key"]] = "ok" if ok else "failed"
         except Exception as e:
             results[ch["key"]] = f"error: {e}"
