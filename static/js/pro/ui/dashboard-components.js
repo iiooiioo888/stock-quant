@@ -93,7 +93,7 @@
     const q = D.normalizeQuote(quote);
     const topbar = !!opts.topbar;
     const compact = topbar || !!opts.compact;
-    const sparkPts = topbar ? 18 : 28;
+    const sparkPts = topbar ? 12 : 20;
     const cls = [
       'ticker-card', 'ticker-card--link', `is-${q.toneClass}`,
       compact ? 'ticker-card--compact' : '',
@@ -267,7 +267,8 @@
         if (sym) existing.set(sym, card);
       });
       const next = [];
-      (items || []).forEach((raw) => {
+      const capped = (items || []).slice(0, 32);
+      capped.forEach((raw) => {
         const sym = String(raw.symbol || '').toUpperCase();
         let card = sym ? existing.get(sym) : null;
         if (card) {
@@ -547,7 +548,10 @@
       pct.className = `ticker-card-pct ticker-card-pct--${q.toneClass}`;
     }
     if (spark) {
-      const pts = cardEl.classList.contains('ticker-card--topbar') ? 18 : 28;
+      const fp = `${q.priceText}|${q.pctText}|${q.dir}|${(q.kline || []).length}`;
+      if (spark.dataset.fp === fp) return;
+      spark.dataset.fp = fp;
+      const pts = cardEl.classList.contains('ticker-card--topbar') ? 12 : 20;
       spark.innerHTML = D.sparklineSvg(q.kline, q.dir, pts);
     }
   };

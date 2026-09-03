@@ -1,7 +1,7 @@
 /* global StockQPro */
 (() => {
   const ROOT = '/static/js/pro/modules/';
-  const V = 'gui-ux-20260903g';
+  const V = 'gui-ux-20260903j';
 
   const PAGE_CHARTS = {
     capitalflow: ['echarts'],

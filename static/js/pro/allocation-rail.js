@@ -14,13 +14,13 @@
     portfolioStrategy: 'dual_ma',
     updatedAt: null,
     loading: false,
-    open: true,
+    open: false,
   };
 
   function loadPrefs() {
     try {
       const p = window.StockQPro?.Prefs?.get?.('allocationRailOpen');
-      if (p === false) state.open = false;
+      state.open = p === true;
       const wm = window.StockQPro?.Prefs?.get?.('allocationWeightMode');
       if (wm === 'quantity' || wm === 'market_value') state.weightMode = wm;
       const ps = window.StockQPro?.Prefs?.get?.('allocationPortfolioStrategy');
@@ -92,13 +92,30 @@
 
   async function enrichLocal() {
     const rows = state.positions.filter((p) => Number(p.quantity) > 0);
-    const priced = await Promise.all(rows.map(async (p) => {
-      const price = Number(p.last_price) > 0 ? Number(p.last_price) : await fetchPriceForCode(p.code);
-      const qty = Number(p.quantity) || 0;
-      const cost = Number(p.cost) || 0;
-      const mv = price > 0 ? qty * price : (cost > 0 ? qty * cost : 0);
-      return { ...p, last_price: price, market_value: mv };
-    }));
+    const needNet = state.open && rows.some((p) => !(Number(p.last_price) > 0));
+    const priced = [];
+    if (needNet) {
+      const queue = [...rows];
+      const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length) {
+          const p = queue.shift();
+          const price = Number(p.last_price) > 0 ? Number(p.last_price) : await fetchPriceForCode(p.code);
+          const qty = Number(p.quantity) || 0;
+          const cost = Number(p.cost) || 0;
+          const mv = price > 0 ? qty * price : (cost > 0 ? qty * cost : 0);
+          priced.push({ ...p, last_price: price, market_value: mv });
+        }
+      });
+      await Promise.all(workers);
+    } else {
+      rows.forEach((p) => {
+        const price = Number(p.last_price) || 0;
+        const qty = Number(p.quantity) || 0;
+        const cost = Number(p.cost) || 0;
+        const mv = price > 0 ? qty * price : (cost > 0 ? qty * cost : 0);
+        priced.push({ ...p, last_price: price, market_value: mv });
+      });
+    }
     const totalMv = priced.reduce((s, r) => s + (r.market_value || 0), 0);
     const totalQty = priced.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
     state.enriched = priced.map((r) => {
@@ -256,6 +273,7 @@
   }
 
   function setOpen(on) {
+    const was = state.open;
     state.open = !!on;
     savePrefs();
     document.querySelector('.app')?.classList.toggle('allocation-rail-open', state.open);
@@ -267,6 +285,7 @@
       btn.setAttribute('aria-expanded', state.open ? 'true' : 'false');
     }
     render();
+    if (state.open && !was) load();
   }
 
   function toggle() {
@@ -532,7 +551,12 @@
     }
     bindForm();
     bindActions();
-    load();
+    if (state.open) {
+      load();
+    } else {
+      const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 1800));
+      schedule(() => { if (!state.open) load(); });
+    }
     window.addEventListener('stockq:auth-changed', () => {
       mergeLocalToServer().then(load);
     });

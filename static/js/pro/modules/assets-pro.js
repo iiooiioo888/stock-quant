@@ -233,7 +233,7 @@
     state.activeTheme = 'all';
     state.listLimit = RENDER_PAGE;
     renderGroupPills();
-    loadQuotes();
+    renderList();
   }
 
   function openToolsDrawer() {
@@ -256,7 +256,15 @@
     setDrawer('detail');
     try { window.StockQPro?.WorkContext?.set?.(sym); } catch (_) {}
     renderDetail(sym);
-    renderList();
+    markSelectedCard(sym);
+  }
+
+  function markSelectedCard(symbol) {
+    const root = UI.id('assets-grid');
+    if (!root) return;
+    root.querySelectorAll('.asset-card[data-asset-symbol]').forEach((el) => {
+      el.classList.toggle('is-on', el.dataset.assetSymbol === symbol);
+    });
   }
 
   function fmtVol(v) {
@@ -350,6 +358,54 @@
     return rows;
   }
 
+  function scopeBaseRows() {
+    const cat = state.catalog;
+    if (!cat?.instruments) return [];
+    let rows = cat.instruments;
+    if (state.viewScope === 'stocks') {
+      rows = rows.filter((r) => STOCK_GROUPS.has(r.group) && r.asset_class === 'stock');
+    } else if (state.viewScope === 'tradeable') {
+      rows = rows.filter((r) => r.detail_supported !== false);
+    }
+    if (state.activeSector && state.activeSector !== 'all') {
+      rows = rows.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
+    }
+    if (state.activeTheme && state.activeTheme !== 'all') {
+      rows = rows.filter((r) => Array.isArray(r.themes) && r.themes.includes(state.activeTheme));
+    }
+    return rows;
+  }
+
+  function bindGridClicks(root) {
+    if (!root || root.dataset.boundCards === '1') return;
+    root.dataset.boundCards = '1';
+    root.addEventListener('click', (e) => {
+      const add = e.target.closest('.asset-card-add-alloc');
+      if (add) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = add.closest('.asset-card[data-asset-symbol]');
+        const symbol = card?.dataset.assetSymbol;
+        if (!symbol) return;
+        const name = card.querySelector('.asset-card-name')?.textContent || symbol;
+        if (window.StockQPro?.Allocation?.add) {
+          window.StockQPro.Allocation.add({ code: symbol, name, quantity: 100 });
+          window.StockQPro.Allocation.setOpen?.(true);
+        } else {
+          window.StockQPro?.App?.toast?.('配置欄載入中，請稍後再試', 'inf');
+        }
+        return;
+      }
+      const card = e.target.closest('.asset-card[data-asset-symbol]');
+      if (!card || !root.contains(card)) return;
+      if (card.classList.contains('is-disabled')) {
+        window.StockQPro?.App?.toast?.('此資產目前僅做 Universe 覆蓋（暫無詳情/定價介面）', 'inf');
+        return;
+      }
+      openAsset(card.dataset.assetSymbol);
+    });
+  }
+
   function renderList(opts = {}) {
     const root = UI.id('assets-grid');
     const meta = UI.id('assets-meta');
@@ -375,11 +431,13 @@
       return;
     }
 
+    bindGridClicks(root);
+    const esc = UI.escapeHtml;
     const showAll = rows.length <= state.listLimit;
     const visible = showAll ? rows : rows.slice(0, state.listLimit);
     const hiddenN = rows.length - visible.length;
 
-    const cards = visible.map((inst) => {
+    const html = visible.map((inst) => {
       const q = state.quotesBySym[inst.symbol] || {};
       const norm = Dash?.normalizeQuote
         ? Dash.normalizeQuote({ ...inst, ...q, name: inst.name })
@@ -390,74 +448,35 @@
       const srcBadge = src0?.name ? `定價入口：${src0.name}` : '';
       const sectorLbl = inst.sector_label || '';
       const exchLbl = [inst.exchange, inst.currency].filter(Boolean).join(' · ');
-      return UI.h('article', {
-        class: `asset-card asset-card--${pctCls}${canDetail ? '' : ' is-disabled'}${state.detailSymbol === inst.symbol ? ' is-on' : ''}`,
-        dataset: { assetSymbol: inst.symbol },
-        title: `${inst.name} (${inst.symbol})`,
-        onClick: () => {
-          if (canDetail) openAsset(inst.symbol);
-          else window.StockQPro?.App?.toast?.('此資產目前僅做 Universe 覆蓋（暫無詳情/定價介面）', 'inf');
-        },
-      },
-        UI.h('div', { class: 'asset-card-top' },
-          UI.h('span', { class: 'asset-card-name' }, inst.name),
-          UI.h('span', { class: `asset-card-pct is-${pctCls}` }, norm.pctText),
-        ),
-        UI.h('div', { class: 'asset-card-mid' },
-          UI.h('span', { class: 'asset-card-price' }, norm.priceText),
-          UI.h('div', { class: 'asset-card-spark', html: Dash?.sparklineSvg?.(norm.kline, norm.dir, 12) || '' }),
-        ),
-        UI.h('div', { class: 'asset-card-foot' },
-          UI.h('span', { class: 'asset-card-sym' }, inst.symbol),
-          sectorLbl
-            ? UI.h('span', { class: 'badge b-gr' }, sectorLbl)
-            : null,
-          exchLbl
-            ? UI.h('span', { class: 'badge b-bl', title: inst.settlement || '' }, exchLbl)
-            : UI.h('span', { class: 'badge b-bl', title: inst.pricing_note || '' }, srcBadge || (inst.group_label || inst.group)),
-          UI.h('button', {
-            type: 'button',
-            class: 'asset-card-add-alloc',
-            title: '加入我的配置',
-            onClick: (ev) => {
-              ev.stopPropagation();
-              const qty = 100;
-              if (window.StockQPro?.Allocation?.add) {
-                window.StockQPro.Allocation.add({
-                  code: inst.symbol,
-                  name: inst.name,
-                  quantity: qty,
-                });
-                window.StockQPro?.Allocation?.setOpen?.(true);
-              } else {
-                window.StockQPro?.App?.toast?.('配置欄載入中，請稍後再試', 'inf');
-              }
-            },
-          }, '+配置'),
-        ),
-      );
-    });
+      const on = state.detailSymbol === inst.symbol ? ' is-on' : '';
+      const dis = canDetail ? '' : ' is-disabled';
+      const footBadge = sectorLbl
+        ? `<span class="badge b-gr">${esc(sectorLbl)}</span>`
+        : `<span class="badge b-bl">${esc(exchLbl || srcBadge || inst.group_label || inst.group || '')}</span>`;
+      return `<article class="asset-card asset-card--${pctCls}${dis}${on}" data-asset-symbol="${esc(inst.symbol)}" title="${esc(`${inst.name} (${inst.symbol})`)}">
+        <div class="asset-card-top">
+          <span class="asset-card-name">${esc(inst.name)}</span>
+          <span class="asset-card-pct is-${pctCls}">${esc(norm.pctText)}</span>
+        </div>
+        <div class="asset-card-mid"><span class="asset-card-price">${esc(norm.priceText)}</span></div>
+        <div class="asset-card-foot">
+          <span class="asset-card-sym">${esc(inst.symbol)}</span>
+          ${footBadge}
+          <button type="button" class="asset-card-add-alloc" title="加入我的配置">+配置</button>
+        </div>
+      </article>`;
+    }).join('');
 
-    const gridInner = UI.h('div', { class: 'assets-grid-inner' }, ...cards);
-    if (hiddenN > 0) {
-      gridInner.appendChild(UI.h('div', { class: 'assets-load-more-wrap' },
-        UI.h('button', {
-          type: 'button',
-          class: 'btn btn-s',
-          onClick: () => {
-            state.listLimit += RENDER_PAGE;
-            renderList();
-          },
-        }, `載入更多（還有 ${hiddenN} 檔）`),
-      ));
-    }
-    UI.mount(root, gridInner);
-    if (opts.animate !== false && !window.StockQPro?.Motion?.reduced?.()) {
-      try {
-        window.StockQPro?.Motion?.stagger?.(root.querySelectorAll('.asset-card'), {
-          step: 16, duration: 180, max: 6,
-        });
-      } catch (_) {}
+    const more = hiddenN > 0
+      ? `<div class="assets-load-more-wrap"><button type="button" class="btn btn-s" id="assets-load-more">載入更多（還有 ${hiddenN} 檔）</button></div>`
+      : '';
+    root.innerHTML = `<div class="assets-grid-inner">${html}${more}</div>`;
+    const moreBtn = UI.id('assets-load-more');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        state.listLimit += RENDER_PAGE;
+        renderList();
+      });
     }
   }
 
@@ -531,7 +550,7 @@
         state.activeSector = 'all';
         state.activeTheme = 'all';
         renderGroupPills();
-        loadQuotes();
+        renderList();
       },
     }, s.label));
   }
@@ -587,21 +606,15 @@
       l1OrderFiltered = l1Order.filter((gid) => STOCK_GROUPS.has(gid));
     }
 
+    const baseRows = scopeBaseRows();
+    const countByGroup = {};
+    baseRows.forEach((r) => {
+      const g = r.group || '';
+      countByGroup[g] = (countByGroup[g] || 0) + 1;
+    });
     const countInScope = (gid) => {
-      let base = state.catalog.instruments || [];
-      if (state.viewScope === 'stocks') {
-        base = base.filter((r) => STOCK_GROUPS.has(r.group) && r.asset_class === 'stock');
-      } else if (state.viewScope === 'tradeable') {
-        base = base.filter((r) => r.detail_supported !== false);
-      }
-      if (state.activeSector && state.activeSector !== 'all') {
-        base = base.filter((r) => (r.sector || r.sub_class || 'other') === state.activeSector);
-      }
-      if (state.activeTheme && state.activeTheme !== 'all') {
-        base = base.filter((r) => Array.isArray(r.themes) && r.themes.includes(state.activeTheme));
-      }
-      if (!gid || gid === 'all') return base.length;
-      return base.filter((r) => r.group === gid).length;
+      if (!gid || gid === 'all') return baseRows.length;
+      return countByGroup[gid] || 0;
     };
 
     const pillsL1 = [
@@ -830,34 +843,10 @@
         UI.mount(root, UI.h('div', { class: 'assets-empty er' },
           `資產庫載入失敗：${e?.message || e}`,
           UI.h('div', { style: { marginTop: '10px' } },
-            UI.h('button', { type: 'button', class: 'btn btn-s', onClick: () => loadCatalog().then(() => loadQuotes()) }, '重試'),
+            UI.h('button', { type: 'button', class: 'btn btn-s', onClick: () => loadCatalog() }, '重試'),
           ),
         ));
       }
-    }
-  }
-
-  async function loadQuotes() {
-    const rows = filteredInstruments();
-    const visible = rows.slice(0, state.listLimit);
-    const symbols = visible.map((r) => r.symbol).filter(Boolean);
-    if (!symbols.length) {
-      renderList({ animate: false });
-      return;
-    }
-    try {
-      const data = await Api.get(
-        `/api/indices/charts?days=14&scope=custom&symbols=${encodeURIComponent(symbols.join(','))}`,
-        { silent: true },
-      );
-      const map = { ...state.quotesBySym };
-      (data.indices || []).forEach((item) => {
-        if (item.symbol) map[item.symbol] = item;
-      });
-      state.quotesBySym = map;
-      renderList({ animate: false });
-    } catch (e) {
-      console.warn('資產庫報價載入失敗', e);
     }
   }
 
@@ -1456,7 +1445,8 @@
         search.dataset.bound = '1';
         search.addEventListener('input', () => {
           state.query = search.value;
-          renderList();
+          clearTimeout(search._t);
+          search._t = setTimeout(() => renderList(), 180);
         });
       }
       ensureDrawerPortal();
@@ -1513,7 +1503,7 @@
         return;
       }
       if (!state.catalog) {
-        loadCatalog().then(() => loadQuotes());
+        loadCatalog();
       } else {
         renderGroupPills();
         renderList();

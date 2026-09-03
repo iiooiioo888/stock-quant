@@ -5,6 +5,7 @@ from urllib.parse import unquote
 import time
 
 from fastapi import APIRouter, HTTPException, Query, Depends
+from starlette.concurrency import run_in_threadpool
 
 from src.core.market_catalog import (
     GROUP_LABELS,
@@ -68,6 +69,51 @@ def _lookup_inst(symbol: str):
     return None
 
 
+def _fetch_exchange_price(inst) -> dict | None:
+    """同步抓交易所報價（在 threadpool 中執行）。"""
+    if inst.symbol.endswith((".SS", ".SZ")):
+        from src.core.realtime import fetch_one_realtime
+
+        code = inst.symbol.split(".")[0]
+        q = fetch_one_realtime(code)
+        if q and q.get("price", 0) > 0:
+            return {
+                "success": True,
+                "symbol": inst.symbol,
+                "name": inst.name or q.get("name") or inst.symbol,
+                "market": inst.market,
+                "asset_class": inst.asset_class,
+                "last_price": float(q.get("price")),
+                "ts": time.time(),
+                "source": q.get("source") or "realtime",
+                "kind": "price",
+                "currency": inst.currency or "CNY",
+                "pricing_note": map_price_sources(inst)[1],
+            }
+        return None
+
+    from src.core.global_market import get_global_realtime
+
+    data = get_global_realtime([inst.symbol]) or []
+    q = data[0] if data else {}
+    price = float(q.get("price") or 0)
+    if price <= 0:
+        return None
+    return {
+        "success": True,
+        "symbol": inst.symbol,
+        "name": inst.name or q.get("name") or inst.symbol,
+        "market": inst.market,
+        "asset_class": inst.asset_class,
+        "last_price": price,
+        "ts": time.time(),
+        "source": q.get("source") or "global_market",
+        "kind": "price",
+        "currency": q.get("currency") or inst.currency,
+        "pricing_note": map_price_sources(inst)[1],
+    }
+
+
 @router.get("/api/assets/price")
 async def get_asset_price(symbol: str = Query(..., min_length=1, max_length=64)):
     """
@@ -101,50 +147,12 @@ async def get_asset_price(symbol: str = Query(..., min_length=1, max_length=64))
             "pricing_note": map_price_sources(inst)[1],
         }
 
-    # P0: exchange public quotes
+    # P0: exchange public quotes（外網 I/O 放到執行緒，避免卡住 UI 輪詢）
     if (inst.market or "") == "exchange":
         try:
-            # A-share quotes: inst.symbol like 600519.SS / 000001.SZ
-            if inst.symbol.endswith((".SS", ".SZ")):
-                from src.core.realtime import fetch_one_realtime
-
-                code = inst.symbol.split(".")[0]
-                q = fetch_one_realtime(code)
-                if q and q.get("price", 0) > 0:
-                    return {
-                        "success": True,
-                        "symbol": inst.symbol,
-                        "name": inst.name or q.get("name") or inst.symbol,
-                        "market": inst.market,
-                        "asset_class": inst.asset_class,
-                        "last_price": float(q.get("price")),
-                        "ts": time.time(),
-                        "source": q.get("source") or "realtime",
-                        "kind": "price",
-                        "currency": inst.currency or "CNY",
-                        "pricing_note": map_price_sources(inst)[1],
-                    }
-            else:
-                # global/hk/index/commodity via global_market
-                from src.core.global_market import get_global_realtime
-
-                data = get_global_realtime([inst.symbol]) or []
-                q = data[0] if data else {}
-                price = float(q.get("price") or 0)
-                if price > 0:
-                    return {
-                        "success": True,
-                        "symbol": inst.symbol,
-                        "name": inst.name or q.get("name") or inst.symbol,
-                        "market": inst.market,
-                        "asset_class": inst.asset_class,
-                        "last_price": price,
-                        "ts": time.time(),
-                        "source": q.get("source") or "global_market",
-                        "kind": "price",
-                        "currency": q.get("currency") or inst.currency,
-                        "pricing_note": map_price_sources(inst)[1],
-                    }
+            p0 = await run_in_threadpool(_fetch_exchange_price, inst)
+            if p0:
+                return p0
         except Exception as e:
             logger.debug(f"asset price P0 failed {inst.symbol}: {e}")
 
@@ -215,8 +223,6 @@ async def import_asset_prices(
 @router.get("/api/assets/catalog")
 async def get_assets_catalog(user=Depends(get_current_user)):
     """資產庫目錄（12 分組元數據）。"""
-    from src.core.api_cache import cached_response
-
     assets_pro = user_assets_pro(user)
 
     def _build():
@@ -298,7 +304,14 @@ async def get_assets_catalog(user=Depends(get_current_user)):
     cache_key = (
         "api:assets:catalog:v6:pro" if assets_pro else "api:assets:catalog:v6:base"
     )
-    return cached_response(cache_key, ttl=300, builder=_build)
+    from src.core.api_cache import get_cached, set_cached
+
+    hit = get_cached(cache_key)
+    if hit is not None:
+        return hit
+    value = await run_in_threadpool(_build)
+    set_cached(cache_key, value, 300)
+    return value
 
 
 @router.get("/api/assets/detail")
@@ -308,7 +321,6 @@ async def get_asset_detail(
     user=Depends(get_current_user),
 ):
     """單資產詳情：K 線、財報、新聞與外部連結。"""
-    from src.core.api_cache import cached_response
     from src.core.asset_detail import build_asset_detail
 
     sym = unquote(symbol).strip()
@@ -325,7 +337,14 @@ async def get_asset_detail(
         return {"success": True, "detail": detail}
 
     try:
-        return cached_response(cache_key, ttl=60, builder=_build)
+        from src.core.api_cache import get_cached, set_cached
+
+        hit = get_cached(cache_key)
+        if hit is not None:
+            return hit
+        value = await run_in_threadpool(_build)
+        set_cached(cache_key, value, 60)
+        return value
     except HTTPException:
         raise
     except Exception as e:

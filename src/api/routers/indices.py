@@ -1,8 +1,10 @@
 """全球主要指數 K 線 API（儀表盤首頁）"""
 
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
 from src.core.market_catalog import (
     GROUP_LABELS,
@@ -45,12 +47,14 @@ async def get_indices_charts(
     else:
         days = max(days, 30)
 
-    from src.core.api_cache import cached_response
-
     def _pick_instruments():
         return instruments_for_charts(scope, symbols)
 
-    sym_key = (symbols or "").strip().upper()[:120] if scope == "custom" else ""
+    if scope == "custom":
+        raw_syms = (symbols or "").strip().upper()
+        sym_key = hashlib.md5(raw_syms.encode("utf-8")).hexdigest()[:16]
+    else:
+        sym_key = ""
     cache_key = f"api:indices:charts:{days}:{scope}:{sym_key}"
 
     def _build():
@@ -58,7 +62,7 @@ async def get_indices_charts(
 
         instruments = _pick_instruments()
         indices = []
-        workers = min(6, max(2, len(instruments) // 12 + 2))
+        workers = min(4, max(2, len(instruments) // 16 + 2))
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {
@@ -101,6 +105,8 @@ async def get_indices_charts(
                 }
 
         sources_used = sorted({i.get("source", "") for i in indices if i.get("source")})
+        # 掛牌路徑禁止每次做 TV/IB 探活，否則首屏會卡死
+        providers = _provider_status(indices, probe=False)
         return {
             "indices": indices,
             "groups": groups,
@@ -111,14 +117,22 @@ async def get_indices_charts(
             "requested": len(instruments),
             "scope": scope,
             "sources": sources_used,
-            "providers": _provider_status(indices),
+            "providers": providers,
         }
 
     ttl = 120 if scope == "topbar" else 300
-    return cached_response(cache_key, ttl=ttl, builder=_build)
+    from src.core.api_cache import get_cached, set_cached
+
+    hit = get_cached(cache_key)
+    if hit is not None:
+        return hit
+    # builder 含外網 I/O，不可佔住 asyncio 事件迴圈，否則整站 API 會卡死
+    value = await run_in_threadpool(_build)
+    set_cached(cache_key, value, ttl)
+    return value
 
 
-def _provider_status(indices: list) -> dict:
+def _provider_status(indices: list, probe: bool = False) -> dict:
     tv_count = sum(1 for i in indices if "TradingView" in (i.get("source") or ""))
     ib_count = sum(
         1
@@ -126,8 +140,18 @@ def _provider_status(indices: list) -> dict:
         if i.get("source") == "IB" or str(i.get("source", "")).startswith("IB")
     )
 
-    tv_probe = {"ok": False}
-    ib_st = {"ok": False, "enabled": False}
+    tv_probe = {"ok": False, "skipped": not probe}
+    ib_st = {"ok": ib_count > 0, "enabled": False, "quotes": ib_count}
+    if not probe:
+        return {
+            "tradingview": {
+                "ok": tv_count > 0,
+                "quotes": tv_count,
+                "probe": tv_probe,
+            },
+            "ib": ib_st,
+        }
+
     try:
         from src.config import settings
 
@@ -144,7 +168,7 @@ def _provider_status(indices: list) -> dict:
         ib_st = ib_status(probe=True)
         ib_st["quotes"] = ib_count
     except Exception:
-        ib_st = {"ok": False, "reason": "error"}
+        ib_st = {"ok": False, "reason": "error", "quotes": ib_count}
 
     return {
         "tradingview": {

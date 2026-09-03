@@ -60,10 +60,8 @@
     if (typeof window.anime === 'function') return window.anime;
     try {
       await loadScript('/static/vendor/anime.min.js');
-    } catch (_) {
-      await loadScript('https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js');
-    }
-    return window.anime;
+    } catch (_) {}
+    return window.anime || null;
   }
 
   window.StockQPro = window.StockQPro || {};

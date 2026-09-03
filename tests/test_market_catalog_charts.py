@@ -19,7 +19,7 @@ def test_instruments_for_charts_all_excludes_placeholders():
 
 def test_instruments_for_dashboard_is_core_groups_only():
     picked = instruments_for_charts("dashboard")
-    assert 40 <= len(picked) <= 120
+    assert 8 <= len(picked) <= 40
     assert all(i.group in DASHBOARD_CHART_GROUPS for i in picked)
     assert all(i.detail_supported for i in picked)
     groups = {i.group for i in picked}
@@ -45,3 +45,10 @@ def test_custom_scope_skips_non_tradeable():
     syms = {i.symbol for i in picked}
     assert "600519.SS" in syms
     assert "CN_OTC_OPT_CSI300_1M" not in syms
+
+
+def test_custom_scope_empty_does_not_fallback_to_topbar():
+    picked = instruments_for_charts("custom", symbols="")
+    assert picked == []
+    picked_none = instruments_for_charts("custom", symbols="NOT_A_REAL_SYMBOL_XYZ")
+    assert picked_none == []

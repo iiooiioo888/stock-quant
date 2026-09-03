@@ -15,7 +15,7 @@
     /** 頂欄掛牌：自訂 symbols（空/未設置 = 使用後端預設 topbar） */
     topbarSymbols: [],
     /** 資產庫進入詳情時預設分頁 */
-    assetDetailTab: 'chart',
+    assetDetailTab: 'quote',
     /** HKD | MOP | USD | CNY */
     preferredCurrency: 'MOP',
     /** 側欄分組展開（不自動收合其他組） */

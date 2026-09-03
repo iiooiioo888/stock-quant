@@ -37,8 +37,9 @@
   }
 
   async function fetchPayload(days = 90) {
+    const lightDays = Math.min(Number(days) || 60, 60);
     const data = await Api.get(
-      `/api/indices/charts?days=${days}&scope=dashboard`,
+      `/api/indices/charts?days=${lightDays}&scope=dashboard`,
       { silent: true },
     ).catch(() => null);
     if (!data || !Array.isArray(data.indices)) {
@@ -173,15 +174,23 @@
     if (typeof Api !== 'undefined' && Api.clearGetCache) {
       Api.clearGetCache('/api/indices/charts');
     }
-    const run = () => refreshTopbar().then(() => startPolling());
+    const run = () => {
+      if (document.hidden) return;
+      refreshTopbar().then(() => startPolling());
+    };
     const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 80));
     schedule(run);
     window.addEventListener('stockq:prefs-changed', () => {
       if (Api.clearGetCache) Api.clearGetCache('/api/indices/charts');
       state.payload = null;
-      refreshTopbar()
-        .then(() => ensureFullPayload(true))
-        .then(() => startPolling());
+      refreshTopbar().then(() => startPolling());
+      if (window.StockQPro?.App?.current === 'dashboard') {
+        ensureFullPayload(true);
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopPolling();
+      else startPolling();
     });
   };
 

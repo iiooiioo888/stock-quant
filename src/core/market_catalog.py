@@ -1277,7 +1277,7 @@ def instruments_for_charts(
     if sc == "custom":
         raw = (symbols or "").strip()
         if not raw:
-            return list(TOPBAR_INSTRUMENTS)
+            return []
         picked: list[MarketInstrument] = []
         seen: set[str] = set()
         for sym in raw.split(","):
@@ -1288,15 +1288,20 @@ def instruments_for_charts(
             inst = lookup_instrument(s)
             if inst and inst.detail_supported:
                 picked.append(inst)
-        return picked or list(TOPBAR_INSTRUMENTS)
+            if len(picked) >= 12:
+                break
+        return picked
     if sc in ("all", "tradeable"):
         return [i for i in MARKET_INSTRUMENTS if i.detail_supported]
     if sc == "dashboard":
-        return [
+        items = [
             i
             for i in MARKET_INSTRUMENTS
             if i.detail_supported and i.group in DASHBOARD_CHART_GROUPS
         ]
+        top = [i for i in items if i.topbar]
+        rest = [i for i in items if not i.topbar]
+        return (top + rest)[:40]
     if sc == "stocks":
         return [
             i

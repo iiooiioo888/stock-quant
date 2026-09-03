@@ -312,7 +312,6 @@
       const pg = $id(`pg-${pid}`);
       if (pg) {
         pg.classList.add('on');
-        try { window.StockQPro?.Motion?.fadeIn?.(pg, { duration: 240 }); } catch (_) {}
       }
       const sb = document.querySelector(`.sb[data-p="${pid}"]`);
       if (sb) sb.classList.add('on');

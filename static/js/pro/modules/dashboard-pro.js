@@ -94,13 +94,14 @@
       const latencyMs = Math.round(performance.now() - t0);
 
       const ticker = window.StockQPro?.services?.marketTicker;
-      let payload = ticker?.getPayload?.() || null;
-      if (!payload?.indices?.length && ticker?.ensureFullPayload) {
-        payload = await ticker.ensureFullPayload().catch(() => null);
-      } else if (!payload?.indices?.length && ticker?.refresh) {
-        payload = await ticker.refresh().catch(() => null);
-      }
-      renderQuoteBoard(payload || { indices: ticker?.getQuotes?.() || [] });
+      const cachedPayload = ticker?.getPayload?.();
+      const quotes = ticker?.getQuotes?.() || [];
+      if (cachedPayload?.indices?.length) renderQuoteBoard(cachedPayload);
+      else if (quotes.length) renderQuoteBoard({ indices: quotes });
+
+      ticker?.ensureFullPayload?.().then((payload) => {
+        if (payload?.indices?.length) renderQuoteBoard(payload);
+      }).catch(() => {});
       renderKpis(health, latencyMs, cfg);
       window.StockQPro?.UI?.Dashboard?.renderOpsStatus?.(sopPayload);
       setUpdatedAt();
@@ -190,11 +191,16 @@
 
     const ticker = window.StockQPro?.services?.marketTicker;
     if (ticker?.subscribe && !unsubTicker) {
+      let raf = 0;
       unsubTicker = ticker.subscribe((payload) => {
         if (window.StockQPro?.App?.current && window.StockQPro.App.current !== 'dashboard') return;
-        if (!mounted) ensureLayout();
-        renderQuoteBoard(payload);
-        setUpdatedAt();
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          if (!mounted) ensureLayout();
+          renderQuoteBoard(payload);
+          setUpdatedAt();
+        });
       });
     }
   }
