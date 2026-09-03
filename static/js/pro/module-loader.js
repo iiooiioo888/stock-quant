@@ -1,13 +1,15 @@
 /* global StockQPro */
 (() => {
   const ROOT = '/static/js/pro/modules/';
-  const V = 'gui-ux-20260903h';
+  const V = 'gui-ux-20260903i';
 
   const PAGE_CHARTS = {
     capitalflow: ['echarts'],
     compare: ['echarts'],
     backtest: ['echarts'],
     watchlist: ['echarts'],
+    heatmap: ['echarts'],
+    optimize: ['echarts'],
   };
 
   const PAGE_SCRIPTS = {
@@ -26,6 +28,11 @@
     ai: [`${ROOT}ai-assistant.js`],
     settings: [`${ROOT}settings-pro.js`],
     pricing: [`${ROOT}pricing-pro.js`],
+    alerts: [`${ROOT}alerts-pro.js`],
+    optimize: [`${ROOT}analysis-tools-pro.js`],
+    walkforward: [`${ROOT}analysis-tools-pro.js`],
+    heatmap: [`${ROOT}analysis-tools-pro.js`],
+    data: [`${ROOT}data-pro.js`],
     backtest: [
       '/static/js/pro/chart-export.js',
       '/static/js/pro/stock-pick-data.js',

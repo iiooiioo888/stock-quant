@@ -7,8 +7,6 @@
 import sqlite3
 import time
 
-import akshare as ak
-
 from src.core.db import get_conn
 from src.utils.logger import logger
 
@@ -116,6 +114,8 @@ def load_capital_flow_by_type(
 def get_capital_flow(code: str, days: int = 30) -> list[dict]:
     """個股資金流向"""
     try:
+        import akshare as ak
+
         df = ak.stock_individual_fund_flow(
             stock=code, market="sh" if code.startswith("6") else "sz"
         )

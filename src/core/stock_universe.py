@@ -10,13 +10,34 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-import akshare as ak
 import pandas as pd
 import requests
 
 from src.config import settings
 from src.core.db import get_conn
 from src.utils.logger import logger
+
+
+_AKSHARE_MOD = None
+_AKSHARE_TRIED = False
+
+
+def _akshare():
+    """延遲導入 akshare，查詢股票庫不應在 import 時失敗。"""
+    global _AKSHARE_MOD, _AKSHARE_TRIED
+    if _AKSHARE_TRIED:
+        return _AKSHARE_MOD
+    _AKSHARE_TRIED = True
+    try:
+        import akshare as ak
+
+        _AKSHARE_MOD = ak
+        return ak
+    except ImportError:
+        logger.warning("akshare 未安裝，股票庫 AKShare 回退不可用")
+        _AKSHARE_MOD = None
+        return None
+
 
 _HTTP = requests.Session()
 _HTTP.headers.update(
@@ -804,11 +825,14 @@ def _fetch_eastmoney_spot_df(market: str, max_pages: int = 220) -> pd.DataFrame:
 
 def _fetch_market_spot_df(market: str) -> pd.DataFrame:
     """拉取單市場全量行情：東財直連 → akshare。"""
-    ak_fetchers = {
-        "a_share": ak.stock_zh_a_spot_em,
-        "hk_stock": ak.stock_hk_spot_em,
-        "us_stock": ak.stock_us_spot_em,
-    }
+    ak = _akshare()
+    ak_fetchers = {}
+    if ak is not None:
+        ak_fetchers = {
+            "a_share": ak.stock_zh_a_spot_em,
+            "hk_stock": ak.stock_hk_spot_em,
+            "us_stock": ak.stock_us_spot_em,
+        }
     df = _fetch_eastmoney_spot_df(market)
     if not df.empty:
         return df
@@ -1063,6 +1087,9 @@ def fetch_all_market_basics() -> list[dict]:
 
 def _fallback_a_share_codes() -> list[dict]:
     """東財全量失敗時：僅代碼+名稱（無市值）。"""
+    ak = _akshare()
+    if ak is None:
+        return []
     try:
         df = ak.stock_info_a_code_name()
         if df.empty:

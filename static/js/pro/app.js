@@ -68,7 +68,6 @@
         const m = h.match(/^#\/([^/?#]+)/);
         const warm = m ? m[1] : 'dashboard';
         window.StockQPro?.modules?.prefetch?.(warm);
-        window.StockQPro?.LegacyBridge?.ensureScripts?.().catch(() => {});
       });
     },
 

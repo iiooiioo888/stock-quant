@@ -505,7 +505,7 @@ export SQ_OPTIMIZE_ALL_PARALLEL=false
 
 ## 前端（Pro 工作站 `/app`）
 
-深色量化工作台（`static/app.html` + `static/css/pro.css`），ECharts 圖表、Cmd+K 命令面板、統一設計系統（表單 / 膠囊 / 面板）。核心頁面通過 `module-loader.js` 懶載入 `*-pro.js`；組合、優化、Walk-Forward、熱力圖、數據中心等頁在 Pro 殼內以 `legacy-mount` 內嵌掛載（`legacy-bridge.js`），對外僅暴露 `/app` 一個工作台入口。
+深色量化工作台（`static/app.html` + `static/css/pro.css`），ECharts 圖表、Cmd+K 命令面板、統一設計系統（表單 / 膠囊 / 面板）。核心頁面通過 `module-loader.js` 懶載入 `*-pro.js`；預警已遷為獨立 Pro 頁。優化、Walk-Forward、熱力圖、數據中心仍以 `legacy-mount` 掛載片段，但改由 `analysis-tools-pro.js` / `data-pro.js` 按頁懶載對應腳本（不再進頁就拉取全部 legacy JS）。對外僅暴露 `/app` 一個工作台入口。
 
 ### 🚀 前端性能優化
 
@@ -552,8 +552,9 @@ console.log(DataStream.getPerformanceReport());
 | **對比** | `compare-pro.js` | 多策略（排行/散點/淨值 Top5）與多股票（區間收益）；PNG/CSV |
 | 任務中心 | `tasks-pro.js` | 佇列、統計、列表、詳情、批量操作 |
 | 資產庫 | `assets-pro.js` | 多幣種持倉與結算 |
-| 自選 / 掃描 / 預警 / 回測歷史 / 設定 / AI | `*-pro.js` | 各業務頁 |
-| 組合 / 優化 / WF / 熱力圖 / 信號 / 數據 / … | `legacy-mount` | Pro 內嵌掛載（逐步遷至 `*-pro.js`） |
+| 自選 / 掃描 / **預警** / 回測歷史 / 設定 / AI | `*-pro.js` | 預警含通知渠道與發送歷史 |
+| 優化 / WF / 熱力圖 / 數據 | `analysis-tools-pro.js` · `data-pro.js` | module-loader 入口 + 按頁懶載 legacy 片段 |
+| 組合 / 信號 / 報告 / 市場 / … | `legacy-mount` | 仍內嵌掛載（逐步遷至 `*-pro.js`） |
 
 **UI 約定**：全站隱藏滾動條、由 `.main` 單容器縱向滾動（見 `.cursor/rules/ui-no-scrollbar.mdc`）。
 

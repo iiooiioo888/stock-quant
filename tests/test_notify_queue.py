@@ -44,6 +44,27 @@ def test_serverchan_posts_sendkey():
     assert "SCTKEY" in post.call_args[0][0]
 
 
+def test_notification_history_roundtrip(monkeypatch, tmp_path):
+    from src.config import settings
+    from src.core.database import init_database
+    from src.core.database.connection import reset_thread_connection
+    from src.core.notify_queue import get_notification_history, log_notification
+
+    path = str(tmp_path / "notify_hist.db")
+    monkeypatch.setenv("SQ_DB_PATH", path)
+    settings.db_path = path
+    reset_thread_connection()
+    init_database()
+    log_notification("serverchan", "hello", status="ok", attempts=1)
+    log_notification("bark", "fail", status="failed", error="timeout", attempts=2)
+    items, total = get_notification_history(limit=10, offset=0)
+    assert total == 2
+    assert {r["channel"] for r in items} == {"serverchan", "bark"}
+    bark, n = get_notification_history(limit=10, channel="bark")
+    assert n == 1
+    assert bark[0]["status"] == "failed"
+
+
 def test_bark_get_url():
     mock_resp = MagicMock()
     mock_resp.ok = True

@@ -51,12 +51,13 @@ async def run_backtest_api(
     trailing_stop_pct: float = None,
     benchmark: bool = False,
     timeframe: str = "1d",
+    adj: str = "qfq",
     user=Depends(get_current_user),
 ):
     """執行回測（自動去重：相同參數的回測不會重複執行）"""
     from src.core.backtest import run_backtest, STRATEGIES
     from src.core.entitlements import gate_backtest_submit
-    from src.core.kline_timeframe import normalize_timeframe
+    from src.core.kline_timeframe import normalize_adj, normalize_timeframe
     from src.core.task_manager import create_task
 
     gate_backtest_submit(user, advanced=False)
@@ -69,6 +70,7 @@ async def run_backtest_api(
         timeframe = normalize_timeframe(timeframe)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    adj_n = normalize_adj(adj)
 
     if strategy not in STRATEGIES:
         raise HTTPException(
@@ -82,6 +84,7 @@ async def run_backtest_api(
         "params": params,
         "cash": cash,
         "timeframe": timeframe,
+        "adj": adj_n,
         "stop_loss_pct": stop_loss_pct,
         "take_profit_pct": take_profit_pct,
         "trailing_stop_pct": trailing_stop_pct,
@@ -116,6 +119,7 @@ async def run_backtest_api(
             trailing_stop_pct=trailing_stop_pct,
             benchmark=benchmark,
             timeframe=timeframe,
+            adj=adj_n,
             task_id=task_id,
             user_id=user.id if user else None,
         )
@@ -147,11 +151,12 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
         slippage_pct: 滑點百分比（默認 0.0，即 0%）
         enable_t1: 是否啟用 T+1 限制（默認 True）
         enable_limit: 是否啟用漲跌停限制（默認 True）
-        timeframe: K 線週期 1d / 1h / 1m（默認 1d）
+        timeframe: K 線週期 1d / 1w / 1mo / 1h / 1m（默認 1d）
+        adj: 復權 qfq（前復權）/ hfq（後復權）/ none（不復權）
     """
     from src.core.backtest import run_backtest, STRATEGIES
     from src.core.entitlements import gate_backtest_submit
-    from src.core.kline_timeframe import normalize_timeframe
+    from src.core.kline_timeframe import normalize_adj, normalize_timeframe
     from src.core.task_manager import create_task
 
     gate_backtest_submit(user, advanced=True)
@@ -172,6 +177,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
     enable_t1 = body.get("enable_t1", True)
     enable_limit = body.get("enable_limit", True)
     timeframe = body.get("timeframe", "1d")
+    adj = body.get("adj", "qfq")
     circuit_breaker_dd = body.get("circuit_breaker_dd")
     max_position_pct = body.get("max_position_pct")
 
@@ -181,6 +187,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
         timeframe = normalize_timeframe(timeframe)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    adj_n = normalize_adj(adj)
     if strategy not in STRATEGIES:
         raise HTTPException(
             400, f"未知策略: {strategy}，可選: {list(STRATEGIES.keys())}"
@@ -203,6 +210,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
         "enable_t1": enable_t1,
         "enable_limit": enable_limit,
         "timeframe": timeframe,
+        "adj": adj_n,
         "circuit_breaker_dd": circuit_breaker_dd,
         "max_position_pct": max_position_pct,
     }
@@ -243,6 +251,7 @@ async def run_advanced_backtest_api(body: dict, user=Depends(require_auth)):
             enable_t1=enable_t1,
             enable_limit=enable_limit,
             timeframe=timeframe,
+            adj=adj_n,
             task_id=task_id,
             circuit_breaker_dd=circuit_breaker_dd,
             max_position_pct=max_position_pct,

@@ -797,6 +797,11 @@ const Api = {
   async getStockList(market = 'all') { return this.get(`/api/screener/stocks?market=${market}`); },
   async getNotifyChannels() { return this.get('/api/notify/channels'); },
   async testNotify() { return this.post('/api/notify/test'); },
+  async getNotifyHistory(limit = 50, offset = 0, channel = null) {
+    let url = `/api/notify/history?limit=${Number(limit) || 50}&offset=${Number(offset) || 0}`;
+    if (channel) url += `&channel=${encodeURIComponent(channel)}`;
+    return this.get(url);
+  },
   async getSchedulerJobs() { return this.get('/api/scheduler/jobs'); },
   async getSchedulerCatalog() { return this.get('/api/scheduler/catalog'); },
   async setupScheduler() { return this.post('/api/scheduler/setup'); },

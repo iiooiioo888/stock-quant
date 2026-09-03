@@ -130,6 +130,9 @@ docs/MCP.md
 | 68  | 通知增強 | 異步隊列+重試+SQLite 歷史；ServerChan / Bark |
 | 69  | 回測成本/週期 | 佣金下限/過戶費走配置；週線/月線重採樣；`adj=qfq/hfq/none` |
 | 70  | 測試補全 | crypto/forex/global/paper/budget/data_sources/download + BL/HRP/CVaR/sector-limit |
+| 71  | 預警 Pro 頁 | `alerts-pro.js` 原生頁：規則 / 渠道 / 預警歷史分頁 / 通知發送記錄 |
+| 72  | Legacy 按頁懶載 | optimize / walkforward / heatmap / data 走 module-loader；不再進站預載全部 legacy JS |
+| 73  | 回測復權 UI | 進階回測 API + 表單傳遞 `adj`；週期含月線 |
 
 
 ---
@@ -180,19 +183,22 @@ docs/MCP.md
 #### 4. 前端 〔Pro 已模塊化〕
 
 - 〔已有〕總覽 / 資金流分頁；隱藏滾動條、`.main` 單滾動容器（見 `.cursor/rules/ui-no-scrollbar.mdc`）
-- 〔已有〕回測頁 ECharts PNG 導出；通用 `chart-export.js`
-- 待遷：optimize / walkforward / heatmap / 數據中心等仍為 `legacy-mount` 內嵌，逐步改為 `*-pro.js`
+- 〔已有〕回測頁 ECharts PNG 導出；通用 `chart-export.js`；復權/週/月線表單
+- 〔已有〕預警獨立 Pro 頁（通知歷史）；optimize/WF/heatmap/data 已掛 `*-pro.js` 並按頁懶載腳本
+- 待遷：portfolio / signals / analysis / reports / scheduler / markets / crypto / connectivity 仍為 `legacy-mount`
 - 移動端響應式再加深、K 線全面 Lightweight Charts
-- 回測結果並排對比 UI 可再強化
+- 回測結果並排對比 UI 可再強化（回測歷史已有最多 3 筆對比）
 
 #### 5. 通知增強 〔本輪已落地〕
 
 - 〔已有〕異步隊列 + 失敗重試、`notification_history`、ServerChan/Bark
-- 可續：管理後台通知歷史頁、渠道配置 UI
+- 〔已有〕Pro 預警頁展示通知發送記錄
+- 可續：管理後台渠道配置 UI、Bark/ServerChan 密鑰表單
 
 #### 6. 回測增強 〔本輪部分落地〕
 
 - 〔已有〕印花稅/過戶費/佣金下限走配置、前/後/不復權、週線/月線（日線重採樣）
+- 〔已有〕回測表單與 `/api/backtest/advanced` 傳遞 `adj`
 - 待：結果並排對比 UI 深化；hfq 本地持久化
 
 ### 低優

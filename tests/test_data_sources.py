@@ -13,7 +13,7 @@ def test_datasource_available_and_circuit_breaker():
     assert src.available is False
     src.record_success()
     assert src.available is True
-    assert src.fail_count == 0 or src._fail_count == 0
+    assert src._fail_count == 0
 
 
 def test_register_and_get_sources_priority():

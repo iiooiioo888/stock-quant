@@ -1682,6 +1682,22 @@ body.assets-drawer-open .assets-drawer{
 .tk-card-time{font-size:.58rem;color:var(--t3);margin-top:6px;font-family:var(--fm)}
 .tk-card-err{font-size:.6rem;color:var(--quote-down);margin-top:6px}
 .tk-card-retry-hint{font-size:.6rem;color:var(--ac,#e8b830);margin-top:6px}
+.al-sec{margin-bottom:18px}
+.al-sec-h{font-size:.78rem;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.al-count{font-size:.6rem;font-weight:500;color:var(--t3);font-family:var(--fm)}
+.al-hint{font-size:.64rem;color:var(--t3);margin:0 0 8px}
+.al-channel-grid{display:flex;flex-wrap:wrap;gap:8px}
+.al-channel-item{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);background:var(--bg2);font-size:.72rem}
+.al-channel-name{color:var(--tx)}
+.al-empty{color:var(--t3);text-align:center;padding:16px;font-size:.72rem}
+.al-list{display:flex;flex-direction:column;gap:2px}
+.al-log-row{padding:8px 0;border-bottom:1px solid var(--bd)}
+.al-log-msg{font-size:.72rem}
+.al-log-meta{font-size:.6rem;color:var(--t3);margin-top:2px;font-family:var(--fm)}
+.al-pager{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#pg-alerts .table-wrap table{width:100%;border-collapse:collapse;font-size:.72rem}
+#pg-alerts .table-wrap th,#pg-alerts .table-wrap td{padding:8px 10px;border-bottom:1px solid var(--bd);text-align:left}
+#pg-alerts .table-wrap th{color:var(--t3);font-weight:500;font-size:.62rem}
 .tk-card-ft{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .tk-empty{text-align:center;padding:36px 16px;color:var(--t3);font-size:.72rem}
 .tk-empty-icon{font-size:1.8rem;display:block;margin-bottom:8px}

@@ -26,7 +26,7 @@ def test_parallel_download_reports_progress(monkeypatch):
         time.sleep(0.01)
         return 3
 
-    monkeypatch.setattr("src.core.history.download_one", fake_download)
+    monkeypatch.setattr("src.core.download_tasks._history_download_one", fake_download)
     from src.config import settings
 
     settings.download_max_workers = 3

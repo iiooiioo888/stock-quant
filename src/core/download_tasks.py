@@ -55,18 +55,23 @@ def _sleep_after_download(market: str) -> None:
     time.sleep(base * random.uniform(0.7, 1.3))
 
 
-def _download_one_guarded(code: str, market: str, mkt: str, task_id: str | None) -> int:
-    """下載單標的；A 股走 AKShare 信號量。"""
+def _history_download_one(code: str, market: str = "a_share") -> int:
+    """可被測試 mock 的下載入口（延遲導入 history，避免循環依賴）。"""
     from src.core.history import download_one
 
+    return download_one(code, market=market)
+
+
+def _download_one_guarded(code: str, market: str, mkt: str, task_id: str | None) -> int:
+    """下載單標的；A 股走 AKShare 信號量。"""
     _check_cancelled(task_id)
     if market in _AKSHARE_MARKETS:
         with _akshare_semaphore():
             _check_cancelled(task_id)
-            count = download_one(code, market=mkt)
+            count = _history_download_one(code, market=mkt)
             _sleep_after_download(market)
             return count
-    count = download_one(code, market=mkt)
+    count = _history_download_one(code, market=mkt)
     _sleep_after_download(market)
     return count
 
