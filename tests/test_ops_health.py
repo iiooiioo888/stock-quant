@@ -123,3 +123,31 @@ def test_ci_mode_suppresses_attention_exit():
     )
     assert ev["verdict"] == VERDICT_ATTENTION
     assert ev["exit_code"] == 0
+
+def test_evaluate_ib_enabled_not_connected_is_attention():
+    ev = evaluate_ops_health(
+        {
+            "database": {"total_stocks": 10, "db_size_mb": 1.0},
+            "pipeline_metrics": {"cache": {"pending_deferred": 0}},
+            "index_audit": {
+                "ok": True,
+                "missing": [],
+                "present_count": 5,
+                "expected_count": 5,
+            },
+            "data_sources": {
+                "degraded_categories": [],
+                "total_categories": 3,
+                "healthy_categories": 3,
+            },
+            "ib": {
+                "enabled": True,
+                "connected": False,
+                "host": "127.0.0.1",
+                "port": 7497,
+            },
+        }
+    )
+    assert ev["verdict"] == VERDICT_ATTENTION
+    assert any(c["id"] == "ib_tws" for c in ev["checks"])
+

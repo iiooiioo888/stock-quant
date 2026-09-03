@@ -11,6 +11,8 @@ Interactive Brokers 行情 — 可選 ib_insync + TWS / IB Gateway
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import threading
 import time
 from datetime import datetime
@@ -68,7 +70,10 @@ def ib_status(*, probe: bool = False) -> dict:
 
     connected = _connected
     if probe and enabled and lib_ok:
-        ib = _get_ib()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            ib = _get_ib()
         connected = bool(ib and ib.isConnected())
 
     st = {
@@ -211,7 +216,10 @@ def _ib_connect_threadsafe(
 
     async def _coro():
         try:
-            await _ib.connectAsync(host, port, clientId=client_id, timeout=timeout)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+                io.StringIO()
+            ):
+                await _ib.connectAsync(host, port, clientId=client_id, timeout=timeout)
             return True
         except Exception as e:
             logger.debug(f"IB connectAsync failed: {e}")

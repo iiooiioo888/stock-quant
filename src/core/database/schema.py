@@ -510,6 +510,8 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_strategy_likes_key ON strategy_likes(strategy_key)",
     "CREATE INDEX IF NOT EXISTS idx_alert_user ON user_alert_rules(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)",
+    # 遷移 v9 歷史名稱，與 idx_alert_log_user 同列；保留以免健檢報 extra_untracked
+    "CREATE INDEX IF NOT EXISTS idx_alert_user_id ON alert_log(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)",
     "CREATE INDEX IF NOT EXISTS idx_sector_code ON sector_data(code)",
     "CREATE INDEX IF NOT EXISTS idx_snapshot_date ON sector_snapshot(snapshot_date)",

@@ -504,8 +504,7 @@
     list.querySelectorAll('.alloc-row').forEach((row) => {
       row.addEventListener('click', () => {
         const sym = row.getAttribute('data-code');
-        if (sym && window.StockQPro?.openAsset) window.StockQPro.openAsset(sym);
-        else if (sym) window.StockQPro?.App?.nav?.('assets');
+        if (sym) window.StockQPro?.App?.openAsset?.(sym);
       });
     });
   }
@@ -522,6 +521,7 @@
       try { Api.init(); } catch (_) {}
     }
     loadPrefs();
+    if (window.innerWidth < 1360) state.open = false;
     document.querySelector('.app')?.classList.toggle('allocation-rail-open', state.open);
     const rail = document.getElementById('allocation-rail');
     if (rail) rail.setAttribute('aria-hidden', state.open ? 'false' : 'true');

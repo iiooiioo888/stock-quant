@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
+from urllib.parse import quote
 
 import pandas as pd
 
@@ -23,74 +25,173 @@ def _normalize_symbol(symbol: str) -> str:
     return str(symbol).strip().upper()
 
 
+def _link(title: str, url: str, source: str) -> dict:
+    return {"title": title, "url": url, "source": source, "time": ""}
+
+
+def _yahoo_ticker(symbol: str, market: str) -> str:
+    sym = _normalize_symbol(symbol)
+    if market == "a_share" or (sym.isdigit() and len(sym) == 6):
+        return f"{sym}.SS" if sym.startswith(("5", "6", "9")) else f"{sym}.SZ"
+    if sym.endswith(".HK"):
+        return f"{sym.replace('.HK', '').zfill(4)}.HK"
+    if sym.endswith(".US"):
+        return sym.replace(".US", "")
+    return sym
+
+
+def _third_party_widgets(symbol: str, tv: str, market: str) -> list[dict]:
+    widgets = []
+    if tv:
+        q = (
+            "symbol=" + quote(tv, safe="")
+            + "&interval=D&hidesidetoolbar=1&symboledit=0&saveimage=0"
+            + "&toolbarbg=0a0b10&hideideas=1&theme=dark&style=1"
+            + "&timezone=Asia%2FHong_Kong&withdateranges=1&locale=zh_TW"
+        )
+        widgets.append({
+            "kind": "tradingview_chart",
+            "title": "TradingView 圖表",
+            "src": f"https://www.tradingview.com/widgetembed/?{q}",
+        })
+        overview = json.dumps({
+            "symbol": tv,
+            "width": "100%",
+            "height": 180,
+            "dateRange": "12M",
+            "colorTheme": "dark",
+            "isTransparent": True,
+            "autosize": True,
+            "locale": "zh_TW",
+        }, separators=(",", ":"))
+        widgets.append({
+            "kind": "tradingview_mini",
+            "title": "TradingView 迷你走勢",
+            "src": (
+                "https://s.tradingview.com/embed-widget/mini-symbol-overview/"
+                f"?locale=zh_TW#{quote(overview)}"
+            ),
+        })
+    yahoo = _yahoo_ticker(symbol, market)
+    widgets.append({
+        "kind": "yahoo_quote",
+        "title": "Yahoo Finance",
+        "url": f"https://finance.yahoo.com/quote/{yahoo}",
+    })
+    return widgets
+
+
 def _external_links(
     symbol: str, name: str, tv: str = "", market: str = ""
 ) -> list[dict]:
-
     sym = _normalize_symbol(symbol)
-
-    links = []
+    nm = name or sym
+    yahoo = _yahoo_ticker(sym, market)
+    links: list[dict] = []
 
     if tv:
+        links.append(_link(
+            f"TradingView · {nm}",
+            f"https://www.tradingview.com/chart/?symbol={tv.replace(':', '%3A')}",
+            "TradingView",
+        ))
 
-        links.append(
-            {
-                "title": f"TradingView · {name or sym}",
-                "url": f"https://www.tradingview.com/chart/?symbol={tv.replace(':', '%3A')}",
-                "source": "TradingView",
-                "time": "",
-            }
-        )
+    links.append(_link(f"Yahoo Finance · {nm}", f"https://finance.yahoo.com/quote/{yahoo}", "Yahoo"))
+    links.append(_link(
+        f"Google Finance · {nm}",
+        f"https://www.google.com/finance/quote/{yahoo}",
+        "Google",
+    ))
+    links.append(_link(
+        f"Investing.com · {nm}",
+        f"https://www.investing.com/search/?q={yahoo}",
+        "Investing",
+    ))
 
-    yahoo = sym
+    if market == "us_stock" or (sym.replace(".US", "").isalpha() and not sym.endswith(".HK")):
+        ticker = sym.replace(".US", "")
+        if ticker.isalpha():
+            links.append(_link(f"Finviz · {nm}", f"https://finviz.com/quote.ashx?t={ticker}", "Finviz"))
+            links.append(_link(
+                f"Seeking Alpha · {nm}",
+                f"https://seekingalpha.com/symbol/{ticker}",
+                "Seeking Alpha",
+            ))
+            links.append(_link(
+                f"MarketWatch · {nm}",
+                f"https://www.marketwatch.com/investing/stock/{ticker}",
+                "MarketWatch",
+            ))
+            links.append(_link(
+                f"SEC EDGAR · {nm}",
+                f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={ticker}&owner=exclude&count=40",
+                "SEC",
+            ))
+            links.append(_link(
+                f"東方財富美股 · {nm}",
+                f"https://quote.eastmoney.com/us/{ticker}.html",
+                "東財",
+            ))
 
-    if sym.isdigit() and len(sym) == 6:
+    if market == "a_share" or (sym.isdigit() and len(sym) == 6):
+        prefix = "sh" if sym.startswith(("5", "6", "9")) else "sz"
+        links.append(_link(
+            f"東方財富 · {nm}",
+            f"https://quote.eastmoney.com/{prefix}{sym}.html",
+            "東財",
+        ))
+        links.append(_link(
+            f"新浪財經 · {nm}",
+            f"https://finance.sina.com.cn/realstock/company/{prefix}{sym}/nc.shtml",
+            "新浪",
+        ))
+        links.append(_link(
+            f"雪球 · {nm}",
+            f"https://xueqiu.com/S/{prefix.upper()}{sym}",
+            "雪球",
+        ))
 
-        yahoo = f"{sym}.SS" if sym.startswith(("5", "6", "9")) else f"{sym}.SZ"
-
-    links.append(
-        {
-            "title": f"Yahoo Finance · {name or sym}",
-            "url": f"https://finance.yahoo.com/quote/{yahoo}",
-            "source": "Yahoo",
-            "time": "",
-        }
-    )
-
-    if sym.endswith(".HK"):
-
+    if sym.endswith(".HK") or market == "hk_stock":
         code = sym.replace(".HK", "").lstrip("0") or "0"
+        padded = code.zfill(4)
+        links.append(_link(
+            f"東方財富港股 · {nm}",
+            f"https://quote.eastmoney.com/hk/{code}.html",
+            "東財",
+        ))
+        links.append(_link(
+            f"AASTOCKS · {nm}",
+            f"http://www.aastocks.com/tc/stocks/quote/detail-quote.aspx?symbol={padded}",
+            "AASTOCKS",
+        ))
+        links.append(_link(
+            f"港交所 · {nm}",
+            f"https://www.hkex.com.hk/Market-Data/Securities-Prices/Equities/Equities-Quote?sym={padded}&sc_lang=zh-HK",
+            "HKEX",
+        ))
 
-        links.append(
-            {
-                "title": f"東方財富 · {name or sym}",
-                "url": f"https://quote.eastmoney.com/hk/{code}.html",
-                "source": "東財",
-                "time": "",
-            }
-        )
+    if market in ("crypto", "digital_asset") or "-" in sym:
+        slug = sym.split("-")[0].lower()
+        links.append(_link(
+            f"CoinGecko · {nm}",
+            f"https://www.coingecko.com/en/search?query={slug}",
+            "CoinGecko",
+        ))
+        links.append(_link(
+            f"CoinMarketCap · {nm}",
+            f"https://coinmarketcap.com/search/?q={slug}",
+            "CMC",
+        ))
 
-        links.append(
-            {
-                "title": f"AASTOCKS · {name or sym}",
-                "url": f"http://www.aastocks.com/tc/stocks/quote/detail-quote.aspx?symbol={code.zfill(4)}",
-                "source": "AASTOCKS",
-                "time": "",
-            }
-        )
-
-    elif market == "us_stock" and sym.replace(".US", "").isalpha():
-
-        links.append(
-            {
-                "title": f"東方財富 · {name or sym}",
-                "url": f"https://quote.eastmoney.com/us/{sym.replace('.US', '')}.html",
-                "source": "東財",
-                "time": "",
-            }
-        )
-
-    return links
+    seen = set()
+    uniq = []
+    for item in links:
+        url = item.get("url") or ""
+        if url in seen:
+            continue
+        seen.add(url)
+        uniq.append(item)
+    return uniq
 
 
 def _fetch_a_share_news(code: str, limit: int = 12) -> list[dict]:
@@ -635,6 +736,7 @@ def build_asset_detail(
         "financials": financials,
         "news": news,
         "links": links,
+        "widgets": _third_party_widgets(symbol, tv_symbol, market),
     }
 
     if include_thesis:

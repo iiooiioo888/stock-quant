@@ -89,7 +89,7 @@ class TestIbData:
             "_fetch_catalog_primary",
             lambda s, d: (df, quote, "tradingview"),
         )
-        monkeypatch.setattr(mf, "fetch_history_df", lambda s, d: (pd.DataFrame(), ""))
+        monkeypatch.setattr(mf, "fetch_history_df", lambda *a, **k: (pd.DataFrame(), ""))
         monkeypatch.setattr(mf, "fetch_quote", lambda s: ({}, ""))
 
         item = mf.build_index_chart_item("BTC-USD", "比特幣", 30)

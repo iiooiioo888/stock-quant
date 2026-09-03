@@ -27,7 +27,7 @@
     return namesMap[code] || catalogAshare.find((x) => x.code === code)?.name || '';
   }
 
-  function setSymbol(code, name = '') {
+  function setSymbol(code, name = '', opts = {}) {
     const c = normalizeCode(code);
     if (!isValidAshare(c)) {
       window.StockQPro?.App?.toast?.('請選擇 6 位 A 股代碼', 'er');
@@ -42,6 +42,9 @@
     if (codeEl) codeEl.textContent = c;
     if (nameEl) nameEl.textContent = n;
     if (input && input !== document.activeElement) input.value = c;
+    if (!opts?.skipContext) {
+      try { window.StockQPro?.WorkContext?.set?.(c, n); } catch (_) {}
+    }
     return true;
   }
 
@@ -227,8 +230,12 @@
     bindOnce();
     await loadNames();
     await renderHot();
-    const initial = normalizeCode($id('bt-code')?.value || '600519');
-    setSymbol(initial, resolveName(initial) || '貴州茅台');
+    const ctx = window.StockQPro?.WorkContext?.get?.() || {};
+    const fromCtx = ctx.symbol ? normalizeCode(ctx.symbol) : '';
+    const initial = isValidAshare(fromCtx)
+      ? fromCtx
+      : normalizeCode($id('bt-code')?.value || '600519');
+    setSymbol(initial, ctx.name || resolveName(initial) || '貴州茅台');
   }
 
   window.StockQPro = window.StockQPro || {};

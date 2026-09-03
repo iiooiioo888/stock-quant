@@ -556,6 +556,14 @@
         fillForm(Prefs().DEFAULTS);
         window.StockQPro?.App?.toast?.('已恢復預設偏好', 'ok');
       });
+      $id('set-logout-btn')?.addEventListener('click', () => {
+        if (typeof Api !== 'undefined' && Api.isLoggedIn?.()) {
+          Api.logout?.();
+          window.StockQPro?.App?.toast?.('已登出', 'ok');
+        } else {
+          window.StockQPro?.App?.toast?.('尚未登錄', 'inf');
+        }
+      });
       $id('set-llm-save')?.addEventListener('click', () => saveLlmSettings());
       $id('set-llm-clear')?.addEventListener('click', () => clearLlmKey());
       $id('set-src-refresh')?.addEventListener('click', () => {

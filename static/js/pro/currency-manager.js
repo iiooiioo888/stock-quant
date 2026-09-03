@@ -122,7 +122,13 @@
     },
 
     _renderTrendChart(chartHost, series, replace) {
-      if (!series.length || typeof echarts === 'undefined') return null;
+      if (!series.length) return null;
+      if (typeof echarts === 'undefined') {
+        window.StockQPro?.charts?.ensureEcharts?.().then(() => {
+          this._renderTrendChart(chartHost, series, replace);
+        }).catch(() => {});
+        return null;
+      }
       let chart = echarts.getInstanceByDom(chartHost);
       if (!chart) chart = echarts.init(chartHost, null, { renderer: 'canvas' });
       chart.setOption({

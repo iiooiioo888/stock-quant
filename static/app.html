@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
-  <link rel="preload" href="/static/css/pro.css?v=pricing-20260529" as="style" />
-  <link rel="stylesheet" href="/static/css/pro.css?v=pricing-20260529" />
+  <link rel="preload" href="/static/css/pro.css?v=gui-ux-20260903g" as="style" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=gui-ux-20260903g" />
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
     @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
@@ -43,6 +43,9 @@
   <!-- ═══ TOPBAR ═══ -->
   <header class="topbar" role="banner">
     <div class="topbar-left">
+      <button type="button" class="tbtn nav-toggle" id="nav-toggle" title="選單" aria-label="打開導航選單">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <a class="logo" href="/app#/dashboard" data-nav="dashboard" aria-label="StockQ Pro 首頁" fetchpriority="high">
         <span class="logo-icon" aria-hidden="true">Q</span>
         StockQ <span>Pro</span>
@@ -54,6 +57,20 @@
       </nav>
       <div class="ticker-strip" id="topbar-ticker-strip" aria-label="行情跑馬燈">
         <div class="ticker-strip-inner"></div>
+      </div>
+      <div class="work-ctx" id="work-ctx">
+        <span class="work-ctx-lbl">工作標的</span>
+        <input type="text" class="work-ctx-in" id="work-ctx-in" placeholder="代碼 Enter" autocomplete="off" spellcheck="false" title="輸入代碼後按 Enter；/ 聚焦此欄" />
+        <button type="button" class="work-ctx-sym" id="work-ctx-open" title="打開資產詳情">
+          <span id="work-ctx-name"></span>
+        </button>
+        <div class="work-ctx-acts">
+          <button type="button" data-ctx-go="backtest">回測</button>
+          <button type="button" data-ctx-go="compare">對比</button>
+          <button type="button" data-ctx-go="analysis">分析</button>
+          <button type="button" data-ctx-go="optimize">優化</button>
+          <button type="button" data-ctx-go="watchlist">自選</button>
+        </div>
       </div>
     </div>
     <div class="topbar-right">
@@ -86,7 +103,10 @@
   </header>
 
   <!-- ═══ SIDEBAR ═══ -->
+  <div class="nav-backdrop" id="nav-backdrop"></div>
   <nav class="sidebar sidebar-compact sidebar--labeled" aria-label="主導航">
+    <div class="nav-recents" id="nav-recents" hidden></div>
+    <div class="nav-recents nav-next" id="nav-next"></div>
     <details class="nav-group" open data-nav-group="workbench">
       <summary>工作台</summary>
       <div class="nav-group-body">
@@ -746,7 +766,7 @@
             <div class="table-wrap">
               <table class="tbl tbl-compact">
                 <thead>
-                  <tr><th>代碼</th><th>名稱</th><th>最新</th><th>漲跌</th><th></th></tr>
+                  <tr><th>代碼</th><th>名稱</th><th>最新</th><th>漲跌</th><th>上破</th><th>下破</th><th>操作</th></tr>
                 </thead>
                 <tbody id="wl-tb"></tbody>
               </table>
@@ -836,27 +856,15 @@
             <div class="pa"><span id="assets-meta" class="badge b-bl badge-count">--</span></div>
           </div>
           <div class="pb">
-            <p class="assets-lib-hint">預設「股票專區」；可點 <strong>恒生科技</strong>、<strong>滬深300核心</strong> 等主題包一鍵篩選。完整目錄含機構級占位標的。</p>
-            <div class="pro-toolbar pro-toolbar--stack" style="margin-bottom:10px">
+            <p class="assets-lib-hint">目錄維持全頁瀏覽；篩選工具與個股詳情從右側滑出，不必離開列表。</p>
+            <div class="pro-toolbar pro-toolbar--row" style="margin-bottom:10px">
               <div class="pro-field pro-field--grow">
                 <input type="search" id="assets-search" class="inp" placeholder="搜尋代碼、名稱或行業…" autocomplete="off" />
               </div>
+              <button type="button" class="btn s" id="assets-tools-open" title="打開篩選工具抽屜" aria-expanded="false" aria-controls="assets-drawer">篩選工具</button>
             </div>
-            <div id="assets-group-pills" class="assets-pills-wrap"></div>
+            <button type="button" class="assets-filter-summary" id="assets-filter-summary" title="打開篩選工具">股票專區</button>
             <div id="assets-grid" class="assets-grid"></div>
-          </div>
-        </div>
-      </div>
-      <div id="assets-detail-view" class="h">
-        <div class="pnl">
-          <div class="ph">
-            <div class="pt">資產詳情</div>
-            <div class="pa">
-              <button type="button" class="btn s" data-assets-back>返回列表</button>
-            </div>
-          </div>
-          <div class="pb">
-            <div id="assets-detail-root"></div>
           </div>
         </div>
       </div>
@@ -986,6 +994,7 @@
             <button type="button" class="btn s" id="set-reload-btn">重新載入</button>
             <button type="button" class="btn s" id="set-clear-cache">清除緩存</button>
             <button type="button" class="btn s" id="set-reset-prefs">恢復預設</button>
+            <button type="button" class="btn s" id="set-logout-btn">登出</button>
           </div>
         </div>
       </div>
@@ -1130,19 +1139,47 @@
     </div>
     <div class="sbr">
       <span class="sbi">本地 SQLite</span>
+      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">Ctrl K</kbd> 命令</span>
+      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">B</kbd> 回測</span>
       <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">T</kbd> 任務</span>
-      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">?</kbd> 命令面板</span>
+      <span class="sbi"><kbd style="font-size:.54rem;opacity:.7">?</kbd> 快捷鍵</span>
     </div>
   </footer>
 </div>
 
 <!-- ═══ GLOBAL UI ═══ -->
+<div class="assets-drawer-backdrop" id="assets-drawer-backdrop" hidden></div>
+<aside class="assets-drawer" id="assets-drawer" hidden aria-hidden="true" aria-label="資產庫抽屜">
+  <header class="assets-drawer-hd">
+    <div>
+      <h2 class="assets-drawer-title" id="assets-drawer-title">篩選工具</h2>
+      <p class="assets-drawer-desc" id="assets-drawer-desc">主題、行業與分層目錄</p>
+    </div>
+    <button type="button" class="tbtn" id="assets-drawer-close" title="關閉" aria-label="關閉抽屜">✕</button>
+  </header>
+  <div class="assets-drawer-body" id="assets-drawer-body">
+    <div id="assets-tools-panel">
+      <div id="assets-group-pills" class="assets-pills-wrap"></div>
+    </div>
+    <div id="assets-detail-view" class="h">
+      <div id="assets-detail-root"></div>
+    </div>
+  </div>
+  <footer class="assets-drawer-ft" id="assets-drawer-ft" hidden>
+    <button type="button" class="btn s" id="assets-tools-reset">重設篩選</button>
+    <button type="button" class="btn btn-ac" id="assets-tools-done">完成</button>
+  </footer>
+</aside>
+
 <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
 
 <div class="cmd-ov" id="cmd-ov" aria-hidden="true" role="dialog" aria-label="命令面板">
   <div class="cmd-box">
-    <input type="search" id="cmd-in" class="cmd-in" placeholder="搜尋頁面、策略或代碼…" autocomplete="off" />
+    <div class="cmd-row">
+      <input type="search" id="cmd-in" class="cmd-in" placeholder="搜尋頁面、策略、代碼（↑↓ 選擇，Enter 前往）" autocomplete="off" />
+    </div>
     <div id="cmd-list" class="cmd-list"></div>
+    <div class="cmd-foot"><span>空白顯示最近頁面</span><span>輸入代碼可直接回測 / 開詳情</span></div>
   </div>
 </div>
 
@@ -1170,23 +1207,25 @@
 <script src="/static/js/utils.js?v=stockq-pro-v6"></script>
 <script src="/static/js/pro/terms.js?v=stockq-terms-20260527"></script>
 <script src="/static/js/pro/fetch-stream.js?v=fix-comment-20260530"></script>
-<script src="/static/js/api.js?v=fix-comment-20260530"></script>
+<script src="/static/js/api.js?v=gui-ux-20260903"></script>
 <script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
-<script src="/static/js/pro/user-prefs.js?v=stockq-pro-v5"></script>
+<script src="/static/js/pro/user-prefs.js?v=gui-ux-20260903"></script>
+<script src="/static/js/pro/work-context.js?v=gui-ux-20260903c"></script>
 <script src="/static/js/pro/symbol-utils.js?v=sym-utils-20260611"></script>
 <script src="/static/js/pro/allocation-rail.js?v=alloc-rail-20260529"></script>
 <script src="/static/js/pro/app-store.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/index.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/ui/ops-status.js?v=stockq-pro-v12"></script>
-<script src="/static/js/pro/ui/dashboard-components.js?v=stockq-pro-v12"></script>
+<script src="/static/js/pro/ui/dashboard-components.js?v=gui-ux-20260903c"></script>
 <script src="/static/js/pro/services/ops-monitor.js?v=stockq-pro-v14"></script>
 <script src="/static/js/pro/services/market-ticker.js?v=stockq-pro-v10"></script>
 <script src="/static/js/pro/stream-loader.js?v=stream-nav-20260527"></script>
-<script src="/static/js/pro/chart-vendor.js?v=stream-nav-20260527"></script>
+<script src="/static/js/pro/chart-vendor.js?v=stream-nav-20260903f"></script>
   <script src="/static/js/pro/echarts-registry.js?v=echarts-reg-20260528"></script>
+<script src="/static/js/pro/motion.js?v=gui-ux-20260903g"></script>
 <script type="module" src="/static/js/pro/esm/bootstrap.mjs?v=stockq-esm-20260528"></script>
-<script src="/static/js/pro/module-loader.js?v=stream-nav-20260527"></script>
+<script src="/static/js/pro/module-loader.js?v=gui-ux-20260903g"></script>
 <script src="/static/js/pro/legacy-bridge.js?v=ws-fix-20260527"></script>
-<script src="/static/js/pro/app.js?v=asset-detail-nav-20260611"></script>
+<script src="/static/js/pro/app.js?v=gui-ux-20260903g"></script>
 </body>
 </html>

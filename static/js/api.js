@@ -130,14 +130,14 @@ const Api = {
     if (this._token) {
       if (el) {
         el.innerHTML = '<span style="color:var(--green)">●</span> 已登錄';
-        el.title = '點擊登出';
+        el.title = '點擊開設定，連點登出';
         el.style.cursor = 'pointer';
       }
       if (pill) {
         const plan = this._billingCache?.plan_name || this._billingCache?.plan_id || '';
         const letter = (this._billingCache?.username || 'U').slice(0, 1).toUpperCase();
         pill.textContent = plan ? letter : letter;
-        pill.title = plan ? `${plan} · 點擊登出` : '已登錄 · 點擊登出';
+        pill.title = plan ? `${plan} · 點擊開設定，連點登出` : '已登錄 · 點擊開設定，連點登出';
         pill.dataset.plan = plan || '';
       }
       this.refreshBillingBadge?.();
@@ -175,7 +175,7 @@ const Api = {
         const pill = document.getElementById('auth-pill');
         const badge = document.getElementById('plan-badge');
         if (pill && bill.plan_name) {
-          pill.title = `${bill.plan_name} · 點擊登出`;
+          pill.title = `${bill.plan_name} · 點擊開設定，連點登出`;
           pill.dataset.plan = bill.plan_id || '';
         }
         if (badge) {

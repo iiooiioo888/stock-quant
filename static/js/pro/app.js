@@ -2,6 +2,33 @@
 
 (() => {
   const $id = (id) => document.getElementById(id);
+  const PLANNED = new Set(['factor', 'seasonal', 'regime', 'risk', 'journal']);
+  const PAGE_TITLE = {
+    dashboard: '總覽', tasks: '任務中心', watchlist: '自選股', scanner: '選股器',
+    alerts: '預警', strategies: '策略庫', backtest: '策略回測', compare: '對比',
+    portfolio: '持倉與淨值', backhistory: '回測歷史', optimize: '參數優化',
+    walkforward: '滾動驗證', heatmap: '熱力圖', reports: '策略報告',
+    assets: '資產庫', capitalflow: '資金流', data: '數據中心', analysis: '深度分析',
+    signals: '信號', markets: '市場', crypto: '加密', scheduler: '定時',
+    connectivity: '數據源', ai: 'AI', pricing: '定價', settings: '設定',
+  };
+
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function rememberPage(pid) {
+    if (!pid || PLANNED.has(pid)) return;
+    const prefs = window.StockQPro?.Prefs;
+    if (!prefs?.save) return;
+    const cur = prefs.get('recentPages') || [];
+    if (cur[0] === pid) return;
+    const list = cur.filter((x) => x !== pid);
+    list.unshift(pid);
+    prefs.save({ recentPages: list.slice(0, 8) });
+  }
 
   const App = {
     current: '',
@@ -20,6 +47,9 @@
 
       this._bindAuth();
       this._bindNav();
+      this._restoreNavGroups();
+      this._bindMobileNav();
+      this._bindTickerJump();
       this._bindModals();
       this._bindCmdPalette();
       this._bindShortcutsHelp();
@@ -162,17 +192,33 @@
       pill.addEventListener('click', () => {
         if (typeof Api === 'undefined') return;
         if (Api.isLoggedIn && Api.isLoggedIn()) {
-          Api.logout?.();
-          this.toast('已登出', 'ok');
+          const now = Date.now();
+          if (this._authClickAt && now - this._authClickAt < 450) {
+            this._authClickAt = 0;
+            Api.logout?.();
+            this.toast('已登出', 'ok');
+            return;
+          }
+          this._authClickAt = now;
+          this.nav('settings', { syncHash: true });
           return;
         }
         Api.showLoginModal?.(false);
+      });
+      pill.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          pill.click();
+        }
       });
     },
 
     _bindLogo() {
       document.querySelectorAll('[data-nav]').forEach((el) => {
-        el.addEventListener('click', () => this.nav(el.getAttribute('data-nav'), { syncHash: true }));
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.nav(el.getAttribute('data-nav'), { syncHash: true });
+        });
       });
     },
 
@@ -181,20 +227,76 @@
         btn.addEventListener('click', () => {
           const p = btn.getAttribute('data-p');
           if (p) this.nav(p, { syncHash: true });
+          document.body.classList.remove('nav-open');
         });
       });
+      document.querySelectorAll('.sidebar .nav-group').forEach((grp) => {
+        grp.addEventListener('toggle', () => this._persistNavGroups());
+      });
+    },
+
+    _restoreNavGroups() {
+      const saved = window.StockQPro?.Prefs?.get?.('navGroupsOpen');
+      if (!saved || typeof saved !== 'object') return;
+      document.querySelectorAll('.sidebar .nav-group[data-nav-group]').forEach((grp) => {
+        const key = grp.getAttribute('data-nav-group');
+        if (key && Object.prototype.hasOwnProperty.call(saved, key)) {
+          grp.open = !!saved[key];
+        }
+      });
+    },
+
+    _persistNavGroups() {
+      const navGroupsOpen = {};
+      document.querySelectorAll('.sidebar .nav-group[data-nav-group]').forEach((grp) => {
+        navGroupsOpen[grp.getAttribute('data-nav-group')] = !!grp.open;
+      });
+      window.StockQPro?.Prefs?.save?.({ navGroupsOpen });
     },
 
     _syncNavGroup(pid) {
       document.querySelectorAll('.sidebar .nav-group').forEach((grp) => {
         const hit = grp.querySelector(`.sb[data-p="${pid}"]`);
-        grp.open = !!hit;
+        if (hit) grp.open = true;
       });
+      this._persistNavGroups();
+    },
+
+    _bindMobileNav() {
+      const btn = document.getElementById('nav-toggle');
+      const backdrop = document.getElementById('nav-backdrop');
+      const close = () => document.body.classList.remove('nav-open');
+      btn?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+      backdrop?.addEventListener('click', close);
+    },
+
+    _bindTickerJump() {
+      document.addEventListener('click', (e) => {
+        const card = e.target.closest('.ticker-card[data-symbol]');
+        if (!card?.dataset?.symbol) return;
+        if (e.target.closest('a, button, input, select')) return;
+        this.openAsset(card.dataset.symbol);
+      });
+    },
+
+    openAsset(symbol) {
+      const raw = String(symbol || '').trim();
+      const sym = window.StockQPro?.SymbolUtils?.normalizeAssetSymbol?.(raw) || raw.toUpperCase();
+      if (!sym) return;
+      this._pendingAssetSymbol = sym;
+      try { window.StockQPro?.WorkContext?.set?.(sym); } catch (_) {}
+      const want = `#/asset/${encodeURIComponent(sym)}`;
+      if (location.hash !== want) location.hash = want;
+      else this.navFromHash();
     },
 
     async nav(id, opts = {}) {
       const pid = String(id || '').trim();
       if (!pid) return;
+      if (PLANNED.has(pid)) {
+        this.toast('此模組即將推出', 'inf');
+        return;
+      }
 
       const hash = String(location.hash || '');
       if (pid !== 'assets' || !/^#\/asset\//.test(hash)) {
@@ -208,11 +310,16 @@
       document.querySelectorAll('.pg').forEach((p) => p.classList.remove('on'));
       document.querySelectorAll('.sb').forEach((b) => b.classList.remove('on'));
       const pg = $id(`pg-${pid}`);
-      if (pg) pg.classList.add('on');
+      if (pg) {
+        pg.classList.add('on');
+        try { window.StockQPro?.Motion?.fadeIn?.(pg, { duration: 240 }); } catch (_) {}
+      }
       const sb = document.querySelector(`.sb[data-p="${pid}"]`);
       if (sb) sb.classList.add('on');
       this._syncNavGroup(pid);
       this.current = pid;
+      rememberPage(pid);
+      try { window.StockQPro?.WorkContext?.render?.(); } catch (_) {}
       if (opts.syncHash) {
         const want = `#/${pid}`;
         if (location.hash !== want) location.hash = want;
@@ -254,6 +361,7 @@
           if (typeof mod.onShow === 'function') {
             await Promise.resolve(mod.onShow());
           }
+          try { window.StockQPro?.WorkContext?.applyToPage?.(pid); } catch (_) {}
         }
       } catch (_) {}
       finally {
@@ -291,6 +399,10 @@
         try { window.StockQPro?.pages?.assets?.showList?.(); } catch (_) {}
       }
       return true;
+    },
+
+    _setWork(symbol, name = '') {
+      try { window.StockQPro?.WorkContext?.set?.(symbol, name); } catch (_) {}
     },
 
     toast(msg, type = 'ok') {
@@ -346,24 +458,23 @@
       const list = $id('cmd-list');
       if (!ov || !input || !list) return;
 
+      let sel = 0;
+
       const pages = [
-        { n: '產品介紹頁', d: '功能概覽與系統入口', href: '/', k: 'H' },
         { n: '總覽', d: 'KPI、行情與快捷入口', p: 'dashboard', k: '1' },
-        { n: '資金流', d: '板塊資金與市場圖表', p: 'capitalflow' },
+        { n: '任務中心', d: '回測與數據任務佇列', p: 'tasks', k: 'T' },
+        { n: '自選股', d: '關注清單與提醒', p: 'watchlist', k: '5' },
+        { n: '選股器', d: '條件篩選與池管理', p: 'scanner', k: '6' },
+        { n: '預警', d: '條件預警', p: 'alerts', k: '7' },
         { n: '策略庫', d: '130+ 策略', p: 'strategies', k: 'S' },
         { n: '回測', d: '策略回測', p: 'backtest', k: '2' },
-        { n: '任務中心', d: '回測與數據任務佇列', p: 'tasks', k: 'T' },
         { n: '對比', d: '策略對比', p: 'compare', k: '3' },
         { n: '組合回測', d: '多標的組合與權重', p: 'portfolio', k: '4' },
+        { n: '資產庫', d: '標的歸檔與詳情', p: 'assets', k: '9' },
         { n: '我的配置', d: '右側持倉欄 · 回測/對比/結算', act: 'allocation', k: 'P' },
-        { n: '自選股', d: '自選列表', p: 'watchlist', k: '5' },
-        { n: '選股器', d: '全市場掃描', p: 'scanner', k: '6' },
-        { n: '預警', d: '條件預警', p: 'alerts', k: '7' },
-        { n: '風控', d: '風控規則', p: 'risk', k: '8' },
-        { n: '日誌', d: '交易紀錄', p: 'journal', k: '9' },
-        { n: '歷史', d: '回測歷史', p: 'backhistory' },
-        { n: 'AI 問答', d: '查詢數據、整合北向/板塊/個股', p: 'ai', k: 'A' },
-
+        { n: '回測歷史', d: '已完成回測', p: 'backhistory' },
+        { n: '資金流', d: '板塊資金與市場圖表', p: 'capitalflow' },
+        { n: 'AI 問答', d: '查詢數據、整合北向/板塊/個股', p: 'ai' },
         { n: '參數優化', d: 'Grid / Optuna', p: 'optimize' },
         { n: 'Walk-Forward', d: '滾動窗口驗證', p: 'walkforward' },
         { n: '參數熱力圖', d: '敏感性分析', p: 'heatmap' },
@@ -376,28 +487,66 @@
         { n: '加密行情', d: 'Binance 等', p: 'crypto' },
         { n: '連線檢查', d: '數據源可用性探測', p: 'connectivity' },
         { n: '運維健檢', d: 'SOP 狀態 · 數據源 · 管線', act: 'ops', k: 'O' },
-        { n: '定價', d: '方案', p: 'pricing' },
-        { n: '設定', d: '全局設定', p: 'settings' },
+        { n: '定價', d: '方案', p: 'pricing', k: '0' },
+        { n: '設定', d: '偏好、帳戶與登出', p: 'settings', k: '8' },
+        { n: '產品介紹頁', d: '功能概覽與系統入口', href: '/', k: 'Shift+H' },
+        { n: '登出', d: '結束目前工作階段', act: 'logout' },
       ];
 
+      const goBacktest = (code) => {
+        this.nav('backtest', { syncHash: true });
+        const setSym = window.StockQPro?.backtestSymbol?.setSymbol;
+        if (setSym) setSym(code);
+        else {
+          const el = document.getElementById('bt-code');
+          if (el) el.value = code;
+        }
+      };
+
       const getExtraItems = (q) => {
-        const qq = String(q || '').trim().toLowerCase();
+        const raw = String(q || '').trim();
+        const qq = raw.toLowerCase();
         const extra = [];
 
-        // strategies (local catalog)
+        if (!qq) {
+          const ctx = window.StockQPro?.WorkContext?.get?.();
+          if (ctx?.symbol) {
+            extra.push({
+              n: `繼續：${ctx.symbol} ${ctx.name || ''}`.trim(),
+              d: '用目前工作標的打開回測',
+              action: () => {
+                this.nav('backtest', { syncHash: true });
+                setTimeout(() => window.StockQPro?.WorkContext?.applyToPage?.('backtest'), 40);
+              },
+            });
+            extra.push({
+              n: `資產詳情：${ctx.symbol}`,
+              d: '打開資產庫',
+              action: () => this.openAsset(ctx.symbol),
+            });
+          }
+          (window.StockQPro?.Prefs?.get?.('recentPages') || []).slice(0, 6).forEach((pid) => {
+            extra.push({
+              n: PAGE_TITLE[pid] || pid,
+              d: '最近造訪',
+              action: () => this.nav(pid, { syncHash: true }),
+            });
+          });
+        }
+
         const catalog = window.StockQPro?.catalog;
         if (catalog?.strats?.length && qq) {
-          const hits = catalog.strats
+          catalog.strats
             .filter((s) => String(s.name || '').toLowerCase().includes(qq) || String(s.desc || '').toLowerCase().includes(qq))
-            .slice(0, 6);
-          hits.forEach((s) => extra.push({
-            n: `策略：${s.name}`,
-            d: (s.status === 'implemented' || s.status === 'user') ? '可回測' : '即將推出',
-            action: () => {
-              window.StockQPro?.App?.nav?.('strategies', { syncHash: true });
-              setTimeout(() => window.StockQPro?.showStratDetail?.(s.id), 50);
-            },
-          }));
+            .slice(0, 6)
+            .forEach((s) => extra.push({
+              n: `策略：${s.name}`,
+              d: (s.status === 'implemented' || s.status === 'user') ? '可回測' : '即將推出',
+              action: () => {
+                this.nav('strategies', { syncHash: true });
+                setTimeout(() => window.StockQPro?.showStratDetail?.(s.id), 50);
+              },
+            }));
         }
 
         if (!qq || /運維|sop|ops|健檢|health|維運/.test(qq)) {
@@ -419,19 +568,37 @@
           });
         }
 
-        // quick code to backtest
-        if (/^\d{3,6}$/.test(qq)) {
+        const code = raw.toUpperCase();
+        const looksCode = /^\d{3,6}$/.test(code) || /\.(HK|US)$/i.test(code)
+          || (/^[A-Z]{2,5}$/.test(code) && !pages.some((pg) => pg.n.toLowerCase().includes(qq)));
+        if (looksCode) {
           extra.unshift({
-            n: `回測：${qq}`,
+            n: `分析：${code}`,
+            d: '深度分析並帶入代碼',
+            action: () => {
+              this._setWork(code);
+              window.StockQPro?.WorkContext?.go?.('analysis');
+            },
+          });
+          extra.unshift({
+            n: `對比：${code}`,
+            d: '多股對比並帶入代碼',
+            action: () => {
+              this._setWork(code);
+              window.StockQPro?.WorkContext?.go?.('compare');
+            },
+          });
+          extra.unshift({
+            n: `資產詳情：${code}`,
+            d: '打開資產庫',
+            action: () => this.openAsset(code),
+          });
+          extra.unshift({
+            n: `回測：${code}`,
             d: '打開回測並填入代碼',
             action: () => {
-              this.nav('backtest', { syncHash: true });
-              if (window.StockQPro?.backtestSymbol?.setSymbol) {
-                window.StockQPro.backtestSymbol.setSymbol(qq);
-              } else {
-                const el = document.getElementById('bt-code');
-                if (el) el.value = qq;
-              }
+              this._setWork(code);
+              goBacktest(code);
             },
           });
         }
@@ -439,45 +606,15 @@
         return extra;
       };
 
-      const open = () => {
-        ov.classList.add('show');
-        ov.setAttribute('aria-hidden', 'false');
-        input.value = '';
-        input.focus();
-        render('');
+      const itemsOf = () => [...list.querySelectorAll('.cmd-item')];
+
+      const paintSel = () => {
+        const items = itemsOf();
+        items.forEach((el, i) => el.classList.toggle('sel', i === sel));
+        items[sel]?.scrollIntoView({ block: 'nearest' });
       };
 
-      const close = () => {
-        ov.classList.remove('show');
-        ov.setAttribute('aria-hidden', 'true');
-      };
-
-      const render = (q) => {
-        const qq = String(q || '').toLowerCase();
-        const filtered = pages.filter((p) => p.n.toLowerCase().includes(qq) || p.d.toLowerCase().includes(qq));
-        const extras = getExtraItems(q);
-        list.innerHTML =
-          extras.map((p, idx) => (
-            `<div class="cmd-item" data-cmd-extra="${idx}">` +
-              `<div class="cmd-item-info"><div class="cmd-item-name">${p.n}</div><div class="cmd-item-desc">${p.d}</div></div>` +
-            `</div>`
-          )).join('')
-          + filtered.map((p) => (
-            `<div class="cmd-item" data-cmd="${p.p || ''}" data-href="${p.href || ''}" data-act="${p.act || ''}">` +
-              `<div class="cmd-item-info"><div class="cmd-item-name">${p.n}</div><div class="cmd-item-desc">${p.d}</div></div>` +
-              (p.k ? `<div class="cmd-item-kb"><kbd>${p.k}</kbd></div>` : '') +
-            `</div>`
-          )).join('');
-
-        // attach extras to element for click dispatch
-        list._extras = extras;
-      };
-
-      if (openBtn) openBtn.addEventListener('click', open);
-      ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
-      input.addEventListener('input', () => render(input.value));
-      list.addEventListener('click', (e) => {
-        const item = e.target.closest('.cmd-item');
+      const runItem = (item) => {
         if (!item) return;
         const extraIdx = item.getAttribute('data-cmd-extra');
         if (extraIdx != null) {
@@ -498,6 +635,16 @@
           window.StockQPro?.Allocation?.setOpen?.(true);
           return;
         }
+        if (act === 'logout') {
+          close();
+          if (typeof Api !== 'undefined' && Api.isLoggedIn?.()) {
+            Api.logout?.();
+            this.toast('已登出', 'ok');
+          } else {
+            this.toast('尚未登錄', 'inf');
+          }
+          return;
+        }
         if (act === 'ops') {
           close();
           const mon = window.StockQPro?.services?.opsMonitor;
@@ -512,25 +659,99 @@
             .catch(() => this.toast('運維健檢失敗', 'er'));
           return;
         }
-        const p = item.getAttribute('data-cmd');
-        if (!p) return;
+        const pg = item.getAttribute('data-cmd');
+        if (!pg) return;
         close();
-        this.nav(p, { syncHash: true });
+        this.nav(pg, { syncHash: true });
+      };
+
+      const render = (q) => {
+        const qq = String(q || '').toLowerCase();
+        const filtered = pages.filter((pg) => !qq || pg.n.toLowerCase().includes(qq) || pg.d.toLowerCase().includes(qq));
+        const extras = getExtraItems(q);
+        list.innerHTML =
+          extras.map((item, idx) => (
+            `<div class="cmd-item" data-cmd-extra="${idx}">` +
+              `<div class="cmd-item-info"><div class="cmd-item-name">${esc(item.n)}</div><div class="cmd-item-desc">${esc(item.d)}</div></div>` +
+            `</div>`
+          )).join('')
+          + filtered.map((pg) => (
+            `<div class="cmd-item" data-cmd="${esc(pg.p || '')}" data-href="${esc(pg.href || '')}" data-act="${esc(pg.act || '')}">` +
+              `<div class="cmd-item-info"><div class="cmd-item-name">${esc(pg.n)}</div><div class="cmd-item-desc">${esc(pg.d)}</div></div>` +
+              (pg.k ? `<div class="cmd-item-kb"><kbd>${esc(pg.k)}</kbd></div>` : '') +
+            `</div>`
+          )).join('');
+        list._extras = extras;
+        sel = 0;
+        paintSel();
+      };
+
+      const open = () => {
+        ov.classList.add('show');
+        ov.setAttribute('aria-hidden', 'false');
+        input.value = '';
+        render('');
+        input.focus();
+      };
+
+      const close = () => {
+        ov.classList.remove('show');
+        ov.setAttribute('aria-hidden', 'true');
+      };
+
+      if (openBtn) openBtn.addEventListener('click', open);
+      ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+      input.addEventListener('input', () => render(input.value));
+      input.addEventListener('keydown', (e) => {
+        const n = itemsOf().length;
+        if (!n) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          sel = (sel + 1) % n;
+          paintSel();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          sel = (sel - 1 + n) % n;
+          paintSel();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          runItem(itemsOf()[sel]);
+        }
+      });
+      list.addEventListener('click', (e) => {
+        const item = e.target.closest('.cmd-item');
+        if (item) runItem(item);
+      });
+      list.addEventListener('mousemove', (e) => {
+        const item = e.target.closest('.cmd-item');
+        if (!item) return;
+        const items = itemsOf();
+        const i = items.indexOf(item);
+        if (i >= 0 && i !== sel) {
+          sel = i;
+          paintSel();
+        }
       });
 
-      this._cmd = { open, close };
+      this._cmd = { open, close, isOpen: () => ov.classList.contains('show') };
     },
 
     _bindShortcutsHelp() {
       const rows = [
-        ['Ctrl+K', '命令面板'],
-        ['?', '快捷鍵說明（本視窗）'],
-        ['O', '刷新運維 SOP 並開設定'],
+        ['Ctrl+K', '命令面板（↑↓ Enter）'],
+        ['/', '聚焦工作標的輸入'],
+        ['?', '快捷鍵說明'],
+        ['1–7', '總覽 / 回測 / 對比 / 組合 / 自選 / 選股 / 預警'],
+        ['8 / 9 / 0', '設定 / 資產庫 / 定價'],
         ['T', '任務中心'],
-        ['1–9', '切換主要頁面'],
-        ['H', '產品介紹頁'],
         ['S', '策略庫'],
-        ['R', '刷新任務（任務頁）'],
+        ['O', '運維 SOP'],
+        ['B', '用工作標的打開回測'],
+        ['C', '用工作標的打開對比'],
+        ['A', '用工作標的打開分析'],
+        ['P', '開關配置欄'],
+        ['Shift+H', '產品介紹頁'],
+        ['R', '任務頁刷新'],
         ['Esc', '關閉彈窗 / 命令面板'],
       ];
       const grid = rows.map(([k, d]) => (
@@ -564,19 +785,19 @@
       window.addEventListener('hashchange', () => this.navFromHash());
       document.addEventListener('keydown', (e) => {
         const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+        const cmdOpen = this._cmd?.isOpen?.();
 
         if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
           e.preventDefault();
           this._cmd?.open?.();
           return;
         }
-        if (e.key === '?' || (e.shiftKey && e.key === '/')) {
-          e.preventDefault();
-          this._shortcutsHelp?.open?.();
-          return;
-        }
         if (e.key === 'Escape') {
+          if (document.body.classList.contains('nav-open')) {
+            document.body.classList.remove('nav-open');
+            return;
+          }
           if (document.getElementById('pro-shortcuts-ov')) {
             this._shortcutsHelp?.close?.();
             return;
@@ -585,11 +806,57 @@
           this._cmd?.close?.();
           return;
         }
+        if (typing || cmdOpen) return;
 
-        const map = { '1':'dashboard','2':'backtest','3':'compare','4':'portfolio','5':'watchlist','6':'scanner','7':'alerts','8':'risk','9':'journal','0':'pricing' };
-        if (map[e.key]) this.nav(map[e.key], { syncHash: true });
-        if (e.key === 't' || e.key === 'T') this.nav('tasks', { syncHash: true });
+        if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+          e.preventDefault();
+          this._shortcutsHelp?.open?.();
+          return;
+        }
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+        const map = {
+          '1': 'dashboard', '2': 'backtest', '3': 'compare', '4': 'portfolio',
+          '5': 'watchlist', '6': 'scanner', '7': 'alerts', '8': 'settings',
+          '9': 'assets', '0': 'pricing',
+        };
+        if (map[e.key]) {
+          e.preventDefault();
+          this.nav(map[e.key], { syncHash: true });
+          return;
+        }
+        if (e.key === 't' || e.key === 'T') {
+          e.preventDefault();
+          this.nav('tasks', { syncHash: true });
+          return;
+        }
+        if (e.key === 'b' || e.key === 'B') {
+          e.preventDefault();
+          window.StockQPro?.WorkContext?.go?.('backtest');
+          return;
+        }
+        if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault();
+          window.StockQPro?.WorkContext?.go?.('compare');
+          return;
+        }
+        if (e.key === 'a' || e.key === 'A') {
+          e.preventDefault();
+          window.StockQPro?.WorkContext?.go?.('analysis');
+          return;
+        }
+        if (e.key === '/') {
+          e.preventDefault();
+          window.StockQPro?.WorkContext?.focusInput?.();
+          return;
+        }
+        if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          window.StockQPro?.Allocation?.toggle?.();
+          return;
+        }
         if (e.key === 'o' || e.key === 'O') {
+          e.preventDefault();
           const mon = window.StockQPro?.services?.opsMonitor;
           Promise.resolve(mon?.tick?.())
             .then((d) => {
@@ -603,18 +870,28 @@
               });
             })
             .catch(() => this.toast('運維健檢失敗', 'er'));
+          return;
         }
-        if (e.key === 'h' || e.key === 'H') { window.location.href = '/'; return; }
-        if (e.key === 's' || e.key === 'S') this.nav('strategies', { syncHash: true });
+        if ((e.key === 'h' || e.key === 'H') && e.shiftKey) {
+          window.location.href = '/';
+          return;
+        }
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          this.nav('strategies', { syncHash: true });
+          return;
+        }
         if (e.key === 'r' || e.key === 'R') {
           if (this.current === 'tasks') window.StockQPro?.Tasks?.refresh?.();
         }
       });
     },
+
   };
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.App = App;
+  window.StockQPro.openAsset = (sym) => App.openAsset(sym);
   window.StockQApp = App;
   window.StockQPro.pages = window.StockQPro.pages || {};
 

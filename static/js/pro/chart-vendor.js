@@ -22,6 +22,7 @@
     if (key.includes('lightweight-charts') && typeof LightweightCharts !== 'undefined') {
       return Promise.resolve();
     }
+    if (key.includes('anime') && typeof window.anime === 'function') return Promise.resolve();
     if (scriptAlreadyLoaded(key)) return Promise.resolve();
 
     const run = () => new Promise((resolve, reject) => {
@@ -55,11 +56,22 @@
     return LightweightCharts;
   }
 
+  async function ensureAnime() {
+    if (typeof window.anime === 'function') return window.anime;
+    try {
+      await loadScript('/static/vendor/anime.min.js');
+    } catch (_) {
+      await loadScript('https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js');
+    }
+    return window.anime;
+  }
+
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.charts = {
     ensureEcharts,
     ensureChartJs,
     ensureLightweightCharts,
+    ensureAnime,
     loadScript,
   };
 })();

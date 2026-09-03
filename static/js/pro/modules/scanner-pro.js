@@ -30,33 +30,61 @@
       const info = it.data || {};
       const price = info.current_price ?? info.close ?? '--';
       return `
-        <div class="scan-row">
+        <div class="scan-row" data-code="${code}" data-name="${name}" title="點擊設為工作標的">
           <span class="scan-row-code">${code}</span>
           <span class="scan-row-name">${name}</span>
           <span class="scan-row-price">${price}</span>
           <span class="badge b-bl">${passed || 'pass'}</span>
+          <button class="btn s" type="button" data-detail="${code}">詳情</button>
           <button class="btn s" type="button" data-bt="${code}">回測</button>
+          <button class="btn s" type="button" data-cmp="${code}">對比</button>
           <button class="btn s btn-gn" type="button" data-add="${code}" data-name="${name}">+ 自選</button>
         </div>
       `;
     }).join('');
 
+    res.querySelectorAll('.scan-row').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        const code = row.getAttribute('data-code');
+        const name = row.getAttribute('data-name') || '';
+        if (code) window.StockQPro?.WorkContext?.set?.(code, name);
+      });
+    });
+    const jump = (code, action) => {
+      window.StockQPro?.WorkContext?.set?.(code);
+      window.StockQPro?.WorkContext?.go?.(action);
+    };
     res.querySelectorAll('[data-bt]').forEach((b) => {
-      b.addEventListener('click', () => {
-        const code = b.getAttribute('data-bt');
-        window.StockQPro?.App?.nav?.('backtest', { syncHash: true });
-        if (window.StockQPro?.backtestSymbol?.setSymbol) {
-          window.StockQPro.backtestSymbol.setSymbol(code);
-        }
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        jump(b.getAttribute('data-bt'), 'backtest');
+      });
+    });
+    res.querySelectorAll('[data-cmp]').forEach((b) => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        jump(b.getAttribute('data-cmp'), 'compare');
+      });
+    });
+    res.querySelectorAll('[data-detail]').forEach((b) => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = b.getAttribute('data-detail');
+        window.StockQPro?.WorkContext?.set?.(code);
+        window.StockQPro?.WorkContext?.go?.('detail');
       });
     });
     res.querySelectorAll('[data-add]').forEach((b) => {
-      b.addEventListener('click', async () => {
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const code = b.getAttribute('data-add');
         const name = b.getAttribute('data-name') || '';
         const d = await Api.addToWatchlist(code, name, { auto_rule: true }).catch((e) => ({ error: e?.message || e }));
-        if (d?.success) window.StockQPro?.App?.toast?.(d.message || '已加入', 'ok');
-        else window.StockQPro?.App?.toast?.(d?.error || '加入失敗', 'er');
+        if (d?.success) {
+          window.StockQPro?.WorkContext?.set?.(code, name);
+          window.StockQPro?.App?.toast?.(d.message || '已加入', 'ok');
+        } else window.StockQPro?.App?.toast?.(d?.error || '加入失敗', 'er');
       });
     });
   }

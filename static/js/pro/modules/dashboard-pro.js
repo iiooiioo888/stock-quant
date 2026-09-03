@@ -75,7 +75,6 @@
     if (loadPromise) return loadPromise;
 
     loadPromise = (async () => {
-      await window.StockQPro?.charts?.ensureEcharts?.();
       ensureLayout();
       window.StockQPro?.CurrencyManager?.init('currency-toggle');
       const t0 = performance.now();
@@ -120,13 +119,79 @@
     console.warn(msg || '儀表盤載入異常');
   }
 
+  const FLOW = [
+    { p: 'data', n: '1 數據', d: '下載入庫' },
+    { p: 'backtest', n: '2 回測', d: '選標的跑策略' },
+    { p: 'optimize', n: '3 優化', d: '掃參數' },
+    { p: 'compare', n: '4 對比', d: '多股／多策略' },
+    { p: 'tasks', n: '5 任務', d: '看進度與結果' },
+    { p: 'watchlist', n: '自選', d: '關注與提醒' },
+    { p: 'assets', n: '資產庫', d: '個股詳情' },
+    { p: 'scanner', n: '選股', d: '條件掃描' },
+  ];
+
+  const PAGE_NAMES = {
+    dashboard: '總覽', tasks: '任務中心', watchlist: '自選股', scanner: '選股器',
+    alerts: '預警', strategies: '策略庫', backtest: '策略回測', compare: '對比',
+    portfolio: '持倉與淨值', backhistory: '回測歷史', optimize: '參數優化',
+    walkforward: '滾動驗證', heatmap: '熱力圖', reports: '策略報告',
+    assets: '資產庫', capitalflow: '資金流', data: '數據中心', analysis: '深度分析',
+    signals: '信號', markets: '市場', crypto: '加密', scheduler: '定時',
+    connectivity: '數據源', ai: 'AI', pricing: '定價', settings: '設定',
+  };
+
+  function renderFlow() {
+    const host = $id('dash-flow');
+    const recentHost = $id('dash-recent');
+    if (host) {
+      host.innerHTML = FLOW.map((f) => (
+        `<button type="button" class="dash-flow-chip" data-flow="${f.p}">` +
+        `<span class="dash-flow-n">${f.n}</span><span class="dash-flow-d">${f.d}</span>` +
+        `</button>`
+      )).join('');
+    }
+    if (recentHost) {
+      const rec = (window.StockQPro?.Prefs?.get?.('recentPages') || [])
+        .filter((p) => p && p !== 'dashboard');
+      if (!rec.length) {
+        recentHost.innerHTML = '';
+      } else {
+        recentHost.innerHTML = '<span class="dash-recent-lbl">最近</span>' + rec.map((p) => (
+          `<button type="button" class="ctag" data-flow="${p}">${PAGE_NAMES[p] || p}</button>`
+        )).join('');
+      }
+    }
+  }
+
   function bindUiOnce() {
     if (uiBound) return;
     uiBound = true;
 
+    document.getElementById('dash-open-cmd')?.addEventListener('click', () => {
+      window.StockQPro?.App?._cmd?.open?.();
+    });
+    document.getElementById('dash-launch-in')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const raw = String(e.target.value || '').trim();
+      if (!raw) return;
+      window.StockQPro?.WorkContext?.set?.(raw);
+      window.StockQPro?.WorkContext?.go?.('backtest');
+    });
+    document.getElementById('pg-dashboard')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-flow]');
+      if (!btn) return;
+      const p = btn.getAttribute('data-flow');
+      if (!p) return;
+      window.StockQPro?.WorkContext?.commitInput?.();
+      window.StockQPro?.App?.nav?.(p, { syncHash: true });
+      setTimeout(() => window.StockQPro?.WorkContext?.applyToPage?.(p), 80);
+    });
+
     const ticker = window.StockQPro?.services?.marketTicker;
     if (ticker?.subscribe && !unsubTicker) {
       unsubTicker = ticker.subscribe((payload) => {
+        if (window.StockQPro?.App?.current && window.StockQPro.App.current !== 'dashboard') return;
         if (!mounted) ensureLayout();
         renderQuoteBoard(payload);
         setUpdatedAt();
@@ -137,6 +202,8 @@
   function init() {
     ensureLayout();
     bindUiOnce();
+    renderFlow();
+    try { window.StockQPro?.WorkContext?.render?.(); } catch (_) {}
     load().catch((err) => {
       showLoadIssue('部分資料未載入，可點刷新重試');
       console.warn('儀表盤載入失敗', err);
@@ -144,15 +211,17 @@
   }
 
   function onShow() {
+    renderFlow();
     const cached = window.StockQPro?.services?.opsMonitor?.getLast?.();
     if (cached) window.StockQPro?.UI?.Dashboard?.renderOpsStatus?.(cached);
     else window.StockQPro?.services?.opsMonitor?.tick?.().catch(() => {});
     const ticker = window.StockQPro?.services?.marketTicker;
-    if (ticker?.ensureFullPayload) {
-      ticker.ensureFullPayload().then(() => load()).catch((err) => console.warn('儀表盤刷新失敗', err));
-    } else {
-      load().catch((err) => console.warn('儀表盤刷新失敗', err));
+    const cachedQuotes = ticker?.getPayload?.();
+    if (cachedQuotes?.indices?.length) {
+      renderQuoteBoard(cachedQuotes);
+      setUpdatedAt();
     }
+    load().catch((err) => console.warn('儀表盤刷新失敗', err));
   }
 
   window.StockQPro = window.StockQPro || {};

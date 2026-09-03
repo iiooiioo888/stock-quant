@@ -309,6 +309,17 @@
     if (state.mode === 'strategies' && state.strategySessionActive && c !== prevPrimary && !opts.skipEnqueue) {
       enqueueStrategyCompare(c, { silent: opts.silent });
     }
+    if (state.chips[0]) {
+      try { window.StockQPro?.WorkContext?.set?.(state.chips[0].code, state.chips[0].name); } catch (_) {}
+    }
+    return true;
+  }
+
+  function applyWorkSymbol(code, name = '') {
+    if (state.chips.length) return false;
+    const c = normalizeCode(code);
+    if (!isValidCompareSymbol(c)) return false;
+    addChip(c, name, { silent: true, skipEnqueue: true });
     return true;
   }
 
@@ -1662,7 +1673,9 @@
     loadChipsFromStorage();
     parseCompareFromHash();
     if (!state.chips.length) {
-      addChip('600519', '貴州茅台', { silent: true, skipEnqueue: true });
+      const ctx = window.StockQPro?.WorkContext?.get?.();
+      if (ctx?.symbol) addChip(ctx.symbol, ctx.name, { silent: true, skipEnqueue: true });
+      else addChip('600519', '貴州茅台', { silent: true, skipEnqueue: true });
     } else {
       renderChips();
     }
@@ -1676,6 +1689,10 @@
 
   function onShow() {
     parseCompareFromHash();
+    if (!state.chips.length) {
+      const ctx = window.StockQPro?.WorkContext?.get?.();
+      if (ctx?.symbol) applyWorkSymbol(ctx.symbol, ctx.name);
+    }
     renderChips();
     renderPresets();
     setMode(state.mode);
@@ -1721,5 +1738,6 @@
     onShow,
     unload,
     applyFromHash: parseCompareFromHash,
+    applyWorkSymbol,
   };
 })();

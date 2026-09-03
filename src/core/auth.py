@@ -210,13 +210,12 @@ async def require_admin(
 
 
 def ensure_default_admin():
-    """確保默認管理員賬號存在，並維持預設 admin/admin 可登入。"""
+    """確保默認管理員賬號存在；已存在時不覆蓋密碼。"""
     default_pw = (
         os.environ.get("SQ_DEMO_ADMIN_PASSWORD")
         or os.environ.get("SQ_DEFAULT_ADMIN_PASSWORD")
         or DEFAULT_ADMIN_PASSWORD
     )
-    pw_hash = hash_password(default_pw)
     existing = get_user_by_username(DEFAULT_ADMIN_USERNAME)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -224,13 +223,14 @@ def ensure_default_admin():
     with get_conn() as conn:
         if existing:
             # 僅確保 role 為 admin，不重置密碼（避免每次啟動覆蓋用戶修改的密碼）
-            if existing.get("role") != "admin":
+            if existing.role != "admin":
                 conn.execute(
                     "UPDATE users SET role = 'admin' WHERE username = ?",
                     (DEFAULT_ADMIN_USERNAME,),
                 )
             logger.info(f"管理員賬號 {DEFAULT_ADMIN_USERNAME} 已存在，跳過初始化。")
             return
+        pw_hash = hash_password(default_pw)
         conn.execute(
             """INSERT INTO users (username, password_hash, role, settings, created_at)
                VALUES (?, ?, 'admin', '{}', ?)""",

@@ -74,6 +74,15 @@ def collect_ops_snapshot() -> dict[str, Any]:
         errors.append(f"task_queue: {e}")
 
     try:
+        from src.core.ib_data import ib_status
+
+        snapshot["ib"] = ib_status(probe=False)
+        if snapshot["ib"].get("enabled") and snapshot["ib"].get("library"):
+            snapshot["ib"] = ib_status(probe=True)
+    except Exception as e:
+        snapshot["ib"] = {"error": str(e), "enabled": False}
+
+    try:
         raw_ds = ds_health_check()
         degraded = [
             cat for cat, info in raw_ds.items() if info.get("status") == "degraded"
@@ -365,6 +374,25 @@ def evaluate_ops_health(
                     "detail": f"健康 {ds.get('healthy_categories')}/{total} 類別",
                 }
             )
+
+    ib = snap.get("ib") if isinstance(snap.get("ib"), dict) else {}
+    if ib.get("enabled") and not ib.get("connected") and not ib.get("error"):
+        checks.append(
+            {
+                "id": "ib_tws",
+                "name": "Interactive Brokers",
+                "level": VERDICT_ATTENTION,
+                "ok": False,
+                "detail": (
+                    f"已啟用但未連上 TWS/Gateway "
+                    f"({ib.get('host')}:{ib.get('port')})"
+                ),
+            }
+        )
+        _bump(VERDICT_ATTENTION)
+        recommendations.append(
+            "啟動 TWS/IB Gateway 並開 API 端口，或將 .env 的 SQ_IB_ENABLED 設為 false"
+        )
 
     if worst == VERDICT_OK and not recommendations:
         recommendations.append("無需立即處置")

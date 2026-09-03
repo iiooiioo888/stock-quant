@@ -53,6 +53,7 @@
     { id: 'info', label: '資訊' },
     { id: 'financials', label: '財報' },
     { id: 'news', label: '動態' },
+    { id: 'third', label: '第三方' },
   ];
 
   const CHART_MODES = [
@@ -62,7 +63,7 @@
   ];
 
   const STOCK_GROUPS = new Set(['a_share', 'hk_stock', 'us_stock']);
-  const RENDER_PAGE = 72;
+  const RENDER_PAGE = 36;
 
   const state = {
     catalog: null,
@@ -83,6 +84,7 @@
     detailTab: 'quote',
     chartMode: 'line',
     detailPrice: null,
+    drawerMode: null,
   };
 
   function fmtMv(v) {
@@ -111,39 +113,136 @@
   }
 
   function openAsset(symbol) {
+    if (window.StockQPro?.App?.openAsset) {
+      window.StockQPro.App.openAsset(symbol);
+      return;
+    }
     const sym = normalizeAssetSymbol(symbol);
     if (!sym) return;
     location.hash = `#/asset/${encodeURIComponent(sym)}`;
     window.StockQPro?.App?.navFromHash?.();
   }
 
-  function setAssetsView(mode) {
-    const list = UI.id('assets-list-view');
+  function filterSummaryText() {
+    const parts = [];
+    if (state.viewScope === 'stocks') parts.push('股票專區');
+    else if (state.viewScope === 'tradeable') parts.push('可詳情');
+    else parts.push('完整目錄');
+    if (state.activeTheme && state.activeTheme !== 'all') {
+      const pack = (state.catalog?.theme_packs || []).find((p) => p.id === state.activeTheme);
+      parts.push(pack?.label || state.activeTheme);
+    }
+    if (state.activeL1 && state.activeL1 !== 'all') parts.push(state.activeL1);
+    if (state.activeL2 && state.activeL2 !== 'all') parts.push(state.activeL2);
+    if (state.activeL3 && state.activeL3 !== 'all') parts.push(state.activeL3);
+    if (state.activeSector && state.activeSector !== 'all') {
+      const labels = state.catalog?.sector_labels || state.catalog?.stock_sector_labels || {};
+      parts.push(labels[state.activeSector] || state.activeSector);
+    }
+    if (state.query) parts.push(`「${state.query}」`);
+    return parts.join(' · ');
+  }
+
+  function paintFilterSummary() {
+    const el = UI.id('assets-filter-summary');
+    if (el) el.textContent = filterSummaryText();
+  }
+
+  function ensureDrawerPortal() {
+    const drawer = UI.id('assets-drawer');
+    const backdrop = UI.id('assets-drawer-backdrop');
+    if (backdrop && backdrop.parentElement !== document.body) document.body.appendChild(backdrop);
+    if (drawer && drawer.parentElement !== document.body) document.body.appendChild(drawer);
+  }
+
+  function setDrawer(mode) {
+    ensureDrawerPortal();
+    state.drawerMode = mode;
+    const drawer = UI.id('assets-drawer');
+    const backdrop = UI.id('assets-drawer-backdrop');
+    const tools = UI.id('assets-tools-panel');
     const detail = UI.id('assets-detail-view');
-    if (mode === 'detail') {
-      if (list) list.classList.add('h');
-      if (detail) {
-        detail.classList.remove('h');
-        detail.style.removeProperty('display');
-      }
+    const title = UI.id('assets-drawer-title');
+    const desc = UI.id('assets-drawer-desc');
+    const ft = UI.id('assets-drawer-ft');
+    const toolsBtn = UI.id('assets-tools-open');
+    const open = !!mode;
+    if (drawer) {
+      drawer.hidden = false;
+      drawer.classList.toggle('assets-drawer--wide', mode === 'detail');
+      drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      if ('inert' in drawer) drawer.inert = !open;
+    }
+    if (backdrop) backdrop.hidden = false;
+    if (tools) tools.classList.toggle('h', mode !== 'tools');
+    if (detail) detail.classList.toggle('h', mode !== 'detail');
+    if (ft) ft.hidden = mode !== 'tools';
+    if (toolsBtn) {
+      toolsBtn.classList.toggle('on', mode === 'tools');
+      toolsBtn.setAttribute('aria-expanded', mode === 'tools' ? 'true' : 'false');
+    }
+    if (title) title.textContent = mode === 'detail' ? (state.detailSymbol || '資產詳情') : '篩選工具';
+    if (desc) {
+      desc.textContent = mode === 'detail'
+        ? '行情、圖表與快捷操作'
+        : '主題、行業與分層目錄';
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.classList.toggle('assets-drawer-open', open);
+      });
+    });
+    if (!open) {
+      disposeChart();
+      window.setTimeout(() => {
+        if (state.drawerMode) return;
+        if (drawer) drawer.hidden = true;
+        if (backdrop) backdrop.hidden = true;
+      }, 240);
     } else {
-      if (list) list.classList.remove('h');
-      if (detail) {
-        detail.classList.add('h');
-        detail.style.removeProperty('display');
-      }
+      requestAnimationFrame(() => {
+        try { state.chartInst?.resize?.(); } catch (_) {}
+      });
     }
   }
 
-  window.StockQPro = window.StockQPro || {};
-  window.StockQPro.openAsset = openAsset;
+  function closeDrawer({ resetHash = true } = {}) {
+    const wasDetail = state.drawerMode === 'detail';
+    setDrawer(null);
+    if (wasDetail) {
+      state.detailSymbol = null;
+      state.detailData = null;
+      if (resetHash && /^#\/asset\//.test(location.hash)) {
+        location.hash = '#/assets';
+      }
+      renderList({ animate: false });
+    }
+  }
 
   function showList() {
-    state.detailSymbol = null;
-    state.detailData = null;
-    setAssetsView('list');
-    disposeChart();
+    closeDrawer({ resetHash: true });
     renderList();
+  }
+
+  function resetToolsFilters() {
+    state.viewScope = 'stocks';
+    state.activeL1 = 'all';
+    state.activeL2 = 'all';
+    state.activeL3 = 'all';
+    state.activeSector = 'all';
+    state.activeTheme = 'all';
+    state.listLimit = RENDER_PAGE;
+    renderGroupPills();
+    loadQuotes();
+  }
+
+  function openToolsDrawer() {
+    if (state.drawerMode === 'tools') {
+      closeDrawer({ resetHash: false });
+      return;
+    }
+    setDrawer('tools');
+    renderGroupPills();
   }
 
   function showDetail(symbol) {
@@ -154,8 +253,10 @@
       state.detailData = null;
     }
     state.detailSymbol = sym;
-    setAssetsView('detail');
+    setDrawer('detail');
+    try { window.StockQPro?.WorkContext?.set?.(sym); } catch (_) {}
     renderDetail(sym);
+    renderList();
   }
 
   function fmtVol(v) {
@@ -249,7 +350,7 @@
     return rows;
   }
 
-  function renderList() {
+  function renderList(opts = {}) {
     const root = UI.id('assets-grid');
     const meta = UI.id('assets-meta');
     if (!root) return;
@@ -267,6 +368,7 @@
       const hint = [themeLbl, l1, l2, l3].filter(Boolean).join(' / ');
       meta.textContent = `顯示 ${rows.length} / ${total} 檔${hint ? ` · ${hint}` : ''}`;
     }
+    paintFilterSummary();
 
     if (!rows.length) {
       UI.mount(root, UI.h('div', { class: 'assets-empty' }, '沒有符合條件的標的'));
@@ -289,7 +391,7 @@
       const sectorLbl = inst.sector_label || '';
       const exchLbl = [inst.exchange, inst.currency].filter(Boolean).join(' · ');
       return UI.h('article', {
-        class: `asset-card asset-card--${pctCls}${canDetail ? '' : ' is-disabled'}`,
+        class: `asset-card asset-card--${pctCls}${canDetail ? '' : ' is-disabled'}${state.detailSymbol === inst.symbol ? ' is-on' : ''}`,
         dataset: { assetSymbol: inst.symbol },
         title: `${inst.name} (${inst.symbol})`,
         onClick: () => {
@@ -303,7 +405,7 @@
         ),
         UI.h('div', { class: 'asset-card-mid' },
           UI.h('span', { class: 'asset-card-price' }, norm.priceText),
-          UI.h('div', { class: 'asset-card-spark', html: Dash?.sparklineSvg?.(norm.kline, norm.dir) || '' }),
+          UI.h('div', { class: 'asset-card-spark', html: Dash?.sparklineSvg?.(norm.kline, norm.dir, 12) || '' }),
         ),
         UI.h('div', { class: 'asset-card-foot' },
           UI.h('span', { class: 'asset-card-sym' }, inst.symbol),
@@ -350,6 +452,13 @@
       ));
     }
     UI.mount(root, gridInner);
+    if (opts.animate !== false && !window.StockQPro?.Motion?.reduced?.()) {
+      try {
+        window.StockQPro?.Motion?.stagger?.(root.querySelectorAll('.asset-card'), {
+          step: 16, duration: 180, max: 6,
+        });
+      } catch (_) {}
+    }
   }
 
   function renderThemePacks() {
@@ -527,7 +636,7 @@
     const curL1 = state.activeL1 !== 'all' ? state.activeL1 : null;
     const l2Map = curL1 ? (l1?.[curL1]?.l2 || null) : null;
     const l2Order = curL1 && Array.isArray(l1?.[curL1]?.l2_order) ? l1[curL1].l2_order : (l2Map ? Object.keys(l2Map) : []);
-    const l2Total = curL1 ? (l1?.[curL1]?.count || 0) : totalAll;
+    const l2Total = curL1 ? (l1?.[curL1]?.count || 0) : countInScope('all');
 
     const pillsL2 = (curL1 && l2Map)
       ? [
@@ -590,14 +699,18 @@
       ]
       : [];
 
-    UI.mount(el, UI.h('div', null,
+    UI.mount(el, UI.h('div', { class: 'assets-tools-filters' },
+      UI.h('p', { class: 'assets-tools-sec' }, '範圍'),
       UI.h('div', { class: 'assets-pills-row assets-pills-row--scope' }, ...renderScopePills()),
+      UI.h('p', { class: 'assets-tools-sec' }, '主題包'),
       ...renderThemePacks(),
-      renderSectorPills(),
+      UI.h('p', { class: 'assets-tools-sec' }, '行業 / 分層'),
+      ...renderSectorPills(),
       UI.h('div', { class: 'assets-pills-row' }, ...pillsL1),
       pillsL2.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL2) : null,
       pillsL3.length ? UI.h('div', { class: 'assets-pills-row', style: { marginTop: '6px' } }, ...pillsL3) : null,
     ));
+    paintFilterSummary();
   }
 
   function buildGroupsFromInstruments(instruments) {
@@ -724,28 +837,25 @@
     }
   }
 
-  function chartsScopeForView() {
-    if (state.viewScope === 'stocks') return 'stocks';
-    if (state.viewScope === 'tradeable') return 'tradeable';
-    return null;
-  }
-
   async function loadQuotes() {
-    const scope = chartsScopeForView();
-    if (!scope) {
-      state.quotesBySym = {};
-      renderList();
+    const rows = filteredInstruments();
+    const visible = rows.slice(0, state.listLimit);
+    const symbols = visible.map((r) => r.symbol).filter(Boolean);
+    if (!symbols.length) {
+      renderList({ animate: false });
       return;
     }
     try {
-      const days = Number(window.StockQPro?.Prefs?.get?.('chartDays')) || 90;
-      const data = await Api.getIndicesCharts(days, scope);
-      const map = {};
+      const data = await Api.get(
+        `/api/indices/charts?days=14&scope=custom&symbols=${encodeURIComponent(symbols.join(','))}`,
+        { silent: true },
+      );
+      const map = { ...state.quotesBySym };
       (data.indices || []).forEach((item) => {
         if (item.symbol) map[item.symbol] = item;
       });
       state.quotesBySym = map;
-      renderList();
+      renderList({ animate: false });
     } catch (e) {
       console.warn('資產庫報價載入失敗', e);
     }
@@ -828,7 +938,11 @@
 
   function renderMainChart(mode, kline) {
     const dom = UI.id('asset-detail-chart');
-    if (!dom || !window.echarts) return;
+    if (!dom) return;
+    if (!window.echarts) {
+      window.StockQPro?.charts?.ensureEcharts?.().then(() => renderMainChart(mode, kline)).catch(() => {});
+      return;
+    }
     disposeChart();
 
     const { dates, closes, ohlc, vols, ok } = parseKlineSeries(kline);
@@ -989,6 +1103,45 @@
     return UI.h('div', { class: 'asset-panel asset-panel--info' }, ...blocks);
   }
 
+  function renderWidgetFrame(w) {
+    if (!w?.src) return null;
+    const host = UI.h('div', { class: 'asset-widget' },
+      UI.h('h4', { class: 'asset-widget-title' }, w.title || '第三方元件'),
+      UI.h('button', {
+        type: 'button',
+        class: 'asset-widget-load',
+        onClick: (ev) => {
+          const btn = ev.currentTarget;
+          const frame = UI.h('iframe', {
+            class: 'asset-widget-frame',
+            src: w.src,
+            title: w.title || '第三方',
+            loading: 'lazy',
+            referrerpolicy: 'no-referrer-when-downgrade',
+          });
+          btn.replaceWith(frame);
+        },
+      }, `載入 ${w.title || '第三方元件'}（較重，按需開啟）`),
+    );
+    return host;
+  }
+
+  function renderThirdPanel(d) {
+    const widgets = Array.isArray(d.widgets) ? d.widgets : [];
+    const frames = widgets.map(renderWidgetFrame).filter(Boolean);
+    const links = Array.isArray(d.links) ? d.links : [];
+    const blocks = [];
+    if (frames.length) {
+      blocks.push(renderSection('即時元件', UI.h('div', { class: 'asset-widget-stack' }, ...frames)));
+    } else {
+      blocks.push(UI.h('p', { class: 'assets-hint' }, '此標的尚未對應 TradingView 代碼，改用外部網站。'));
+    }
+    if (links.length) {
+      blocks.push(renderSection('更多來源', renderLinks(links)));
+    }
+    return UI.h('div', { class: 'asset-panel asset-panel--third' }, ...blocks);
+  }
+
   function renderNewsPanel(d) {
     const blocks = [];
     blocks.push(renderSection('新聞與資訊', renderNews(d.news)));
@@ -1019,6 +1172,7 @@
       info: renderInfoPanel,
       financials: (data) => UI.h('div', { class: 'asset-panel' }, renderFinancials(data.financials, data.market)),
       news: renderNewsPanel,
+      third: renderThirdPanel,
     };
     const render = panels[state.detailTab];
     UI.mount(body, render ? render(d) : UI.h('div', { class: 'assets-empty' }, '暫無內容'));
@@ -1054,14 +1208,6 @@
 
     return UI.h('header', { class: 'asset-detail-hero' },
       UI.h('div', { class: 'asset-detail-hero-left' },
-        UI.h('button', {
-          type: 'button',
-          class: 'btn btn-s btn-bl asset-back-btn',
-          onClick: () => {
-            location.hash = '#/assets';
-            showList();
-          },
-        }, '← 返回資產庫'),
         UI.h('div', { class: 'asset-detail-title' },
           UI.h('h1', null, d.name || symbol),
           UI.h('div', { class: 'asset-detail-sub' },
@@ -1135,12 +1281,59 @@
     }
   }
 
+  function goWithSymbol(page, symbol) {
+    try { window.StockQPro?.WorkContext?.set?.(symbol); } catch (_) {}
+    window.StockQPro?.App?.nav?.(page, { syncHash: true });
+  }
+
+  function addToAllocation(symbol, name) {
+    if (window.StockQPro?.Allocation?.add) {
+      window.StockQPro.Allocation.add({ code: symbol, name, quantity: 100 });
+      window.StockQPro.Allocation.setOpen?.(true);
+    } else {
+      window.StockQPro?.App?.toast?.('配置欄載入中，請稍後再試', 'inf');
+    }
+  }
+
+  async function addToWatchlist(symbol) {
+    try {
+      await Api.post(`/api/watchlist/add?code=${encodeURIComponent(symbol)}`);
+      window.StockQPro?.App?.toast?.(`已加入自選：${symbol}`, 'ok');
+    } catch (e) {
+      window.StockQPro?.App?.toast?.(e?.message || '加入自選失敗', 'err');
+    }
+  }
+
   function mountDetailShell(d, symbol) {
     const root = UI.id('assets-detail-root');
     if (!root) return;
+    const title = UI.id('assets-drawer-title');
+    if (title) title.textContent = d.name || symbol;
 
     UI.mount(root, UI.h('div', { class: 'asset-detail-wrap' },
       buildDetailHero(d, symbol),
+      UI.h('div', { class: 'asset-detail-tools' },
+        UI.h('button', {
+          type: 'button', class: 'btn s',
+          onClick: () => addToAllocation(symbol, d.name),
+        }, '+ 配置'),
+        UI.h('button', {
+          type: 'button', class: 'btn s',
+          onClick: () => addToWatchlist(symbol),
+        }, '+ 自選'),
+        UI.h('button', {
+          type: 'button', class: 'btn s',
+          onClick: () => goWithSymbol('backtest', symbol),
+        }, '回測'),
+        UI.h('button', {
+          type: 'button', class: 'btn s',
+          onClick: () => goWithSymbol('compare', symbol),
+        }, '對比'),
+        UI.h('button', {
+          type: 'button', class: 'btn s',
+          onClick: () => goWithSymbol('analysis', symbol),
+        }, '分析'),
+      ),
       UI.h('nav', { class: 'asset-detail-tabs', 'aria-label': '資產詳情分頁' },
         ...DETAIL_TABS.map((t) => detailTabBtn(t)),
       ),
@@ -1236,7 +1429,9 @@
     try {
       const days = Number(window.StockQPro?.Prefs?.get?.('chartDays')) || 180;
       const res = await Api.getAssetDetail(sym, days);
+      if (!res) throw new Error('無詳情資料');
       const d = res.detail || res;
+      if (!d || typeof d !== 'object') throw new Error('無詳情資料');
       state.detailData = d;
       state.detailPrice = null;
       mountDetailShell(d, sym);
@@ -1248,8 +1443,8 @@
         UI.h('button', {
           type: 'button',
           class: 'btn btn-s',
-          onClick: () => showList(),
-        }, '返回列表'),
+          onClick: () => closeDrawer({ resetHash: true }),
+        }, '關閉'),
       ));
     }
   }
@@ -1264,12 +1459,53 @@
           renderList();
         });
       }
-      const backBtn = document.querySelector('[data-assets-back]');
-      if (backBtn && !backBtn.dataset.bound) {
-        backBtn.dataset.bound = '1';
-        backBtn.addEventListener('click', () => {
-          location.hash = '#/assets';
-          showList();
+      ensureDrawerPortal();
+      const toolsBtn = UI.id('assets-tools-open');
+      if (toolsBtn && !toolsBtn.dataset.bound) {
+        toolsBtn.dataset.bound = '1';
+        toolsBtn.addEventListener('click', () => openToolsDrawer());
+      }
+      const summaryBtn = UI.id('assets-filter-summary');
+      if (summaryBtn && !summaryBtn.dataset.bound) {
+        summaryBtn.dataset.bound = '1';
+        summaryBtn.addEventListener('click', () => {
+          if (state.drawerMode !== 'tools') openToolsDrawer();
+        });
+      }
+      const closeBtn = UI.id('assets-drawer-close');
+      if (closeBtn && !closeBtn.dataset.bound) {
+        closeBtn.dataset.bound = '1';
+        closeBtn.addEventListener('click', () => closeDrawer({ resetHash: true }));
+      }
+      const doneBtn = UI.id('assets-tools-done');
+      if (doneBtn && !doneBtn.dataset.bound) {
+        doneBtn.dataset.bound = '1';
+        doneBtn.addEventListener('click', () => closeDrawer({ resetHash: false }));
+      }
+      const resetBtn = UI.id('assets-tools-reset');
+      if (resetBtn && !resetBtn.dataset.bound) {
+        resetBtn.dataset.bound = '1';
+        resetBtn.addEventListener('click', () => resetToolsFilters());
+      }
+      const backdrop = UI.id('assets-drawer-backdrop');
+      if (backdrop && !backdrop.dataset.bound) {
+        backdrop.dataset.bound = '1';
+        backdrop.addEventListener('click', () => closeDrawer({ resetHash: true }));
+      }
+      if (!document.body.dataset.assetsDrawerEsc) {
+        document.body.dataset.assetsDrawerEsc = '1';
+        document.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape' && state.drawerMode) {
+            closeDrawer({ resetHash: true });
+          }
+        });
+      }
+      if (!window.__assetsDrawerResizeBound) {
+        window.__assetsDrawerResizeBound = true;
+        window.addEventListener('resize', () => {
+          if (state.drawerMode === 'detail') {
+            try { state.chartInst?.resize?.(); } catch (_) {}
+          }
         });
       }
       if (state.detailSymbol) {
@@ -1289,16 +1525,13 @@
     },
 
     showList,
+    openTools: openToolsDrawer,
+    unload() {
+      closeDrawer({ resetHash: false });
+    },
   };
 
   window.StockQPro = window.StockQPro || {};
   window.StockQPro.pages = window.StockQPro.pages || {};
   window.StockQPro.pages.assets = Pages;
-
-  document.addEventListener('click', (e) => {
-    const card = e.target.closest('.ticker-card[data-symbol]');
-    if (!card?.dataset?.symbol) return;
-    if (e.target.closest('a')) return;
-    openAsset(card.dataset.symbol);
-  });
 })();

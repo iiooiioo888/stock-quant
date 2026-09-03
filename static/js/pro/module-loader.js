@@ -1,14 +1,12 @@
 /* global StockQPro */
 (() => {
   const ROOT = '/static/js/pro/modules/';
-  const V = 'stockq-pro-stream-20260527';
+  const V = 'gui-ux-20260903g';
 
   const PAGE_CHARTS = {
-    dashboard: ['echarts'],
     capitalflow: ['echarts'],
     compare: ['echarts'],
     backtest: ['echarts'],
-    assets: ['echarts'],
     watchlist: ['echarts'],
   };
 

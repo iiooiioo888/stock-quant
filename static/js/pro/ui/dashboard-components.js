@@ -203,7 +203,7 @@
     return map[name] || String(name || '').slice(0, 4);
   }
 
-  /** 分組掛牌（按 group_order 排序，每組只顯示該 group 標的） */
+  /** 分組掛牌：一次只顯示一組，避免整頁被市場卡片撐爆 */
   D.QuoteBoardGrouped = (root, payload = {}) => {
     const el = typeof root === 'string' ? UI.id(root) : root;
     if (!el) return;
@@ -247,38 +247,79 @@
       D.QuoteBoard(el, flat);
       return;
     }
-
-    const sections = groupList.map((g) => (
-      UI.h('div', { class: 'quote-board-section', dataset: { group: g.id } },
-        UI.h('div', { class: 'quote-board-section-head' },
-          UI.h('h3', { class: 'quote-board-section-title' }, g.label),
-          UI.h('span', { class: 'quote-board-section-count' }, `${g.items.length} 檔`),
-        ),
-        UI.h('div', { class: 'quote-board-grid' },
-          ...g.items.map((q) => D.IndexTickerCard(q, { compact: false })),
-        ),
-      )
-    ));
-
-    const totalCards = groupList.reduce((n, g) => n + g.items.length, 0);
-    if (totalCards <= 96) {
-      UI.mount(el, UI.h('div', { class: 'quote-board-grouped' }, ...sections));
+    if (!groupList.length) {
+      el.innerHTML = '<div class="dash-empty">行情載入中…</div>';
       return;
     }
 
-    UI.clear(el);
-    const wrap = UI.h('div', { class: 'quote-board-grouped' });
-    el.appendChild(wrap);
-    let idx = 0;
-    const batch = 2;
-    const paint = () => {
-      const end = Math.min(idx + batch, sections.length);
-      for (; idx < end; idx += 1) wrap.appendChild(sections[idx]);
-      if (idx < sections.length) {
-        requestAnimationFrame(paint);
-      }
+    let active = D._quoteGroup || '';
+    if (!active) {
+      try { active = sessionStorage.getItem('stockq:dash_qg') || ''; } catch (_) {}
+    }
+    if (!active) active = window.StockQPro?.Prefs?.get?.('dashQuoteGroup') || '';
+    if (!groupList.some((g) => g.id === active)) active = groupList[0].id;
+    const current = groupList.find((g) => g.id === active) || groupList[0];
+
+    const paintGrid = (grid, items) => {
+      const existing = new Map();
+      grid.querySelectorAll('.ticker-card[data-symbol]').forEach((card) => {
+        const sym = (card.dataset.symbol || '').toUpperCase();
+        if (sym) existing.set(sym, card);
+      });
+      const next = [];
+      (items || []).forEach((raw) => {
+        const sym = String(raw.symbol || '').toUpperCase();
+        let card = sym ? existing.get(sym) : null;
+        if (card) {
+          D.updateTickerCardEl(card, raw);
+          existing.delete(sym);
+        } else {
+          card = D.IndexTickerCard(raw, { compact: false });
+        }
+        next.push(card);
+      });
+      next.forEach((card) => grid.appendChild(card));
+      existing.forEach((stale) => stale.remove());
     };
-    requestAnimationFrame(paint);
+
+    let tabs = el.querySelector('.quote-board-tabs');
+    let grid = el.querySelector('.quote-board-grid');
+    if (!tabs || !grid) {
+      UI.clear(el);
+      tabs = UI.h('div', { class: 'quote-board-tabs', role: 'tablist', 'aria-label': '市場分組' });
+      grid = UI.h('div', { class: 'quote-board-grid' });
+      el.appendChild(tabs);
+      el.appendChild(grid);
+    }
+
+    const sig = groupList.map((g) => `${g.id}:${g.items.length}`).join('|');
+    if (tabs.dataset.sig !== sig) {
+      tabs.dataset.sig = sig;
+      tabs.innerHTML = groupList.map((g) => (
+        `<button type="button" class="quote-board-tab" data-quote-group="${g.id}" role="tab">${UI.escapeHtml(g.label)}<small>${g.items.length}</small></button>`
+      )).join('');
+    }
+    tabs.querySelectorAll('[data-quote-group]').forEach((btn) => {
+      const on = btn.getAttribute('data-quote-group') === current.id;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    paintGrid(grid, current.items);
+
+    if (!el.dataset.boundTabs) {
+      el.dataset.boundTabs = '1';
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-quote-group]');
+        if (!btn || !el.contains(btn)) return;
+        const id = btn.getAttribute('data-quote-group');
+        if (!id || btn.classList.contains('on')) return;
+        D._quoteGroup = id;
+        try { sessionStorage.setItem('stockq:dash_qg', id); } catch (_) {}
+        if (el._quotePayload) D.QuoteBoardGrouped(el, el._quotePayload);
+      });
+    }
+    el._quotePayload = payload;
   };
 
   D.ProviderBadges = (providers = {}) => {
@@ -350,11 +391,44 @@
   /** 儀表盤頁面骨架（組件組裝） */
   D.buildPageLayout = () => (
     UI.h('div', { class: 'dash-page' },
+      UI.h('section', { class: 'dash-launch', id: 'dash-launch' },
+        UI.h('div', { class: 'dash-launch-copy' },
+          UI.h('h2', { class: 'dash-title' }, '從這裡開始'),
+          UI.h('p', { class: 'dash-launch-hint', id: 'dash-launch-name' }, '輸入代碼後直接回測、對比或分析，不必每頁重填'),
+        ),
+        UI.h('div', { class: 'dash-launch-row' },
+          UI.h('input', {
+            type: 'text',
+            class: 'inp dash-launch-in',
+            id: 'dash-launch-in',
+            placeholder: '600519 / 00700.HK / AAPL.US',
+            autocomplete: 'off',
+            spellcheck: 'false',
+          }),
+          UI.h('button', { type: 'button', class: 'btn btn-ac', dataset: { ctxGo: 'backtest' } }, '回測'),
+          UI.h('button', { type: 'button', class: 'btn s', dataset: { ctxGo: 'compare' } }, '對比'),
+          UI.h('button', { type: 'button', class: 'btn s', dataset: { ctxGo: 'analysis' } }, '分析'),
+          UI.h('button', { type: 'button', class: 'btn s', dataset: { ctxGo: 'detail' } }, '詳情'),
+          UI.h('button', { type: 'button', class: 'btn s', dataset: { ctxGo: 'watchlist' } }, '自選'),
+        ),
+      ),
+      UI.h('section', { class: 'dash-toolbar' },
+        UI.h('div', { class: 'dash-flow', id: 'dash-flow' }),
+        UI.h('div', { class: 'dash-toolbar-right' },
+          UI.h('div', { class: 'dash-recent', id: 'dash-recent' }),
+          UI.h('button', { type: 'button', class: 'btn s', id: 'dash-open-cmd' }, '搜尋 Ctrl+K'),
+        ),
+      ),
+      UI.h('section', { class: 'dash-section dash-section--tight' },
+        UI.h('div', { class: 'dash-ops-row' },
+          D.OpsStatusCardShell(),
+          UI.h('div', { class: 'dash-kpi-row', id: 'dash-kpi-row' }),
+        ),
+      ),
       UI.h('section', { class: 'dash-section' },
         UI.h('div', { class: 'dash-section-head' },
           UI.h('div', {},
-            UI.h('p', { class: 'dash-eyebrow' }, 'Market Overview'),
-            UI.h('h2', { class: 'dash-title' }, '全球市場掛牌'),
+            UI.h('h2', { class: 'dash-title' }, '市場掛牌'),
           ),
           UI.h('div', { class: 'dash-section-actions' },
             UI.h('span', { class: 'dash-provider-badges', id: 'dash-provider-badges' }),
@@ -366,7 +440,6 @@
       UI.h('section', { class: 'dash-section dash-section--portfolio' },
         UI.h('div', { class: 'dash-section-head' },
           UI.h('div', {},
-            UI.h('p', { class: 'dash-eyebrow' }, 'Portfolio'),
             UI.h('h2', { class: 'dash-title' }, '多幣種資產結算'),
           ),
         ),
@@ -389,12 +462,6 @@
               UI.h('div', { id: 'portfolio-trend-chart', class: 'portfolio-trend-chart', style: 'height:200px;width:100%' }),
             ),
           ),
-        ),
-      ),
-      UI.h('section', { class: 'dash-section dash-section--tight' },
-        UI.h('div', { class: 'dash-ops-row' },
-          D.OpsStatusCardShell(),
-          UI.h('div', { class: 'dash-kpi-row', id: 'dash-kpi-row' }),
         ),
       ),
     )

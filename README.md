@@ -89,7 +89,7 @@ docker compose up -d --build
 # 加上 Nginx 反向代理（端口 80）
 docker compose --profile proxy up -d
 
-# 僅啟動應用、不用 Redis（僅容器內 LRU 緩存）
+# 僅啟動應用、不用 Redis（僅容器內 LRU 緩存；Compose 不會自動拉起 redis）
 SQ_REDIS_ENABLED=false docker compose up -d app
 ```
 

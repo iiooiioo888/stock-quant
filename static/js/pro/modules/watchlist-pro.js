@@ -63,6 +63,8 @@
         <td class="wl-actions">
           <button class="btn btn-s btn-bl" type="button" data-detail="${it.code}" title="詳情">詳情</button>
           <button class="btn btn-s btn-gn" type="button" data-bt="${it.code}" title="回測">回測</button>
+          <button class="btn btn-s" type="button" data-cmp="${it.code}" title="對比">對比</button>
+          <button class="btn btn-s" type="button" data-an="${it.code}" title="分析">分析</button>
           <button class="btn btn-s btn-rd" type="button" data-rm="${it.code}" title="移除">移除</button>
         </td>
       </tr>`;
@@ -72,7 +74,7 @@
       tr.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
         const code = tr.getAttribute('data-code');
-        if (code) selectRow(code);
+        if (code) selectRow(code, true);
       });
     });
 
@@ -80,13 +82,25 @@
       b.addEventListener('click', (ev) => {
         ev.stopPropagation();
         const c = b.getAttribute('data-bt');
-        window.StockQPro?.App?.nav?.('backtest', { syncHash: true });
-        if (window.StockQPro?.backtestSymbol?.setSymbol) {
-          window.StockQPro.backtestSymbol.setSymbol(c);
-        } else {
-          const inp = $id('bt-code');
-          if (inp) inp.value = c;
-        }
+        const nm = b.closest('tr')?.querySelector('td:nth-child(2)')?.textContent || '';
+        window.StockQPro?.WorkContext?.set?.(c, nm);
+        window.StockQPro?.WorkContext?.go?.('backtest');
+      });
+    });
+    tb.querySelectorAll('[data-cmp]').forEach((b) => {
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const c = b.getAttribute('data-cmp');
+        window.StockQPro?.WorkContext?.set?.(c);
+        window.StockQPro?.WorkContext?.go?.('compare');
+      });
+    });
+    tb.querySelectorAll('[data-an]').forEach((b) => {
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const c = b.getAttribute('data-an');
+        window.StockQPro?.WorkContext?.set?.(c);
+        window.StockQPro?.WorkContext?.go?.('analysis');
       });
     });
 
@@ -192,12 +206,17 @@
     rtTimer = setInterval(() => refreshRealtimeOnce().catch(() => {}), ms);
   }
 
-  async function selectRow(code) {
+  async function selectRow(code, syncWork = false) {
     selectedCode = code;
     const rows = Array.from(document.querySelectorAll('.wl-row'));
     rows.forEach((tr) => {
       tr.classList.toggle('wl-row--sel', tr.getAttribute('data-code') === code);
     });
+    if (syncWork) {
+      const name = rows.find((tr) => tr.getAttribute('data-code') === code)
+        ?.querySelector('td:nth-child(2)')?.textContent || '';
+      try { window.StockQPro?.WorkContext?.set?.(code, name); } catch (_) {}
+    }
     await drawMiniKline(code);
   }
 
@@ -247,13 +266,12 @@
     const cnt = $id('wl-count');
     if (cnt) cnt.textContent = `${items.length} 只`;
     startRealtime();
-    if (!selectedCode && items.length) {
-      await selectRow(items[0].code);
-    } else if (selectedCode && items.some((x) => x.code === selectedCode)) {
-      await selectRow(selectedCode);
-    } else if (items.length) {
-      await selectRow(items[0].code);
-    }
+    const work = window.StockQPro?.WorkContext?.get?.()?.symbol || '';
+    const work6 = String(work).replace(/\D/g, '').slice(-6);
+    const prefer = items.find((x) => x.code === selectedCode)
+      || items.find((x) => x.code === work || x.code === work6)
+      || items[0];
+    if (prefer) await selectRow(prefer.code, false);
   }
 
   async function add() {
@@ -278,7 +296,7 @@
       if (nameInput) nameInput.value = '';
       if (Array.isArray(d.items) && d.items.length) renderTable(d.items);
       await load();
-      await selectRow(code);
+      await selectRow(code, true);
     } else {
       window.StockQPro?.App?.toast?.(d.detail || d.message || '添加失敗', 'er');
     }

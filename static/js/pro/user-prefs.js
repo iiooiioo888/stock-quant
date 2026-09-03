@@ -18,8 +18,23 @@
     assetDetailTab: 'chart',
     /** HKD | MOP | USD | CNY */
     preferredCurrency: 'MOP',
+    /** 側欄分組展開（不自動收合其他組） */
+    navGroupsOpen: {
+      workbench: true,
+      backtest: true,
+      data: false,
+      labs: false,
+      system: false,
+    },
+    /** 最近造訪頁面 id */
+    recentPages: [],
+    /** 跨頁工作標的 */
+    lastSymbol: '',
+    lastSymbolName: '',
+    /** 總覽掛牌目前分組 */
+    dashQuoteGroup: '',
     /** 右側個人資產配置欄 */
-    allocationRailOpen: true,
+    allocationRailOpen: false,
     allocationWeightMode: 'market_value',
     allocationPortfolioStrategy: 'dual_ma',
   };
@@ -56,6 +71,13 @@
       .map((s) => String(s || '').trim().toUpperCase())
       .filter(Boolean)
       .slice(0, 36);
+    if (!cache.navGroupsOpen || typeof cache.navGroupsOpen !== 'object') {
+      cache.navGroupsOpen = { ...DEFAULTS.navGroupsOpen };
+    }
+    if (!Array.isArray(cache.recentPages)) cache.recentPages = [];
+    cache.recentPages = cache.recentPages.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 8);
+    cache.lastSymbol = String(cache.lastSymbol || '').trim().toUpperCase().slice(0, 24);
+    cache.lastSymbolName = String(cache.lastSymbolName || '').trim().slice(0, 32);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
     apply();
     dispatchChange();
