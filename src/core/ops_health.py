@@ -76,9 +76,8 @@ def collect_ops_snapshot() -> dict[str, Any]:
     try:
         from src.core.ib_data import ib_status
 
+        # HTTP SOP 禁止 probe=True：連 TWS 會卡住事件迴圈／工作執行緒
         snapshot["ib"] = ib_status(probe=False)
-        if snapshot["ib"].get("enabled") and snapshot["ib"].get("library"):
-            snapshot["ib"] = ib_status(probe=True)
     except Exception as e:
         snapshot["ib"] = {"error": str(e), "enabled": False}
 

@@ -111,7 +111,9 @@
       UI.h('div', { class: ['ticker-card-mid', topbar ? 'ticker-card-mid--topbar' : ''].filter(Boolean).join(' ') },
         UI.h('span', { class: 'ticker-card-price' }, q.priceText),
         (topbar || !compact)
-          ? UI.h('div', { class: ['ticker-card-spark', topbar ? 'ticker-card-spark--mini' : ''].filter(Boolean).join(' '), html: D.sparklineSvg(q.kline, q.dir, sparkPts) })
+          ? (topbar
+            ? null
+            : UI.h('div', { class: 'ticker-card-spark', html: D.sparklineSvg(q.kline, q.dir, sparkPts) }))
           : null,
       ),
       topbar || compact ? null : UI.h('div', { class: 'ticker-card-foot' },
@@ -267,7 +269,7 @@
         if (sym) existing.set(sym, card);
       });
       const next = [];
-      const capped = (items || []).slice(0, 32);
+      const capped = (items || []).slice(0, 24);
       capped.forEach((raw) => {
         const sym = String(raw.symbol || '').toUpperCase();
         let card = sym ? existing.get(sym) : null;
@@ -548,7 +550,7 @@
       pct.className = `ticker-card-pct ticker-card-pct--${q.toneClass}`;
     }
     if (spark) {
-      const fp = `${q.priceText}|${q.pctText}|${q.dir}|${(q.kline || []).length}`;
+      const fp = `${q.priceText}|${q.pctText}|${q.dir}`;
       if (spark.dataset.fp === fp) return;
       spark.dataset.fp = fp;
       const pts = cardEl.classList.contains('ticker-card--topbar') ? 12 : 20;

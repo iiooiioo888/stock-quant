@@ -4,6 +4,7 @@ import time
 import shutil
 
 from fastapi import APIRouter, Response
+from starlette.concurrency import run_in_threadpool
 
 from src.config import settings
 from src.core.db import get_db_stats
@@ -17,7 +18,7 @@ router = APIRouter(tags=["health"])
 @router.get("/api/health")
 async def health_check():
     """健康檢查"""
-    from src.core.api_cache import cached_response
+    from src.core.api_cache import get_cached, set_cached
 
     def _build():
         uptime_sec = int(time.time() - state.start_time)
@@ -43,7 +44,12 @@ async def health_check():
             **stats,
         }
 
-    return cached_response("api:health", ttl=10, builder=_build)
+    hit = get_cached("api:health")
+    if hit is not None:
+        return hit
+    value = await run_in_threadpool(_build)
+    set_cached("api:health", value, 10)
+    return value
 
 
 @router.get("/api/health/sop")
@@ -51,7 +57,7 @@ async def health_sop():
     """
     輕量 SOP 健檢 — 供 Pro 總覽/設定輪詢（不含磁碟/psutil 開銷）。
     """
-    from src.core.api_cache import cached_response
+    from src.core.api_cache import get_cached, set_cached
     from src.core.ops_health import build_health_sop_payload
 
     def _build():
@@ -59,7 +65,12 @@ async def health_sop():
         payload["version"] = settings.app_version
         return payload
 
-    return cached_response("api:health:sop", ttl=30, builder=_build)
+    hit = get_cached("api:health:sop")
+    if hit is not None:
+        return hit
+    value = await run_in_threadpool(_build)
+    set_cached("api:health:sop", value, 30)
+    return value
 
 
 @router.get("/api/health/detailed")

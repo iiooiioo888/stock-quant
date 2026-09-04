@@ -25,6 +25,7 @@
     payload: null,
     topbarLoading: false,
     fullLoading: false,
+    fullWaiters: [],
     timer: null,
     listeners: new Set(),
   };
@@ -99,11 +100,9 @@
 
   async function ensureFullPayload(force = false) {
     if (state.fullLoading) {
-      while (state.fullLoading) {
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((r) => setTimeout(r, 80));
-      }
-      return state.payload;
+      return new Promise((resolve) => {
+        state.fullWaiters.push(resolve);
+      });
     }
     if (!force && state.payload?.indices?.length) return state.payload;
 
@@ -117,6 +116,10 @@
       notify();
     } finally {
       state.fullLoading = false;
+      const waiters = state.fullWaiters.splice(0);
+      waiters.forEach((fn) => {
+        try { fn(state.payload); } catch (_) {}
+      });
     }
     return state.payload;
   }

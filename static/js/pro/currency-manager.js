@@ -158,11 +158,16 @@
         const stream = window.StockQPro?.FetchStream;
         if (stream?.fetchStream) {
           const series = [];
+          let lastPaint = 0;
           await stream.fetchStream(
             `/api/portfolio/trend/stream?${q}`,
             (chunk) => {
               if (Array.isArray(chunk)) series.push(...chunk);
-              if (series.length) this._renderTrendChart(chartHost, series, series.length <= 50);
+              const now = Date.now();
+              if (series.length && now - lastPaint > 400) {
+                lastPaint = now;
+                this._renderTrendChart(chartHost, series, false);
+              }
             },
           );
           if (series.length) this._renderTrendChart(chartHost, series, true);

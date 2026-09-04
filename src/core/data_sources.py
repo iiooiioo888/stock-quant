@@ -376,8 +376,6 @@ def _enrich_ib_health(result: dict) -> None:
         from src.core.ib_data import ib_status
 
         ib = ib_status(probe=False)
-        if ib.get("enabled") and ib.get("library"):
-            ib = ib_status(probe=True)
     except Exception:
         return
 

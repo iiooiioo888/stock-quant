@@ -62,13 +62,12 @@
       // initial render（工作台預設總覽；產品介紹頁在 /）
       this.navFromHash() || this.nav('dashboard', { syncHash: true });
 
-      const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
+      const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 800));
       schedule(() => {
         const h = String(location.hash || '');
         const m = h.match(/^#\/([^/?#]+)/);
         const warm = m ? m[1] : 'dashboard';
         window.StockQPro?.modules?.prefetch?.(warm);
-        window.StockQPro?.LegacyBridge?.ensureScripts?.().catch(() => {});
       });
     },
 

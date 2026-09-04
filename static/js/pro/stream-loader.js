@@ -5,29 +5,34 @@
  */
 (() => {
   const DEFAULT_CONCURRENCY = 2;
+  const _lanes = Object.create(null);
 
-  let _active = 0;
-  const _queue = [];
+  function _lane(name) {
+    const key = name || 'default';
+    if (!_lanes[key]) _lanes[key] = { active: 0, queue: [] };
+    return _lanes[key];
+  }
 
-  function _pump(maxConcurrent) {
+  function _pump(laneName, maxConcurrent) {
+    const lane = _lane(laneName);
     const cap = Math.max(1, maxConcurrent || DEFAULT_CONCURRENCY);
-    while (_active < cap && _queue.length) {
-      const job = _queue.shift();
-      _active += 1;
+    while (lane.active < cap && lane.queue.length) {
+      const job = lane.queue.shift();
+      lane.active += 1;
       Promise.resolve()
         .then(() => job.fn())
         .then(job.resolve, job.reject)
         .finally(() => {
-          _active -= 1;
-          _pump(cap);
+          lane.active -= 1;
+          _pump(laneName, cap);
         });
     }
   }
 
-  function enqueue(fn, maxConcurrent) {
+  function enqueue(fn, maxConcurrent, laneName) {
     return new Promise((resolve, reject) => {
-      _queue.push({ fn, resolve, reject });
-      _pump(maxConcurrent);
+      _lane(laneName).queue.push({ fn, resolve, reject });
+      _pump(laneName, maxConcurrent);
     });
   }
 

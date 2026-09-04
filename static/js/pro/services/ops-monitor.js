@@ -6,7 +6,7 @@
 (() => {
   const STORAGE_KEY = 'stockq:ops_last';
   const VERDICT_PREV_KEY = 'stockq:ops_verdict_prev';
-  const POLL_MS = 60000;
+  const POLL_MS = 120000;
   const VERDICT_RANK = { ok: 0, attention: 1, critical: 2 };
 
   let _timer = null;

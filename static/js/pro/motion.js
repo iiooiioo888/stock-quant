@@ -7,7 +7,7 @@
   function animate(el, keyframes, opts = {}) {
     if (document.hidden) return Promise.resolve();
     if (!el || typeof el.animate !== 'function') return Promise.resolve();
-    if (el.children && el.children.length > 24) return Promise.resolve();
+    if (el.children && el.children.length > 12) return Promise.resolve();
     if (reduced()) {
       const last = Array.isArray(keyframes) ? keyframes[keyframes.length - 1] : keyframes;
       if (last && typeof last === 'object') Object.assign(el.style, last);
@@ -31,7 +31,7 @@
 
   function stagger(nodes, opts = {}) {
     if (reduced()) return;
-    const max = opts.max ?? 4;
+    const max = opts.max ?? 3;
     const list = Array.from(nodes || []).slice(0, max);
     const step = opts.step ?? 18;
     list.forEach((el, i) => {

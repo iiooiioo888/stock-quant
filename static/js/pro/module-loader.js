@@ -1,7 +1,7 @@
 /* global StockQPro */
 (() => {
   const ROOT = '/static/js/pro/modules/';
-  const V = 'gui-ux-20260903j';
+  const V = 'gui-ux-20260903k';
 
   const PAGE_CHARTS = {
     capitalflow: ['echarts'],
@@ -60,7 +60,7 @@
 
     const SL = window.StockQPro?.StreamLoader;
     _pending[url] = SL
-      ? SL.enqueue(run, 1)
+      ? SL.enqueue(run, 2, 'nav')
       : run();
 
     return _pending[url];

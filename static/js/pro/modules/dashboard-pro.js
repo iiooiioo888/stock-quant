@@ -71,12 +71,19 @@
     }
   }
 
+  let lastLoadAt = 0;
+
   async function load() {
     if (loadPromise) return loadPromise;
+    if (mounted && Date.now() - lastLoadAt < 12000) {
+      const ticker = window.StockQPro?.services?.marketTicker;
+      const cachedPayload = ticker?.getPayload?.();
+      if (cachedPayload?.indices?.length) renderQuoteBoard(cachedPayload);
+      return;
+    }
 
     loadPromise = (async () => {
       ensureLayout();
-      window.StockQPro?.CurrencyManager?.init('currency-toggle');
       const t0 = performance.now();
       const mon = window.StockQPro?.services?.opsMonitor;
       const sopPromise = (async () => {
@@ -105,6 +112,11 @@
       renderKpis(health, latencyMs, cfg);
       window.StockQPro?.UI?.Dashboard?.renderOpsStatus?.(sopPayload);
       setUpdatedAt();
+      lastLoadAt = Date.now();
+      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
+      idle(() => {
+        try { window.StockQPro?.CurrencyManager?.init('currency-toggle'); } catch (_) {}
+      });
     })();
 
     try {

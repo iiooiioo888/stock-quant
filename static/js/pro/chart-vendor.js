@@ -34,7 +34,7 @@
       document.head.appendChild(s);
     });
     const SL = window.StockQPro?.StreamLoader;
-    _pending[url] = SL ? SL.enqueue(run, 1) : run();
+    _pending[url] = SL ? SL.enqueue(run, 2, 'vendor') : run();
     return _pending[url];
   }
 

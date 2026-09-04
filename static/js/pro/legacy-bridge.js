@@ -66,9 +66,7 @@
     },
 
     _loadScript(src) {
-      const run = () => this._loadScriptDirect(src);
-      const SL = window.StockQPro?.StreamLoader;
-      return SL ? SL.enqueue(run, 1) : run();
+      return this._loadScriptDirect(src);
     },
 
     _ensureLegacyCss() {
@@ -92,21 +90,12 @@
       this._scriptsReady = (async () => {
         this._ensureLegacyCss();
         const charts = window.StockQPro?.charts;
-        const SL = window.StockQPro?.StreamLoader;
         if (charts) {
-          const chartFns = [
-            () => charts.ensureChartJs(),
-            () => charts.ensureLightweightCharts(),
-          ];
-          if (SL) await SL.runSequential(chartFns);
-          else {
-            for (const fn of chartFns) await fn();
-          }
+          await charts.ensureChartJs();
+          await charts.ensureLightweightCharts();
         }
-        const scriptFns = LEGACY_SCRIPTS.map((src) => () => this._loadScript(src));
-        if (SL) await SL.runSequential(scriptFns);
-        else {
-          for (const fn of scriptFns) await fn();
+        for (const src of LEGACY_SCRIPTS) {
+          await this._loadScript(src);
         }
         this._patchLegacyApp();
       })();
