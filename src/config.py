@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 from typing import Optional
 
+from src import __version__ as _PKG_VERSION
+
 # 項目根目錄
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -19,7 +21,7 @@ class Settings(BaseSettings):
 
     # ====== 應用 ======
     app_name: str = "stock-quant"
-    app_version: str = "1.1.0"
+    app_version: str = _PKG_VERSION
     debug: bool = False
     log_level: str = Field(
         default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
@@ -44,6 +46,13 @@ class Settings(BaseSettings):
     history_start_date: str = Field(default="20200101", pattern=r"^\d{8}$")
     # True：讀 K 線時本地無數據則自動爬取一次入庫；之後僅讀本地
     local_first_auto_fetch: bool = Field(default=True)
+    # 同一標的在緩衝時間內不重複外網爬取；多客戶端共用本地庫
+    data_fetch_buffer_hours: float = Field(default=12.0, ge=0, le=168)
+    kline_prefetch_via_tasks: bool = Field(
+        default=True,
+        description="K 線缺資料時經任務中心排隊補齊，避免請求線程各自爬取",
+    )
+    kline_prefetch_wait_sec: float = Field(default=90.0, ge=5, le=600)
 
     # ====== 多幣種結算 ======
     default_preferred_currency: str = Field(
@@ -104,6 +113,15 @@ class Settings(BaseSettings):
     strategy_upload_max_bytes: int = Field(default=65536, ge=1024, le=512000)
     volume_slippage_enabled: bool = False
     volume_slippage_participation_cap: float = Field(default=0.05, gt=0, le=1.0)
+    backtest_engine: str = Field(
+        default="auto",
+        pattern=r"^(auto|vectorized|backtrader)$",
+        description="auto：dual_ma/macd/rsi/ema_cross/bollinger/momentum/triple_ma 走向量化快路徑",
+    )
+    gzip_enabled: bool = True
+    gzip_min_size: int = Field(default=1000, ge=0, le=100000)
+    otel_enabled: bool = False
+    otel_exporter: str = Field(default="console", pattern=r"^(console|otlp)$")
 
     # ====== 訂閱 / 計費 ======
     billing_dev_upgrade: bool = Field(
@@ -157,6 +175,11 @@ class Settings(BaseSettings):
     )
     task_grid_workers: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
     optuna_n_jobs: int = Field(default=0, ge=0, le=16)  # 0 = 按全局預算自動
+    optuna_pruner: str = Field(
+        default="none",
+        description="Optuna 早停剪枝器：none | median | percentile | hyperband（SQ_OPTUNA_PRUNER）。"
+        "啟用後優化走多保真度（低保真子集先篩、優勝者跑全量），壞參數提前剪枝",
+    )
     multi_strategy_workers: int = Field(default=4, ge=1, le=16)
     optimize_all_workers: int = Field(
         default=2, ge=1, le=8
@@ -187,6 +210,14 @@ class Settings(BaseSettings):
     serverchan_sendkey: str = ""
     notify_bark: bool = False
     bark_url: str = ""  # 例如 https://api.day.app/<device_key>
+    notify_feishu: bool = False
+    feishu_webhook: str = ""
+    notify_email: bool = False
+    smtp_host: str = ""
+    smtp_port: int = Field(default=465, ge=1, le=65535)
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_to: str = ""
     notify_async: bool = True
     notify_max_retries: int = Field(default=3, ge=0, le=8)
     notify_history_limit: int = Field(default=500, ge=50, le=5000)
@@ -281,6 +312,7 @@ class Settings(BaseSettings):
     cache_walkforward_ttl: int = Field(default=7200, ge=60, le=86400 * 7)
     cache_heatmap_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
     cache_multi_strategy_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
+    cache_data_ttl: int = Field(default=3600, ge=60, le=86400 * 7)
     cache_lru_max_size: int = Field(default=2048, ge=256, le=16384)
     cache_warmup_on_startup: bool = False
     cache_warmup_codes: list[str] = Field(

@@ -179,9 +179,13 @@ const Heatmap = {
     const d = await Api.runHeatmap({ code, strategy, paramX, paramY, grid });
 
     if (!d || !d.success) return;
-    if (d.from_cache) Utils.toast('⚡ 使用緩存結果', 2000, 'info');
+    if (d.async && d.task_id) {
+      Utils.toast('已加入任務中心，計算中…', 2200, 'info');
+    }
+    const resolved = await Api.resolveTaskResponse(d, { timeout: 600000 });
+    if (resolved?.from_cache || d.from_cache) Utils.toast('⚡ 使用緩存結果', 2000, 'info');
 
-    const r = d.result;
+    const r = Api.extractResult(resolved) ?? resolved?.result ?? d.result;
     if (!r?.best_params || !r?.matrix) {
       return Utils.toast('熱力圖結果不完整', 3000, 'error');
     }

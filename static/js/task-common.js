@@ -26,6 +26,7 @@ const TaskCommon = {
     data_download_all: '📥 全市場下載',
     data_incremental: '🔄 增量更新',
     scheduled_job: '⏰ 定時任務',
+    heatmap: '🌡️ 熱力圖分析',
   },
 
   STATUS_ICONS: {
@@ -61,6 +62,7 @@ const TaskCommon = {
     data_download_all: 'data',
     data_incremental: 'data',
     scheduled_job: 'tasks',
+    heatmap: 'heatmap',
   },
 
   async loadTypes() {

@@ -56,10 +56,11 @@ def _sleep_after_download(market: str) -> None:
 
 
 def _history_download_one(code: str, market: str = "a_share") -> int:
-    """可被測試 mock 的下載入口（延遲導入 history，避免循環依賴）。"""
-    from src.core.history import download_one
+    """可被測試 mock 的下載入口（延遲導入，走資料緩衝）。"""
+    from src.core.data_fetch_buffer import download_one_buffered
 
-    return download_one(code, market=market)
+    count, _src = download_one_buffered(code, market=market, force=False)
+    return count
 
 
 def _download_one_guarded(code: str, market: str, mkt: str, task_id: str | None) -> int:
@@ -128,6 +129,19 @@ def _market_key_to_mkt(market: str) -> str:
     return "global"
 
 
+def _inner_download_workers(n_codes: int) -> int:
+    """單任務內標的並發，不超過任務中心並行上限。"""
+    n = max(1, int(n_codes) or 1)
+    cap = min(int(getattr(settings, "download_max_workers", 3) or 3), n)
+    try:
+        from src.core.task_manager import _resolve_max_workers
+
+        cap = min(cap, _resolve_max_workers())
+    except Exception:
+        pass
+    return max(1, cap)
+
+
 def _download_codes_parallel(
     market: str,
     market_name: str,
@@ -140,7 +154,7 @@ def _download_codes_parallel(
     if total == 0:
         return [], 0
 
-    workers = min(settings.download_max_workers, total)
+    workers = _inner_download_workers(total)
     mkt = _market_key_to_mkt(market)
     results: list[dict | None] = [None] * total
     grand_total = 0
@@ -269,7 +283,7 @@ def run_download_all(task_id: str = None) -> dict:
             flat_codes.append(code)
             flat_meta.append((market_key, market_label))
 
-    workers = min(settings.download_max_workers, max(len(flat_codes), 1))
+    workers = _inner_download_workers(len(flat_codes))
 
     def _one(global_idx: int, code: str) -> tuple[int, str, str, int]:
         market_key, _market_label = flat_meta[global_idx]
@@ -361,7 +375,7 @@ def run_incremental(
         progress=5,
     )
 
-    result = download_incremental(codes=codes, force=force)
+    result = download_incremental(codes=codes, force=force, task_id=task_id)
 
     _update_download_meta(
         task_id,

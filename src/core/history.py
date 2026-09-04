@@ -100,11 +100,19 @@ def detect_market(code: str) -> str:
     return "a_share"
 
 
-def download_one(code: str, start_date: str = None, market: str = None) -> int:
-    """下載單個標的歷史日K（自動判斷市場與數據源）。"""
-    from src.core.auto_kline_fetch import download_one_auto
+def download_one(
+    code: str,
+    start_date: str = None,
+    market: str = None,
+    *,
+    force: bool = False,
+) -> int:
+    """下載單個標的歷史日K（走共用緩衝，避免多客戶端重複爬取）。"""
+    from src.core.data_fetch_buffer import download_one_buffered
 
-    count, _ = download_one_auto(code, start_date=start_date, market=market)
+    count, _ = download_one_buffered(
+        code, start_date=start_date, market=market, force=force
+    )
     return count
 
 
@@ -112,11 +120,15 @@ def download_one_with_source(
     code: str,
     start_date: str = None,
     market: str = None,
+    *,
+    force: bool = False,
 ) -> tuple[int, str]:
     """下載單標的日 K，返回 (條數, source_slug)。"""
-    from src.core.auto_kline_fetch import download_one_auto
+    from src.core.data_fetch_buffer import download_one_buffered
 
-    return download_one_auto(code, start_date=start_date, market=market)
+    return download_one_buffered(
+        code, start_date=start_date, market=market, force=force
+    )
 
 
 def _download_crypto(code: str, start_date: str = None) -> int:
@@ -351,6 +363,10 @@ def download_all(codes: list[str] = None, start_date: str = None) -> int:
         count = download_one(code, start_date)
         total += count
 
+        done.add(code)
+        save_checkpoint(task_id, {"done_codes": list(done), "index": i, "total": len(codes)})
+        done.add(code)
+        save_checkpoint(task_id, {"done_codes": list(done), "index": i, "total": len(codes)})
         if i < len(codes):
             time.sleep(1)
 
@@ -362,7 +378,7 @@ def download_all(codes: list[str] = None, start_date: str = None) -> int:
     return total
 
 
-def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
+def download_incremental(codes: list[str] = None, force: bool = False, task_id: str = None) -> dict:
     """
     增量下載歷史數據。
     檢查每只股票的最新日期，只下載之後的數據。
@@ -383,7 +399,16 @@ def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
     total_records = 0
     details = []
 
+    from src.core.task_checkpoint import load_checkpoint, save_checkpoint
+
+    done = set((load_checkpoint(task_id).get("done_codes") or []))
+    if done:
+        skipped += sum(1 for c in codes if c in done)
+
     for i, code in enumerate(codes, 1):
+        if code in done:
+            details.append({"code": code, "status": "skipped", "reason": "斷點已完成"})
+            continue
         if force:
             start_date = settings.history_start_date
         else:
@@ -400,13 +425,21 @@ def download_incremental(codes: list[str] = None, force: bool = False) -> dict:
                             {"code": code, "status": "skipped", "reason": "已是最新"}
                         )
                         continue
+                    from src.core.data_fetch_buffer import is_fresh
+
+                    if is_fresh(code):
+                        skipped += 1
+                        details.append(
+                            {"code": code, "status": "skipped", "reason": "緩衝期內"}
+                        )
+                        continue
                 except ValueError:
                     start_date = settings.history_start_date
             else:
                 start_date = settings.history_start_date
 
         logger.info(f"[增量 {i}/{len(codes)}] {code} 從 {start_date} 開始")
-        count = download_one(code, start_date)
+        count = download_one(code, start_date, force=force)
         if count > 0:
             updated += 1
             total_records += count

@@ -18,7 +18,7 @@
 | **並行處理** | ✅ 完善 | 任務佇列 + 緩存 + 網格搜索並行 + Windows 線程相容 |
 | **前端體驗** | ✅ 專業 | Pro 工作站 + ECharts + 懶加載 + Cmd+K 命令面板 |
 | **部署彈性** | ✅ 友善 | Docker Compose + Render 一鍵部署 + 環境變量配置 |
-| **測試覆蓋** | ✅ 扎實 | 640+ 測試用例 + 煙霧測試 + Playwright UI 測試 |
+| **測試覆蓋** | ✅ 扎實 | 860+ 測試用例 + 煙霧測試 + Playwright UI 測試 |
 
 ### ⚠️ 已知待改善領域
 
@@ -81,7 +81,7 @@
 - [x] API 端點：`/api/indicators/precomputed/*`
 - [x] 數據版本控制自動失效機制
 - [ ] 前端整合：在回測頁面顯示「使用預計算指標」選項
-- [ ] 增量更新：僅重新計算變化的 K 線區間
+- [x] 增量更新：僅重新計算變化的 K 線區間（`incremental=True`，遞歸指標帶 warmup 回放）
 
 ### P2-2: PostgreSQL 遷移
 - [ ] Alembic 遷移腳本
@@ -97,8 +97,9 @@
 ### P2-4: 分散式任務佇列
 - [ ] Celery + RabbitMQ/Kafka 配置
 - [ ] 多節點水平擴展方案
-- [ ] 任務路由與優先級隊列
-- [ ] 任務失敗重試機制
+- [x] 任務路由與優先級隊列（`create_task(priority=...)`）
+- [x] 任務失敗重試機制（`task_retry` 指數退避）
+- [x] 任務依賴 DAG（`depends_on` 編排 + `POST /api/tasks/dag`，拓撲排序 + 環檢測 + 失敗傳播）
 
 ### P2-5: K 線增量同步
 - [x] 新增 klines 表索引 (`idx_klines_code_date`, `idx_klines_code`, `idx_klines_date`)
@@ -228,6 +229,33 @@ echo "*.db filter=lfs diff=lfs merge=lfs -text" >> .gitattributes
 
 ---
 
+
+## 2026-09 效能與產品落地（對照完整優化清單）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| 回測向量化 | ✅ | 常用策略 + 止損止盈走 NumPy/Numba；繪圖/倉位上限仍用 Backtrader |
+| 指標記憶體緩存 + 分塊 | ✅ | `indicator_cache` + 超長序列 overlap 分塊 |
+| Rust 核心 | 📋 | 熱點已用 Numba/NumPy；完整 Rust 綁定待獨立 crate |
+| API GZip | ✅ | 選擇性壓縮，跳過 WS/SSE |
+| Redis 計算緩存 | ✅ 既有 | `result_cache` 可接 Redis |
+| 增量同步 + 斷點 | ✅ | `download_incremental` checkpoint |
+| 批量 Upsert | ✅ 既有 | `executemany` ON CONFLICT |
+| 預警多維度 / 飛書郵件 | ✅ | 量能、RSI、MACD；飛書/SMTP |
+| 因子表達式 / 權重 GA | ✅ | `/api/factors/eval-expression`、`/api/factors/combo-ga` |
+| Walk-Forward 過擬合旗標 | ✅ | `param_stability` / `overfit_flag` |
+| 置換重要性過擬合檢測 | ✅ | `walkforward.permutation_test`：打亂收益序列重跑策略，p_value<0.05 判定時序優勢；`walk_forward(permutation_n=N)` 自動強化 overfit_flag |
+| Optuna 多保真度剪枝 | ✅ | `optuna_pruner` 配置 / `--pruner` CLI / API `pruner` 參數：median / percentile / hyperband，低保真子集先篩、壞參數提前剪枝 |
+| 任務依賴 DAG | ✅ | `create_dag()` 拓撲編排 + `POST /api/tasks/dag`，環檢測、失敗/取消向下游傳播 |
+| 回測版本管理 + 對比 | ✅ | `backtest_compare`：`POST /api/backtest/compare` 多結果指標對比；`/api/backtest/experiments/*` 命名實驗快照（DB v11） |
+| 預計算指標增量更新 | ✅ | `compute_indicator_for_code(incremental=True)`：僅算新增 K 線，遞歸指標（RSI/ATR/OBV/EMA 系）帶 warmup 回放保證收斂 |
+| Parquet 導出 | ✅ | `/api/export/backtest/{id}?format=parquet` |
+| 分鐘線 / ML / 模擬盤 | ✅ 既有 | kline timeframe、`ml_strategy`、`paper_trading` |
+| 券商實盤 / 國內雲遷移 | 📋 | 非程式可單獨完成，見部署手冊 |
+
+*最後更新*: 2026-09-04
+
+---
 ## 🤝 貢獻指南摘要
 
 ### 如何參與？
@@ -261,5 +289,5 @@ echo "*.db filter=lfs diff=lfs merge=lfs -text" >> .gitattributes
 
 ---
 
-*最後更新*: 2026-06-01
+*最後更新*: 2026-09-04
 *維護者*: Stock-Quant Team

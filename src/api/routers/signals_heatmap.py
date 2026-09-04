@@ -26,12 +26,15 @@ async def run_heatmap(
     objective: str = "sharpe",
     user: User = Depends(require_auth),
 ):
-    """參數敏感度熱力圖"""
-    from src.core.entitlements import gate_backtest_submit
+    """參數敏感度熱力圖（經任務中心排隊，受最大並行數約束）"""
+    from src.core.entitlements import gate_backtest_submit, gate_concurrent_tasks
     from src.core.heatmap import param_heatmap
-    from src.core.result_cache import get_cached_compute, set_cached_compute
+    from src.core.task_manager import create_task
+    from src.api.dispatch import dispatch_async_task
 
     gate_backtest_submit(user, advanced=True)
+    if user:
+        gate_concurrent_tasks(user)
 
     param_x = (param_x or "").strip()
     param_y = (param_y or "").strip()
@@ -46,12 +49,33 @@ async def run_heatmap(
         "grid_size": grid_size,
         "objective": objective,
     }
-    cached = get_cached_compute("heatmap", cache_params, code=code)
-    if cached is not None:
-        return {"success": True, "result": cached, "from_cache": True}
+    task = create_task(
+        "heatmap",
+        cache_params,
+        title=f"熱力圖 {code}/{strategy}",
+        user_id=user.id if user else None,
+    )
+    if task.get("is_duplicate"):
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "is_duplicate": True,
+            "message": "相同熱力圖正在執行中，請等待完成",
+            "async": True,
+        }
+    if task.get("status") == "completed" and task.get("result") is not None:
+        return {
+            "success": True,
+            "task_id": task["task_id"],
+            "async": False,
+            "from_cache": task.get("from_cache"),
+            "result": task.get("result"),
+        }
 
-    try:
-        result = param_heatmap(
+    task_id = task["task_id"]
+
+    def _work():
+        return param_heatmap(
             code=code,
             strategy_name=strategy,
             param_x=param_x,
@@ -59,11 +83,14 @@ async def run_heatmap(
             grid_size=grid_size,
             objective=objective,
         )
-        set_cached_compute("heatmap", cache_params, result, code=code)
-        return {"success": True, "result": result, "from_cache": False}
-    except Exception as e:
-        logger.error(f"熱力圖失敗: {e}")
-        raise HTTPException(500, str(e))
+
+    return dispatch_async_task(
+        task_id,
+        _work,
+        cache_namespace="heatmap",
+        cache_params=cache_params,
+        cache_code=code,
+    )
 
 
 @router.get("/api/heatmap/params/{strategy}")

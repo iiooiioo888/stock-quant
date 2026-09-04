@@ -24,7 +24,7 @@
     if (!tb) return;
     const items = Object.entries(rules || {}).map(([code, r]) => ({ code, ...(r || {}) }));
     if (!items.length) {
-      tb.innerHTML = '<tr><td colspan="6" class="al-empty">尚無預警規則</td></tr>';
+      tb.innerHTML = '<tr><td colspan="7" class="al-empty">尚無預警規則</td></tr>';
       return;
     }
     tb.innerHTML = items.map((it) => `
@@ -34,10 +34,22 @@
         <td>${it.change_pct != null ? `${esc(it.change_pct)}%` : '--'}</td>
         <td>${it.price_above != null ? esc(it.price_above) : '--'}</td>
         <td>${it.price_below != null ? esc(it.price_below) : '--'}</td>
-        <td><button class="btn btn-s btn-rd" type="button" data-del="${esc(it.code)}">刪除</button></td>
+        <td>${[it.volume_mult ? '量×'+it.volume_mult : '', it.rsi_above ? 'RSI>'+it.rsi_above : '', it.macd_cross ? 'MACD' : ''].filter(Boolean).join(' ') || '--'}</td>
+        <td><button class="btn btn-s" type="button" data-edit="${esc(it.code)}">編輯</button>
+            <button class="btn btn-s btn-rd" type="button" data-del="${esc(it.code)}">刪除</button></td>
       </tr>
     `).join('');
 
+    tb.querySelectorAll('[data-edit]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const code = b.getAttribute('data-edit');
+        const d = await Api.getAlertRules().catch(() => null);
+        const rules = d?.rules || d || {};
+        fillForm(code, rules[code] || {});
+        const form = $id('al-rule-form');
+        if (form) form.hidden = false;
+      });
+    });
     tb.querySelectorAll('[data-del]').forEach((b) => {
       b.addEventListener('click', async () => {
         const code = b.getAttribute('data-del');
@@ -156,9 +168,76 @@
     }
   }
 
+  function fillForm(code, rule) {
+    const set = (id, v) => { const el = $id(id); if (el) el.value = v == null || v === '' ? '' : String(v); };
+    set('al-f-code', code || '');
+    set('al-f-name', rule.name || '');
+    set('al-f-above', rule.price_above);
+    set('al-f-below', rule.price_below);
+    set('al-f-pct', rule.change_pct);
+    set('al-f-vol', rule.volume_mult);
+    set('al-f-rsi-hi', rule.rsi_above);
+    set('al-f-rsi-lo', rule.rsi_below);
+    const macd = $id('al-f-macd');
+    if (macd) macd.checked = !!rule.macd_cross;
+    const codeEl = $id('al-f-code');
+    if (codeEl) codeEl.readOnly = !!code;
+  }
+
+  async function saveRule() {
+    const code = ($id('al-f-code')?.value || '').trim();
+    if (!code) return toast('請輸入代碼', 'er');
+    const num = (id) => {
+      const v = $id(id)?.value;
+      if (v === '' || v == null) return null;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const body = {};
+    body[code] = {
+      name: ($id('al-f-name')?.value || '').trim() || code,
+      price_above: num('al-f-above'),
+      price_below: num('al-f-below'),
+      change_pct: num('al-f-pct'),
+      volume_mult: num('al-f-vol'),
+      rsi_above: num('al-f-rsi-hi'),
+      rsi_below: num('al-f-rsi-lo'),
+      macd_cross: !!$id('al-f-macd')?.checked,
+    };
+    const d = await Api.updateAlertRules(body).catch((e) => ({ error: e?.message || e }));
+    if (d?.success || d?.rules) {
+      toast('規則已保存', 'ok');
+      const form = $id('al-rule-form');
+      if (form) form.hidden = true;
+      await loadRules();
+    } else toast(d?.error || d?.message || '保存失敗', 'er');
+  }
+
+  async function fillFromPrice() {
+    const code = ($id('al-f-code')?.value || '').trim();
+    if (!code) return toast('請先填代碼', 'er');
+    const d = await Api.suggestAlertRule(code, { above_pct: 3, below_pct: 3, change_pct: 5 }).catch(() => null);
+    if (!d?.rule) return toast('無法取得現價', 'er');
+    fillForm(code, { ...d.rule, macd_cross: $id('al-f-macd')?.checked });
+    toast(`已依現價 ${d.price} 填充`, 'ok');
+  }
+
   function bind() {
     if (bound) return;
     bound = true;
+    $id('al-add-rule')?.addEventListener('click', () => {
+      fillForm('', {});
+      const codeEl = $id('al-f-code');
+      if (codeEl) codeEl.readOnly = false;
+      const form = $id('al-rule-form');
+      if (form) form.hidden = false;
+    });
+    $id('al-save-rule')?.addEventListener('click', () => saveRule());
+    $id('al-fill-price')?.addEventListener('click', () => fillFromPrice());
+    $id('al-cancel-rule')?.addEventListener('click', () => {
+      const form = $id('al-rule-form');
+      if (form) form.hidden = true;
+    });
     $id('al-reload')?.addEventListener('click', () => loadAll());
     $id('al-test-notify')?.addEventListener('click', () => testChannels());
     $id('al-log-prev')?.addEventListener('click', () => {

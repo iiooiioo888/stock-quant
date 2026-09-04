@@ -26,6 +26,9 @@ _NS_TTL_ATTR = {
     "walkforward": "cache_walkforward_ttl",
     "heatmap": "cache_heatmap_ttl",
     "auto_optimize": "cache_optimize_ttl",
+    "data_download": "cache_data_ttl",
+    "data_download_all": "cache_data_ttl",
+    "data_incremental": "cache_data_ttl",
 }
 
 

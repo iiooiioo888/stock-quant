@@ -129,11 +129,39 @@ def _as_f64(arr: np.ndarray) -> np.ndarray:
 
 
 def compute_rsi(close: np.ndarray, period: int = 14) -> np.ndarray:
-    return _rsi_core(_as_f64(close), int(period))
+    from src.core.indicators.indicator_cache import cached_series, chunked_apply
+
+    c = _as_f64(close)
+    p = int(period)
+
+    def _run():
+        return chunked_apply(c, lambda x: _rsi_core(x, p), overlap=max(p * 3, 40))
+
+    return cached_series("rsi", c, _run, period=p)
 
 
 def compute_sma(close: np.ndarray, period: int) -> np.ndarray:
-    return _sma_core(_as_f64(close), int(period))
+    from src.core.indicators.indicator_cache import cached_series, chunked_apply
+
+    c = _as_f64(close)
+    p = int(period)
+
+    def _run():
+        return chunked_apply(c, lambda x: _sma_core(x, p), overlap=p)
+
+    return cached_series("sma", c, _run, period=p)
+
+
+def compute_ema(close: np.ndarray, period: int) -> np.ndarray:
+    from src.core.indicators.indicator_cache import cached_series, chunked_apply
+
+    c = _as_f64(close)
+    p = int(period)
+
+    def _run():
+        return chunked_apply(c, lambda x: _ema_core(x, p), overlap=p)
+
+    return cached_series("ema", c, _run, period=p)
 
 
 def compute_macd(
@@ -142,22 +170,46 @@ def compute_macd(
     slow: int = 26,
     signal: int = 9,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    from src.core.indicators.indicator_cache import cached_tuple
+
     c = _as_f64(close)
-    ema_fast = _ema_core(c, int(fast))
-    ema_slow = _ema_core(c, int(slow))
-    n = len(c)
-    line = np.empty(n, dtype=np.float64)
-    line[:] = np.nan
-    for i in range(n):
-        if not np.isnan(ema_fast[i]) and not np.isnan(ema_slow[i]):
-            line[i] = ema_fast[i] - ema_slow[i]
-    sig = _ema_core(line, int(signal))
-    hist = np.empty(n, dtype=np.float64)
-    hist[:] = np.nan
-    for i in range(n):
-        if not np.isnan(line[i]) and not np.isnan(sig[i]):
-            hist[i] = line[i] - sig[i]
-    return line, sig, hist
+    f, s, sig_p = int(fast), int(slow), int(signal)
+
+    def _run():
+        ema_fast = _ema_core(c, f)
+        ema_slow = _ema_core(c, s)
+        line = ema_fast - ema_slow
+        sig = _ema_core(line, sig_p)
+        hist = line - sig
+        return line, sig, hist
+
+    return cached_tuple("macd", c, _run, fast=f, slow=s, signal=sig_p)
+
+
+def compute_bollinger(
+    close: np.ndarray, period: int = 20, num_std: float = 2.0
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    from src.core.indicators.indicator_cache import cached_tuple
+
+    c = _as_f64(close)
+    p = int(period)
+    ns = float(num_std)
+
+    def _run():
+        mid = _sma_core(c, p)
+        # 滾動標準差（與 SMA 對齊）
+        std = np.empty(len(c), dtype=np.float64)
+        std[:] = np.nan
+        if len(c) >= p:
+            csq = np.convolve(c * c, np.ones(p), mode="valid") / p
+            mean = mid[p - 1 :]
+            var = np.maximum(csq - mean * mean, 0.0)
+            std[p - 1 :] = np.sqrt(var)
+        up = mid + ns * std
+        lo = mid - ns * std
+        return up, mid, lo
+
+    return cached_tuple("bb", c, _run, period=p, num_std=ns)
 
 
 def compute_atr(

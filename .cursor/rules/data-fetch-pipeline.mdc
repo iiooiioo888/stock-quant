@@ -15,7 +15,7 @@ alwaysApply: false
 ## 行情 K 線
 
 - 入口：`market_fetch.fetch_history_df` / `build_index_chart_item`
-- 順序：目錄 IB → TV → 本地庫 → Yahoo → 東財 → global
+- 順序：本地庫（緩衝命中則停）→ 缺資料經任務中心排隊補齊 → 目錄 IB → TV → Yahoo → 東財 → global
 - 外網成功後 `local_kline.persist_kline_df` 寫庫；**禁止**在 `persist_kline_df` 內調 `clear_data_cache()`，改用 `data_pipeline.defer_data_cache_clear()`
 - 批量掛牌（`indices` ThreadPool）在 `finally` 調 `flush_deferred_data_cache_clear()` 一次
 

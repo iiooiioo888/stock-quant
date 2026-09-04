@@ -183,8 +183,10 @@ async def lifespan(app: FastAPI):
             load_recent_tasks_from_db,
             recover_stale_tasks_on_startup,
             start_task_watchdog,
+            apply_task_capacity_on_startup,
         )
 
+        apply_task_capacity_on_startup()
         load_recent_tasks_from_db()
         recover_stale_tasks_on_startup()
         start_task_watchdog()
@@ -281,8 +283,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注意：全域 GZip 會干擾 SSE/StreamingResponse（可能導致串流端點卡住）。
-# 如需壓縮，改用反向代理層（nginx/caddy）或針對非串流端點做選擇性壓縮。
+# 選擇性 GZip：跳過 WS / SSE / NDJSON，避免壓縮串流。
+if getattr(settings, "gzip_enabled", True):
+    from src.api.gzip_middleware import SelectiveGZipMiddleware
+
+    app.add_middleware(
+        SelectiveGZipMiddleware,
+        minimum_size=int(getattr(settings, "gzip_min_size", 1000) or 1000),
+    )
+
+if getattr(settings, "otel_enabled", False):
+    try:
+        from src.monitoring.telemetry import instrument_fastapi
+
+        instrument_fastapi(app)
+        logger.info("OpenTelemetry FastAPI 追蹤已啟用")
+    except Exception as e:
+        logger.warning(f"OpenTelemetry 初始化失敗: {e}")
 
 
 @app.middleware("http")
@@ -393,6 +410,8 @@ async def admin_controls_middleware(request: Request, call_next):
             action = "full"
         elif path.startswith("/api/tasks/pipeline"):
             action = "pipeline"
+        elif path.startswith("/api/tasks/dag"):
+            action = "dag"
         elif path.startswith("/api/tasks/") and path.count("/") >= 3:
             action = "detail"
     elif path.startswith("/api/strategies"):

@@ -462,7 +462,10 @@
         $id('set-commission').value = Number(cfg.backtest_commission) * 100;
       }
       if (cfg.task_max_workers != null && $id('set-max-parallel')) {
-        $id('set-max-parallel').value = Number(cfg.task_max_workers);
+        $id('set-max-parallel').value = Number(cfg.task_max_workers) || 4;
+      }
+      if (cfg.data_fetch_buffer_hours != null && $id('set-data-buffer')) {
+        $id('set-data-buffer').value = Number(cfg.data_fetch_buffer_hours);
       }
     }
     await Promise.all([loadDataSourceHealth(), loadOpsSop()]);
@@ -496,6 +499,34 @@
     window.StockQPro?.MarketTicker?.setPollInterval?.(partial.marketPollSec * 1000);
     window.StockQPro?.MarketTicker?.refresh?.();
     window.StockQPro?.App?.toast?.('偏好已保存（本機）', 'ok');
+  }
+
+  async function applyMaxParallel() {
+    const n = Number($id('set-max-parallel')?.value);
+    const buf = Number($id('set-data-buffer')?.value);
+    if (!Number.isFinite(n) || n < 1 || n > 32) {
+      window.StockQPro?.App?.toast?.('並行數須為 1～32', 'er');
+      return;
+    }
+    if (!Number.isFinite(buf) || buf < 0 || buf > 168) {
+      window.StockQPro?.App?.toast?.('緩衝小時須為 0～168', 'er');
+      return;
+    }
+    const d = await (Api.setTaskCapacity
+      ? Api.setTaskCapacity(Math.round(n), null, buf)
+      : Api.put('/api/tasks/capacity', {
+          max_workers: Math.round(n),
+          buffer_hours: buf,
+        })
+    ).catch(() => null);
+    if (d?.success) {
+      window.StockQPro?.App?.toast?.(
+        `並行 ${d.max_workers}，緩衝 ${d.buffer_hours} 小時`,
+        'ok',
+      );
+    } else {
+      window.StockQPro?.App?.toast?.(d?.detail || '套用失敗（需登錄）', 'er');
+    }
   }
 
   async function clearCaches() {
@@ -546,6 +577,7 @@
     if ($id('set-save-btn') && !$id('set-save-btn').dataset.bound) {
       $id('set-save-btn').dataset.bound = '1';
       $id('set-save-btn').addEventListener('click', () => save());
+      $id('set-apply-parallel')?.addEventListener('click', () => applyMaxParallel());
       $id('set-reload-btn')?.addEventListener('click', () => {
         load().catch(() => window.StockQPro?.App?.toast?.('載入設定失敗', 'er'));
       });

@@ -2,6 +2,7 @@
 
 from src.core.indicators.fast_indicators import (
     compute_atr,
+    compute_bollinger,
     compute_macd,
     compute_rsi,
     compute_sma,
@@ -13,5 +14,6 @@ __all__ = [
     "compute_macd",
     "compute_atr",
     "compute_sma",
+    "compute_bollinger",
     "engine_name",
 ]

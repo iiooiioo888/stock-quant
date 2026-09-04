@@ -139,3 +139,34 @@ def export_trades_json(code: str, strategy: str) -> str:
     except Exception as e:
         logger.error(f"導出交易明細失敗: {e}")
         return "[]"
+
+
+
+def export_backtests_parquet(result_ids: list[int]) -> bytes:
+    """多筆回測摘要導出為 Parquet bytes。"""
+    import pandas as pd
+
+    rows = get_backtest_by_ids(result_ids) if result_ids else []
+    if not rows:
+        df = pd.DataFrame()
+    else:
+        slim = []
+        for r in rows:
+            slim.append(
+                {
+                    "id": r.get("id"),
+                    "code": r.get("code"),
+                    "strategy": r.get("strategy"),
+                    "total_return_pct": r.get("total_return_pct"),
+                    "sharpe_ratio": r.get("sharpe_ratio"),
+                    "max_drawdown_pct": r.get("max_drawdown_pct"),
+                    "annual_return_pct": r.get("annual_return_pct"),
+                    "total_trades": r.get("total_trades"),
+                    "win_rate_pct": r.get("win_rate_pct"),
+                    "created_at": r.get("created_at"),
+                }
+            )
+        df = pd.DataFrame(slim)
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=False)
+    return buf.getvalue()

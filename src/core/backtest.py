@@ -1158,6 +1158,7 @@ def run_backtest(
     max_position_pct: float = None,
     sandbox_mode: bool = False,
     user_id: int = None,
+    engine: str = None,
 ) -> dict:
     """
     執行回測並返回結果。
@@ -1179,7 +1180,41 @@ def run_backtest(
         timeframe: K 線週期 1d / 1w / 1mo / 1h / 1m（默認 1d）
         adj: 復權 qfq / hfq / none（默認配置 SQ_BACKTEST_ADJ）
         sandbox_mode: 是否為沙箱模式（不污染正式記錄）
+        engine: auto / vectorized / backtrader
     """
+    from src.core.vectorized_backtest import can_use_vectorized, run_vectorized_backtest
+
+    if can_use_vectorized(
+        strategy_name,
+        plot=plot,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        trailing_stop_pct=trailing_stop_pct,
+        max_position_pct=max_position_pct,
+        sandbox_mode=sandbox_mode,
+        engine=engine,
+    ):
+        return run_vectorized_backtest(
+            code,
+            strategy_name=strategy_name,
+            params=params,
+            cash=cash,
+            commission=commission,
+            slippage_pct=slippage_pct,
+            volume_slippage=volume_slippage,
+            order_size_shares=order_size_shares,
+            enable_t1=enable_t1,
+            enable_limit=enable_limit,
+            timeframe=timeframe,
+            adj=adj,
+            task_id=task_id,
+            user_id=user_id,
+            benchmark=benchmark,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            trailing_stop_pct=trailing_stop_pct,
+        )
+
     from src.core.kline_timeframe import (
         bars_per_year as tf_bars_per_year,
     )

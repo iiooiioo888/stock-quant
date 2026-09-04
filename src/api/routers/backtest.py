@@ -313,12 +313,14 @@ async def run_optimize_api(
     circuit_breaker_dd: float = None,
     max_position_pct: float = None,
     slippage_pct: float = None,
+    pruner: str = None,
     body: dict = Body(default=None),
     user=Depends(require_auth),
 ):
     """
     參數優化（自動加入任務列表）。
     查詢參數與 JSON body 可並用；風控亦可嵌套 risk: { ... }。
+    method=optuna 時可用 pruner=median|percentile|hyperband 開啟多保真度早停剪枝。
     """
     from src.core.entitlements import gate_optimize_submit
     from src.core.optimize import grid_search, optuna_search, optimize_all
@@ -346,6 +348,7 @@ async def run_optimize_api(
         "circuit_breaker_dd": circuit_breaker_dd,
         "max_position_pct": max_position_pct,
         "slippage_pct": slippage_pct,
+        "pruner": pruner,
     }
     if body:
         merged.update({k: v for k, v in body.items() if v is not None})
@@ -370,6 +373,7 @@ async def run_optimize_api(
 
     task_id = task["task_id"]
     run_ctx = risk_cfg.to_dict()
+    eff_pruner = merged.get("pruner")
 
     def _work():
         if strategy == "all":
@@ -381,6 +385,7 @@ async def run_optimize_api(
                 top_n=top_n,
                 task_id=task_id,
                 run_ctx=run_ctx,
+                pruner=eff_pruner,
             )
             serialized = {}
             for name, res_list in results.items():
@@ -394,6 +399,7 @@ async def run_optimize_api(
                 n_trials=n_trials,
                 task_id=task_id,
                 run_ctx=run_ctx,
+                pruner=eff_pruner,
             )
         return grid_search(
             code,
@@ -529,6 +535,88 @@ async def backtest_compare(ids: str = ""):
     return {"results": results, "total": len(results)}
 
 
+@router.post("/api/backtest/compare")
+async def backtest_compare_v2(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    """
+    增強版回測對比：指標排名、參數差異分析、每項指標最佳記錄。
+
+    body: {"ids": [1, 2, 3], "metric": "sharpe_ratio"}
+    """
+    from src.core.backtest_compare import compare_backtests
+
+    ids = body.get("ids") or []
+    metric = body.get("metric") or "sharpe_ratio"
+    try:
+        result = compare_backtests(ids, metric=metric)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, **result}
+
+
+# ====== 回測實驗版本管理 ======
+
+
+@router.post("/api/backtest/experiments")
+async def create_backtest_experiment(
+    body: dict = Body(...),
+    user=Depends(require_auth),
+):
+    """建立實驗版本快照：{"name": "v1 雙均線調參", "ids": [1,2,3], "note": "..."}"""
+    from src.core.backtest_compare import create_experiment
+
+    try:
+        exp = create_experiment(
+            name=body.get("name") or "",
+            backtest_ids=body.get("ids") or [],
+            note=body.get("note") or "",
+            user_id=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, "experiment": exp}
+
+
+@router.get("/api/backtest/experiments")
+async def list_backtest_experiments(
+    limit: int = 50,
+    user=Depends(get_current_user),
+):
+    """列出實驗版本"""
+    from src.core.backtest_compare import list_experiments
+
+    user_id = user.id if user else None
+    items = list_experiments(user_id=user_id, limit=limit)
+    return {"success": True, "experiments": items, "total": len(items)}
+
+
+@router.get("/api/backtest/experiments/{experiment_id}")
+async def get_backtest_experiment(experiment_id: int):
+    """取實驗詳情（含成員回測與對比結果）"""
+    from src.core.backtest_compare import get_experiment
+
+    exp = get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(404, "實驗不存在")
+    return {"success": True, "experiment": exp}
+
+
+@router.delete("/api/backtest/experiments/{experiment_id}")
+async def delete_backtest_experiment(
+    experiment_id: int,
+    user=Depends(require_auth),
+):
+    """刪除實驗版本（僅刪分組，不動回測記錄本身）"""
+    from src.core.backtest_compare import delete_experiment
+
+    ok = delete_experiment(experiment_id, user_id=user.id)
+    if not ok:
+        raise HTTPException(404, "實驗不存在或無權刪除")
+    return {"success": True}
+
+
 @router.get("/api/backtest/result/{result_id}")
 async def get_backtest_result_detail(result_id: int):
     """按歷史 ID 取回測詳情；優先從計算緩存還原完整結果（含 K 線/淨值）。"""
@@ -579,9 +667,10 @@ async def run_walkforward(
     step_days: int = 250,
     objective: str = "sharpe",
     n_trials: int = 50,
+    permutation_n: int = 0,
     user=Depends(require_auth),
 ):
-    """Walk-Forward 分析（自動加入任務列表）"""
+    """Walk-Forward 分析（自動加入任務列表）；permutation_n>0 時附加置換過擬合檢測"""
     from src.core.entitlements import gate_backtest_submit
     from src.core.walkforward import walk_forward
     from src.core.task_manager import create_task
@@ -599,6 +688,7 @@ async def run_walkforward(
         "strategy": strategy,
         "train_days": train_days,
         "test_days": test_days,
+        "permutation_n": permutation_n,
     }
     task = create_task(
         "walkforward",
@@ -626,6 +716,7 @@ async def run_walkforward(
             step_days=step_days,
             objective=objective,
             n_trials=n_trials,
+            permutation_n=permutation_n,
         )
 
     return dispatch_async_task(

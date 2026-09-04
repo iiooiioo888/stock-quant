@@ -16,7 +16,7 @@ def test_build_retry_worker_backtest():
 
 def test_build_retry_worker_unsupported():
     with pytest.raises(RetryWorkerError):
-        build_retry_worker("heatmap", {"code": "000001"}, "tid-2")
+        build_retry_worker("unknown_type", {"code": "000001"}, "tid-2")
 
 
 def test_build_retry_worker_portfolio_unknown_method():

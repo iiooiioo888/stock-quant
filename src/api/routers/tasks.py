@@ -29,6 +29,26 @@ class PipelineCreateRequest(BaseModel):
     auto_dispatch: bool = True
 
 
+class DagNodeRequest(BaseModel):
+    id: str
+    task_type: str
+    params: dict = {}
+    title: str = ""
+    depends_on: list[str] = []  # 引用同圖其他節點的 id
+
+
+class DagCreateRequest(BaseModel):
+    title: str = "任務 DAG"
+    nodes: list[DagNodeRequest]
+    auto_dispatch: bool = True
+
+
+class TaskCapacityRequest(BaseModel):
+    max_workers: Optional[int] = None
+    heavy_max_concurrent: Optional[int] = None
+    buffer_hours: Optional[float] = None
+
+
 @router.get("/api/tasks")
 async def list_tasks_api(
     task_type: str = None,
@@ -72,6 +92,38 @@ async def get_task_stats_api():
     stats = get_task_stats()
     queue = get_queue_snapshot()
     return {"stats": stats, "queue": queue}
+
+
+@router.get("/api/tasks/capacity")
+async def get_task_capacity_api(user=Depends(get_current_user)):
+    from src.core.task_manager import get_task_capacity
+
+    return {"success": True, **get_task_capacity()}
+
+
+@router.put("/api/tasks/capacity")
+async def set_task_capacity_api(
+    body: TaskCapacityRequest,
+    user=Depends(get_current_user),
+):
+    """設定任務中心最大並行數（立即對後續派發生效）。"""
+    from src.core.task_manager import set_task_capacity
+
+    if (
+        body.max_workers is None
+        and body.heavy_max_concurrent is None
+        and body.buffer_hours is None
+    ):
+        raise HTTPException(400, "請提供 max_workers、heavy_max_concurrent 或 buffer_hours")
+    try:
+        cap = set_task_capacity(
+            max_workers=body.max_workers,
+            heavy_max_concurrent=body.heavy_max_concurrent,
+            buffer_hours=body.buffer_hours,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, **cap}
 
 
 @router.get("/api/tasks/{task_id}")
@@ -390,6 +442,58 @@ async def create_pipeline_api(body: PipelineCreateRequest):
 
     out = dispatch_async_task(task_id, work_fn)
     return {"success": True, **pipe, **out}
+
+
+@router.post("/api/tasks/dag")
+async def create_dag_api(body: DagCreateRequest, user=Depends(get_current_user)):
+    """
+    建立通用任務依賴圖（DAG）並派發。
+
+    與 /api/tasks/pipeline（線性順序鏈）互補：DAG 支援扇出/扇入，
+    每個節點可依賴多個上游節點；上游全部完成後下游才派發，
+    任一上游失敗/取消則下游自動標記失敗（依賴失敗傳播）。
+    """
+    from src.core.task_manager import STATUS_FAILED, create_dag, submit_task, update_task
+    from src.core.task_retry import RetryWorkerError, build_retry_worker
+
+    if not body.nodes:
+        raise HTTPException(400, "DAG 至少需要一個節點")
+    if len(body.nodes) > 50:
+        raise HTTPException(400, "DAG 節點數上限 50")
+
+    nodes = [n.model_dump() for n in body.nodes]
+    try:
+        dag = create_dag(nodes, title=body.title)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    if not body.auto_dispatch:
+        return {"success": True, **dag, "async": False}
+
+    dispatched: list[str] = []
+    failed_nodes: dict[str, str] = {}
+    for nid in dag["topo_order"]:
+        task_id = dag["tasks"][nid]
+        node = next(n for n in nodes if n["id"] == nid)
+        try:
+            work_fn = build_retry_worker(
+                node["task_type"], node.get("params") or {}, task_id
+            )
+        except RetryWorkerError as e:
+            # 無法建立 worker → 標記失敗，下游會因依賴失敗傳播而自動失敗
+            update_task(task_id, status=STATUS_FAILED, error=str(e))
+            failed_nodes[nid] = str(e)
+            continue
+        submit_task(task_id, work_fn)
+        dispatched.append(nid)
+
+    return {
+        "success": True,
+        **dag,
+        "dispatched": dispatched,
+        "failed_nodes": failed_nodes,
+        "async": True,
+    }
 
 
 @router.post("/api/tasks/cleanup")

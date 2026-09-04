@@ -78,6 +78,7 @@ DEFAULT_CONTROLS: dict[str, Any] = {
             "delete": True,
             "retry": True,
             "pipeline": True,
+            "dag": True,
             "batch_cancel": True,
             "batch_delete": True,
             "cancel_pending": True,

@@ -80,6 +80,12 @@ def build_parser():
         "--objective", choices=["sharpe", "return", "calmar"], default="sharpe"
     )
     p_opt.add_argument("--trials", type=int, default=100)
+    p_opt.add_argument(
+        "--pruner",
+        choices=["none", "median", "percentile", "hyperband"],
+        default=None,
+        help="Optuna 多保真度早停剪枝器（僅 method=optuna 時生效）",
+    )
 
     # portfolio
     p_pf = subparsers.add_parser("portfolio", help="組合回測")
@@ -99,6 +105,12 @@ def build_parser():
         "--objective", choices=["sharpe", "return", "calmar"], default="sharpe"
     )
     p_wf.add_argument("--trials", type=int, default=50)
+    p_wf.add_argument(
+        "--permutation-n",
+        type=int,
+        default=0,
+        help="置換過擬合檢測次數（0=關閉，建議 100）",
+    )
 
     # auto-optimize
     p_ao = subparsers.add_parser("auto-optimize", help="自動參數優化")

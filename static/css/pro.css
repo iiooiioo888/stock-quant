@@ -1652,6 +1652,7 @@ body.assets-drawer-open .assets-drawer{
 .tk-live.off{color:var(--t4)}
 .tk-auto-label{display:inline-flex;align-items:center;gap:5px;font-size:.64rem;color:var(--t2);cursor:pointer;user-select:none}
 .tk-auto-label input{accent-color:var(--ac)}
+.tk-max-workers{width:3.6rem;padding:2px 6px;height:26px;font-size:.7rem}
 #tkCapacityBar{margin-bottom:2px}
 .tk-cap-inner{padding:10px 14px;border:1px solid var(--bd);border-radius:var(--rl);background:var(--bg0)}
 .tk-cap-row{display:flex;justify-content:space-between;font-size:.64rem;color:var(--t2);margin-bottom:4px}
@@ -1694,6 +1695,12 @@ body.assets-drawer-open .assets-drawer{
 .al-channel-grid{display:flex;flex-wrap:wrap;gap:8px}
 .al-channel-item{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);background:var(--bg2);font-size:.72rem}
 .al-channel-name{color:var(--tx)}
+.al-rule-form{margin:0 0 12px;padding:10px;border:1px solid var(--bd);border-radius:var(--r);background:var(--bg2)}
+.al-form-grid{display:flex;flex-wrap:wrap;gap:10px 14px}
+.al-form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.64rem;color:var(--t3);min-width:120px;flex:1}
+.al-form-grid input[type=number],.al-form-grid input:not([type=checkbox]){height:32px;padding:0 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)}
+.al-form-check{flex-direction:row !important;align-items:center;min-width:160px}
+.al-form-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .al-empty{color:var(--t3);text-align:center;padding:16px;font-size:.72rem}
 .al-list{display:flex;flex-direction:column;gap:2px}
 .al-log-row{padding:8px 0;border-bottom:1px solid var(--bd)}

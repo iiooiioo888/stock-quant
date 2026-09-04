@@ -37,6 +37,7 @@ ASYNC_TASK_TYPES = frozenset(
         "data_download_all",
         "data_incremental",
         "scheduled_job",
+        "heatmap",
     }
 )
 
@@ -48,7 +49,7 @@ class TestTasksAPI:
         types = resp.json().get("types", [])
         ids = {t["id"] for t in types}
         assert ids == ASYNC_TASK_TYPES
-        assert "heatmap" not in ids
+        assert "heatmap" in ids
         sync = next(t for t in types if t["id"] == "stock_universe_sync")
         assert sync["label"] == "股票庫同步"
         assert sync["tab"] == "data"
@@ -159,9 +160,72 @@ class TestTasksAPI:
     def test_retry_unsupported_type_returns_400(self, client, auth_headers):
         from src.core.task_manager import create_task, update_task
 
-        task = create_task("heatmap", {"code": "000001"}, title="sync only")
+        task = create_task("unknown_type", {"code": "000001"}, title="sync only")
         task_id = task["task_id"]
         update_task(task_id, status="failed", error="pytest")
 
         resp = client.post(f"/api/tasks/{task_id}/retry", headers=auth_headers)
         assert resp.status_code == 400
+
+    def test_put_task_capacity(self, client, auth_headers, tmp_path, monkeypatch):
+        import src.core.task_manager as tm
+
+        monkeypatch.setattr(tm, "_capacity_path", lambda: tmp_path / "cap.json")
+        with tm._capacity_lock:
+            prev = dict(tm._runtime_capacity)
+            tm._runtime_capacity = {}
+        try:
+            resp = client.put(
+                "/api/tasks/capacity",
+                json={"max_workers": 2, "buffer_hours": 6},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            assert body["success"] is True
+            assert body["max_workers"] == 2
+            assert body["buffer_hours"] == 6
+            assert tm._resolve_max_workers() == 2
+            got = client.get("/api/tasks/capacity", headers=auth_headers)
+            assert got.status_code == 200
+            assert got.json()["max_workers"] == 2
+            assert got.json()["buffer_hours"] == 6
+        finally:
+            with tm._capacity_lock:
+                tm._runtime_capacity = prev
+
+    def test_put_task_capacity_rejects_zero(self, client, auth_headers):
+        resp = client.put(
+            "/api/tasks/capacity",
+            json={"max_workers": 0},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+
+def test_heatmap_submits_async_task(client, auth_headers, monkeypatch):
+    from src.core.task_manager import get_task
+
+    monkeypatch.setattr("src.core.entitlements.gate_backtest_submit", lambda *a, **k: None)
+    monkeypatch.setattr("src.core.entitlements.gate_concurrent_tasks", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "src.core.heatmap.param_heatmap",
+        lambda **kwargs: {
+            "best_params": {"fast": 5, "slow": 20},
+            "best_score": 1.2,
+            "matrix": [[1]],
+            "x_values": [5],
+            "y_values": [20],
+        },
+    )
+    resp = client.post(
+        "/api/heatmap?code=000001&strategy=dual_ma&param_x=fast&param_y=slow&grid_size=2",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data.get("success") is True
+    assert data.get("task_id")
+    task = get_task(data["task_id"])
+    assert task is not None
+    assert task["task_type"] == "heatmap"

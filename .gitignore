@@ -41,6 +41,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/runtime_admin_controls.json
+data/runtime_task_capacity.json
 .qwen/
 
 # Editors

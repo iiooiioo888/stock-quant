@@ -78,6 +78,9 @@ def test_ensure_daily_kline_fetches_once_when_empty(monkeypatch):
     monkeypatch.setattr(
         "src.core.auto_kline_fetch.download_one_auto", fake_download_auto
     )
+    monkeypatch.setattr(
+        "src.config.settings.kline_prefetch_via_tasks", False
+    )
     monkeypatch.setattr("src.core.db.clear_data_cache", lambda **kw: None)
 
     df, source = ensure_daily_kline("600519", min_bars=2, auto_fetch=True)

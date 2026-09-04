@@ -860,7 +860,8 @@ async def download_stocks(codes: list[str] = None):
     return dispatch_async_task(
         task_id,
         lambda: run_stocks_download(codes, task_id=task_id),
-        cache_namespace=None,
+        cache_namespace="data_download",
+        cache_params=task_params,
     )
 
 
@@ -889,6 +890,8 @@ async def incremental_update(codes: list[str] = None, force: bool = False):
     return dispatch_async_task(
         task_id,
         lambda: run_incremental(codes=codes, force=force, task_id=task_id),
+        cache_namespace="data_incremental",
+        cache_params=task_params,
     )
 
 
@@ -1027,6 +1030,8 @@ async def download_market_data(market: str, body: list | dict | None = None):
     return dispatch_async_task(
         task_id,
         lambda: run_market_download(market, codes, task_id=task_id),
+        cache_namespace="data_download",
+        cache_params=task_params,
     )
 
 
@@ -1051,6 +1056,8 @@ async def download_all_markets():
     return dispatch_async_task(
         task_id,
         lambda: run_download_all(task_id=task_id),
+        cache_namespace="data_download_all",
+        cache_params=task_params,
     )
 
 

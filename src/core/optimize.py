@@ -219,8 +219,9 @@ def _run_single(
     strategy_name: str,
     params: dict,
     run_ctx: dict | None = None,
+    data_feed=None,
 ) -> dict:
-    """用指定參數跑一次回測（可選風控上下文）。"""
+    """用指定參數跑一次回測（可選風控上下文；可傳入預建 data feed 做多保真度評估）。"""
     from src.core.risk_backtest import RiskRunConfig, attach_risk_to_cerebro
 
     strategy_cls = STRATEGIES[strategy_name]
@@ -229,7 +230,7 @@ def _run_single(
     cerebro = bt.Cerebro()
     cerebro.addstrategy(strategy_cls, **params)
 
-    data = prepare_data(code)
+    data = data_feed if data_feed is not None else prepare_data(code)
     cerebro.adddata(data)
 
     cerebro.broker.setcash(settings.backtest_cash)
@@ -524,6 +525,53 @@ def grid_search(
     return top_results
 
 
+# ============================================================
+# 多保真度優化（Multi-fidelity + Pruner）
+# ============================================================
+
+#: 支援的剪枝器名稱
+PRUNER_CHOICES = ("none", "median", "percentile", "hyperband")
+
+#: 各剪枝器對應的保真度階梯（數據比例）；最後一階必為 1.0（全量）
+_FIDELITY_RUNGS: dict[str, tuple[float, ...]] = {
+    "median": (0.5, 1.0),
+    "percentile": (0.5, 1.0),
+    "hyperband": (0.34, 0.67, 1.0),
+}
+
+#: 數據量少於此門檻時不做多保真度（子集太短指標無法收斂）
+_MF_MIN_BARS = 400
+
+
+def _build_pruner(name: str):
+    """依名稱建立 Optuna pruner；none/未知 → None"""
+    import optuna
+
+    key = (name or "none").strip().lower()
+    if key in ("", "none"):
+        return None
+    if key == "median":
+        return optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=0)
+    if key == "percentile":
+        return optuna.pruners.PercentilePruner(
+            percentile=25.0, n_startup_trials=5, n_warmup_steps=0
+        )
+    if key == "hyperband":
+        rungs = _FIDELITY_RUNGS["hyperband"]
+        return optuna.pruners.HyperbandPruner(
+            min_resource=1, max_resource=len(rungs), reduction_factor=3
+        )
+    logger.warning(f"未知 pruner「{name}」，回退為 none")
+    return None
+
+
+def _resolve_pruner_name(pruner: str | None) -> str:
+    """參數未指定時讀全局設定。"""
+    if pruner is not None:
+        return (pruner or "none").strip().lower()
+    return str(getattr(settings, "optuna_pruner", "none") or "none").strip().lower()
+
+
 def optuna_search(
     code: str,
     strategy_name: str,
@@ -533,8 +581,9 @@ def optuna_search(
     verbose: bool = True,
     task_id: str = None,
     run_ctx: dict | None = None,
+    pruner: str | None = None,
 ) -> list[dict]:
-    """Optuna 貝葉斯優化"""
+    """Optuna 貝葉斯優化（可選多保真度剪枝：低保真子集先篩，壞參數提前剪枝）"""
     import threading
 
     import optuna
@@ -551,12 +600,39 @@ def optuna_search(
         optuna.logging.INFO if verbose else optuna.logging.WARNING
     )
 
+    pruner_name = _resolve_pruner_name(pruner)
+    pruner_obj = _build_pruner(pruner_name)
+
+    # 多保真度前置：載入完整數據（進程內緩存，只載一次），過短則退回單保真度
+    mf_df = None
+    rungs: tuple[float, ...] = ()
+    if pruner_obj is not None:
+        try:
+            from src.core.backtest import _get_prepared_df
+
+            full_df = _get_prepared_df(code)
+            if len(full_df) >= _MF_MIN_BARS:
+                mf_df = full_df
+                rungs = _FIDELITY_RUNGS.get(pruner_name, (0.5, 1.0))
+            else:
+                logger.info(
+                    f"多保真度跳過：{code} 僅 {len(full_df)} 根 K 線（<{_MF_MIN_BARS}）"
+                )
+                pruner_obj = None
+                pruner_name = "none"
+        except Exception as e:
+            logger.warning(f"多保真度數據載入失敗，退回單保真度: {e}")
+            pruner_obj = None
+            pruner_name = "none"
+
     logger.info(
         f"Optuna 優化 {code}/{strategy_name}: {n_trials} 次試驗, 目標={objective}"
+        + (f", pruner={pruner_name}（保真度階梯 {rungs}）" if pruner_obj else "")
     )
 
     all_results = []
     results_lock = threading.Lock()
+    prune_counter = {"n": 0}
 
     def _objective(trial):
         params = {}
@@ -596,19 +672,43 @@ def optuna_search(
             return float("-inf")
 
         try:
+            if mf_df is not None and rungs:
+                # 多保真度：逐階梯用子集評估並上報中間分，壞參數提前剪枝
+                n_bars = len(mf_df)
+                for step, frac in enumerate(rungs[:-1]):
+                    cut = max(60, int(n_bars * frac))
+                    sub_feed = bt.feeds.PandasData(dataname=mf_df.iloc[:cut].copy())
+                    sub_r = _run_single(
+                        code, strategy_name, params, run_ctx, data_feed=sub_feed
+                    )
+                    sub_score = _score(sub_r, objective)
+                    trial.report(sub_score, step=step + 1)
+                    if trial.should_prune():
+                        with results_lock:
+                            prune_counter["n"] += 1
+                        raise optuna.TrialPruned(
+                            f"低保真度（{frac:.0%} 數據）評分 {sub_score:.4f} 被剪枝"
+                        )
+
             r = _run_single(code, strategy_name, params, run_ctx)
             _score_and_risk(r, objective, run_ctx)
             with results_lock:
                 all_results.append(r)
             return r["score"]
+        except optuna.TrialPruned:
+            raise
         except Exception:
             return float("-inf")
 
     n_jobs = _resolve_optuna_jobs(task_id)
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(direction="maximize", pruner=pruner_obj)
     study.optimize(
         _objective, n_trials=n_trials, show_progress_bar=verbose, n_jobs=n_jobs
     )
+    if pruner_obj is not None:
+        logger.info(
+            f"多保真度剪枝統計：{prune_counter['n']}/{n_trials} 次試驗被提前剪枝"
+        )
     if task_id:
         from src.core.task_manager import update_task
 
@@ -657,6 +757,7 @@ def optimize_all(
     verbose: bool = True,
     task_id: str = None,
     run_ctx: dict | None = None,
+    pruner: str | None = None,
 ) -> dict:
     """對所有策略做參數優化（默認串行策略 + 每策略進程池，可選策略級並行）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -697,6 +798,7 @@ def optimize_all(
                 verbose=verbose,
                 task_id=task_id,
                 run_ctx=run_ctx,
+                pruner=pruner,
             )
         return name, grid_search(
             code,

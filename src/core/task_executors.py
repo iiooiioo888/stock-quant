@@ -59,6 +59,7 @@ def _register_defaults() -> None:
             task_id=task_id,
             circuit_breaker_dd=p.get("circuit_breaker_dd"),
             max_position_pct=p.get("max_position_pct"),
+            engine=p.get("engine"),
         )
 
     def _backtest_advanced(p: dict, task_id: str):
@@ -83,6 +84,7 @@ def _register_defaults() -> None:
             task_id=task_id,
             circuit_breaker_dd=p.get("circuit_breaker_dd"),
             max_position_pct=p.get("max_position_pct"),
+            engine=p.get("engine"),
         )
 
     def _backtest_multi(p: dict, task_id: str):
@@ -101,6 +103,7 @@ def _register_defaults() -> None:
         n_trials = int(p.get("n_trials", 100))
         top_n = int(p.get("top_n", 10))
         run_ctx = parse_risk_params(p).to_dict()
+        pruner = p.get("pruner")
         if strategy == "all":
             results = optimize_all(
                 code,
@@ -110,6 +113,7 @@ def _register_defaults() -> None:
                 top_n=top_n,
                 task_id=task_id,
                 run_ctx=run_ctx,
+                pruner=pruner,
             )
             return {
                 name: [{k: v for k, v in r.items()} for r in res_list]
@@ -123,6 +127,7 @@ def _register_defaults() -> None:
                 n_trials=n_trials,
                 task_id=task_id,
                 run_ctx=run_ctx,
+                pruner=pruner,
             )
         return grid_search(
             code,
@@ -155,6 +160,7 @@ def _register_defaults() -> None:
             step_days=int(p.get("step_days", 250)),
             objective=p.get("objective", "sharpe"),
             n_trials=int(p.get("n_trials", 50)),
+            permutation_n=int(p.get("permutation_n", 0) or 0),
         )
 
     def _auto_optimize(p: dict, task_id: str):
@@ -201,7 +207,12 @@ def _register_defaults() -> None:
         code = p.get("code")
         if not code:
             raise ValueError("缺少 code")
-        n = download_one(code, start_date=p.get("start_date"), market=p.get("market"))
+        n = download_one(
+            code,
+            start_date=p.get("start_date"),
+            market=p.get("market"),
+            force=bool(p.get("force")),
+        )
         return {"code": code, "rows": n}
 
     def _data_download_all(p: dict, task_id: str):
@@ -210,12 +221,35 @@ def _register_defaults() -> None:
         return run_download_all(task_id=task_id)
 
     def _data_download_market(p: dict, task_id: str):
-        from src.core.download_tasks import run_market_download
+        from src.core.download_tasks import run_market_download, run_stocks_download
 
-        return run_market_download(
-            p.get("market"),
-            p.get("codes") or [],
+        if p.get("market"):
+            return run_market_download(
+                p.get("market"),
+                p.get("codes") or [],
+                task_id=task_id,
+            )
+        return run_stocks_download(p.get("codes") or [], task_id=task_id)
+
+    def _data_incremental(p: dict, task_id: str):
+        from src.core.download_tasks import run_incremental
+
+        return run_incremental(
+            codes=p.get("codes"),
+            force=p.get("force", False),
             task_id=task_id,
+        )
+
+    def _heatmap(p: dict, task_id: str):
+        from src.core.heatmap import param_heatmap
+
+        return param_heatmap(
+            code=p["code"],
+            strategy_name=p.get("strategy", "dual_ma"),
+            param_x=p["param_x"],
+            param_y=p["param_y"],
+            grid_size=int(p.get("grid_size") or 10),
+            objective=p.get("objective", "sharpe"),
         )
 
     register_executor("backtest", _backtest)
@@ -230,6 +264,8 @@ def _register_defaults() -> None:
     register_executor("stock_universe_intro", _stock_universe_intro)
     register_executor("data_download", _data_download_market)
     register_executor("data_download_all", _data_download_all)
+    register_executor("data_incremental", _data_incremental)
+    register_executor("heatmap", _heatmap)
     logger.debug(f"任務執行器已註冊: {len(_EXECUTORS)} 種")
 
 

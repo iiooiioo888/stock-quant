@@ -346,3 +346,41 @@ async def factor_ic_analysis(
 
     result = compute_ic(body.factor_values, body.forward_returns)
     return {"success": True, "result": result}
+
+
+
+@router.post("/api/factors/eval-expression")
+async def eval_factor_expression_api(body: dict, user: User = Depends(require_auth)):
+    """自訂因子表達式（白名單四則運算）。body: expression, factors"""
+    from src.core.factor_expression import FactorExpressionError, eval_factor_expression
+
+    expr = str((body or {}).get("expression") or "")
+    factors = (body or {}).get("factors") or {}
+    if not isinstance(factors, dict):
+        raise HTTPException(400, "factors 須為物件")
+    try:
+        value = eval_factor_expression(expr, factors)
+    except FactorExpressionError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "value": value, "expression": expr}
+
+
+@router.post("/api/factors/combo-ga")
+async def combo_ga_api(body: dict, user: User = Depends(require_auth)):
+    """遺傳演算法尋找策略權重。body.returns: [[r1,r2,...], ...] 日×策略"""
+    from src.core.combo_ga import optimize_weights
+    import numpy as np
+
+    raw = (body or {}).get("returns")
+    if not raw:
+        raise HTTPException(400, "缺少 returns")
+    try:
+        arr = np.asarray(raw, dtype=float)
+        out = optimize_weights(
+            arr,
+            generations=int((body or {}).get("generations") or 40),
+            pop_size=int((body or {}).get("pop_size") or 32),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, **out}

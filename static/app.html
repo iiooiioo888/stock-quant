@@ -514,6 +514,15 @@
                 <input type="checkbox" id="tk-auto-refresh" checked />
                 自動刷新
               </label>
+              <label class="tk-auto-label" title="同時執行的任務上限，超出的進入排隊">
+                最大並行
+                <input type="number" id="tk-max-workers" class="inp tk-max-workers" min="1" max="32" value="4" />
+              </label>
+              <label class="tk-auto-label" title="同一標的在此時長內不重複爬取">
+                緩衝小時
+                <input type="number" id="tk-buffer-hours" class="inp tk-max-workers" min="0" max="168" value="12" />
+              </label>
+              <button type="button" class="btn s" id="tk-apply-capacity">套用</button>
               <button type="button" class="btn s" id="tk-refresh">刷新</button>
               <button type="button" class="btn s" id="tk-export">導出</button>
               <button type="button" class="btn s" id="tk-cancel-pending">取消排隊</button>
@@ -829,11 +838,30 @@
             <div id="al-channels" class="al-channel-grid"></div>
           </div>
           <div class="al-sec">
-            <div class="al-sec-h">預警規則</div>
+            <div class="al-sec-h">預警規則 <button type="button" class="btn s" id="al-add-rule">新增規則</button></div>
+            <div class="al-rule-form" id="al-rule-form" hidden>
+              <div class="al-form-grid">
+                <label>代碼<input id="al-f-code" maxlength="12" autocomplete="off"></label>
+                <label>名稱<input id="al-f-name"></label>
+                <label>突破價<input id="al-f-above" type="number" step="0.01"></label>
+                <label>跌破價<input id="al-f-below" type="number" step="0.01"></label>
+                <label>漲跌幅%<input id="al-f-pct" type="number" step="0.1"></label>
+                <label>量能倍數<input id="al-f-vol" type="number" step="0.1"></label>
+                <label>RSI 高於<input id="al-f-rsi-hi" type="number" step="1"></label>
+                <label>RSI 低於<input id="al-f-rsi-lo" type="number" step="1"></label>
+                <label class="al-form-check"><input type="checkbox" id="al-f-macd"> MACD 金叉/死叉</label>
+              </div>
+              <div class="al-form-actions">
+                <button type="button" class="btn btn-ac s" id="al-save-rule">保存規則</button>
+                <button type="button" class="btn s" id="al-fill-price">依現價填充</button>
+                <button type="button" class="btn s" id="al-cancel-rule">取消</button>
+              </div>
+              <p class="al-hint">價格突破、量能異動、RSI、MACD 交叉；通知走釘釘／飛書／企業微信／郵件（設定頁渠道）。</p>
+            </div>
             <div class="table-wrap">
               <table class="pro-table">
                 <thead>
-                  <tr><th>代碼</th><th>名稱</th><th>漲跌%</th><th>上方</th><th>下方</th><th></th></tr>
+                  <tr><th>代碼</th><th>名稱</th><th>漲跌%</th><th>上方</th><th>下方</th><th>量/指標</th><th></th></tr>
                 </thead>
                 <tbody id="al-tb"></tbody>
               </table>
@@ -972,8 +1000,15 @@
                   <input type="number" id="set-commission" class="inp" value="0.03" step="0.01" min="0" />
                 </label>
                 <label class="fg-row">最大並行任務
-                  <input type="number" id="set-max-parallel" class="inp" value="4" min="1" max="16" />
+                  <input type="number" id="set-max-parallel" class="inp" value="4" min="1" max="32" />
                 </label>
+                <label class="fg-row">資料緩衝（小時）
+                  <input type="number" id="set-data-buffer" class="inp" value="12" min="0" max="168" step="1" />
+                </label>
+                <p style="font-size:.66rem;color:var(--t3);margin:0;line-height:1.5">
+                  所有回測、優化、下載、熱力圖等都會進入任務中心排隊；並行數限制同時執行數量。緩衝時間內同一標的不重複爬取，多客戶端共用本地庫。
+                </p>
+                <button type="button" class="btn s" id="set-apply-parallel">套用並行數</button>
               </div>
             </section>
             <section class="pnl">

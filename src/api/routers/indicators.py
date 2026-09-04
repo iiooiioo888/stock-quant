@@ -115,6 +115,7 @@ async def warmup_indicators_endpoint(
     indicators: Optional[List[str]] = Query(None, description="指標名稱清單"),
     max_workers: int = Query(4, ge=1, le=16, description="最大 worker 數"),
     all_stocks: bool = Query(False, description="是否處理所有股票"),
+    incremental: bool = Query(False, description="增量模式：只重算各股新增 K 線區間"),
 ) -> Dict[str, Any]:
     """
     預熱指標緩存（非同步任務）
@@ -146,6 +147,7 @@ async def warmup_indicators_endpoint(
         codes=actual_codes,
         subset_indicators=indicators,
         max_workers=max_workers,
+        incremental=incremental,
     )
 
     return result

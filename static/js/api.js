@@ -820,6 +820,13 @@ const Api = {
     return this.get('/api/tasks/types', opts);
   },
   async getTaskQueue(opts = {}) { return this.get('/api/tasks/queue', opts); },
+  async setTaskCapacity(maxWorkers, heavyMax, bufferHours) {
+    const body = {};
+    if (maxWorkers != null) body.max_workers = Number(maxWorkers);
+    if (heavyMax != null) body.heavy_max_concurrent = Number(heavyMax);
+    if (bufferHours != null) body.buffer_hours = Number(bufferHours);
+    return this.put('/api/tasks/capacity', body);
+  },
 
   async pollTask(taskId, options = {}) {
     const interval = options.interval || 1500;

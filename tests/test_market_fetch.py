@@ -39,6 +39,58 @@ class TestMarketFetch:
         assert out["prices"] == []
         assert out["source"] == ""
 
+    def test_fetch_history_df_uses_local_without_catalog(self, monkeypatch):
+        from src.core import market_fetch as mf
+
+        local = pd.DataFrame(
+            {
+                "date": ["2026-01-01", "2026-01-02", "2026-01-03"],
+                "open": [1.0, 1.1, 1.2],
+                "high": [1.2, 1.3, 1.4],
+                "low": [0.9, 1.0, 1.1],
+                "close": [1.1, 1.2, 1.3],
+                "volume": [10, 11, 12],
+            }
+        )
+        called = {"catalog": 0}
+
+        monkeypatch.setattr(mf, "_fetch_local_kline", lambda s, d: local)
+        monkeypatch.setattr(
+            mf,
+            "_fetch_catalog_primary",
+            lambda *a, **k: called.__setitem__("catalog", called["catalog"] + 1)
+            or (pd.DataFrame(), "", ""),
+        )
+        df, src = mf.fetch_history_df("000001.SZ", 30)
+        assert src == "local_db"
+        assert len(df) == 3
+        assert called["catalog"] == 0
+
+    def test_fetch_history_df_empty_routes_to_buffer_not_catalog(self, monkeypatch):
+        from src.core import market_fetch as mf
+
+        called = {"catalog": 0, "ensure": 0}
+
+        monkeypatch.setattr(mf, "_fetch_local_kline", lambda s, d: pd.DataFrame())
+        monkeypatch.setattr(
+            "src.core.data_fetch_buffer.is_inflight", lambda *a, **k: False
+        )
+        monkeypatch.setattr(
+            "src.core.data_fetch_buffer.ensure_fetched",
+            lambda *a, **k: called.__setitem__("ensure", called["ensure"] + 1),
+        )
+        monkeypatch.setattr(
+            mf,
+            "_fetch_catalog_primary",
+            lambda *a, **k: called.__setitem__("catalog", called["catalog"] + 1)
+            or (pd.DataFrame(), "", ""),
+        )
+        df, src = mf.fetch_history_df("000001.SZ", 30)
+        assert src == ""
+        assert df.empty
+        assert called["ensure"] == 1
+        assert called["catalog"] == 0
+
     def test_symbol_to_a_share_code(self):
         from src.core.market_fetch import symbol_to_a_share_code
 

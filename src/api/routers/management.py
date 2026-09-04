@@ -302,6 +302,9 @@ async def get_config():
             "data_retention_years": settings.data_retention_years,
             "task_max_workers": settings.task_max_workers,
             "task_heavy_max_concurrent": settings.task_heavy_max_concurrent,
+            "data_fetch_buffer_hours": getattr(
+                settings, "data_fetch_buffer_hours", 12
+            ),
             "task_timeout_sec": settings.task_timeout_sec,
             "task_parallel_grid": settings.task_parallel_grid,
             "strategy_params": settings.strategy_params,

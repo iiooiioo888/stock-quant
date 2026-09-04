@@ -217,10 +217,13 @@ def _compute_kdj(
     return k, d, j
 
 
-def _compute_obv(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
-    """計算 OBV"""
+def _compute_obv(
+    close: np.ndarray, volume: np.ndarray, base: float = 0.0
+) -> np.ndarray:
+    """計算 OBV（base 為窗口起點前一天的 OBV 值，供增量接力）"""
     n = len(close)
     obv = np.zeros(n, dtype=np.float64)
+    obv[0] = base
 
     for i in range(1, n):
         if close[i] > close[i - 1]:
@@ -233,11 +236,137 @@ def _compute_obv(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
     return obv
 
 
+def _indicator_warmup_bars(config: IndicatorConfig) -> int:
+    """各指標增量重算所需的回看窗口（根數）。
+
+    窗口型指標（SMA/布林）只需 period 根；遞歸型指標（EMA/MACD/RSI/ATR/KDJ
+    使用 Wilder/指數平滑）理論上依賴全部歷史，實務上 period 的 5~10 倍
+    即可收斂到與全量計算誤差 < 1e-6。
+    """
+    p = config.params
+    name = config.name
+    if name in ("sma", "vma"):
+        return int(p.get("period", 20))
+    if name == "ema":
+        return int(p.get("period", 12)) * 5 + 50
+    if name == "macd":
+        return (int(p.get("slow", 26)) + int(p.get("signal", 9))) * 5 + 50
+    if name == "rsi":
+        return int(p.get("period", 14)) * 20 + 100
+    if name == "atr":
+        return int(p.get("period", 14)) * 20 + 100
+    if name == "bollinger":
+        return int(p.get("period", 20))
+    if name == "kdj":
+        return int(p.get("n", 9)) * 10 + 50
+    if name == "obv":
+        return 1  # 累積型指標，由舊表末值接力（見 _get_obv_base）
+    return 250
+
+
+def _get_table_max_date(db_path: str, table_name: str) -> Optional[str]:
+    """取指標表的最大日期；表不存在返回 None"""
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        )
+        if not cur.fetchone():
+            return None
+        row = cur.execute(f'SELECT MAX(date) FROM "{table_name}"').fetchone()
+        return str(row[0]) if row and row[0] else None
+    finally:
+        conn.close()
+
+
+def _get_obv_base(db_path: str, table_name: str, before_date: str) -> float:
+    """取 cutoff 日之前最後一筆 OBV 值作為增量累加起點"""
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            f'SELECT obv FROM "{table_name}" WHERE date < ? ORDER BY date DESC LIMIT 1',
+            (before_date,),
+        ).fetchone()
+        return float(row[0]) if row and row[0] is not None else 0.0
+    finally:
+        conn.close()
+
+
+def _compute_result_dict(
+    config: IndicatorConfig,
+    close: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    volume: np.ndarray,
+    obv_base: float = 0.0,
+) -> Optional[Dict[str, np.ndarray]]:
+    """依指標配置計算結果列；未知類型返回 None"""
+    result_dict: Dict[str, np.ndarray] = {}
+
+    if config.name == "sma":
+        period = config.params.get("period", 20)
+        result_dict[f"sma_{period}"] = _compute_sma(close, period)
+
+    elif config.name == "ema":
+        period = config.params.get("period", 12)
+        result_dict[f"ema_{period}"] = _compute_ema(close, period)
+
+    elif config.name == "macd":
+        fast = config.params.get("fast", 12)
+        slow = config.params.get("slow", 26)
+        signal = config.params.get("signal", 9)
+        line, sig, hist = compute_macd(close, fast, slow, signal)
+        suffix = "" if fast == 12 else f"_f{fast}"
+        result_dict[f"macd_line{suffix}"] = line
+        result_dict[f"macd_signal{suffix}"] = sig
+        result_dict[f"macd_hist{suffix}"] = hist
+
+    elif config.name == "rsi":
+        period = config.params.get("period", 14)
+        result_dict[f"rsi_{period}"] = compute_rsi(close, period)
+
+    elif config.name == "atr":
+        period = config.params.get("period", 14)
+        result_dict[f"atr_{period}"] = compute_atr(high, low, close, period)
+
+    elif config.name == "bollinger":
+        period = config.params.get("period", 20)
+        std = config.params.get("std", 2.0)
+        upper, mid, lower = _compute_bollinger(close, period, std)
+        suffix = "" if period == 20 else f"_{period}"
+        result_dict[f"bb_upper{suffix}"] = upper
+        result_dict[f"bb_mid{suffix}"] = mid
+        result_dict[f"bb_lower{suffix}"] = lower
+
+    elif config.name == "kdj":
+        n = config.params.get("n", 9)
+        m1 = config.params.get("m1", 3)
+        m2 = config.params.get("m2", 3)
+        k, d, j = _compute_kdj(high, low, close, n, m1, m2)
+        result_dict["kdj_k"] = k
+        result_dict["kdj_d"] = d
+        result_dict["kdj_j"] = j
+
+    elif config.name == "obv":
+        result_dict["obv"] = _compute_obv(close, volume, base=obv_base)
+
+    elif config.name == "vma":
+        period = config.params.get("period", 20)
+        result_dict[f"vma_{period}"] = _compute_sma(volume, period)
+
+    else:
+        return None
+    return result_dict
+
+
 def compute_indicator_for_code(
     code: str,
     config: IndicatorConfig,
+    incremental: bool = False,
 ) -> PrecomputeResult:
-    """為單支股票計算單一指標"""
+    """為單支股票計算單一指標（incremental=True 時只重算新增 K 線區間）"""
     start_time = time.time()
 
     try:
@@ -258,67 +387,57 @@ def compute_indicator_for_code(
                 error="數據不足",
             )
 
+        # 增量窗口決策：只在已有緩存且 K 線有新增時啟用
+        from src.config import settings as _settings
+
+        dates_all = [str(d)[:10] for d in df["date"].tolist()]
+        table_name = f"indicator_{code}_{config.name}_{_params_hash(config.params)}"
+        since_date: Optional[str] = None
+        obv_base = 0.0
+        work_df = df
+
+        if incremental:
+            existing_max = _get_table_max_date(_settings.db_path, table_name)
+            if existing_max:
+                latest_kline = dates_all[-1]
+                if existing_max >= latest_kline:
+                    return PrecomputeResult(
+                        code=code,
+                        indicator=config.name,
+                        params_hash=_params_hash(config.params),
+                        computed_at=datetime.now().isoformat(),
+                        data_version=_get_data_version(code),
+                        row_count=len(df),
+                        status="skipped",
+                        error="已是最新（無新增 K 線）",
+                    )
+                # 找 cutoff 在 df 中的位置；歷史被回填改動時退回全量
+                cutoff_idx = (
+                    dates_all.index(existing_max) if existing_max in dates_all else -1
+                )
+                if cutoff_idx > 0:
+                    warmup = _indicator_warmup_bars(config)
+                    start_idx = max(0, cutoff_idx - warmup)
+                    if config.name == "obv":
+                        # 累積型：切片需含 cutoff 前一根，起點接舊表末值
+                        start_idx = max(0, cutoff_idx - 1)
+                        obv_base = _get_obv_base(
+                            _settings.db_path, table_name, existing_max
+                        )
+                    if start_idx > 0:
+                        work_df = df.iloc[start_idx:].copy()
+                        since_date = existing_max
+                    # start_idx == 0 → 歷史太短，等同全量
+
         # 準備數據
-        close = df["close"].astype(float).to_numpy()
-        high = df["high"].astype(float).to_numpy()
-        low = df["low"].astype(float).to_numpy()
-        volume = df["volume"].astype(float).to_numpy()
+        close = work_df["close"].astype(float).to_numpy()
+        high = work_df["high"].astype(float).to_numpy()
+        low = work_df["low"].astype(float).to_numpy()
+        volume = work_df["volume"].astype(float).to_numpy()
 
         # 根據指標類型計算
-        result_dict: Dict[str, np.ndarray] = {}
-
-        if config.name == "sma":
-            period = config.params.get("period", 20)
-            result_dict[f"sma_{period}"] = _compute_sma(close, period)
-
-        elif config.name == "ema":
-            period = config.params.get("period", 12)
-            result_dict[f"ema_{period}"] = _compute_ema(close, period)
-
-        elif config.name == "macd":
-            fast = config.params.get("fast", 12)
-            slow = config.params.get("slow", 26)
-            signal = config.params.get("signal", 9)
-            line, sig, hist = compute_macd(close, fast, slow, signal)
-            suffix = "" if fast == 12 else f"_f{fast}"
-            result_dict[f"macd_line{suffix}"] = line
-            result_dict[f"macd_signal{suffix}"] = sig
-            result_dict[f"macd_hist{suffix}"] = hist
-
-        elif config.name == "rsi":
-            period = config.params.get("period", 14)
-            result_dict[f"rsi_{period}"] = compute_rsi(close, period)
-
-        elif config.name == "atr":
-            period = config.params.get("period", 14)
-            result_dict[f"atr_{period}"] = compute_atr(high, low, close, period)
-
-        elif config.name == "bollinger":
-            period = config.params.get("period", 20)
-            std = config.params.get("std", 2.0)
-            upper, mid, lower = _compute_bollinger(close, period, std)
-            suffix = "" if period == 20 else f"_{period}"
-            result_dict[f"bb_upper{suffix}"] = upper
-            result_dict[f"bb_mid{suffix}"] = mid
-            result_dict[f"bb_lower{suffix}"] = lower
-
-        elif config.name == "kdj":
-            n = config.params.get("n", 9)
-            m1 = config.params.get("m1", 3)
-            m2 = config.params.get("m2", 3)
-            k, d, j = _compute_kdj(high, low, close, n, m1, m2)
-            result_dict["kdj_k"] = k
-            result_dict["kdj_d"] = d
-            result_dict["kdj_j"] = j
-
-        elif config.name == "obv":
-            result_dict["obv"] = _compute_obv(close, volume)
-
-        elif config.name == "vma":
-            period = config.params.get("period", 20)
-            result_dict[f"vma_{period}"] = _compute_sma(volume, period)
-
-        else:
+        result_dict = _compute_result_dict(config, close, high, low, volume, obv_base)
+        if result_dict is None:
             return PrecomputeResult(
                 code=code,
                 indicator=config.name,
@@ -330,8 +449,14 @@ def compute_indicator_for_code(
                 error=f"未知指標類型：{config.name}",
             )
 
-        # 儲存到 SQLite
-        _save_indicator_to_db(code, config, result_dict, df["date"].tolist())
+        # 儲存到 SQLite（增量模式只覆寫 since_date 起的區間）
+        _save_indicator_to_db(
+            code,
+            config,
+            result_dict,
+            [str(d)[:10] for d in work_df["date"].tolist()],
+            since_date=since_date,
+        )
 
         elapsed = time.time() - start_time
         logger.debug(f"預計算 {code} {config.name} 完成，耗時 {elapsed:.3f}s")
@@ -365,8 +490,13 @@ def _save_indicator_to_db(
     config: IndicatorConfig,
     result_dict: Dict[str, np.ndarray],
     dates: List[str],
+    since_date: Optional[str] = None,
 ) -> None:
-    """將指標結果儲存到 SQLite"""
+    """將指標結果儲存到 SQLite
+
+    since_date 為 None 時全量覆寫；否則只刪除並重寫 date >= since_date 的區間
+    （增量更新：cutoff 當天可能是未完成 K 線，需一併重算覆蓋）。
+    """
     from src.config import settings
 
     db_path = settings.db_path
@@ -394,18 +524,25 @@ def _save_indicator_to_db(
             f'CREATE INDEX IF NOT EXISTS "idx_{table_name}_date" ON "{table_name}"(date)'
         )
 
-        # 清空舊數據
-        cursor.execute(f'DELETE FROM "{table_name}"')
+        # 清空舊數據（增量模式僅清 since_date 起區間）
+        if since_date:
+            cursor.execute(f'DELETE FROM "{table_name}" WHERE date >= ?', (since_date,))
+        else:
+            cursor.execute(f'DELETE FROM "{table_name}"')
 
         # 插入新數據
         n = len(dates)
         batch_size = 500
+        write_idx = (
+            [i for i, d in enumerate(dates) if d >= since_date]
+            if since_date
+            else list(range(n))
+        )
 
-        for batch_start in range(0, n, batch_size):
-            batch_end = min(batch_start + batch_size, n)
+        for batch_pos in range(0, len(write_idx), batch_size):
             rows = []
 
-            for i in range(batch_start, batch_end):
+            for i in write_idx[batch_pos : batch_pos + batch_size]:
                 row = [dates[i]]
                 for col in config.output_columns:
                     if col in result_dict and i < len(result_dict[col]):
@@ -415,12 +552,15 @@ def _save_indicator_to_db(
                         row.append(None)
                 rows.append(tuple(row))
 
-            placeholders = ", ".join(["?" for _ in row])
+            if not rows:
+                continue
+            placeholders = ", ".join(["?" for _ in rows[0]])
             insert_sql = f'INSERT OR REPLACE INTO "{table_name}" (date, {", ".join(config.output_columns)}) VALUES ({placeholders})'
             cursor.executemany(insert_sql, rows)
 
         conn.commit()
-        logger.debug(f"已儲存 {code} {config.name} 共 {n} 筆指標數據到 {table_name}")
+        mode = f"增量（{since_date} 起 {len(write_idx)} 筆）" if since_date else f"全量（{n} 筆）"
+        logger.debug(f"已儲存 {code} {config.name} {mode}到 {table_name}")
 
     finally:
         conn.close()
@@ -430,11 +570,15 @@ def precompute_all_indicators(
     codes: List[str],
     indicators: Optional[List[IndicatorConfig]] = None,
     max_workers: int = 4,
+    incremental: bool = False,
 ) -> List[PrecomputeResult]:
-    """批量預計算所有指標"""
+    """批量預計算所有指標（incremental=True 時只重算各股新增 K 線區間）"""
     indicators = indicators or DEFAULT_INDICATORS
 
-    logger.info(f"開始預計算 {len(codes)} 支股票，共 {len(indicators)} 個指標配置")
+    logger.info(
+        f"開始預計算 {len(codes)} 支股票，共 {len(indicators)} 個指標配置"
+        f"（{'增量' if incremental else '全量'}模式）"
+    )
 
     all_results: List[PrecomputeResult] = []
     tasks = []
@@ -449,7 +593,9 @@ def precompute_all_indicators(
     # 使用進程池並行計算
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(compute_indicator_for_code, code, config): (code, config)
+            executor.submit(
+                compute_indicator_for_code, code, config, incremental
+            ): (code, config)
             for code, config in tasks
         }
 
@@ -537,6 +683,7 @@ def warmup_indicators(
     codes: Optional[List[str]] = None,
     subset_indicators: Optional[List[str]] = None,
     max_workers: int = 4,
+    incremental: bool = False,
 ) -> Dict[str, Any]:
     """
     預熱指標緩存
@@ -545,6 +692,7 @@ def warmup_indicators(
         codes: 股票代碼清單，None 表示所有股票
         subset_indicators: 要預熱的指標子集，None 表示全部
         max_workers: 最大並行 worker 數
+        incremental: True 時只重算各股新增 K 線區間（每日例行更新場景提速）
 
     Returns:
         預熱結果統計
@@ -571,7 +719,7 @@ def warmup_indicators(
         indicators = [cfg for cfg in indicators if cfg.name in subset_indicators]
 
     start_time = time.time()
-    results = precompute_all_indicators(codes, indicators, max_workers)
+    results = precompute_all_indicators(codes, indicators, max_workers, incremental)
     elapsed = time.time() - start_time
 
     # 統計

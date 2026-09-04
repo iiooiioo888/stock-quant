@@ -199,7 +199,7 @@ def fetch_history_df(
 ) -> tuple[pd.DataFrame, str]:
     """
     拉取日 K 線（多源降級）。
-    順序：目錄 IB → TV → 本地庫 → Yahoo → 東財 → global（與 data-fetch-pipeline 一致）。
+    順序：本地庫 →（缺資料則任務中心／緩衝合併）→ 目錄 IB → TV → Yahoo → 東財 → global。
     返回 (DataFrame, source_name)；失敗時為空 DataFrame 與空字串。
 
     skip_catalog: 為 True 時跳過目錄 IB/TV（避免 build_index_chart_item 重複請求）。
@@ -207,16 +207,61 @@ def fetch_history_df(
     symbol = symbol.strip()
     days = max(2, int(days))
 
+    def _buffer_code() -> str:
+        from src.core.local_kline import normalize_kline_code
+
+        return symbol_to_a_share_code(symbol) or normalize_kline_code(symbol)
+
     def _return_online(df: pd.DataFrame, source: str) -> tuple[pd.DataFrame, str]:
         if df.empty or len(df) < 2:
             return pd.DataFrame(), ""
         from src.core.local_kline import persist_kline_df
 
         persist_kline_df(symbol, df)
+        try:
+            from src.core.data_fetch_buffer import mark_fetched
+
+            mark_fetched(_buffer_code())
+        except Exception:
+            pass
         _record_kline_fetch(source)
         return df, source
 
-    # 0. 目錄 IB → TradingView（需 SQ_IB_ENABLED / TV 配置）
+    # 1. 本地庫優先：緩衝期內多客戶端共用，不重複爬取
+    df = _fetch_local_kline(symbol, days)
+    if not df.empty:
+        _record_kline_fetch("local_db")
+        return df, "local_db"
+
+    from src.core.data_fetch_buffer import is_inflight
+
+    code_key = _buffer_code()
+    # 僅「正在抓取」的 worker 走外網；其餘客戶端排隊／等緩衝，避免雙重爬取
+    if not is_inflight(code_key):
+        try:
+            from src.core.data_fetch_buffer import ensure_fetched
+            from src.core.history import detect_market
+
+            ensure_fetched(
+                code_key,
+                start_date=(datetime.now() - timedelta(days=days + 60)).strftime(
+                    "%Y%m%d"
+                ),
+                market=detect_market(code_key),
+                min_bars=2,
+            )
+        except Exception as e:
+            logger.debug(f"任務中心補齊 {code_key} 跳過: {e}")
+        df = _fetch_local_kline(symbol, days)
+        if not df.empty:
+            _record_kline_fetch("local_db")
+            return df, "local_db"
+        return pd.DataFrame(), ""
+
+    code = symbol_to_a_share_code(symbol)
+    yahoo_sym = a_share_to_yahoo(symbol) if code else symbol
+
+    # 2. 目錄 IB → TradingView（僅實際爬取 worker）
     if not skip_catalog:
         df_cat, _, src_cat = _fetch_catalog_primary(symbol, days)
         if not df_cat.empty and len(df_cat) >= 2:
@@ -224,16 +269,7 @@ def fetch_history_df(
             if not out.empty:
                 return out, src
 
-    # 1. 本地庫（有則不再請求外網）
-    df = _fetch_local_kline(symbol, days)
-    if not df.empty:
-        _record_kline_fetch("local_db")
-        return df, "local_db"
-
-    code = symbol_to_a_share_code(symbol)
-    yahoo_sym = a_share_to_yahoo(symbol) if code else symbol
-
-    # 2. A 股統一降級鏈（Yahoo → 東財 → AKShare → 新浪/網易/騰訊/HTTP）
+    # 3. A 股統一降級鏈（Yahoo → 東財 → AKShare → 新浪/網易/騰訊/HTTP）
     if code:
         try:
             from src.core.kline_fetcher import fetch_a_share_history
@@ -247,11 +283,13 @@ def fetch_history_df(
             )
             if not df.empty and len(df) >= 2:
                 df = df.tail(days).reset_index(drop=True)
-                return df, src or "a_share_unified"
+                out, src = _return_online(df, src or "a_share_unified")
+                if not out.empty:
+                    return out, src
         except Exception as e:
             logger.debug(f"A 股統一降級 {code} 失敗: {e}")
 
-    # 3. 全球模塊（Yahoo + Twelve Data）
+    # 4. 全球模塊（Yahoo + Twelve Data）
     try:
         start = (datetime.now() - timedelta(days=days + 60)).strftime("%Y%m%d")
         df = _fetch_global_download(yahoo_sym, start_date=start)

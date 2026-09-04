@@ -63,14 +63,14 @@ def ensure_daily_kline(
     if not auto_fetch:
         return df, "empty" if df.empty else "partial"
 
-    from src.core.auto_kline_fetch import download_one_auto
+    from src.core.data_fetch_buffer import ensure_fetched
     from src.core.history import detect_market
 
     mkt = market or detect_market(code)
     start = start_date or settings.history_start_date
-    logger.info(f"本地無 {code} 日 K（{len(df)} 條），自動選源拉取並寫入庫…")
-    count, fetch_src = download_one_auto(code, start_date=start, market=mkt)
-    if count > 0:
+    logger.info(f"本地無 {code} 日 K（{len(df)} 條），經緩衝／任務中心補齊…")
+    fetch_src = ensure_fetched(code, start_date=start, market=mkt, min_bars=min_bars)
+    if fetch_src and fetch_src not in ("empty", "coalesced_empty"):
         from src.core.db import clear_data_cache
 
         clear_data_cache(quiet=True, reason=f"ensure_daily_kline:{code}")

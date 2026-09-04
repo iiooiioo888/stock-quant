@@ -13,6 +13,8 @@ HEAVY_TASK_TYPES = frozenset(
         "auto_optimize",
         "walkforward",
         "portfolio",
+        "heatmap",
+        "target_search",
     }
 )
 

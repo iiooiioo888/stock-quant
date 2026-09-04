@@ -87,17 +87,23 @@ def cmd_optimize(args):
 
     ensure_db()
 
+    pruner = getattr(args, "pruner", None)
     if args.strategy == "all":
         optimize_all(
             args.code,
             objective=args.objective,
             method=args.method,
             n_trials=args.trials,
+            pruner=pruner,
         )
     else:
         if args.method == "optuna":
             results = optuna_search(
-                args.code, args.strategy, objective=args.objective, n_trials=args.trials
+                args.code,
+                args.strategy,
+                objective=args.objective,
+                n_trials=args.trials,
+                pruner=pruner,
             )
         else:
             results = grid_search(args.code, args.strategy, objective=args.objective)
@@ -131,6 +137,7 @@ def cmd_walkforward(args):
         step_days=args.step_days,
         objective=args.objective,
         n_trials=args.trials,
+        permutation_n=getattr(args, "permutation_n", 0),
     )
 
     print(f"\n{'='*60}")
@@ -143,6 +150,12 @@ def cmd_walkforward(args):
     print(f"穩定性分數: {result['stability_score']:.4f}")
     print(f"過擬合比率: {result['overfit_ratio']:.4f}")
     print(f"正收益窗口: {result['positive_windows']}/{result['total_windows']}")
+    perm = result.get("permutation")
+    if perm:
+        print(
+            f"置換檢測: 真實 {perm['real_score']:.4f} vs 隨機均值 {perm['perm_mean']:.4f}"
+            f"（p={perm['p_value']:.4f}）→ {perm['verdict']}"
+        )
 
     print(f"\n各窗口詳情:")
     for w in result["windows"]:

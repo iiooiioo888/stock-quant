@@ -29,6 +29,8 @@ def build_retry_worker(
         "data_download": _retry_data_download,
         "data_download_all": _retry_data_download_all,
         "data_incremental": _retry_data_incremental,
+        "heatmap": _retry_heatmap,
+        "target_search": _retry_target_search,
     }
     builder = builders.get(task_type)
     if not builder:
@@ -50,6 +52,8 @@ RETRYABLE_TASK_TYPES = frozenset(
         "data_download",
         "data_download_all",
         "data_incremental",
+        "heatmap",
+        "target_search",
     }
 )
 
@@ -206,6 +210,35 @@ def _retry_data_incremental(params: dict, task_id: str):
     return run_incremental(
         codes=params.get("codes"),
         force=params.get("force", False),
+        task_id=task_id,
+    )
+
+
+def _retry_heatmap(params: dict, task_id: str):
+    from src.core.heatmap import param_heatmap
+
+    return param_heatmap(
+        code=params["code"],
+        strategy_name=params.get("strategy", "dual_ma"),
+        param_x=params["param_x"],
+        param_y=params["param_y"],
+        grid_size=int(params.get("grid_size") or 10),
+        objective=params.get("objective", "sharpe"),
+    )
+
+
+def _retry_target_search(params: dict, task_id: str):
+    from src.core.target_search import target_search
+
+    return target_search(
+        code=params["code"],
+        strategy_name=params.get("strategy", "dual_ma"),
+        target_metric=params.get("target_metric", "sharpe_ratio"),
+        target_value=float(params.get("target_value", 1.5)),
+        method=params.get("method", "optuna"),
+        max_iter=int(params.get("max_iter", 500)),
+        timeout_seconds=int(params.get("timeout_seconds", 3600)),
+        objective=params.get("objective", "maximize"),
         task_id=task_id,
     )
 

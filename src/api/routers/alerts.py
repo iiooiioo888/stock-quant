@@ -35,6 +35,23 @@ async def list_alerts(
     }
 
 
+@router.get("/api/alerts/rule-schema")
+async def alert_rule_schema():
+    """預警規則欄位說明（供 UI 動態表單）。"""
+    return {
+        "fields": [
+            {"key": "name", "label": "名稱", "type": "text"},
+            {"key": "price_above", "label": "突破價", "type": "number"},
+            {"key": "price_below", "label": "跌破價", "type": "number"},
+            {"key": "change_pct", "label": "漲跌幅%", "type": "number"},
+            {"key": "volume_mult", "label": "量能倍數", "type": "number"},
+            {"key": "rsi_above", "label": "RSI 高於", "type": "number"},
+            {"key": "rsi_below", "label": "RSI 低於", "type": "number"},
+            {"key": "macd_cross", "label": "MACD 交叉", "type": "bool"},
+        ]
+    }
+
+
 @router.get("/api/alerts/rules")
 async def get_alert_rules():
     """獲取預警規則"""

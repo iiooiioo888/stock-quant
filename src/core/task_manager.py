@@ -44,6 +44,8 @@ PRIORITY_LABELS = {
 _TASK_TYPE_PRIORITY: dict[str, int] = {
     "data_incremental": PRIORITY_HIGH,
     "scheduled_job": PRIORITY_HIGH,
+    "alert_scan": PRIORITY_HIGH,
+    "realtime": PRIORITY_HIGH,
     "backtest": PRIORITY_NORMAL,
     "backtest_advanced": PRIORITY_NORMAL,
     "backtest_multi": PRIORITY_NORMAL,
@@ -52,6 +54,7 @@ _TASK_TYPE_PRIORITY: dict[str, int] = {
     "portfolio": PRIORITY_NORMAL,
     "walkforward": PRIORITY_NORMAL,
     "target_search": PRIORITY_NORMAL,
+    "heatmap": PRIORITY_NORMAL,
     "data_download": PRIORITY_LOW,
     "data_download_all": PRIORITY_LOW,
     "stock_universe_sync": PRIORITY_LOW,
@@ -74,11 +77,12 @@ ACTIVE_STATUSES = frozenset(
 )
 
 _VALID_TRANSITIONS: dict[str, frozenset[str]] = {
+    # 注意：pending → failed 不開放給通用轉換；DAG 依賴失敗傳播在 _drain_queue
+    # 鎖內直接落狀態（系統內部路徑），不經 can_transition。
     STATUS_PENDING: frozenset(
         {
             STATUS_RUNNING,
             STATUS_COMPLETED,
-            STATUS_FAILED,
             STATUS_CANCELLED,
             STATUS_RETRYING,
         }
@@ -183,12 +187,11 @@ TASK_REGISTRY: dict[str, dict] = {
         "tab": "tasks",
         "async": True,
     },
-    # 同步計算，不經 create_task，僅供緩存命名參考
     "heatmap": {
         "label": "熱力圖分析",
         "icon": "🌡️",
         "tab": "heatmap",
-        "async": False,
+        "async": True,
     },
 }
 
@@ -229,6 +232,10 @@ _cancel_db_cache: dict[str, tuple[float, bool]] = {}
 _dispatched: set[str] = set()  # 已提交線程池、尚未結束
 _executor: Optional[ThreadPoolExecutor] = None
 _executor_lock = threading.Lock()
+_POOL_MAX_WORKERS = 32
+_runtime_capacity: dict = {}
+_capacity_lock = threading.Lock()
+_worker_tls = threading.local()
 _progress_throttle: dict[str, tuple] = {}  # task_id -> (last_ts, last_saved_progress)
 _task_logs: dict[str, deque] = {}  # task_id -> 最近 N 行日誌
 _pipelines: dict[str, dict] = {}  # pipeline_id -> 編排狀態
@@ -350,7 +357,55 @@ def _notify_task_update(task_id: str, event: str = "task_update"):
         logger.debug(f"任務推送失敗: {e}")
 
 
+def _capacity_path():
+    from src.config import DATA_DIR
+
+    return DATA_DIR / "runtime_task_capacity.json"
+
+
+def _load_runtime_capacity() -> dict:
+    path = _capacity_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning(f"讀取 runtime_task_capacity 失敗: {e}")
+        return {}
+
+
+def _save_runtime_capacity(payload: dict) -> None:
+    path = _capacity_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"寫入 runtime_task_capacity 失敗: {e}")
+
+
+def apply_task_capacity_on_startup() -> None:
+    """啟動時載入任務中心並行上限。"""
+    global _runtime_capacity
+    loaded = _load_runtime_capacity()
+    with _capacity_lock:
+        _runtime_capacity = {
+            k: loaded[k]
+            for k in ("max_workers", "heavy_max_concurrent", "buffer_hours")
+            if k in loaded and loaded[k] is not None
+        }
+    if _runtime_capacity:
+        logger.info(f"任務中心並行上限已載入: {_runtime_capacity}")
+
+
 def _resolve_max_workers() -> int:
+    with _capacity_lock:
+        override = _runtime_capacity.get("max_workers")
+    if override:
+        return max(1, min(_POOL_MAX_WORKERS, int(override)))
     try:
         from src.config import settings
 
@@ -358,19 +413,97 @@ def _resolve_max_workers() -> int:
     except Exception:
         configured = 0
     if configured and configured > 0:
-        return configured
+        return max(1, min(_POOL_MAX_WORKERS, int(configured)))
     cpu = os.cpu_count() or 4
     return max(4, min(8, max(1, cpu - 1)))
 
 
 def _resolve_heavy_max_concurrent() -> int:
+    with _capacity_lock:
+        override = _runtime_capacity.get("heavy_max_concurrent")
+    if override:
+        configured = int(override)
+    else:
+        try:
+            from src.config import settings
+
+            configured = int(getattr(settings, "task_heavy_max_concurrent", 2) or 2)
+        except Exception:
+            configured = 2
+    return max(1, min(configured, _resolve_max_workers()))
+
+
+def _resolve_buffer_hours() -> float:
+    with _capacity_lock:
+        override = _runtime_capacity.get("buffer_hours")
+    if override is not None:
+        return max(0.0, min(168.0, float(override)))
     try:
         from src.config import settings
 
-        configured = int(getattr(settings, "task_heavy_max_concurrent", 2) or 2)
+        return max(
+            0.0,
+            min(168.0, float(getattr(settings, "data_fetch_buffer_hours", 12) or 0)),
+        )
     except Exception:
-        configured = 2
-    return max(1, min(configured, _resolve_max_workers()))
+        return 12.0
+
+
+def is_inside_task_worker() -> bool:
+    return bool(getattr(_worker_tls, "inside", False))
+
+
+def get_task_capacity() -> dict:
+    return {
+        "max_workers": _resolve_max_workers(),
+        "heavy_max_concurrent": _resolve_heavy_max_concurrent(),
+        "buffer_hours": _resolve_buffer_hours(),
+        "pool_size": _POOL_MAX_WORKERS,
+    }
+
+
+def set_task_capacity(
+    *,
+    max_workers: Optional[int] = None,
+    heavy_max_concurrent: Optional[int] = None,
+    buffer_hours: Optional[float] = None,
+) -> dict:
+    """執行期調整任務中心最大並行數與資料緩衝（立即對新派發生效，並持久化）。"""
+    global _runtime_capacity
+    with _capacity_lock:
+        next_cap = dict(_runtime_capacity)
+        if max_workers is not None:
+            n = int(max_workers)
+            if n < 1 or n > _POOL_MAX_WORKERS:
+                raise ValueError(f"max_workers 須介於 1～{_POOL_MAX_WORKERS}")
+            next_cap["max_workers"] = n
+        if heavy_max_concurrent is not None:
+            h = int(heavy_max_concurrent)
+            if h < 1 or h > _POOL_MAX_WORKERS:
+                raise ValueError(f"heavy_max_concurrent 須介於 1～{_POOL_MAX_WORKERS}")
+            next_cap["heavy_max_concurrent"] = h
+        if buffer_hours is not None:
+            b = float(buffer_hours)
+            if b < 0 or b > 168:
+                raise ValueError("buffer_hours 須介於 0～168")
+            next_cap["buffer_hours"] = b
+        _runtime_capacity = next_cap
+        snapshot = dict(next_cap)
+    _save_runtime_capacity(snapshot)
+    try:
+        from src.config import settings
+
+        if "max_workers" in snapshot:
+            settings.task_max_workers = snapshot["max_workers"]
+        if "heavy_max_concurrent" in snapshot:
+            settings.task_heavy_max_concurrent = snapshot["heavy_max_concurrent"]
+        if "buffer_hours" in snapshot:
+            settings.data_fetch_buffer_hours = snapshot["buffer_hours"]
+    except Exception as e:
+        logger.debug(f"同步 settings 並行上限跳過: {e}")
+    logger.info(f"任務中心並行上限已更新: {snapshot}")
+    _drain_queue()
+    return get_task_capacity()
 
 
 def _resolve_task_timeout() -> int:
@@ -535,12 +668,14 @@ def _get_executor() -> ThreadPoolExecutor:
     global _executor
     with _executor_lock:
         if _executor is None:
-            workers = _resolve_max_workers()
             _executor = ThreadPoolExecutor(
-                max_workers=workers,
+                max_workers=_POOL_MAX_WORKERS,
                 thread_name_prefix="task-worker",
             )
-            logger.info(f"任務執行器已啟動: max_workers={workers}")
+            logger.info(
+                f"任務執行器已啟動: pool={_POOL_MAX_WORKERS} "
+                f"dispatch_limit={_resolve_max_workers()}"
+            )
         return _executor
 
 
@@ -630,6 +765,18 @@ def _is_scheduler_trigger(params: dict | None) -> bool:
     )
 
 
+def _normalize_depends_on(depends_on) -> list[str]:
+    """規範化依賴清單：去空白、去重、保持順序。"""
+    if not depends_on:
+        return []
+    out: list[str] = []
+    for d in depends_on:
+        s = str(d or "").strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
 def create_task(
     task_type: str,
     params: dict,
@@ -637,8 +784,10 @@ def create_task(
     *,
     force_refresh: bool = False,
     user_id: int | None = None,
+    depends_on: list[str] | None = None,
 ) -> dict:
     params = dict(params or {})
+    deps = _normalize_depends_on(depends_on)
     params_hash = _make_params_hash(params)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data_ver = _task_data_version(params)
@@ -756,6 +905,8 @@ def create_task(
             "user_id": user_id,
             "priority": priority,
         }
+        if deps:
+            task["meta"] = {"depends_on": deps}
         _tasks[task_id] = task
         _cancel_flags.pop(task_id, None)
         _progress_throttle.pop(task_id, None)
@@ -841,10 +992,53 @@ def _on_task_finished(task_id: str):
     _drain_queue()
 
 
+def _dep_status_locked(dep_id: str) -> str | None:
+    """查詢依賴任務狀態（須持有 _lock；先查內存，再查 DB）。找不到返回 None。"""
+    t = _tasks.get(dep_id)
+    if t:
+        return t.get("status")
+    row = _load_task_from_db(dep_id)
+    if row:
+        # 還原至內存，後續派發/狀態查詢可直接命中
+        _tasks[dep_id] = row
+        return row.get("status")
+    return None
+
+
+def _check_task_deps_locked(task: dict) -> tuple[bool, str | None]:
+    """
+    檢查任務依賴（須持有 _lock）。
+
+    Returns:
+        (ready, fail_reason):
+        - ready=True：所有依賴均已完成，可派發
+        - ready=False, fail_reason=None：依賴未完成，繼續等待
+        - ready=False, fail_reason=str：依賴失敗/取消/不存在，任務應標記失敗
+    """
+    deps = (task.get("meta") or {}).get("depends_on") or []
+    if not deps:
+        return True, None
+    own_id = task.get("task_id")
+    for dep_id in deps:
+        if dep_id == own_id:
+            return False, f"依賴不可指向自身: {dep_id}"
+        st = _dep_status_locked(dep_id)
+        if st is None:
+            return False, f"依賴任務不存在: {dep_id}"
+        if st == STATUS_FAILED:
+            return False, f"依賴任務失敗: {dep_id}"
+        if st == STATUS_CANCELLED:
+            return False, f"依賴任務已取消: {dep_id}"
+        if st != STATUS_COMPLETED:
+            return False, None
+    return True, None
+
+
 def _drain_queue():
     max_workers = _resolve_max_workers()
     heavy_max = _resolve_heavy_max_concurrent()
     to_start: list[tuple[str, Callable]] = []
+    dep_failed: list[dict] = []
 
     try:
         from src.core.compute_budget import HEAVY_TASK_TYPES
@@ -867,6 +1061,20 @@ def _drain_queue():
         heavy_in_flight = count_in_flight_heavy()
 
         for t in pending:
+            deps = (t.get("meta") or {}).get("depends_on") or []
+            if deps:
+                ready, fail_reason = _check_task_deps_locked(t)
+                if fail_reason:
+                    # 依賴失敗/不存在 → 直接標記失敗（失敗沿 DAG 向下傳播）
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    t["status"] = STATUS_FAILED
+                    t["error"] = fail_reason
+                    t["completed_at"] = now
+                    t.pop("_worker_fn", None)
+                    dep_failed.append(dict(t))
+                    continue
+                if not ready:
+                    continue  # 依賴未完成，留在佇列等待
             if in_flight >= max_workers:
                 break
             if t["task_type"] in HEAVY_TASK_TYPES and heavy_in_flight >= heavy_max:
@@ -880,6 +1088,12 @@ def _drain_queue():
             in_flight += 1
             if t["task_type"] in HEAVY_TASK_TYPES:
                 heavy_in_flight += 1
+
+    # I/O 與事件通知在鎖外執行
+    for snapshot in dep_failed:
+        _save_task_to_db(snapshot, force=True)
+        logger.warning(f"任務因依賴未達成而失敗: {snapshot['task_id']} — {snapshot['error']}")
+        _notify_task_update(snapshot["task_id"], "task_failed")
 
     for task_id, fn in to_start:
         _start_worker(task_id, fn)
@@ -941,10 +1155,25 @@ def _try_auto_retry(task_id: str, error: str) -> bool:
     return True
 
 
+def wait_for_task(task_id: str, timeout_sec: float = 90.0) -> dict | None:
+    """輪詢至任務結束或超時（勿在任務 worker 內呼叫，避免佔槽死鎖）。"""
+    deadline = time.time() + max(0.5, float(timeout_sec or 0))
+    last = None
+    while time.time() < deadline:
+        last = get_task(task_id)
+        if not last:
+            return None
+        if last.get("status") in TERMINAL_STATUSES:
+            return last
+        time.sleep(0.15)
+    return last or get_task(task_id)
+
+
 def _start_worker(task_id: str, work_fn: Callable):
     def _run():
         from src.core.task_log_stream import capture_exception, task_log_context
 
+        _worker_tls.inside = True
         try:
             if not _mark_running(task_id):
                 if is_task_cancelled(task_id):
@@ -973,6 +1202,7 @@ def _start_worker(task_id: str, work_fn: Callable):
                 logger.error(f"任務失敗 {task_id}: {e}")
                 update_task(task_id, status=STATUS_FAILED, error=str(e))
         finally:
+            _worker_tls.inside = False
             with _lock:
                 t = _tasks.get(task_id)
                 if t and t.get("status") != STATUS_RETRYING:
@@ -995,8 +1225,14 @@ def submit_task(task_id: str, work_fn: Callable) -> None:
         if work_fn is not None:
             task["_worker_fn"] = work_fn
         task["last_accessed"] = time.time()
+        has_deps = bool((task.get("meta") or {}).get("depends_on"))
 
-    if getattr(settings, "celery_enabled", False) and has_executor(task_type):
+    # 有依賴的任務不走 Celery 直髮（會繞過依賴把關），統一由 _drain_queue 調度
+    if (
+        getattr(settings, "celery_enabled", False)
+        and has_executor(task_type)
+        and not has_deps
+    ):
         try:
             from src.core.celery_tasks import enqueue_celery_task
 
@@ -1236,6 +1472,7 @@ def get_task_stats() -> dict:
         "max_workers": _resolve_max_workers(),
         "heavy_max_concurrent": _resolve_heavy_max_concurrent(),
         "heavy_in_flight": count_in_flight_heavy(),
+        "buffer_hours": _resolve_buffer_hours(),
         "task_timeout_sec": _resolve_task_timeout(),
         "completed": sum(1 for t in tasks if t["status"] == STATUS_COMPLETED),
         "failed": sum(1 for t in tasks if t["status"] == STATUS_FAILED),
@@ -1327,6 +1564,11 @@ def cancel_task(task_id: str) -> bool:
     if task_snapshot:
         _save_task_to_db(task_snapshot, force=True)
     _cancel_db_cache.pop(task_id, None)
+    # 取消後即時檢查下游依賴任務（依賴失敗傳播）
+    try:
+        _drain_queue()
+    except Exception:
+        pass
     return True
 
 
@@ -1830,6 +2072,94 @@ def delete_all_completed(
             pass
         logger.info(f"批量刪除 {len(deleted_ids)} 個已完成任務")
     return len(deleted_ids)
+
+
+def create_dag(nodes: list[dict], title: str = "任務 DAG") -> dict:
+    """
+    建立通用任務依賴圖（DAG）：每個節點可依賴多個上游節點，支援扇出/扇入。
+
+    nodes: [{"id": "a", "task_type": ..., "params": {...}, "title"?, "depends_on": ["b", ...]}, ...]
+           depends_on 引用同圖其他節點的 id（非 task_id）。
+
+    Returns:
+        {"dag_id", "title", "tasks": {node_id: task_id}, "edges": [[from, to], ...]}
+
+    Raises:
+        ValueError: 節點 id 重複、依賴未知節點、或存在循環依賴。
+    """
+    if not nodes:
+        raise ValueError("DAG 至少需要一個節點")
+
+    node_ids: list[str] = []
+    for n in nodes:
+        nid = str(n.get("id") or "").strip()
+        if not nid:
+            raise ValueError("每個節點必須提供 id")
+        if nid in node_ids:
+            raise ValueError(f"節點 id 重複: {nid}")
+        if not n.get("task_type"):
+            raise ValueError(f"節點 {nid} 缺少 task_type")
+        node_ids.append(nid)
+
+    # 依賴引用校驗
+    for n in nodes:
+        for dep in _normalize_depends_on(n.get("depends_on")):
+            if dep not in node_ids:
+                raise ValueError(f"節點 {n['id']} 依賴未知節點: {dep}")
+            if dep == n["id"]:
+                raise ValueError(f"節點 {n['id']} 不可依賴自身")
+
+    # Kahn 拓撲排序（循環檢測）
+    indegree = {nid: 0 for nid in node_ids}
+    for n in nodes:
+        for _dep in _normalize_depends_on(n.get("depends_on")):
+            indegree[n["id"]] += 1
+    queue = [nid for nid in node_ids if indegree[nid] == 0]
+    topo: list[str] = []
+    while queue:
+        nid = queue.pop(0)
+        topo.append(nid)
+        for n in nodes:
+            if nid in _normalize_depends_on(n.get("depends_on")):
+                indegree[n["id"]] -= 1
+                if indegree[n["id"]] == 0:
+                    queue.append(n["id"])
+    if len(topo) != len(nodes):
+        raise ValueError("DAG 存在循環依賴，請檢查 depends_on")
+
+    dag_id = f"dag_{uuid.uuid4().hex[:12]}"
+    id_map: dict[str, str] = {}
+    edges: list[list[str]] = []
+
+    # 依拓撲序建立任務（保證上游 task_id 先產生）
+    for nid in topo:
+        node = next(n for n in nodes if n["id"] == nid)
+        dep_task_ids = [id_map[d] for d in _normalize_depends_on(node.get("depends_on"))]
+        created = create_task(
+            node["task_type"],
+            node.get("params") or {},
+            title=node.get("title") or f"{title} [{nid}]",
+            depends_on=dep_task_ids,
+        )
+        task_id = created["task_id"]
+        id_map[nid] = task_id
+        for d in dep_task_ids:
+            edges.append([d, task_id])
+        with _lock:
+            t = _tasks.get(task_id)
+            if t:
+                meta = t.setdefault("meta", {})
+                meta["dag_id"] = dag_id
+                meta["dag_node"] = nid
+
+    logger.info(f"DAG 創建: {dag_id}（{len(nodes)} 節點, {len(edges)} 條邊）")
+    return {
+        "dag_id": dag_id,
+        "title": title,
+        "tasks": id_map,
+        "edges": edges,
+        "topo_order": topo,
+    }
 
 
 def create_pipeline(steps: list[dict], title: str = "任務管道") -> dict:

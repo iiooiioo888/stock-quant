@@ -233,6 +233,34 @@ def _migration_010_retention_notify_indexes(conn: sqlite3.Connection) -> None:
             logger.debug(f"v10 索引跳過: {e}")
 
 
+def _migration_011_backtest_experiments(conn: sqlite3.Connection) -> None:
+    """回測實驗（版本快照）：命名分組 + 成員映射，支援跨參數/策略對比回溯。"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS backtest_experiments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            name TEXT NOT NULL,
+            note TEXT,
+            created_at TEXT NOT NULL
+        )
+        """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS backtest_experiment_items (
+            experiment_id INTEGER NOT NULL,
+            backtest_id INTEGER NOT NULL,
+            PRIMARY KEY (experiment_id, backtest_id)
+        )
+        """)
+    for idx in (
+        "CREATE INDEX IF NOT EXISTS idx_bt_exp_user ON backtest_experiments(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_bt_exp_items_exp ON backtest_experiment_items(experiment_id)",
+    ):
+        try:
+            conn.execute(idx)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"v11 索引跳過: {e}")
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline_schema", _migration_001_baseline),
     (2, "legacy_column_patches", _migration_002_legacy_columns),
@@ -244,6 +272,7 @@ MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (8, "strategy_likes", _migration_008_strategy_likes),
     (9, "user_isolation_backtest_alerts_signals", _migration_009_user_isolation),
     (10, "retention_notify_and_bt_code_strategy", _migration_010_retention_notify_indexes),
+    (11, "backtest_experiments", _migration_011_backtest_experiments),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

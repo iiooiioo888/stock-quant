@@ -126,6 +126,113 @@ def _optuna_on_df(
     return best
 
 
+def _score_result(r: dict, objective: str) -> float:
+    """從回測結果提取目標分數"""
+    if objective == "return":
+        return r["total_return_pct"]
+    if objective == "calmar":
+        dd = r["max_drawdown_pct"]
+        return r["total_return_pct"] / dd if dd > 0 else r["total_return_pct"]
+    return r["sharpe_ratio"]
+
+
+def _permute_price_df(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """
+    打亂日對數收益率重建合成價格序列（保持 OHLC 結構與成交量）。
+
+    破壞信號時序的同時保留收益率的邊際分佈（肥尾等特性），
+    用於檢驗策略收益是否顯著優於「同分佈隨機路徑」。
+    """
+    close = df["close"].astype(float).to_numpy()
+    log_ret = np.diff(np.log(close))
+    perm_ret = rng.permutation(log_ret)
+    new_close = close[0] * np.exp(np.concatenate([[0.0], np.cumsum(perm_ret)]))
+
+    ratio = new_close / close  # 當日整體縮放，保留日內振幅形狀
+    out = df.copy()
+    for col in ("open", "high", "low", "close"):
+        out[col] = df[col].astype(float).to_numpy() * ratio
+    return out
+
+
+def permutation_test(
+    code: str,
+    strategy_name: str,
+    params: dict,
+    n_permutations: int = 100,
+    objective: str = "sharpe",
+    seed: int | None = None,
+) -> dict:
+    """
+    置換過擬合檢測（Permutation Test）。
+
+    將日收益率隨機打亂重建合成價格路徑，重跑策略 n 次：
+    - p_value = (1 + #{隨機分數 >= 真實分數}) / (1 + n)
+    - p_value > 0.05 → 策略優勢與隨機無顯著差異（疑似過擬合/無邊際優勢）
+
+    Returns:
+        {"real_score", "perm_mean", "perm_std", "perm_p95", "p_value",
+         "n_permutations", "significant", "verdict"}
+    """
+    if strategy_name not in STRATEGIES:
+        raise ValueError(f"未知策略: {strategy_name}")
+    if not params:
+        raise ValueError("置換檢測需要指定策略參數")
+    n_permutations = max(10, min(int(n_permutations), 500))
+
+    df = load_daily_kline(code)
+    if df.empty:
+        raise ValueError(f"股票 {code} 無數據")
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").set_index("date")
+    if len(df) < 60:
+        raise ValueError(f"數據不足（{len(df)} 根 < 60）")
+
+    real_result = _run_backtest_on_df(df, strategy_name, params)
+    real_score = _score_result(real_result, objective)
+
+    rng = np.random.default_rng(seed)
+    perm_scores: list[float] = []
+    for _ in range(n_permutations):
+        try:
+            synth = _permute_price_df(df, rng)
+            r = _run_backtest_on_df(synth, strategy_name, params)
+            perm_scores.append(_score_result(r, objective))
+        except Exception:
+            continue
+
+    if not perm_scores:
+        raise RuntimeError("置換回測全部失敗")
+
+    arr = np.asarray(perm_scores, dtype=float)
+    exceed = int(np.sum(arr >= real_score))
+    p_value = (1 + exceed) / (1 + len(arr))
+    significant = bool(p_value < 0.05 and real_result["total_trades"] > 0)
+
+    verdict = (
+        "通過：策略顯著優於隨機路徑"
+        if significant
+        else "警告：策略收益與隨機路徑無顯著差異，疑似過擬合或無邊際優勢"
+    )
+    logger.info(
+        f"置換檢測 {code}/{strategy_name}: real={real_score:.4f}, "
+        f"perm_mean={float(np.mean(arr)):.4f}, p={p_value:.4f} → {verdict}"
+    )
+
+    return {
+        "real_score": round(real_score, 4),
+        "real_trades": real_result["total_trades"],
+        "perm_mean": round(float(np.mean(arr)), 4),
+        "perm_std": round(float(np.std(arr)), 4),
+        "perm_p95": round(float(np.percentile(arr, 95)), 4),
+        "p_value": round(p_value, 4),
+        "n_permutations": len(arr),
+        "objective": objective,
+        "significant": significant,
+        "verdict": verdict,
+    }
+
+
 def walk_forward(
     code: str,
     strategy_name: str,
@@ -134,6 +241,7 @@ def walk_forward(
     step_days: int = 250,
     objective: str = "sharpe",
     n_trials: int = 50,
+    permutation_n: int = 0,
 ) -> dict:
     """
     Walk-Forward 分析
@@ -240,6 +348,43 @@ def walk_forward(
     positive_windows = sum(1 for r in test_returns if r > 0)
     overfit_ratio = 1 - (positive_windows / len(test_returns)) if test_returns else 1
 
+    param_stability = {}
+    keys = set()
+    for w in window_results:
+        keys.update((w.get("best_params") or {}).keys())
+    for k in sorted(keys):
+        vals = [w["best_params"][k] for w in window_results if k in (w.get("best_params") or {})]
+        if not vals:
+            continue
+        arr = np.array(vals, dtype=float)
+        mean = float(np.mean(arr))
+        std = float(np.std(arr))
+        param_stability[k] = {
+            "mean": round(mean, 4),
+            "std": round(std, 4),
+            "cv": round(std / abs(mean), 4) if mean else 0.0,
+        }
+    unstable = [k for k, v in param_stability.items() if v["cv"] > 0.35]
+    overfit_flag = overfit_ratio > 0.5 or (unstable and stability < 0.4)
+
+    # 可選：置換過擬合檢測（用最後窗口的最優參數在全量數據上檢驗）
+    permutation_result = None
+    if permutation_n and permutation_n > 0 and window_results:
+        try:
+            last_params = window_results[-1].get("best_params") or {}
+            permutation_result = permutation_test(
+                code,
+                strategy_name,
+                last_params,
+                n_permutations=permutation_n,
+                objective=objective,
+            )
+            # 置換檢測不顯著 → 強化過擬合旗標
+            if not permutation_result["significant"]:
+                overfit_flag = True
+        except Exception as e:
+            logger.warning(f"置換檢測跳過: {e}")
+
     result = {
         "code": code,
         "strategy": strategy_name,
@@ -256,6 +401,10 @@ def walk_forward(
         "overfit_ratio": round(overfit_ratio, 4),
         "positive_windows": positive_windows,
         "total_windows": len(test_returns),
+        "param_stability": param_stability,
+        "unstable_params": unstable,
+        "overfit_flag": bool(overfit_flag),
+        "permutation": permutation_result,
     }
 
     logger.info(

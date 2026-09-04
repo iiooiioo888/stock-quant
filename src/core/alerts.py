@@ -169,6 +169,56 @@ def send_bark(bark_url: str, message: str, title: str = "StockQ") -> bool:
         return False
 
 
+def send_feishu(webhook_url: str, message: str) -> bool:
+    """飛書 / Lark 自訂機器人。"""
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"msg_type": "text", "content": {"text": message}},
+            timeout=10,
+        )
+        data = resp.json() if resp.content else {}
+        if data.get("code") == 0 or data.get("StatusCode") == 0:
+            logger.info("飛書通知發送成功")
+            return True
+        logger.error(f"飛書通知失敗: {data}")
+        return False
+    except Exception as e:
+        logger.error(f"飛書通知異常: {e}")
+        return False
+
+
+def send_email_alert(message: str, title: str = "StockQ 預警") -> bool:
+    host = (settings.smtp_host or "").strip()
+    to_addr = (settings.smtp_to or settings.smtp_user or "").strip()
+    user = (settings.smtp_user or "").strip()
+    if not host or not to_addr or not user:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+
+        msg = MIMEText(message, "plain", "utf-8")
+        msg["Subject"] = title
+        msg["From"] = user
+        msg["To"] = to_addr
+        port = int(settings.smtp_port or 465)
+        if port == 465:
+            smtp = smtplib.SMTP_SSL(host, port, timeout=15)
+        else:
+            smtp = smtplib.SMTP(host, port, timeout=15)
+            smtp.starttls()
+        smtp.login(user, settings.smtp_password or "")
+        smtp.sendmail(user, [to_addr], msg.as_string())
+        smtp.quit()
+        logger.info("郵件通知發送成功")
+        return True
+    except Exception as e:
+        logger.error(f"郵件通知異常: {e}")
+        return False
+
+
+
 def send_notification(message: str, msg_type: str = "alert"):
     """統一通知分發（帶模板渲染 + 節流 + 異步隊列）"""
     rendered = _render_template(msg_type, message)
@@ -248,6 +298,22 @@ def _dispatch_channels(rendered: str, msg_type: str) -> None:
             msg_type=msg_type,
         )
 
+    if settings.notify_feishu and settings.feishu_webhook:
+        send_with_retry(
+            "feishu",
+            lambda: send_feishu(settings.feishu_webhook, rendered),
+            rendered,
+            msg_type=msg_type,
+        )
+
+    if settings.notify_email:
+        send_with_retry(
+            "email",
+            lambda: send_email_alert(rendered),
+            rendered,
+            msg_type=msg_type,
+        )
+
 
 def get_notification_channels() -> list[dict]:
     """獲取通知渠道狀態"""
@@ -296,6 +362,18 @@ def get_notification_channels() -> list[dict]:
             "enabled": settings.notify_bark,
             "configured": bool(settings.bark_url),
         },
+        {
+            "name": "飛書",
+            "key": "feishu",
+            "enabled": settings.notify_feishu,
+            "configured": bool(settings.feishu_webhook),
+        },
+        {
+            "name": "郵件",
+            "key": "email",
+            "enabled": settings.notify_email,
+            "configured": bool(settings.smtp_host and settings.smtp_user),
+        },
     ]
 
 
@@ -337,6 +415,12 @@ def test_all_channels() -> dict:
                 results[ch["key"]] = "ok" if ok else "failed"
             elif ch["key"] == "bark":
                 ok = send_bark(settings.bark_url, test_msg)
+                results[ch["key"]] = "ok" if ok else "failed"
+            elif ch["key"] == "feishu":
+                ok = send_feishu(settings.feishu_webhook, test_msg)
+                results[ch["key"]] = "ok" if ok else "failed"
+            elif ch["key"] == "email":
+                ok = send_email_alert(test_msg, title="StockQ 測試")
                 results[ch["key"]] = "ok" if ok else "failed"
         except Exception as e:
             results[ch["key"]] = f"error: {e}"
@@ -398,6 +482,41 @@ class AlertEngine:
                     msg = f"⚡ {name}({code}) {direction} {change_pct:+.2f}%，現價 {price:.2f}"
                     alerts.append(msg)
                     log_alert(code, "change_pct", msg, price)
+
+        vol = row.get("volume")
+        avg_vol = row.get("avg_volume")
+        vmult = rule.get("volume_mult")
+        if vmult and pd.notna(vol) and pd.notna(avg_vol) and avg_vol:
+            try:
+                if float(vol) >= float(avg_vol) * float(vmult):
+                    if _can_fire("volume_spike"):
+                        msg = f"📢 {name}({code}) 成交量異動 {float(vol):.0f} / 均量 {float(avg_vol):.0f}"
+                        alerts.append(msg)
+                        log_alert(code, "volume_spike", msg, price)
+            except (TypeError, ValueError):
+                pass
+
+        rsi = row.get("rsi")
+        if rule.get("rsi_above") and pd.notna(rsi):
+            if float(rsi) >= float(rule["rsi_above"]):
+                if _can_fire("rsi_above"):
+                    msg = f"📈 {name}({code}) RSI {float(rsi):.1f} ≥ {rule['rsi_above']}"
+                    alerts.append(msg)
+                    log_alert(code, "rsi_above", msg, price)
+        if rule.get("rsi_below") and pd.notna(rsi):
+            if float(rsi) <= float(rule["rsi_below"]):
+                if _can_fire("rsi_below"):
+                    msg = f"📉 {name}({code}) RSI {float(rsi):.1f} ≤ {rule['rsi_below']}"
+                    alerts.append(msg)
+                    log_alert(code, "rsi_below", msg, price)
+
+        if rule.get("macd_cross") and row.get("macd_cross"):
+            cross = str(row.get("macd_cross"))
+            if _can_fire(f"macd_{cross}"):
+                label = "金叉" if cross == "golden" else "死叉"
+                msg = f"🔀 {name}({code}) MACD {label}，現價 {price:.2f}"
+                alerts.append(msg)
+                log_alert(code, f"macd_{cross}", msg, price)
 
         return alerts
 

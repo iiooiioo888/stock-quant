@@ -107,6 +107,18 @@ async def export_backtest(
         from fastapi.responses import Response
 
         return Response(content=content, media_type="application/json")
+    if format == "parquet":
+        from src.core.export import export_backtests_parquet
+        from fastapi.responses import Response
+
+        blob = export_backtests_parquet([result_id])
+        return Response(
+            content=blob,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename=backtest_{result_id}.parquet"
+            },
+        )
     else:
         content = export_backtest_csv(result_id)
         from fastapi.responses import Response

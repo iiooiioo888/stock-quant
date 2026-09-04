@@ -315,6 +315,13 @@
       const el = document.getElementById('tkCapacityBar');
       if (!el || !stats) return;
       const maxW = Number(stats.max_workers) || 1;
+      const inp = document.getElementById('tk-max-workers');
+      if (inp && document.activeElement !== inp) inp.value = String(maxW);
+      const bufInp = document.getElementById('tk-buffer-hours');
+      const bufH = Number(stats.buffer_hours);
+      if (bufInp && document.activeElement !== bufInp && Number.isFinite(bufH)) {
+        bufInp.value = String(bufH);
+      }
       const inFlight = Number(stats.in_flight ?? stats.running ?? 0);
       const heavyMax = Number(stats.heavy_max_concurrent) || 0;
       const heavyFlight = Number(stats.heavy_in_flight) || 0;
@@ -735,6 +742,31 @@
       }
     },
 
+    async applyCapacity() {
+      const inp = document.getElementById('tk-max-workers');
+      const bufInp = document.getElementById('tk-buffer-hours');
+      const n = Number(inp?.value);
+      const buf = Number(bufInp?.value);
+      if (!Number.isFinite(n) || n < 1 || n > 32) {
+        this.toast('並行數須為 1～32', 'error');
+        return;
+      }
+      if (!Number.isFinite(buf) || buf < 0 || buf > 168) {
+        this.toast('緩衝小時須為 0～168', 'error');
+        return;
+      }
+      const d = await Api.put('/api/tasks/capacity', {
+        max_workers: Math.round(n),
+        buffer_hours: buf,
+      }).catch(() => null);
+      if (d?.success) {
+        this.toast(`並行 ${d.max_workers}，緩衝 ${d.buffer_hours}h`, 'success');
+        this.refresh();
+      } else {
+        this.toast(d?.detail || d?.error || '套用失敗', 'error');
+      }
+    },
+
     exportTaskList() {
       const tasks = this._getFilteredTasks(this._lastData?.tasks || []);
       const payload = {
@@ -879,6 +911,7 @@
       ['tk-cancel-pending', () => Tasks.cancelAllPending()],
       ['tk-clear-done', () => Tasks.clearCompleted()],
       ['tk-cleanup', () => Tasks.cleanup()],
+      ['tk-apply-capacity', () => Tasks.applyCapacity()],
     ];
     map.forEach(([id, fn]) => {
       const el = document.getElementById(id);

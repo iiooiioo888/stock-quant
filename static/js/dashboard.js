@@ -1085,7 +1085,11 @@ const Dashboard = {
       <div class="fg"><label>突破價</label><input id="mrAbove" type="number" step="0.01" value="${rule.price_above || ''}"></div>
       <div class="fg"><label>跌破價</label><input id="mrBelow" type="number" step="0.01" value="${rule.price_below || ''}"></div>
       <div class="fg"><label>漲跌幅閾值 (%)</label><input id="mrPct" type="number" step="0.1" value="${rule.change_pct || ''}"></div>
-      <p class="state-loading-sub" style="margin:0 0 8px">「依現價填充」預設：突破 +3%、跌破 -3%、日內波動 5%</p>
+      <div class="fg"><label>量能倍數</label><input id="mrVolMul" type="number" step="0.1" value="${rule.volume_mult || ''}" placeholder="如 2 表示放量 2 倍"></div>
+      <div class="fg"><label>RSI 高於</label><input id="mrRsiHi" type="number" step="1" value="${rule.rsi_above || ''}"></div>
+      <div class="fg"><label>RSI 低於</label><input id="mrRsiLo" type="number" step="1" value="${rule.rsi_below || ''}"></div>
+      <div class="fg"><label><input type="checkbox" id="mrMacd" ${rule.macd_cross ? 'checked' : ''}> MACD 金叉/死叉</label></div>
+      <p class="state-loading-sub" style="margin:0 0 8px">「依現價填充」預設：突破 +3%、跌破 -3%、日內波動 5%。量能/RSI/MACD 需盯盤資料帶 volume、rsi、macd_cross。</p>
       <div class="actions">
         <button class="btn s" onclick="Utils.closeModal()">取消</button>
         <button class="btn" onclick="Dashboard.saveRule()">保存</button>
@@ -1106,6 +1110,10 @@ const Dashboard = {
       price_above: parseFloat(document.getElementById('mrAbove').value) || null,
       price_below: parseFloat(document.getElementById('mrBelow').value) || null,
       change_pct: parseFloat(document.getElementById('mrPct').value) || null,
+      volume_mult: parseFloat(document.getElementById('mrVolMul').value) || null,
+      rsi_above: parseFloat(document.getElementById('mrRsiHi').value) || null,
+      rsi_below: parseFloat(document.getElementById('mrRsiLo').value) || null,
+      macd_cross: !!document.getElementById('mrMacd')?.checked,
     };
 
     const rules = {};
