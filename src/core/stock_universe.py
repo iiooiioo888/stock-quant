@@ -10,13 +10,34 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-import akshare as ak
 import pandas as pd
 import requests
 
 from src.config import settings
 from src.core.db import get_conn
 from src.utils.logger import logger
+
+
+_AKSHARE_MOD = None
+_AKSHARE_TRIED = False
+
+
+def _akshare():
+    """延遲導入 akshare，查詢股票庫不應在 import 時失敗。"""
+    global _AKSHARE_MOD, _AKSHARE_TRIED
+    if _AKSHARE_TRIED:
+        return _AKSHARE_MOD
+    _AKSHARE_TRIED = True
+    try:
+        import akshare as ak
+
+        _AKSHARE_MOD = ak
+        return ak
+    except ImportError:
+        logger.warning("akshare 未安裝，股票庫 AKShare 回退不可用")
+        _AKSHARE_MOD = None
+        return None
+
 
 _HTTP = requests.Session()
 _HTTP.headers.update(
@@ -804,11 +825,14 @@ def _fetch_eastmoney_spot_df(market: str, max_pages: int = 220) -> pd.DataFrame:
 
 def _fetch_market_spot_df(market: str) -> pd.DataFrame:
     """拉取單市場全量行情：東財直連 → akshare。"""
-    ak_fetchers = {
-        "a_share": ak.stock_zh_a_spot_em,
-        "hk_stock": ak.stock_hk_spot_em,
-        "us_stock": ak.stock_us_spot_em,
-    }
+    ak = _akshare()
+    ak_fetchers = {}
+    if ak is not None:
+        ak_fetchers = {
+            "a_share": ak.stock_zh_a_spot_em,
+            "hk_stock": ak.stock_hk_spot_em,
+            "us_stock": ak.stock_us_spot_em,
+        }
     df = _fetch_eastmoney_spot_df(market)
     if not df.empty:
         return df
@@ -1063,6 +1087,9 @@ def fetch_all_market_basics() -> list[dict]:
 
 def _fallback_a_share_codes() -> list[dict]:
     """東財全量失敗時：僅代碼+名稱（無市值）。"""
+    ak = _akshare()
+    if ak is None:
+        return []
     try:
         df = ak.stock_info_a_code_name()
         if df.empty:
@@ -1248,36 +1275,72 @@ def query_stock_universe(
     limit: int = 100,
     offset: int = 0,
     order_by: str = "rank_mv",
+    cursor: str | None = None,
 ) -> tuple[list[dict], int]:
-    """查詢股票庫（分頁）。"""
+    """查詢股票庫（分頁）。
+
+    cursor 格式：`{order_value}|{code}`。提供 cursor 時忽略 offset。
+    """
     init_stock_universe_table()
     allowed_order = {"rank_mv", "total_mv", "change_pct", "code", "name"}
     if order_by not in allowed_order:
         order_by = "rank_mv"
 
-    conditions = ["1=1"]
-    params: list = []
+    filter_conds = ["1=1"]
+    filter_params: list = []
     if market and market != "all":
-        conditions.append("market = ?")
-        params.append(market)
+        filter_conds.append("market = ?")
+        filter_params.append(market)
     if keyword:
-        conditions.append("(code LIKE ? OR name LIKE ? OR intro LIKE ?)")
+        filter_conds.append("(code LIKE ? OR name LIKE ? OR intro LIKE ?)")
         kw = f"%{keyword.strip()}%"
-        params.extend([kw, kw, kw])
+        filter_params.extend([kw, kw, kw])
 
-    where = " AND ".join(conditions)
+    page_conds = list(filter_conds)
+    page_params = list(filter_params)
+    if cursor:
+        raw = str(cursor).strip()
+        if "|" in raw:
+            left, right = raw.split("|", 1)
+            cursor_code = right.strip()
+            cursor_val = left.strip()
+        else:
+            cursor_code = raw
+            cursor_val = raw
+        if order_by in ("code", "name"):
+            page_conds.append(f"({order_by} > ? OR ({order_by} = ? AND code > ?))")
+            page_params.extend([cursor_val, cursor_val, cursor_code])
+        else:
+            try:
+                num_val = float(cursor_val)
+            except ValueError:
+                num_val = 0.0
+            page_conds.append(f"({order_by} > ? OR ({order_by} = ? AND code > ?))")
+            page_params.extend([num_val, num_val, cursor_code])
+
+    filter_where = " AND ".join(filter_conds)
+    page_where = " AND ".join(page_conds)
+    use_offset = not cursor
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         total = conn.execute(
-            f"SELECT COUNT(*) AS c FROM stock_universe WHERE {where}",
-            params,
+            f"SELECT COUNT(*) AS c FROM stock_universe WHERE {filter_where}",
+            filter_params,
         ).fetchone()["c"]
-        rows = conn.execute(
-            f"""SELECT * FROM stock_universe WHERE {where}
-                ORDER BY {order_by} ASC
-                LIMIT ? OFFSET ?""",
-            params + [limit, offset],
-        ).fetchall()
+        if use_offset:
+            rows = conn.execute(
+                f"""SELECT * FROM stock_universe WHERE {page_where}
+                    ORDER BY {order_by} ASC, code ASC
+                    LIMIT ? OFFSET ?""",
+                page_params + [int(limit), max(0, int(offset or 0))],
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""SELECT * FROM stock_universe WHERE {page_where}
+                    ORDER BY {order_by} ASC, code ASC
+                    LIMIT ?""",
+                page_params + [int(limit)],
+            ).fetchall()
     return [dict(r) for r in rows], int(total)
 
 

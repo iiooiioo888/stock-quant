@@ -36,6 +36,24 @@ def build_retry_worker(
     return lambda: builder(params, task_id)
 
 
+RETRYABLE_TASK_TYPES = frozenset(
+    {
+        "backtest",
+        "backtest_advanced",
+        "backtest_multi",
+        "optimize",
+        "portfolio",
+        "walkforward",
+        "auto_optimize",
+        "stock_universe_sync",
+        "stock_universe_intro",
+        "data_download",
+        "data_download_all",
+        "data_incremental",
+    }
+)
+
+
 def _retry_backtest(params: dict, task_id: str):
     from src.core.backtest import run_backtest
 
@@ -45,6 +63,7 @@ def _retry_backtest(params: dict, task_id: str):
         params=params.get("params"),
         cash=params.get("cash"),
         timeframe=params.get("timeframe", "1d"),
+        adj=params.get("adj"),
         task_id=task_id,
     )
 
@@ -61,6 +80,7 @@ def _retry_backtest_advanced(params: dict, task_id: str):
         enable_t1=params.get("enable_t1", True),
         enable_limit=params.get("enable_limit", True),
         timeframe=params.get("timeframe", "1d"),
+        adj=params.get("adj"),
         task_id=task_id,
     )
 

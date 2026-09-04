@@ -394,9 +394,12 @@ def log_alert(
 
 
 def get_alert_logs(
-    limit: int = 100, code: str = None, user_id: int = None
+    limit: int = 100,
+    code: str = None,
+    user_id: int = None,
+    offset: int = 0,
 ) -> list[dict]:
-    """獲取預警日誌（支持按用戶過濾）"""
+    """獲取預警日誌（支持按用戶過濾與 offset 分頁）"""
     sql = "SELECT * FROM alert_log WHERE 1=1"
     params: list = []
     if user_id is not None:
@@ -405,13 +408,29 @@ def get_alert_logs(
     if code:
         sql += " AND code = ?"
         params.append(code)
-    sql += " ORDER BY id DESC LIMIT ?"
-    params.append(limit)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.append(int(limit))
+    params.append(max(0, int(offset or 0)))
 
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
+
+
+def count_alert_logs(code: str = None, user_id: int = None) -> int:
+    """預警日誌總數（與 get_alert_logs 過濾條件一致）。"""
+    sql = "SELECT COUNT(*) FROM alert_log WHERE 1=1"
+    params: list = []
+    if user_id is not None:
+        sql += " AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
+    if code:
+        sql += " AND code = ?"
+        params.append(code)
+    with get_conn() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row[0] if row else 0)
 
 
 def get_db_stats() -> dict:

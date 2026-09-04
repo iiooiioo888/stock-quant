@@ -541,9 +541,12 @@ const Api = {
     return this.post(`/api/stocks/update?force=${force}`, codes ?? null);
   },
   async getStatus() { return this.get('/api/status'); },
-  async getStocks(limit = 300) {
+  async getStocks(limit = 300, opts = {}) {
     const cap = Math.min(20000, Math.max(1, Number(limit) || 300));
-    return this.get(`/api/stocks?limit=${cap}`);
+    let url = `/api/stocks?limit=${cap}`;
+    if (opts.cursor) url += `&cursor=${encodeURIComponent(opts.cursor)}`;
+    else if (opts.offset != null) url += `&offset=${Number(opts.offset) || 0}`;
+    return this.get(url);
   },
 
   /** 分頁拉取股票庫（市值 TOP，最多 maxCount 條） */
@@ -659,8 +662,8 @@ const Api = {
   },
   async getPortfolioPresets() { return this.get('/api/portfolio/presets'); },
 
-  async getAlerts(limit = 50, code = null) {
-    let url = `/api/alerts?limit=${limit}`;
+  async getAlerts(limit = 50, code = null, offset = 0) {
+    let url = `/api/alerts?limit=${limit}&offset=${Number(offset) || 0}`;
     if (code) url += `&code=${code}`;
     return this.get(url);
   },
@@ -794,6 +797,11 @@ const Api = {
   async getStockList(market = 'all') { return this.get(`/api/screener/stocks?market=${market}`); },
   async getNotifyChannels() { return this.get('/api/notify/channels'); },
   async testNotify() { return this.post('/api/notify/test'); },
+  async getNotifyHistory(limit = 50, offset = 0, channel = null) {
+    let url = `/api/notify/history?limit=${Number(limit) || 50}&offset=${Number(offset) || 0}`;
+    if (channel) url += `&channel=${encodeURIComponent(channel)}`;
+    return this.get(url);
+  },
   async getSchedulerJobs() { return this.get('/api/scheduler/jobs'); },
   async getSchedulerCatalog() { return this.get('/api/scheduler/catalog'); },
   async setupScheduler() { return this.post('/api/scheduler/setup'); },

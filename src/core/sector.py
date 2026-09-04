@@ -7,8 +7,6 @@
 import time
 from datetime import datetime
 
-import akshare as ak
-
 from src.core.db import get_conn
 from src.utils.logger import logger
 
@@ -381,6 +379,11 @@ def _load_sectors_from_local_kline(sector_type: str = "industry") -> list[dict]:
 
 def _fetch_sector_list_live(sector_type: str, retries: int = 2) -> list[dict]:
     last_err = None
+    try:
+        import akshare as ak
+    except ImportError:
+        logger.warning("akshare 未安裝，無法拉取板塊列表")
+        return []
     for attempt in range(retries):
         try:
             if sector_type == "concept":
@@ -506,6 +509,8 @@ def get_sector_stocks(sector_name: str, sector_type: str = "industry") -> list[d
         [{"code": "000001", "name": "平安銀行", ...}, ...]
     """
     try:
+        import akshare as ak
+
         if sector_type == "concept":
             df = ak.stock_board_concept_cons_em(symbol=sector_name)
         else:

@@ -535,7 +535,8 @@
           ${sub ? `<div class="tk-card-sub">${sub}</div>` : ''}
           ${preview && !isActive ? `<div class="tk-card-preview">${preview}</div>` : ''}
           ${isActive ? `<div class="tk-card-progress"><div class="tk-card-progress-fill" style="width:${progress}%"></div></div>` : ''}
-          ${elapsed ? `<div class="tk-card-time">${elapsed}${eta ? ` · ${eta}` : ''}</div>` : ''}
+          ${elapsed ? `<div class="tk-card-time">${elapsed}${eta ? ` · ${eta}` : ''}${t.download && t.download.index != null ? ` · ${t.download.index}/${t.download.total || '?'}` : ''}</div>` : ''}
+          ${t.retry_hint && !isActive ? `<div class="tk-card-retry-hint">${t.retry_hint}</div>` : ''}
           ${t.error ? `<div class="tk-card-err">${String(t.error).slice(0, 120)}</div>` : ''}
           <div class="tk-card-ft">${actions}</div>
         </article>`;
@@ -700,9 +701,12 @@
     async retryTask(taskId) {
       const d = await Api.retryTask(taskId);
       if (d?.success) {
-        this.toast(d.message || '已提交重試', 'success');
+        this.toast(d.message || '已提交重試，正在自動輪詢進度', 'success');
+        this._pollCount = 0;
+        this._startPolling();
         this.refresh();
-      } else this.toast('重試失敗', 'error');
+        if (d.task_id) this.openDetail(d.task_id);
+      } else this.toast(d?.detail || '重試失敗（此類型可能不支援重試）', 'error');
     },
 
     async cancelTask(taskId) {

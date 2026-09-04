@@ -254,6 +254,26 @@ async def test_notify():
     return {"success": True, "results": results}
 
 
+@router.get("/api/notify/history")
+async def list_notify_history(
+    limit: int = 50,
+    offset: int = 0,
+    channel: str = None,
+):
+    """通知發送歷史（SQLite）。"""
+    from src.core.notify_queue import get_notification_history
+
+    items, total = get_notification_history(
+        limit=min(int(limit), 200), offset=max(0, int(offset)), channel=channel
+    )
+    return {
+        "history": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 # ====== 配置 ======
 
 
@@ -276,6 +296,10 @@ async def get_config():
             "backtest_cash": settings.backtest_cash,
             "backtest_commission": settings.backtest_commission,
             "backtest_stamp_tax": settings.backtest_stamp_tax,
+            "backtest_min_commission": settings.backtest_min_commission,
+            "backtest_transfer_fee": settings.backtest_transfer_fee,
+            "backtest_adj": settings.backtest_adj,
+            "data_retention_years": settings.data_retention_years,
             "task_max_workers": settings.task_max_workers,
             "task_heavy_max_concurrent": settings.task_heavy_max_concurrent,
             "task_timeout_sec": settings.task_timeout_sec,

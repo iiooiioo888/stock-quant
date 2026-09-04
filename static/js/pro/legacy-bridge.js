@@ -12,31 +12,55 @@
     scheduler: 'scheduler',
     reports: 'reports',
     connectivity: 'connectivity',
-    alerts: 'alerts',
     crypto: 'crypto',
     markets: 'markets',
   };
 
   const LEGACY_FRAGMENTS_V = 'data-ui-ib-20260528';
+  const LS = 'legacy-pro-20260527';
+
+  const SCRIPT = {
+    store: `/static/js/local-store.js?v=${LS}`,
+    charts: `/static/js/charts.js?v=${LS}`,
+    chartPro: `/static/js/chart-pro.js?v=${LS}`,
+    labels: `/static/js/signal-labels.js?v=${LS}`,
+    picker: '/static/js/stock-picker.js?v=pf-grid-20260527',
+    backtest: `/static/js/backtest.js?v=${LS}`,
+    optimize: '/static/js/optimize.js?v=fix-comment-20260530',
+    portfolio: '/static/js/portfolio.js?v=pf-method-20260527',
+    signals: `/static/js/signals.js?v=${LS}`,
+    heatmap: `/static/js/heatmap.js?v=${LS}`,
+    stockContent: `/static/js/stock-content.js?v=${LS}`,
+    data: '/static/js/data.js?v=data-ui-ib-20260528',
+    analysis: `/static/js/analysis.js?v=${LS}`,
+    scheduler: `/static/js/scheduler.js?v=${LS}`,
+    crypto: `/static/js/crypto.js?v=${LS}`,
+    connectivity: `/static/js/connectivity.js?v=${LS}`,
+    app: '/static/js/app.js?v=fix-comment-20260530',
+  };
+
+  const CORE_SCRIPTS = [SCRIPT.store, SCRIPT.charts, SCRIPT.chartPro, SCRIPT.labels];
+
+  const PAGE_SCRIPTS = {
+    optimize: [...CORE_SCRIPTS, SCRIPT.picker, SCRIPT.backtest, SCRIPT.optimize, SCRIPT.app],
+    walkforward: [...CORE_SCRIPTS, SCRIPT.picker, SCRIPT.backtest, SCRIPT.app],
+    heatmap: [...CORE_SCRIPTS, SCRIPT.picker, SCRIPT.heatmap, SCRIPT.app],
+    data: [...CORE_SCRIPTS, SCRIPT.data, SCRIPT.app],
+    portfolio: [...CORE_SCRIPTS, SCRIPT.picker, SCRIPT.portfolio, SCRIPT.app],
+    signals: [...CORE_SCRIPTS, SCRIPT.signals, SCRIPT.app],
+    analysis: [...CORE_SCRIPTS, SCRIPT.picker, SCRIPT.analysis, SCRIPT.app],
+    scheduler: [...CORE_SCRIPTS, SCRIPT.scheduler, SCRIPT.app],
+    reports: [...CORE_SCRIPTS, SCRIPT.app],
+    crypto: [...CORE_SCRIPTS, SCRIPT.crypto, SCRIPT.app],
+    markets: [...CORE_SCRIPTS, SCRIPT.app],
+    connectivity: [...CORE_SCRIPTS, SCRIPT.connectivity, SCRIPT.app],
+  };
 
   const LEGACY_SCRIPTS = [
-    '/static/js/local-store.js?v=legacy-pro-20260527',
-    '/static/js/charts.js?v=legacy-pro-20260527',
-    '/static/js/chart-pro.js?v=legacy-pro-20260527',
-    '/static/js/signal-labels.js?v=legacy-pro-20260527',
-    '/static/js/stock-picker.js?v=pf-grid-20260527',
-    '/static/js/backtest.js?v=legacy-pro-20260527',
-    '/static/js/optimize.js?v=fix-comment-20260530',
-    '/static/js/portfolio.js?v=pf-method-20260527',
-    '/static/js/signals.js?v=legacy-pro-20260527',
-    '/static/js/heatmap.js?v=legacy-pro-20260527',
-    '/static/js/stock-content.js?v=legacy-pro-20260527',
-    '/static/js/data.js?v=data-ui-ib-20260528',
-    '/static/js/analysis.js?v=legacy-pro-20260527',
-    '/static/js/scheduler.js?v=legacy-pro-20260527',
-    '/static/js/crypto.js?v=legacy-pro-20260527',
-    '/static/js/connectivity.js?v=legacy-pro-20260527',
-    '/static/js/app.js?v=fix-comment-20260530',
+    SCRIPT.store, SCRIPT.charts, SCRIPT.chartPro, SCRIPT.labels, SCRIPT.picker,
+    SCRIPT.backtest, SCRIPT.optimize, SCRIPT.portfolio, SCRIPT.signals, SCRIPT.heatmap,
+    SCRIPT.stockContent, SCRIPT.data, SCRIPT.analysis, SCRIPT.scheduler, SCRIPT.crypto,
+    SCRIPT.connectivity, SCRIPT.app,
   ];
 
   const Bridge = {
@@ -85,20 +109,33 @@
       document.head.appendChild(hotfix);
     },
 
-    ensureScripts() {
-      if (this._scriptsReady) return this._scriptsReady;
-      this._scriptsReady = (async () => {
+    ensurePageScripts(pageId) {
+      const list = PAGE_SCRIPTS[pageId] || LEGACY_SCRIPTS;
+      if (this._pageScriptReady && this._pageScriptReady[pageId]) {
+        return this._pageScriptReady[pageId];
+      }
+      this._pageScriptReady = this._pageScriptReady || {};
+      this._pageScriptReady[pageId] = (async () => {
         this._ensureLegacyCss();
         const charts = window.StockQPro?.charts;
         if (charts) {
           await charts.ensureChartJs();
           await charts.ensureLightweightCharts();
         }
-        for (const src of LEGACY_SCRIPTS) {
-          await this._loadScript(src);
+        const SL = window.StockQPro?.StreamLoader;
+        const scriptFns = list.map((src) => () => this._loadScript(src));
+        if (SL) await SL.runSequential(scriptFns);
+        else {
+          for (const fn of scriptFns) await fn();
         }
         this._patchLegacyApp();
       })();
+      return this._pageScriptReady[pageId];
+    },
+
+    ensureScripts() {
+      if (this._scriptsReady) return this._scriptsReady;
+      this._scriptsReady = this.ensurePageScripts('__all__');
       return this._scriptsReady;
     },
 
@@ -283,7 +320,7 @@
       if (!this.isLegacyPage(pageId)) return false;
       const tab = PAGE_TO_TAB[pageId];
       try {
-        await this.ensureScripts();
+        await this.ensurePageScripts(pageId);
         const ok = await this._mount(pageId);
         if (!ok) return false;
         this.initModulesOnce(tab);

@@ -429,6 +429,21 @@ CREATE TABLE IF NOT EXISTS fx_rates_daily (
 )
 """
 
+# ── 通知歷史 ──────────────────────────────────────────────
+
+DDL_NOTIFICATION_HISTORY = """
+CREATE TABLE IF NOT EXISTS notification_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel     TEXT    NOT NULL,
+    msg_type    TEXT    NOT NULL DEFAULT 'alert',
+    message     TEXT    NOT NULL,
+    status      TEXT    NOT NULL,
+    error       TEXT,
+    attempts    INTEGER DEFAULT 1,
+    created_at  TEXT    NOT NULL
+)
+"""
+
 # ── 遷移元數據 ────────────────────────────────────────────
 
 DDL_SCHEMA_MIGRATIONS = """
@@ -487,6 +502,7 @@ TABLE_DDL: list[tuple[str, str]] = [
     ("portfolio_holdings", DDL_PORTFOLIO_HOLDINGS),
     ("portfolio_snapshots", DDL_PORTFOLIO_SNAPSHOTS),
     ("task_log", DDL_TASK_LOG),
+    ("notification_history", DDL_NOTIFICATION_HISTORY),
     ("schema_migrations", DDL_SCHEMA_MIGRATIONS),
 ]
 
@@ -497,6 +513,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_daily_market ON daily_kline(market)",
     "CREATE INDEX IF NOT EXISTS idx_bt_code ON backtest_results(code)",
     "CREATE INDEX IF NOT EXISTS idx_bt_created ON backtest_results(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy ON backtest_results(code, strategy)",
     "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy_created ON backtest_results(code, strategy, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_bt_user ON backtest_results(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sig_code ON signal_log(code)",
@@ -510,6 +527,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_strategy_likes_key ON strategy_likes(strategy_key)",
     "CREATE INDEX IF NOT EXISTS idx_alert_user ON user_alert_rules(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_alert_log_triggered ON alert_log(triggered_at)",
     # 遷移 v9 歷史名稱，與 idx_alert_log_user 同列；保留以免健檢報 extra_untracked
     "CREATE INDEX IF NOT EXISTS idx_alert_user_id ON alert_log(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sector_name ON sector_data(sector_name)",
@@ -539,5 +557,7 @@ INDEX_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_task_created ON task_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_task_status_created ON task_log(status, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_task_active ON task_log(created_at DESC) WHERE status IN ('pending', 'running')",
+    "CREATE INDEX IF NOT EXISTS idx_notify_created ON notification_history(created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_notify_channel ON notification_history(channel, status)",
     # Phase 2: K 線索引優化（已由 idx_daily_* 覆蓋，移除對舊表名 klines 的引用）
 ]

@@ -14,7 +14,7 @@ def test_parallel_download_faster_than_serial(monkeypatch):
         time.sleep(0.05)
         return 10
 
-    monkeypatch.setattr("src.core.history.download_one", fake_download)
+    monkeypatch.setattr("src.core.download_tasks._history_download_one", fake_download)
     monkeypatch.setattr(
         "src.core.download_tasks.settings.download_max_workers",
         4,

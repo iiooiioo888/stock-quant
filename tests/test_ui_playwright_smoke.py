@@ -162,6 +162,17 @@ class TestUIPlaywrightSmoke:
         page.wait_for_timeout(600)
         assert not seen, f"進入多股對比不應自動請求 compare API，實際：{seen}"
 
+    def test_alerts_page_native_shell(self, page: Page):
+        _click_sidebar_tab(page, "alerts")
+        assert page.locator("#al-channels").count() == 1
+        assert page.locator("#al-hist-list").count() == 1
+        assert page.locator("#pg-alerts .legacy-mount").count() == 0
+
+    def test_optimize_page_legacy_mount(self, page: Page):
+        _click_sidebar_tab(page, "optimize")
+        page.wait_for_selector("#pg-optimize .legacy-mount", timeout=15_000)
+        assert _tab_visible(page, "optimize")
+
     def test_cmd_palette_opens(self, page: Page):
         _click_sidebar_tab(page, "dashboard")
         page.locator("#cmd-open-btn").click()

@@ -565,8 +565,10 @@
     const meta = $id('bt-meta');
     if (meta) {
       const tf = r.timeframe_label || r.timeframe || '日線';
+      const adjMap = { qfq: '前復權', hfq: '後復權', none: '不復權' };
+      const adj = adjMap[r.adj] || r.adj || '';
       const barWord = (r.timeframe && r.timeframe !== '1d') ? '根 K 線' : '個交易日';
-      meta.textContent = `${r.code || ''} · ${r.strategy || ''} · ${tf} · ${curve.length} ${barWord}`;
+      meta.textContent = `${r.code || ''} · ${r.strategy || ''} · ${tf}${adj ? ` · ${adj}` : ''} · ${curve.length} ${barWord}`;
     }
     requestAnimationFrame(() => {
       resizeCharts();
@@ -641,6 +643,7 @@
     const enableT1 = !!$id('bt-t1')?.checked;
     const enableLimit = !!$id('bt-limit')?.checked;
     const timeframe = String($id('bt-timeframe')?.value || '1d').trim() || '1d';
+    const adj = String($id('bt-adj')?.value || 'qfq').trim() || 'qfq';
 
     const forceRefresh = !!$id('bt-force')?.checked;
     const stopLoss = Number($id('bt-stop-loss')?.value);
@@ -657,6 +660,7 @@
       enable_t1: enableT1,
       enable_limit: enableLimit,
       timeframe,
+      adj,
       benchmark: false,
       force_refresh: forceRefresh,
     };
@@ -665,7 +669,7 @@
     if (Number.isFinite(maxPos) && maxPos > 0 && maxPos <= 1) body.max_position_pct = maxPos;
 
     try {
-      logLine(`提交任務：${backendKey} · ${timeframe}`, 'ok');
+      logLine(`提交任務：${backendKey} · ${timeframe} · ${adj}`, 'ok');
       if (bar) bar.style.width = '20%';
       const d = await Api.runAdvancedBacktest(body);
       if (!d) {
@@ -739,6 +743,7 @@
       enable_t1: !!$id('bt-t1')?.checked,
       enable_limit: !!$id('bt-limit')?.checked,
       timeframe: String($id('bt-timeframe')?.value || '1d').trim() || '1d',
+      adj: String($id('bt-adj')?.value || 'qfq').trim() || 'qfq',
     };
   }
 

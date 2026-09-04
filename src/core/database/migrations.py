@@ -214,6 +214,25 @@ def _migration_009_user_isolation(conn: sqlite3.Connection) -> None:
             logger.debug(f"user_isolation 索引跳過: {e}")
 
 
+def _migration_010_retention_notify_indexes(conn: sqlite3.Connection) -> None:
+    """複合索引 (code, strategy)、通知歷史表、資料保留相關索引。"""
+    from src.core.database.schema import DDL_NOTIFICATION_HISTORY
+
+    conn.execute(DDL_NOTIFICATION_HISTORY)
+    extra = [
+        "CREATE INDEX IF NOT EXISTS idx_bt_code_strategy ON backtest_results(code, strategy)",
+        "CREATE INDEX IF NOT EXISTS idx_notify_created ON notification_history(created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_notify_channel ON notification_history(channel, status)",
+        "CREATE INDEX IF NOT EXISTS idx_alert_log_triggered ON alert_log(triggered_at)",
+        "CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_kline(date)",
+    ]
+    for idx in extra:
+        try:
+            conn.execute(idx)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"v10 索引跳過: {e}")
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline_schema", _migration_001_baseline),
     (2, "legacy_column_patches", _migration_002_legacy_columns),
@@ -224,6 +243,7 @@ MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (7, "portfolio_transaction_ledger", _migration_007_portfolio_ledger),
     (8, "strategy_likes", _migration_008_strategy_likes),
     (9, "user_isolation_backtest_alerts_signals", _migration_009_user_isolation),
+    (10, "retention_notify_and_bt_code_strategy", _migration_010_retention_notify_indexes),
 ]
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

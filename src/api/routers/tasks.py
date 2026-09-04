@@ -314,8 +314,13 @@ async def retry_task_api(task_id: str):
         }
 
     new_id = new_task["task_id"]
-    from src.core.task_manager import STATUS_RETRYING, update_task
+    from src.core.task_manager import STATUS_RETRYING, update_task, update_task_meta
 
+    update_task_meta(
+        new_id,
+        retry_of=task_id,
+        retry_hint="手動重試：沿用原參數重新提交",
+    )
     update_task(new_id, status=STATUS_RETRYING, progress=0)
     retry_work = build_retry_worker(task_type, params, new_id)
     out = dispatch_async_task(new_id, retry_work)

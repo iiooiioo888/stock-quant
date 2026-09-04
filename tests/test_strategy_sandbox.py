@@ -57,7 +57,14 @@ def test_validate_rejects_dunder_escape():
     assert not r.ok
 
 
-def test_validate_rejects_open_call():
-    bad = _SAFE_TEMPLATE + "\nopen('/etc/passwd')\n"
+def test_validate_rejects_exec():
+    bad = _SAFE_TEMPLATE + "\nexec('x=1')\n"
     r = validate_strategy_source(bad)
     assert not r.ok
+
+
+def test_validate_rejects_dunder_import():
+    bad = _SAFE_TEMPLATE + "\n__import__('os')\n"
+    r = validate_strategy_source(bad)
+    assert not r.ok
+

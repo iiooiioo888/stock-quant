@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
-  <link rel="preload" href="/static/css/pro.css?v=gui-ux-20260903j" as="style" />
-  <link rel="stylesheet" href="/static/css/pro.css?v=gui-ux-20260903j" />
+  <link rel="preload" href="/static/css/pro.css?v=gui-ux-20260904a" as="style" />
+  <link rel="stylesheet" href="/static/css/pro.css?v=gui-ux-20260904a" />
   <style>
     .bt-layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--gap);align-items:start}
     @media(max-width:1100px){.bt-layout{grid-template-columns:1fr}}
@@ -386,7 +386,16 @@
                 <select id="bt-timeframe" class="sel">
                   <option value="1d" selected>日線</option>
                   <option value="1w">週線</option>
+                  <option value="1mo">月線</option>
                   <option value="1h">60 分鐘</option>
+                </select>
+              </div>
+              <div class="fg-row">
+                <label class="fg" for="bt-adj">復權</label>
+                <select id="bt-adj" class="sel">
+                  <option value="qfq" selected>前復權</option>
+                  <option value="hfq">後復權</option>
+                  <option value="none">不復權</option>
                 </select>
               </div>
               <div class="fg-row">
@@ -805,7 +814,51 @@
     </div>
 
     <!-- 8. Alerts -->
-    <div class="pg pro-page" id="pg-alerts"><div class="legacy-mount" aria-label="預警規則"></div></div>
+    <div class="pg pro-page" id="pg-alerts">
+      <div class="pnl">
+        <div class="ph">
+          <div class="pt">🔔 預警與通知</div>
+          <div class="pa">
+            <button type="button" class="btn s" id="al-reload">刷新</button>
+            <button type="button" class="btn btn-ac s" id="al-test-notify">測試渠道</button>
+          </div>
+        </div>
+        <div class="pb">
+          <div class="al-sec">
+            <div class="al-sec-h">通知渠道</div>
+            <div id="al-channels" class="al-channel-grid"></div>
+          </div>
+          <div class="al-sec">
+            <div class="al-sec-h">預警規則</div>
+            <div class="table-wrap">
+              <table class="pro-table">
+                <thead>
+                  <tr><th>代碼</th><th>名稱</th><th>漲跌%</th><th>上方</th><th>下方</th><th></th></tr>
+                </thead>
+                <tbody id="al-tb"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="al-sec">
+            <div class="al-sec-h">預警歷史 <span id="al-log-meta" class="al-count">0</span></div>
+            <div id="al-log-list" class="al-list"></div>
+            <div class="al-pager">
+              <button type="button" class="btn s" id="al-log-prev" disabled>上一頁</button>
+              <button type="button" class="btn s" id="al-log-next" disabled>下一頁</button>
+            </div>
+          </div>
+          <div class="al-sec">
+            <div class="al-sec-h">通知發送記錄 <span id="al-hist-meta" class="al-count">0</span></div>
+            <p class="al-hint">異步隊列寫入 SQLite；含 ServerChan / Bark 失敗重試結果。</p>
+            <div id="al-hist-list" class="al-list"></div>
+            <div class="al-pager">
+              <button type="button" class="btn s" id="al-hist-prev" disabled>上一頁</button>
+              <button type="button" class="btn s" id="al-hist-next" disabled>下一頁</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 9. Back history -->
     <div class="pg pro-page" id="pg-backhistory">
@@ -1207,7 +1260,7 @@
 <script src="/static/js/utils.js?v=stockq-pro-v6"></script>
 <script src="/static/js/pro/terms.js?v=stockq-terms-20260527"></script>
 <script src="/static/js/pro/fetch-stream.js?v=fix-comment-20260530"></script>
-<script src="/static/js/api.js?v=gui-ux-20260903"></script>
+<script src="/static/js/api.js?v=gui-ux-20260903i"></script>
 <script src="/static/js/task-common.js?v=stockq-pro-v5"></script>
 <script src="/static/js/pro/user-prefs.js?v=gui-ux-20260903j"></script>
 <script src="/static/js/pro/work-context.js?v=gui-ux-20260903c"></script>
@@ -1224,8 +1277,8 @@
   <script src="/static/js/pro/echarts-registry.js?v=echarts-reg-20260528"></script>
 <script src="/static/js/pro/motion.js?v=gui-ux-20260903k"></script>
 <script type="module" src="/static/js/pro/esm/bootstrap.mjs?v=stockq-esm-20260528"></script>
-<script src="/static/js/pro/module-loader.js?v=gui-ux-20260903k"></script>
-<script src="/static/js/pro/legacy-bridge.js?v=gui-ux-20260903k"></script>
-<script src="/static/js/pro/app.js?v=gui-ux-20260903k"></script>
+<script src="/static/js/pro/module-loader.js?v=gui-ux-20260904a"></script>
+<script src="/static/js/pro/legacy-bridge.js?v=gui-ux-20260904a"></script>
+<script src="/static/js/pro/app.js?v=gui-ux-20260904a"></script>
 </body>
 </html>

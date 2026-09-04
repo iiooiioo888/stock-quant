@@ -26,10 +26,10 @@
 | 項目 | 狀態 | 說明 |
 |------|------|------|
 | 內建策略 | ✅ | `src/core/strategies/registry.py` 裝飾器註冊，無動態 `eval` |
-| 用戶上傳策略 | ✅ | `src/core/strategy_sandbox.py` AST 白名單，**禁止 `eval`**（見 `tests/test_strategy_sandbox.py`） |
+| 用戶上傳策略 | ✅ | AST 白名單，**禁止 `eval`/`exec`/`__import__`**（見 `tests/test_strategy_sandbox.py`） |
 | Redis 限流 | ✅ | `rate_limiter.py` 的 `eval` 為 **Redis Lua**，非 Python `eval` |
 
-**建議（P2）**：在 CONTRIBUTING 明確禁止用戶策略使用 `exec`/`__import__`；可選整合 `RestrictedPython` 僅在沙箱路徑。
+**建議（P2）**：CONTRIBUTING 已明確禁止用戶策略使用 `exec`/`__import__`；可選整合 `RestrictedPython` 僅在沙箱路徑。
 
 ### 1.2 ORM 與遷移
 
@@ -75,7 +75,8 @@
 
 | 項目 | 狀態 | 建議 |
 |------|------|------|
-| Pro 工作站（原生 JS + IIFE） | ✅ 現用 | 運維、任務、回測已模組化 |
+| Pro 工作站（原生 JS + IIFE） | ✅ 現用 | 總覽/資金流/回測/對比/任務/預警已 `*-pro.js`；optimize/WF/heatmap/data 走 module-loader + 按頁懶載 legacy 腳本 |
+| 預警通知歷史 | ✅ | Pro 預警頁讀 `GET /api/notify/history` |
 | TypeScript / Vue / React | P2–P3 | 建議 **新頁面** ESM + TS 漸進，避免一次性重寫 |
 | Web Components | P2 | 可與 `static/js/pro/ui/` 對齊 |
 

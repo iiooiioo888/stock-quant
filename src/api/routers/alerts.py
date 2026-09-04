@@ -15,12 +15,24 @@ router = APIRouter()
 
 @router.get("/api/alerts")
 async def list_alerts(
-    limit: int = 50, code: str = None, user=Depends(get_current_user)
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    code: str = None,
+    user=Depends(get_current_user),
 ):
-    """獲取預警歷史（登錄用戶僅看自己的數據）"""
+    """獲取預警歷史（登錄用戶僅看自己的數據；offset + total 分頁）"""
+    from src.core.db import count_alert_logs
+
     user_id = user.id if user else None
-    logs = get_alert_logs(limit=limit, code=code, user_id=user_id)
-    return {"alerts": logs, "total": len(logs)}
+    logs = get_alert_logs(limit=limit, offset=offset, code=code, user_id=user_id)
+    total = count_alert_logs(code=code, user_id=user_id)
+    return {
+        "alerts": logs,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": (offset + len(logs)) < total,
+    }
 
 
 @router.get("/api/alerts/rules")

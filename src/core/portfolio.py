@@ -13,10 +13,14 @@ from src.utils.logger import logger
 
 
 def _safe_float(v, default=None):
-    """將 NaN/Inf 轉為 JSON 安全值"""
+    """將 NaN/Inf 轉為 JSON 安全值；兼容 0 維 / 1x1 ndarray。"""
     if v is None:
         return default
     try:
+        if isinstance(v, np.ndarray):
+            if v.size == 0:
+                return default
+            v = v.reshape(-1)[0]
         f = float(v)
         if math.isnan(f) or math.isinf(f):
             return default
@@ -1837,7 +1841,11 @@ def black_litterman_portfolio(
         # Omega = (1/conf - 1) * P @ Σ @ P^T（He-Litterman 簡化）
         idx = labels.index(vk)
         p_row = P[[view_keys.index(vk)], :]
-        diag_val = float((1.0 / conf - 1.0) * (p_row @ cov_matrix @ p_row.T))
+        diag_val = float(
+            np.asarray((1.0 / conf - 1.0) * (p_row @ cov_matrix @ p_row.T)).reshape(-1)[
+                0
+            ]
+        )
         omega_diag.append(max(diag_val, 1e-8))
     Omega = np.diag(omega_diag)
 

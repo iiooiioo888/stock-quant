@@ -1,13 +1,15 @@
 /* global StockQPro */
 (() => {
   const ROOT = '/static/js/pro/modules/';
-  const V = 'gui-ux-20260903k';
+  const V = 'gui-ux-20260904a';
 
   const PAGE_CHARTS = {
     capitalflow: ['echarts'],
     compare: ['echarts'],
     backtest: ['echarts'],
     watchlist: ['echarts'],
+    heatmap: ['echarts'],
+    optimize: ['echarts'],
   };
 
   const PAGE_SCRIPTS = {
@@ -17,7 +19,7 @@
     ],
     tasks: [`${ROOT}tasks-pro.js`],
     strategies: ['/static/js/pro/strategy-catalog.js'],
-    compare: [`${ROOT}compare-pro.js`],
+    compare: ['/static/js/pro/chart-export.js', `${ROOT}compare-pro.js`],
     watchlist: [`${ROOT}watchlist-pro.js`],
     scanner: [`${ROOT}scanner-pro.js`],
     backhistory: [`${ROOT}backhistory-pro.js`],
@@ -26,7 +28,13 @@
     ai: [`${ROOT}ai-assistant.js`],
     settings: [`${ROOT}settings-pro.js`],
     pricing: [`${ROOT}pricing-pro.js`],
+    alerts: [`${ROOT}alerts-pro.js`],
+    optimize: [`${ROOT}analysis-tools-pro.js`],
+    walkforward: [`${ROOT}analysis-tools-pro.js`],
+    heatmap: [`${ROOT}analysis-tools-pro.js`],
+    data: [`${ROOT}data-pro.js`],
     backtest: [
+      '/static/js/pro/chart-export.js',
       '/static/js/pro/stock-pick-data.js',
       `${ROOT}backtest-symbol-picker.js`,
       `${ROOT}backtest-pro.js`,
